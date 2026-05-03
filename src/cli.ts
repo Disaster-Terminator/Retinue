@@ -65,6 +65,17 @@ async function main(): Promise<void> {
       );
       return;
     }
+    case "peek": {
+      const [jobId, ...rest] = args;
+      const flags = parseFlags(rest);
+      writeJson(
+        await supervisor.peek(required(jobId, "jobId"), {
+          stdoutTailBytes: flags["stdout-tail-bytes"] ? Number(flags["stdout-tail-bytes"]) : undefined,
+          stderrTailBytes: flags["stderr-tail-bytes"] ? Number(flags["stderr-tail-bytes"]) : undefined
+        })
+      );
+      return;
+    }
     case "kill": {
       writeJson(await supervisor.kill(required(args[0], "jobId")));
       return;

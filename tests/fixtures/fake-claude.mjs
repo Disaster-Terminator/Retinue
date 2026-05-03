@@ -2,8 +2,16 @@
 
 const delayMs = Number(process.env.FAKE_CLAUDE_DELAY_MS ?? "0");
 const exitCode = Number(process.env.FAKE_CLAUDE_EXIT_CODE ?? "0");
+const initialStdout = process.env.FAKE_CLAUDE_INITIAL_STDOUT;
+const initialStderr = process.env.FAKE_CLAUDE_INITIAL_STDERR;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+if (initialStdout) {
+  console.log(initialStdout);
+}
+if (initialStderr) {
+  console.error(initialStderr);
+}
 await sleep(delayMs);
 
 const promptIndex = process.argv.indexOf("-p");

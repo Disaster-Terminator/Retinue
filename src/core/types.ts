@@ -89,6 +89,21 @@ export interface JobResult {
   error?: string;
 }
 
+export interface PeekOptions {
+  stdoutTailBytes?: number;
+  stderrTailBytes?: number;
+}
+
+export interface PeekResult {
+  jobId: string;
+  status: JobStatus;
+  stdoutTail?: string;
+  stderrTail?: string;
+  stdoutPath?: string;
+  stderrPath?: string;
+  error?: string;
+}
+
 export interface KillResult {
   jobId: string;
   status: JobStatus;

@@ -16,6 +16,8 @@ import type {
   JobResult,
   JobStatusResult,
   KillResult,
+  PeekOptions,
+  PeekResult,
   RunOptions,
   SupervisorOptions,
   WaitOptions,
@@ -258,6 +260,28 @@ export class ClaudeSupervisor {
     }
     const result = await this.result(jobId);
     return result.sessionId;
+  }
+
+  async peek(jobId: string, options: PeekOptions = {}): Promise<PeekResult> {
+    const meta = await this.status(jobId);
+    if (isProblem(meta)) {
+      return { jobId, status: meta.status, error: meta.error };
+    }
+
+    const paths = getJobPaths(this.stateDir, jobId);
+    const [stdout, stderr] = await Promise.all([
+      readTextIfExists(paths.stdout),
+      readTextIfExists(paths.stderr)
+    ]);
+
+    return {
+      jobId,
+      status: meta.status,
+      stdoutTail: limitText(stdout, options.stdoutTailBytes ?? 4096).text,
+      stderrTail: limitText(stderr, options.stderrTailBytes ?? 4096).text,
+      stdoutPath: paths.stdout,
+      stderrPath: paths.stderr
+    };
   }
 
   async kill(jobId: string): Promise<KillResult> {

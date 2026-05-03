@@ -34,6 +34,7 @@ describe("ClaudeSupervisor kill and cleanup", () => {
     const killed = await supervisor.kill(started.jobId);
 
     expect(killed.status).toBe("killed");
+    await expect(supervisor.status(started.jobId)).resolves.toMatchObject({ status: "killed" });
 
     const waited = await supervisor.wait(started.jobId, { timeoutMs: 5000 });
     expect(waited.status).toBe("killed");
@@ -66,4 +67,3 @@ describe("ClaudeSupervisor kill and cleanup", () => {
     await slow.kill(running.jobId);
   });
 });
-

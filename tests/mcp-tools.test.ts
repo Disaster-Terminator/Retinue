@@ -10,6 +10,7 @@ describe("MCP tools", () => {
       "claude_wait",
       "claude_result",
       "claude_continue",
+      "claude_peek",
       "claude_kill",
       "claude_cleanup"
     ]);

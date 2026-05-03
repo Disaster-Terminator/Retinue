@@ -12,6 +12,7 @@ export const CLAUDE_TOOL_NAMES = [
   "claude_wait",
   "claude_result",
   "claude_continue",
+  "claude_peek",
   "claude_kill",
   "claude_cleanup"
 ] as const;
@@ -90,6 +91,21 @@ export function createMcpServer(supervisor = createSupervisorFromEnv()): McpServ
       }
     },
     async (args) => jsonToolResult(await supervisor.continueJob(args))
+  );
+
+  server.registerTool(
+    "claude_peek",
+    {
+      title: "Peek Claude Code Job Output",
+      description: "Read bounded stdout/stderr tails for a running or completed Claude Code job.",
+      inputSchema: {
+        jobId: z.string(),
+        stdoutTailBytes: z.number().int().positive().optional(),
+        stderrTailBytes: z.number().int().positive().optional()
+      }
+    },
+    async ({ jobId, stdoutTailBytes, stderrTailBytes }) =>
+      jsonToolResult(await supervisor.peek(jobId, { stdoutTailBytes, stderrTailBytes }))
   );
 
   server.registerTool(
