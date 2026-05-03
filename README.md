@@ -2,6 +2,8 @@
 
 Local MCP and CLI supervisor for spawning Claude Code as managed background jobs.
 
+See [Project Boundary and Long-Term Vision](docs/PROJECT_BOUNDARY.md) before changing the architecture. The current stdio MCP implementation is a hardening phase; the long-term lifecycle owner is a durable local daemon.
+
 The repository targets a Codex-like lifecycle:
 
 - `claude_run`: start Claude Code and return a job handle quickly
