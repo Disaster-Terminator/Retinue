@@ -1,0 +1,69 @@
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { ClaudeSupervisor } from "../../src/core/supervisor.js";
+import { getJobPaths } from "../../src/core/paths.js";
+
+const fixturePath = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../fixtures/fake-claude.mjs"
+);
+
+describe("ClaudeSupervisor kill and cleanup", () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-test-"));
+  });
+
+  afterEach(async () => {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  });
+
+  it("kills a running job and records killed status", async () => {
+    const supervisor = new ClaudeSupervisor({
+      stateDir: tempDir,
+      claudeCommand: process.execPath,
+      claudePrefixArgs: [fixturePath],
+      env: { ...process.env, FAKE_CLAUDE_DELAY_MS: "10000" }
+    });
+
+    const started = await supervisor.run({ cwd: tempDir, prompt: "slow" });
+    const killed = await supervisor.kill(started.jobId);
+
+    expect(killed.status).toBe("killed");
+
+    const waited = await supervisor.wait(started.jobId, { timeoutMs: 5000 });
+    expect(waited.status).toBe("killed");
+  });
+
+  it("cleans terminal jobs and preserves running jobs", async () => {
+    const fast = new ClaudeSupervisor({
+      stateDir: tempDir,
+      claudeCommand: process.execPath,
+      claudePrefixArgs: [fixturePath]
+    });
+    const slow = new ClaudeSupervisor({
+      stateDir: tempDir,
+      claudeCommand: process.execPath,
+      claudePrefixArgs: [fixturePath],
+      env: { ...process.env, FAKE_CLAUDE_DELAY_MS: "10000" }
+    });
+
+    const completed = await fast.run({ cwd: tempDir, prompt: "done" });
+    await fast.wait(completed.jobId, { timeoutMs: 5000 });
+    const running = await slow.run({ cwd: tempDir, prompt: "running" });
+
+    const cleanup = await slow.cleanup({ olderThanMs: 0 });
+
+    expect(cleanup.removedJobIds).toContain(completed.jobId);
+    expect(cleanup.removedJobIds).not.toContain(running.jobId);
+    await expect(fs.stat(getJobPaths(tempDir, completed.jobId).dir)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(fs.stat(getJobPaths(tempDir, running.jobId).dir)).resolves.toBeTruthy();
+
+    await slow.kill(running.jobId);
+  });
+});
+

@@ -31,6 +31,12 @@ Do not build a full clone of Codex native `spawn_agent`.
 
 Do build or adapt a narrow local supervisor if no existing option passes the security and lifecycle checks. The smallest useful version should expose `run`, `status`, `wait`, `result`, `kill`, and `cleanup`, persist job state on disk, and avoid permission bypass by default.
 
+## Implementation Decision
+
+This repository now implements the narrow local supervisor path instead of adopting a community MCP bridge wholesale.
+
+The reason is practical: the closest community options are useful references, but their maturity and permission boundaries are not strong enough for a repo-level tool that may run inside real workspaces. The implemented V0 keeps the trust boundary small: TypeScript core, deterministic state files, fake-Claude tests, no permission bypass by default, and MCP tools that map directly to the lifecycle vocabulary.
+
 ## Source Notes
 
 - Claude Code official docs support `claude -p`, `--output-format json`, `--output-format stream-json`, `--resume`, `--continue`, `--session-id`, `--max-turns`, and explicit permission modes. These are enough for a narrow job supervisor without building a terminal harness first.
