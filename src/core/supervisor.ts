@@ -90,7 +90,6 @@ export class ClaudeSupervisor {
       createdAt: now,
       updatedAt: now
     };
-    await this.writeMeta(meta);
     const tracked: TrackedProcess = { child };
     if (runtimeTimeoutMs !== undefined) {
       tracked.timeout = setTimeout(() => {
@@ -100,8 +99,16 @@ export class ClaudeSupervisor {
       tracked.timeout.unref();
     }
     this.processes.set(jobId, tracked);
-
-    child.once("close", async (exitCode, signal) => {
+    let finalized = false;
+    const finalize = async (
+      exitCode: number | null,
+      signal: NodeJS.Signals | null,
+      forcedStatus?: ExitStatus["status"]
+    ): Promise<void> => {
+      if (finalized) {
+        return;
+      }
+      finalized = true;
       if (tracked.timeout) {
         clearTimeout(tracked.timeout);
       }
@@ -111,7 +118,7 @@ export class ClaudeSupervisor {
       const parsedStdout = parseJsonOutput(await readTextIfExists(paths.stdout));
       const sessionId = extractSessionId(parsedStdout);
       const status: ExitStatus = {
-        status: wasTimedOut ? "timed_out" : wasKilled ? "killed" : exitCode === 0 ? "completed" : "failed",
+        status: forcedStatus ?? (wasTimedOut ? "timed_out" : wasKilled ? "killed" : exitCode === 0 ? "completed" : "failed"),
         exitCode,
         signal,
         endedAt: new Date().toISOString()
@@ -121,19 +128,17 @@ export class ClaudeSupervisor {
       this.processes.delete(jobId);
       this.killedJobIds.delete(jobId);
       this.timedOutJobIds.delete(jobId);
+    };
+
+    child.once("close", (exitCode, signal) => {
+      void finalize(exitCode, signal);
     });
 
-    child.once("error", async () => {
-      if (tracked.timeout) {
-        clearTimeout(tracked.timeout);
-      }
-      await Promise.allSettled([finished(stdout), finished(stderr)]);
-      const endedAt = new Date().toISOString();
-      const status: ExitStatus = { status: "failed", exitCode: null, signal: null, endedAt };
-      await fs.writeFile(paths.exitStatus, `${JSON.stringify(status, null, 2)}\n`, "utf8");
-      await this.writeMeta({ ...meta, status: "failed", updatedAt: endedAt });
-      this.processes.delete(jobId);
+    child.once("error", () => {
+      void finalize(null, null, "failed");
     });
+
+    await this.writeMeta(meta);
 
     return meta;
   }

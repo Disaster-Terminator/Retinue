@@ -35,4 +35,14 @@ describe("buildClaudeArgs", () => {
       "plan"
     ]);
   });
+
+  it("rejects bypass permission mode even from untyped callers", () => {
+    expect(() =>
+      buildClaudeArgs({
+        prompt: "unsafe",
+        cwd: "/repo",
+        permissionMode: "bypassPermissions"
+      } as never)
+    ).toThrow(/Unsupported permissionMode/);
+  });
 });

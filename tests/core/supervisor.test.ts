@@ -78,6 +78,25 @@ describe("ClaudeSupervisor lifecycle", () => {
     expect(result.stderr).toContain("fake failure: 7");
   });
 
+  it("records failed status for spawn errors without leaving a running job", async () => {
+    const supervisor = new ClaudeSupervisor({
+      stateDir: tempDir,
+      claudeCommand: path.join(tempDir, "missing-claude-command")
+    });
+
+    const started = await supervisor.run({
+      cwd: tempDir,
+      prompt: "missing"
+    });
+
+    const waited = await supervisor.wait(started.jobId, { timeoutMs: 5000 });
+    expect(waited.status).toBe("failed");
+    await expect(supervisor.status(started.jobId)).resolves.toMatchObject({
+      jobId: started.jobId,
+      status: "failed"
+    });
+  });
+
   it("returns from run before a slow Claude job completes", async () => {
     const supervisor = new ClaudeSupervisor({
       stateDir: tempDir,
