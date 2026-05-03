@@ -8,7 +8,9 @@ async function main(): Promise<void> {
     stateDir: process.env.SUPERVISOR_STATE_DIR,
     claudeCommand: process.env.SUPERVISOR_CLAUDE_COMMAND,
     claudePrefixArgs: parsePrefixArgs(process.env.SUPERVISOR_CLAUDE_PREFIX_ARGS),
-    env: process.env
+    env: process.env,
+    defaultRuntimeTimeoutMs: parseOptionalNumber(process.env.SUPERVISOR_DEFAULT_RUNTIME_TIMEOUT_MS),
+    maxConcurrentJobs: parseOptionalNumber(process.env.SUPERVISOR_MAX_CONCURRENT_JOBS)
   });
 
   switch (command) {
@@ -23,7 +25,8 @@ async function main(): Promise<void> {
           name: flags.name,
           resume: flags.resume,
           maxTurns: flags["max-turns"] ? Number(flags["max-turns"]) : undefined,
-          permissionMode: flags["permission-mode"] as never
+          permissionMode: flags["permission-mode"] as never,
+          timeoutMs: flags["timeout-ms"] ? Number(flags["timeout-ms"]) : undefined
         })
       );
       return;
@@ -44,6 +47,22 @@ async function main(): Promise<void> {
     }
     case "result": {
       writeJson(await supervisor.result(required(args[0], "jobId")));
+      return;
+    }
+    case "continue": {
+      const flags = parseFlags(args);
+      writeJson(
+        await supervisor.continueJob({
+          cwd: required(flags.cwd, "--cwd"),
+          prompt: required(flags.prompt, "--prompt"),
+          jobId: flags["job-id"],
+          sessionId: flags["session-id"],
+          name: flags.name,
+          maxTurns: flags["max-turns"] ? Number(flags["max-turns"]) : undefined,
+          permissionMode: flags["permission-mode"] as never,
+          timeoutMs: flags["timeout-ms"] ? Number(flags["timeout-ms"]) : undefined
+        })
+      );
       return;
     }
     case "kill": {
@@ -88,6 +107,14 @@ function parsePrefixArgs(value: string | undefined): string[] {
   return [value];
 }
 
+function parseOptionalNumber(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function required(value: string | undefined, name: string): string {
   if (!value) {
     throw new Error(`Missing required ${name}`);
@@ -103,4 +130,3 @@ main().catch((error) => {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
   process.exitCode = 1;
 });
-

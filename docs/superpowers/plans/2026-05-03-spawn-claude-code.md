@@ -19,9 +19,11 @@
 - [x] Add thin CLI adapter for local testing.
 - [x] Add thin MCP stdio adapter exposing `claude_run`, `claude_status`, `claude_wait`, `claude_result`, `claude_kill`, and `claude_cleanup`.
 - [x] Add verification for nonblocking core `run()` behavior using delayed fake Claude.
+- [x] Move prompts from argv to stdin and store only prompt metadata in job status.
+- [x] Finalize jobs from child `close`, persist `sessionId`, and add `claude_continue`.
+- [x] Add bounded result output, PID reconciliation, runtime timeout, and concurrency limits.
 - [ ] Validate in Linux/WSL after Windows baseline is committed.
 
 ## Important Boundary
 
 The MCP server is the intended spawn surface. The CLI is a local inspection and testing tool. Long-running production use should keep the MCP server process alive so it can observe child exit events and record final status.
-

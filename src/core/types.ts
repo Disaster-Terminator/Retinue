@@ -1,15 +1,18 @@
 export type PermissionMode = "default" | "acceptEdits" | "plan" | "auto" | "dontAsk";
 
-export type JobTerminalStatus = "completed" | "failed" | "killed";
-export type JobStatus = "running" | JobTerminalStatus;
+export type JobTerminalStatus = "completed" | "failed" | "killed" | "timed_out";
+export type JobStatus = "running" | "orphaned" | JobTerminalStatus;
 
 export interface RunOptions {
   cwd: string;
   prompt: string;
   name?: string;
   resume?: string;
+  parentJobId?: string;
+  parentSessionId?: string;
   maxTurns?: number;
   permissionMode?: PermissionMode;
+  timeoutMs?: number;
 }
 
 export interface SupervisorOptions {
@@ -17,6 +20,8 @@ export interface SupervisorOptions {
   claudePrefixArgs?: string[];
   stateDir?: string;
   env?: NodeJS.ProcessEnv;
+  defaultRuntimeTimeoutMs?: number;
+  maxConcurrentJobs?: number;
 }
 
 export interface JobMeta {
@@ -24,9 +29,16 @@ export interface JobMeta {
   pid: number;
   status: JobStatus;
   cwd: string;
-  prompt: string;
+  prompt?: string;
+  promptPath: string;
+  promptPreview: string;
+  promptSha256: string;
   name?: string;
   resume?: string;
+  parentJobId?: string;
+  parentSessionId?: string;
+  sessionId?: string;
+  runtimeTimeoutMs?: number;
   args: string[];
   createdAt: string;
   updatedAt: string;
@@ -56,13 +68,20 @@ export interface JobResult {
   status: JobStatus;
   stdout: string;
   stderr: string;
+  stdoutPath: string;
+  stderrPath: string;
+  stdoutBytes: number;
+  stderrBytes: number;
+  stdoutTruncated: boolean;
+  stderrTruncated: boolean;
+  sessionId?: string;
   parsedStdout?: unknown;
   exitStatus?: ExitStatus;
 }
 
 export interface KillResult {
   jobId: string;
-  status: JobTerminalStatus;
+  status: JobStatus;
 }
 
 export interface CleanupOptions {
@@ -71,4 +90,15 @@ export interface CleanupOptions {
 
 export interface CleanupResult {
   removedJobIds: string[];
+}
+
+export interface ContinueOptions {
+  cwd: string;
+  prompt: string;
+  jobId?: string;
+  sessionId?: string;
+  name?: string;
+  maxTurns?: number;
+  permissionMode?: PermissionMode;
+  timeoutMs?: number;
 }

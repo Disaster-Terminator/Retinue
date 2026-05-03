@@ -14,6 +14,7 @@ export interface JobPaths {
   stdout: string;
   stderr: string;
   exitStatus: string;
+  prompt: string;
 }
 
 export function resolveStateDir(options: ResolveStateDirOptions = {}): string {
@@ -48,7 +49,7 @@ export function getJobPaths(stateDir: string, jobId: string): JobPaths {
     meta: path.join(dir, "meta.json"),
     stdout: path.join(dir, "stdout.log"),
     stderr: path.join(dir, "stderr.log"),
-    exitStatus: path.join(dir, "exit-status.json")
+    exitStatus: path.join(dir, "exit-status.json"),
+    prompt: path.join(dir, "prompt.md")
   };
 }
-

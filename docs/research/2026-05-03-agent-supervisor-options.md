@@ -37,6 +37,8 @@ This repository now implements the narrow local supervisor path instead of adopt
 
 The reason is practical: the closest community options are useful references, but their maturity and permission boundaries are not strong enough for a repo-level tool that may run inside real workspaces. The implemented V0 keeps the trust boundary small: TypeScript core, deterministic state files, fake-Claude tests, no permission bypass by default, and MCP tools that map directly to the lifecycle vocabulary.
 
+The follow-up reliability pass addressed the main prototype gaps: prompt input now uses stdin instead of argv, prompt metadata is redacted in status, finalization happens on child `close`, `session_id` is persisted, `claude_continue` exists, result output is bounded by default, runtime timeout and concurrency controls exist, and stale `running` metadata is reconciled to `orphaned` when the PID no longer exists.
+
 ## Source Notes
 
 - Claude Code official docs support `claude -p`, `--output-format json`, `--output-format stream-json`, `--resume`, `--continue`, `--session-id`, `--max-turns`, and explicit permission modes. These are enough for a narrow job supervisor without building a terminal harness first.

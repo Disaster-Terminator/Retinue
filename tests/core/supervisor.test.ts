@@ -35,6 +35,11 @@ describe("ClaudeSupervisor lifecycle", () => {
 
     expect(started.status).toBe("running");
     expect(started.pid).toBeGreaterThan(0);
+    expect(started.prompt).toBeUndefined();
+    expect(started.promptPreview).toBe("hello");
+    expect(started.promptSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(started.promptPath).toMatch(/prompt\.md$/);
+    await expect(fs.readFile(started.promptPath, "utf8")).resolves.toBe("hello");
 
     const waited = await supervisor.wait(started.jobId, { timeoutMs: 5000 });
     expect(waited.status).toBe("completed");
@@ -46,6 +51,8 @@ describe("ClaudeSupervisor lifecycle", () => {
       result: "fake result: hello",
       session_id: "fake-session-1"
     });
+    expect(result.sessionId).toBe("fake-session-1");
+    await expect(supervisor.status(started.jobId)).resolves.toMatchObject({ sessionId: "fake-session-1" });
     expect(result.stderr).toContain("fake-claude cwd=");
   });
 
@@ -89,5 +96,60 @@ describe("ClaudeSupervisor lifecycle", () => {
     expect(started.status).toBe("running");
 
     await supervisor.kill(started.jobId);
+  });
+
+  it("times out a job after its runtime budget", async () => {
+    const supervisor = new ClaudeSupervisor({
+      stateDir: tempDir,
+      claudeCommand: process.execPath,
+      claudePrefixArgs: [fixturePath],
+      defaultRuntimeTimeoutMs: 100,
+      env: { ...process.env, FAKE_CLAUDE_DELAY_MS: "5000" }
+    });
+
+    const started = await supervisor.run({ cwd: tempDir, prompt: "timeout" });
+    const waited = await supervisor.wait(started.jobId, { timeoutMs: 5000 });
+
+    expect(waited.status).toBe("timed_out");
+    await expect(supervisor.status(started.jobId)).resolves.toMatchObject({ status: "timed_out" });
+  });
+
+  it("rejects runs over the configured concurrency limit", async () => {
+    const supervisor = new ClaudeSupervisor({
+      stateDir: tempDir,
+      claudeCommand: process.execPath,
+      claudePrefixArgs: [fixturePath],
+      maxConcurrentJobs: 1,
+      env: { ...process.env, FAKE_CLAUDE_DELAY_MS: "5000" }
+    });
+
+    const started = await supervisor.run({ cwd: tempDir, prompt: "first" });
+
+    await expect(supervisor.run({ cwd: tempDir, prompt: "second" })).rejects.toThrow(/concurrency/i);
+    await supervisor.kill(started.jobId);
+  });
+
+  it("continues from a previous job session id", async () => {
+    const supervisor = new ClaudeSupervisor({
+      stateDir: tempDir,
+      claudeCommand: process.execPath,
+      claudePrefixArgs: [fixturePath]
+    });
+    const first = await supervisor.run({ cwd: tempDir, prompt: "first" });
+    await supervisor.wait(first.jobId, { timeoutMs: 5000 });
+
+    const continued = await supervisor.continueJob({
+      cwd: tempDir,
+      prompt: "second",
+      jobId: first.jobId
+    });
+    await supervisor.wait(continued.jobId, { timeoutMs: 5000 });
+
+    expect(continued.resume).toBe("fake-session-1");
+    expect(continued.parentJobId).toBe(first.jobId);
+    expect(continued.parentSessionId).toBe("fake-session-1");
+    await expect(supervisor.result(continued.jobId)).resolves.toMatchObject({
+      parsedStdout: { result: "fake result: second", session_id: "fake-session-1" }
+    });
   });
 });

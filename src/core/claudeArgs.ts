@@ -1,7 +1,7 @@
 import type { RunOptions } from "./types.js";
 
 export function buildClaudeArgs(options: RunOptions): string[] {
-  const args = ["-p", options.prompt, "--output-format", "json"];
+  const args = ["-p", "--output-format", "json"];
 
   if (options.resume) {
     args.push("--resume", options.resume);
@@ -17,4 +17,3 @@ export function buildClaudeArgs(options: RunOptions): string[] {
 
   return args;
 }
-

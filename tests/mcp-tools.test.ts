@@ -9,6 +9,7 @@ describe("MCP tools", () => {
       "claude_status",
       "claude_wait",
       "claude_result",
+      "claude_continue",
       "claude_kill",
       "claude_cleanup"
     ]);
@@ -21,4 +22,3 @@ describe("MCP tools", () => {
     expect(server.server).toBeTruthy();
   });
 });
-

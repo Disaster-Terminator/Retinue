@@ -6,9 +6,9 @@ describe("buildClaudeArgs", () => {
     const args = buildClaudeArgs({ prompt: "Summarize this repo", cwd: "/repo" });
 
     expect(args).toContain("-p");
-    expect(args).toContain("Summarize this repo");
     expect(args).toContain("--output-format");
     expect(args).toContain("json");
+    expect(args).not.toContain("Summarize this repo");
     expect(args).not.toContain("--dangerously-skip-permissions");
     expect(args).not.toContain("--permission-mode");
     expect(args).not.toContain("bypassPermissions");
@@ -25,7 +25,6 @@ describe("buildClaudeArgs", () => {
 
     expect(args).toEqual([
       "-p",
-      "Continue",
       "--output-format",
       "json",
       "--resume",
@@ -37,4 +36,3 @@ describe("buildClaudeArgs", () => {
     ]);
   });
 });
-
