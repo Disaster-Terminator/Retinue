@@ -1,7 +1,8 @@
 export type PermissionMode = "default" | "acceptEdits" | "plan" | "auto" | "dontAsk";
 
 export type JobTerminalStatus = "completed" | "failed" | "killed" | "timed_out";
-export type JobStatus = "running" | "orphaned" | JobTerminalStatus;
+export type JobProblemStatus = "not_found" | "corrupted";
+export type JobStatus = "running" | "orphaned" | JobProblemStatus | JobTerminalStatus;
 
 export interface RunOptions {
   cwd: string;
@@ -44,6 +45,14 @@ export interface JobMeta {
   updatedAt: string;
 }
 
+export interface JobProblem {
+  jobId: string;
+  status: JobProblemStatus;
+  error?: string;
+}
+
+export type JobStatusResult = JobMeta | JobProblem;
+
 export interface ExitStatus {
   status: JobTerminalStatus;
   exitCode: number | null;
@@ -66,17 +75,18 @@ export interface WaitResult {
 export interface JobResult {
   jobId: string;
   status: JobStatus;
-  stdout: string;
-  stderr: string;
-  stdoutPath: string;
-  stderrPath: string;
-  stdoutBytes: number;
-  stderrBytes: number;
-  stdoutTruncated: boolean;
-  stderrTruncated: boolean;
+  stdout?: string;
+  stderr?: string;
+  stdoutPath?: string;
+  stderrPath?: string;
+  stdoutBytes?: number;
+  stderrBytes?: number;
+  stdoutTruncated?: boolean;
+  stderrTruncated?: boolean;
   sessionId?: string;
   parsedStdout?: unknown;
   exitStatus?: ExitStatus;
+  error?: string;
 }
 
 export interface KillResult {

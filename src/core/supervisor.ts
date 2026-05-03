@@ -12,8 +12,9 @@ import type {
   ContinueOptions,
   ExitStatus,
   JobMeta,
+  JobProblem,
   JobResult,
-  JobStatus,
+  JobStatusResult,
   KillResult,
   RunOptions,
   SupervisorOptions,
@@ -24,6 +25,7 @@ import type {
 interface TrackedProcess {
   child: ChildProcess;
   timeout?: NodeJS.Timeout;
+  finalized?: Promise<void>;
 }
 
 export class ClaudeSupervisor {
@@ -90,7 +92,11 @@ export class ClaudeSupervisor {
       createdAt: now,
       updatedAt: now
     };
-    const tracked: TrackedProcess = { child };
+    let resolveFinalized: () => void = () => {};
+    const finalizedPromise = new Promise<void>((resolve) => {
+      resolveFinalized = resolve;
+    });
+    const tracked: TrackedProcess = { child, finalized: finalizedPromise };
     if (runtimeTimeoutMs !== undefined) {
       tracked.timeout = setTimeout(() => {
         this.timedOutJobIds.add(jobId);
@@ -123,11 +129,12 @@ export class ClaudeSupervisor {
         signal,
         endedAt: new Date().toISOString()
       };
-      await fs.writeFile(paths.exitStatus, `${JSON.stringify(status, null, 2)}\n`, "utf8");
+      await writeJsonAtomic(paths.exitStatus, status);
       await this.writeMeta({ ...meta, sessionId, status: status.status, updatedAt: status.endedAt });
       this.processes.delete(jobId);
       this.killedJobIds.delete(jobId);
       this.timedOutJobIds.delete(jobId);
+      resolveFinalized();
     };
 
     child.once("close", (exitCode, signal) => {
@@ -143,8 +150,11 @@ export class ClaudeSupervisor {
     return meta;
   }
 
-  async status(jobId: string): Promise<JobMeta> {
+  async status(jobId: string): Promise<JobStatusResult> {
     const meta = await this.readMeta(jobId);
+    if (isProblem(meta)) {
+      return meta;
+    }
     if (meta.status !== "running") {
       return meta;
     }
@@ -188,6 +198,13 @@ export class ClaudeSupervisor {
 
   async result(jobId: string): Promise<JobResult> {
     const meta = await this.status(jobId);
+    if (isProblem(meta)) {
+      return {
+        jobId,
+        status: meta.status,
+        error: meta.error
+      };
+    }
     const paths = getJobPaths(this.stateDir, jobId);
     const [fullStdout, fullStderr, exitStatus] = await Promise.all([
       readTextIfExists(paths.stdout),
@@ -236,7 +253,7 @@ export class ClaudeSupervisor {
 
   private async resolveSessionId(jobId: string): Promise<string | undefined> {
     const meta = await this.status(jobId);
-    if (meta.sessionId) {
+    if (!isProblem(meta) && meta.sessionId) {
       return meta.sessionId;
     }
     const result = await this.result(jobId);
@@ -245,6 +262,9 @@ export class ClaudeSupervisor {
 
   async kill(jobId: string): Promise<KillResult> {
     const meta = await this.status(jobId);
+    if (isProblem(meta)) {
+      return { jobId, status: meta.status };
+    }
     if (meta.status !== "running") {
       return { jobId, status: meta.status };
     }
@@ -254,6 +274,7 @@ export class ClaudeSupervisor {
     if (tracked?.child.pid) {
       await killProcessTree(tracked.child.pid);
       await waitForProcessClose(tracked.child, 5000);
+      await waitWithTimeout(tracked.finalized, 5000);
       const afterKill = await this.status(jobId);
       return { jobId, status: afterKill.status === "running" ? "killed" : afterKill.status };
     } else {
@@ -268,7 +289,7 @@ export class ClaudeSupervisor {
       endedAt
     };
     const paths = getJobPaths(this.stateDir, jobId);
-    await fs.writeFile(paths.exitStatus, `${JSON.stringify(exitStatus, null, 2)}\n`, "utf8");
+    await writeJsonAtomic(paths.exitStatus, exitStatus);
     await this.writeMeta({ ...meta, status: "killed", updatedAt: endedAt });
     this.processes.delete(jobId);
     this.killedJobIds.delete(jobId);
@@ -290,6 +311,9 @@ export class ClaudeSupervisor {
 
       const jobId = entry.name;
       const meta = await this.status(jobId);
+      if (isProblem(meta)) {
+        continue;
+      }
       if (meta.status === "running") {
         continue;
       }
@@ -299,22 +323,40 @@ export class ClaudeSupervisor {
         continue;
       }
 
-      await fs.rm(getJobPaths(this.stateDir, jobId).dir, { recursive: true, force: true });
+      await fs.rm(getJobPaths(this.stateDir, jobId).dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
       removedJobIds.push(jobId);
     }
 
     return { removedJobIds };
   }
 
-  private async readMeta(jobId: string): Promise<JobMeta> {
+  private async readMeta(jobId: string): Promise<JobMeta | JobProblem> {
     const paths = getJobPaths(this.stateDir, jobId);
-    return JSON.parse(await fs.readFile(paths.meta, "utf8")) as JobMeta;
+    try {
+      return JSON.parse(await fs.readFile(paths.meta, "utf8")) as JobMeta;
+    } catch (error) {
+      if (isMissingFile(error)) {
+        return { jobId, status: "not_found" };
+      }
+      return {
+        jobId,
+        status: "corrupted",
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
   }
 
   private async writeMeta(meta: JobMeta): Promise<void> {
     const paths = getJobPaths(this.stateDir, meta.jobId);
-    await fs.writeFile(paths.meta, `${JSON.stringify(meta, null, 2)}\n`, "utf8");
+    await writeJsonAtomic(paths.meta, meta);
   }
+}
+
+async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> {
+  await fs.mkdir(filePath.replace(/[\\/][^\\/]+$/, ""), { recursive: true });
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
+  await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  await fs.rename(tempPath, filePath);
 }
 
 async function readTextIfExists(filePath: string): Promise<string> {
@@ -392,6 +434,10 @@ function isPidAlive(pid: number): boolean {
   }
 }
 
+function isProblem(value: JobStatusResult): value is JobProblem {
+  return value.status === "not_found" || value.status === "corrupted";
+}
+
 function isMissingFile(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
@@ -416,10 +462,6 @@ async function readDirIfExists(dirPath: string) {
 }
 
 function waitForProcessClose(child: ChildProcess, timeoutMs: number): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) {
-    return Promise.resolve();
-  }
-
   return new Promise((resolve) => {
     const timer = setTimeout(resolve, timeoutMs);
     child.once("close", () => {
@@ -427,4 +469,11 @@ function waitForProcessClose(child: ChildProcess, timeoutMs: number): Promise<vo
       resolve();
     });
   });
+}
+
+function waitWithTimeout(promise: Promise<void> | undefined, timeoutMs: number): Promise<void> {
+  if (!promise) {
+    return Promise.resolve();
+  }
+  return Promise.race([promise, sleep(timeoutMs)]);
 }

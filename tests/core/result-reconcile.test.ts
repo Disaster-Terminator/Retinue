@@ -72,5 +72,37 @@ describe("result limits and status reconciliation", () => {
       status: "orphaned"
     });
   });
-});
 
+  it("returns structured not_found for missing jobs", async () => {
+    const supervisor = new ClaudeSupervisor({ stateDir: tempDir });
+
+    await expect(supervisor.status("job_missing")).resolves.toMatchObject({
+      jobId: "job_missing",
+      status: "not_found"
+    });
+    await expect(supervisor.result("job_missing")).resolves.toMatchObject({
+      jobId: "job_missing",
+      status: "not_found"
+    });
+    await expect(supervisor.kill("job_missing")).resolves.toMatchObject({
+      jobId: "job_missing",
+      status: "not_found"
+    });
+  });
+
+  it("returns structured corrupted for invalid job metadata", async () => {
+    const supervisor = new ClaudeSupervisor({ stateDir: tempDir });
+    const paths = getJobPaths(tempDir, "job_corrupt");
+    await fs.mkdir(paths.dir, { recursive: true });
+    await fs.writeFile(paths.meta, "{not-json", "utf8");
+
+    await expect(supervisor.status("job_corrupt")).resolves.toMatchObject({
+      jobId: "job_corrupt",
+      status: "corrupted"
+    });
+    await expect(supervisor.result("job_corrupt")).resolves.toMatchObject({
+      jobId: "job_corrupt",
+      status: "corrupted"
+    });
+  });
+});
