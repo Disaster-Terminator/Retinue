@@ -49,7 +49,7 @@ export class ClaudeSupervisor {
   }
 
   async run(options: RunOptions): Promise<JobMeta> {
-    if (this.processes.size >= this.maxConcurrentJobs) {
+    if ((await this.countActiveJobs()) >= this.maxConcurrentJobs) {
       throw new Error(`Claude job concurrency limit reached: ${this.maxConcurrentJobs}`);
     }
 
@@ -273,7 +273,6 @@ export class ClaudeSupervisor {
     this.killedJobIds.add(jobId);
     if (tracked?.child.pid) {
       await killProcessTree(tracked.child.pid);
-      await waitForProcessClose(tracked.child, 5000);
       await waitWithTimeout(tracked.finalized, 5000);
       const afterKill = await this.status(jobId);
       return { jobId, status: afterKill.status === "running" ? "killed" : afterKill.status };
@@ -328,6 +327,32 @@ export class ClaudeSupervisor {
     }
 
     return { removedJobIds };
+  }
+
+  private async countActiveJobs(): Promise<number> {
+    if (!Number.isFinite(this.maxConcurrentJobs)) {
+      return this.processes.size;
+    }
+
+    const jobsDir = getJobsDir(this.stateDir);
+    const entries = await readDirIfExists(jobsDir);
+    const activeJobIds = new Set<string>();
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const status = await this.status(entry.name);
+      if (status.status === "running") {
+        activeJobIds.add(entry.name);
+      }
+    }
+
+    for (const jobId of this.processes.keys()) {
+      activeJobIds.add(jobId);
+    }
+
+    return activeJobIds.size;
   }
 
   private async readMeta(jobId: string): Promise<JobMeta | JobProblem> {
@@ -459,16 +484,6 @@ async function readDirIfExists(dirPath: string) {
     }
     throw error;
   }
-}
-
-function waitForProcessClose(child: ChildProcess, timeoutMs: number): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, timeoutMs);
-    child.once("close", () => {
-      clearTimeout(timer);
-      resolve();
-    });
-  });
 }
 
 function waitWithTimeout(promise: Promise<void> | undefined, timeoutMs: number): Promise<void> {

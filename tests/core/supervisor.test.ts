@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ClaudeSupervisor } from "../../src/core/supervisor.js";
+import { getJobPaths } from "../../src/core/paths.js";
 
 const fixturePath = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -146,6 +147,40 @@ describe("ClaudeSupervisor lifecycle", () => {
 
     await expect(supervisor.run({ cwd: tempDir, prompt: "second" })).rejects.toThrow(/concurrency/i);
     await supervisor.kill(started.jobId);
+  });
+
+  it("counts disk-backed alive running jobs against the concurrency limit", async () => {
+    const paths = getJobPaths(tempDir, "job_external_alive");
+    await fs.mkdir(paths.dir, { recursive: true });
+    await fs.writeFile(
+      paths.meta,
+      JSON.stringify(
+        {
+          jobId: "job_external_alive",
+          pid: process.pid,
+          status: "running",
+          cwd: tempDir,
+          args: ["-p", "--output-format", "json"],
+          promptPath: paths.prompt,
+          promptPreview: "external",
+          promptSha256: "1".repeat(64),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+
+    const supervisor = new ClaudeSupervisor({
+      stateDir: tempDir,
+      claudeCommand: process.execPath,
+      claudePrefixArgs: [fixturePath],
+      maxConcurrentJobs: 1
+    });
+
+    await expect(supervisor.run({ cwd: tempDir, prompt: "blocked" })).rejects.toThrow(/concurrency/i);
   });
 
   it("continues from a previous job session id", async () => {
