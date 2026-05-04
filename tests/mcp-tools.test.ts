@@ -169,6 +169,69 @@ describe("MCP tools", () => {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("returns structured MCP errors for missing required fields", async () => {
+    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }));
+    try {
+      await expectMcpInvalidParams(
+        connection.client.callTool({
+          name: "claude_status",
+          arguments: {}
+        })
+      );
+    } finally {
+      await closeMcpClient(connection);
+    }
+  });
+
+  it("returns structured MCP errors for wrong field types", async () => {
+    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }));
+    try {
+      await expectMcpInvalidParams(
+        connection.client.callTool({
+          name: "claude_wait",
+          arguments: { jobId: "job_x", timeoutMs: "fast" }
+        })
+      );
+    } finally {
+      await closeMcpClient(connection);
+    }
+  });
+
+  it("returns structured MCP errors for unsupported permission modes", async () => {
+    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }));
+    try {
+      await expectMcpInvalidParams(
+        connection.client.callTool({
+          name: "claude_run",
+          arguments: { cwd: ".", prompt: "x", permissionMode: "root" }
+        })
+      );
+    } finally {
+      await closeMcpClient(connection);
+    }
+  });
+
+  it("throws a controlled error for invalid daemon discovery URL configuration", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-bad-discovery-"));
+    try {
+      await writeDaemonDiscovery(tempDir, {
+        url: "not-a-url",
+        pid: process.pid,
+        startedAt: "2026-05-04T00:00:00.000Z",
+        version: "0.1.0"
+      });
+
+      expect(() =>
+        createMcpSupervisorFromEnv({
+          SUPERVISOR_STATE_DIR: tempDir,
+          SUPERVISOR_DAEMON_DISCOVERY: "1"
+        })
+      ).toThrowError("Invalid daemon discovery: invalid url");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
 });
 
 function parseToolJson(result: unknown): any {
@@ -204,6 +267,22 @@ async function connectMcpClient(daemonUrl: string) {
   return { client, clientTransport, serverTransport };
 }
 
+async function connectMcpClientWithSupervisor(supervisor: ClaudeSupervisor) {
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "supervisor-test-client", version: "0.1.0" });
+  const mcpServer = createMcpServer(supervisor);
+  await Promise.all([mcpServer.connect(serverTransport), client.connect(clientTransport)]);
+  return { client, clientTransport, serverTransport };
+}
+
 async function closeMcpClient(connection: Awaited<ReturnType<typeof connectMcpClient>>): Promise<void> {
   await Promise.allSettled([connection.client.close(), connection.clientTransport.close(), connection.serverTransport.close()]);
+}
+
+async function expectMcpInvalidParams(call: Promise<unknown>): Promise<void> {
+  const result = (await call) as { isError?: boolean; content?: Array<{ type: string; text?: string }> };
+  expect(result.isError).toBe(true);
+  const text = result.content?.find((item) => item.type === "text")?.text;
+  expect(text).toContain("MCP error -32602");
+  expect(text).toContain("Input validation error");
 }
