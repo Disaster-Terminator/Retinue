@@ -27,7 +27,8 @@
     "probe:real:direct": "node scripts/probe-real-claude.mjs direct",
     "probe:real:mcp-daemon": "node scripts/probe-real-claude.mjs mcp-daemon",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "verify:workflows": "node scripts/verify-workflows.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.5",
