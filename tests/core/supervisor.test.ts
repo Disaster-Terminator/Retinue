@@ -153,13 +153,15 @@ describe("ClaudeSupervisor lifecycle", () => {
     await supervisor.kill(started.jobId);
   });
 
-  it("counts disk-backed alive running jobs against the concurrency limit", async () => {
+  it("does not count abandoned disk-backed live jobs against the concurrency limit", async () => {
     const paths = getJobPaths(tempDir, "job_external_alive");
+    const now = new Date().toISOString();
     await fs.mkdir(paths.dir, { recursive: true });
     await fs.writeFile(
       paths.meta,
       JSON.stringify(
         {
+          schemaVersion: 1,
           jobId: "job_external_alive",
           pid: process.pid,
           status: "running",
@@ -168,8 +170,8 @@ describe("ClaudeSupervisor lifecycle", () => {
           promptPath: paths.prompt,
           promptPreview: "external",
           promptSha256: "1".repeat(64),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+          createdAt: now,
+          updatedAt: now
         },
         null,
         2
@@ -184,7 +186,9 @@ describe("ClaudeSupervisor lifecycle", () => {
       maxConcurrentJobs: 1
     });
 
-    await expect(supervisor.run({ cwd: tempDir, prompt: "blocked" })).rejects.toThrow(/concurrency/i);
+    await expect(supervisor.status("job_external_alive")).resolves.toMatchObject({ status: "abandoned" });
+    const started = await supervisor.run({ cwd: tempDir, prompt: "not blocked" });
+    await expect(supervisor.wait(started.jobId, { timeoutMs: 5000 })).resolves.toMatchObject({ status: "completed" });
   });
 
   it("continues from a previous job session id", async () => {

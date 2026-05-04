@@ -2,7 +2,7 @@ export type PermissionMode = "default" | "acceptEdits" | "plan" | "auto" | "dont
 
 export type JobTerminalStatus = "completed" | "failed" | "killed" | "timed_out";
 export type JobProblemStatus = "not_found" | "corrupted";
-export type JobStatus = "running" | "orphaned" | JobProblemStatus | JobTerminalStatus;
+export type JobStatus = "running" | "orphaned" | "abandoned" | JobProblemStatus | JobTerminalStatus;
 
 export interface RunOptions {
   cwd: string;

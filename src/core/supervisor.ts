@@ -170,11 +170,19 @@ export class ClaudeSupervisor implements SupervisorApi {
     const paths = getJobPaths(this.stateDir, jobId);
     const exitStatus = await readJsonIfExists<ExitStatus>(paths.exitStatus);
     if (!exitStatus) {
-      if (!this.processes.has(jobId) && !isPidAlive(meta.pid)) {
-        const updatedAt = new Date().toISOString();
+      if (this.processes.has(jobId)) {
+        return meta;
+      }
+      const updatedAt = new Date().toISOString();
+      if (!isPidAlive(meta.pid)) {
         const orphaned = { ...meta, status: "orphaned" as const, updatedAt };
         await this.writeMeta(orphaned);
         return orphaned;
+      }
+      if (!this.isOwnProcess(meta.pid)) {
+        const abandoned = { ...meta, status: "abandoned" as const, updatedAt };
+        await this.writeMeta(abandoned);
+        return abandoned;
       }
       return meta;
     }
@@ -404,6 +412,15 @@ export class ClaudeSupervisor implements SupervisorApi {
   private async writeMeta(meta: JobMeta): Promise<void> {
     const paths = getJobPaths(this.stateDir, meta.jobId);
     await writeJsonAtomic(paths.meta, meta);
+  }
+
+  private isOwnProcess(pid: number): boolean {
+    for (const tracked of this.processes.values()) {
+      if (tracked.child.pid === pid) {
+        return true;
+      }
+    }
+    return false;
   }
 }
 

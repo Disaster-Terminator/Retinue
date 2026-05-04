@@ -73,6 +73,39 @@ describe("result limits and status reconciliation", () => {
     });
   });
 
+  it("marks unowned running metadata with a live pid as abandoned", async () => {
+    const supervisor = new ClaudeSupervisor({ stateDir: tempDir });
+    const paths = getJobPaths(tempDir, "job_unowned_alive");
+    const now = new Date().toISOString();
+    await fs.mkdir(paths.dir, { recursive: true });
+    await fs.writeFile(
+      paths.meta,
+      JSON.stringify(
+        {
+          schemaVersion: 1,
+          jobId: "job_unowned_alive",
+          pid: process.pid,
+          status: "running",
+          cwd: tempDir,
+          args: ["-p", "--output-format", "json"],
+          promptPath: path.join(paths.dir, "prompt.md"),
+          promptPreview: "alive",
+          promptSha256: "3".repeat(64),
+          createdAt: now,
+          updatedAt: now
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+
+    await expect(supervisor.status("job_unowned_alive")).resolves.toMatchObject({
+      jobId: "job_unowned_alive",
+      status: "abandoned"
+    });
+  });
+
   it("reads old job metadata without schemaVersion", async () => {
     const supervisor = new ClaudeSupervisor({ stateDir: tempDir });
     const paths = getJobPaths(tempDir, "job_old_schema");
