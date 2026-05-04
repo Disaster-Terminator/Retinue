@@ -31,12 +31,14 @@ Health:
 
 ```bash
 curl http://127.0.0.1:27777/health
+node dist/cli.js daemon-health --daemon-url http://127.0.0.1:27777
 ```
 
 PowerShell:
 
 ```powershell
 curl.exe http://127.0.0.1:27777/health
+node dist/cli.js daemon-health --daemon-url http://127.0.0.1:27777
 Get-Content <stateDir>\daemon.json
 ```
 
@@ -44,6 +46,7 @@ Bash:
 
 ```bash
 curl http://127.0.0.1:27777/health
+node dist/cli.js --discover-daemon daemon-health
 cat <stateDir>/daemon.json
 ```
 
@@ -64,6 +67,7 @@ CLI with explicit discovery:
 
 ```bash
 node dist/cli.js --discover-daemon status <jobId>
+node dist/cli.js --discover-daemon daemon-health
 ```
 
 MCP with explicit discovery:
