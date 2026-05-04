@@ -5,6 +5,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { DaemonClient } from "./daemon/client.js";
+import { readDaemonDiscoverySync } from "./daemon/discovery.js";
+import { resolveStateDir } from "./core/paths.js";
 import { ClaudeSupervisor } from "./core/supervisor.js";
 import type { SupervisorApi } from "./core/types.js";
 
@@ -138,6 +140,13 @@ export function createMcpSupervisorFromEnv(
 ): SupervisorApi {
   if (env.SUPERVISOR_DAEMON_URL) {
     return new DaemonClient(env.SUPERVISOR_DAEMON_URL);
+  }
+  if (env.SUPERVISOR_DAEMON_DISCOVERY === "1") {
+    const stateDir = resolveStateDir({
+      explicitStateDir: env.SUPERVISOR_STATE_DIR,
+      env
+    });
+    return new DaemonClient(readDaemonDiscoverySync(stateDir).url);
   }
 
   return new ClaudeSupervisor({

@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { createDaemonServer } from "../src/daemon/server.js";
+import { writeDaemonDiscovery } from "../src/daemon/discovery.js";
 import { CLAUDE_TOOL_NAMES, createMcpServer, createMcpSupervisorFromEnv } from "../src/mcp.js";
 import { ClaudeSupervisor } from "../src/core/supervisor.js";
 
@@ -40,6 +41,27 @@ describe("MCP tools", () => {
     });
 
     expect(supervisor.constructor.name).toBe("DaemonClient");
+  });
+
+  it("discovers a daemon-backed supervisor when explicitly requested", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-discovery-test-"));
+    try {
+      await writeDaemonDiscovery(tempDir, {
+        url: "http://127.0.0.1:27777",
+        pid: process.pid,
+        startedAt: "2026-05-04T00:00:00.000Z",
+        version: "0.1.0"
+      });
+
+      const supervisor = createMcpSupervisorFromEnv({
+        SUPERVISOR_STATE_DIR: tempDir,
+        SUPERVISOR_DAEMON_DISCOVERY: "1"
+      });
+
+      expect(supervisor.constructor.name).toBe("DaemonClient");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
   });
 
   it("calls Claude lifecycle tools through daemon RPC", async () => {

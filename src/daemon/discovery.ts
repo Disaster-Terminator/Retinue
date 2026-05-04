@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { getDaemonDiscoveryPath } from "../core/paths.js";
@@ -21,6 +22,16 @@ export async function writeDaemonDiscovery(stateDir: string, value: DaemonDiscov
 export async function readDaemonDiscovery(stateDir: string): Promise<DaemonDiscovery> {
   const filePath = getDaemonDiscoveryPath(stateDir);
   const parsed = JSON.parse(await fs.readFile(filePath, "utf8")) as Partial<DaemonDiscovery>;
+  return normalizeDiscovery(parsed);
+}
+
+export function readDaemonDiscoverySync(stateDir: string): DaemonDiscovery {
+  const filePath = getDaemonDiscoveryPath(stateDir);
+  const parsed = JSON.parse(fsSync.readFileSync(filePath, "utf8")) as Partial<DaemonDiscovery>;
+  return normalizeDiscovery(parsed);
+}
+
+function normalizeDiscovery(parsed: Partial<DaemonDiscovery>): DaemonDiscovery {
   const discovery = validateDiscovery(parsed);
   if (!isPidAlive(discovery.pid)) {
     throw new Error(`Stale daemon discovery: pid ${discovery.pid} is not alive`);
