@@ -89,6 +89,15 @@ POST /v1/jobs/cleanup
 
 This is not service installation or auto-start. It is the first step toward the long-term architecture where the daemon owns job lifecycle and CLI/MCP become adapters.
 
+The CLI delegates to a running daemon only when configured explicitly:
+
+```bash
+SUPERVISOR_DAEMON_URL=http://127.0.0.1:27777 node dist/cli.js run --cwd . --prompt "Reply exactly: OK"
+node dist/cli.js --daemon-url http://127.0.0.1:27777 status <jobId>
+```
+
+Without `SUPERVISOR_DAEMON_URL` or `--daemon-url`, CLI keeps the direct local supervisor path.
+
 ## MCP
 
 After `npm run build`, configure an MCP client to run:

@@ -17,6 +17,41 @@ Current baseline:
 - Windows: `npm run typecheck`, `npm test`, and `npm run build` pass.
 - WSL/Linux: fresh clone, `npm ci`, `npm run typecheck`, `npm test`, and `npm run build` pass.
 - Fake Claude suite covers spawn/close/error ordering, permission mode validation, atomic state writes, structured `not_found` and `corrupted` states, disk-backed concurrency, durable kill status, and running-job peek/tail.
+- Daemon suite covers `GET /health`, HTTP `run` -> `wait` -> `result`, structured route errors, package `supervisor-daemon` bin exposure, and CLI delegation through `SUPERVISOR_DAEMON_URL`.
+
+## Daemon Baseline
+
+Date: 2026-05-04
+
+Milestone:
+
+- `supervisor-daemon` is exposed as `./dist/daemon.js`.
+- The daemon binds to `127.0.0.1` by default.
+- The daemon prints one JSON readiness line after binding.
+- The daemon exposes JSON endpoints for the existing job operations.
+- CLI direct mode remains the default.
+- CLI delegates to daemon RPC only when `SUPERVISOR_DAEMON_URL` or `--daemon-url` is set.
+
+Verified commands:
+
+```bash
+npm run typecheck
+npm test
+npm run build
+```
+
+Observed Windows result:
+
+- `npm run typecheck` passed.
+- `npm test` passed with 10 test files and 28 tests.
+- `npm run build` passed.
+
+Remaining daemon limitations:
+
+- No auto-start.
+- No Windows service or systemd unit.
+- No auth token or socket discovery.
+- MCP still constructs an in-process `ClaudeSupervisor`; MCP-to-daemon migration is a later milestone.
 
 ## Real Windows Claude Code Probe
 
