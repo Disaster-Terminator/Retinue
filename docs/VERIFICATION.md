@@ -20,6 +20,28 @@ Current baseline:
 - Daemon suite covers `GET /health`, HTTP `run` -> `wait` -> `result`, structured route errors, package `supervisor-daemon` bin exposure, and CLI delegation through `SUPERVISOR_DAEMON_URL`.
 - MCP suite covers stable Claude tool names, direct server construction, explicit daemon-backed supervisor construction, and MCP client tool calls through daemon RPC.
 
+## Durable State Reconciliation Baseline
+
+Date: 2026-05-04
+
+Milestone:
+
+- New `meta.json` writes include `schemaVersion: 1`.
+- Old job metadata without `schemaVersion` remains readable.
+- Running metadata with a missing PID is reconciled to `orphaned`.
+- Running metadata with a live PID not owned by the current supervisor instance is reconciled to `abandoned`.
+- `abandoned` jobs do not count against current supervisor concurrency limits.
+- Cleanup reports temp JSON files removed as part of terminal job directory removal.
+- Cleanup preserves temp JSON files under running job directories.
+
+Verified commands:
+
+```bash
+npm run typecheck
+npm test
+npm run build
+```
+
 ## Explicit Daemon Discovery Baseline
 
 Date: 2026-05-04

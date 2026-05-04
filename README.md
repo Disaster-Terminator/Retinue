@@ -155,8 +155,11 @@ When `SUPERVISOR_DAEMON_URL` is set, MCP tools delegate to the running daemon. W
 
 - Job finalization is handled from the child `close` event so stdout/stderr pipes have closed before metadata is finalized.
 - Completed Claude JSON `session_id` is persisted to `meta.json` as `sessionId`.
+- New job metadata is written with `schemaVersion: 1`; older metadata without a schema version remains readable.
 - Running jobs can be limited with `maxConcurrentJobs` in code and `timeoutMs` per run.
 - If a previous MCP process exited and left stale `running` metadata, status reconciliation marks a missing PID as `orphaned`.
+- If stale `running` metadata points at a live PID that the current supervisor instance does not own, status reconciliation marks it as `abandoned` rather than reporting normal `running`.
+- Cleanup removes terminal job directories and reports temp JSON files removed with those directories; it preserves `running` and `abandoned` job directories.
 - Windows and WSL should not share one `node_modules` directory. Run `npm ci` separately inside WSL before Linux-side tests because packages such as Rollup install OS-specific optional dependencies.
 
 ## Verify
