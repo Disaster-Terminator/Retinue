@@ -46,6 +46,13 @@ Observed Windows result:
 - `npm test` passed with 10 test files and 28 tests.
 - `npm run build` passed.
 
+Observed WSL/Linux result from a fresh clone:
+
+- `npm ci` passed.
+- `npm run typecheck` passed.
+- `npm test` passed with 10 test files and 28 tests.
+- `npm run build` passed.
+
 Remaining daemon limitations:
 
 - No auto-start.
