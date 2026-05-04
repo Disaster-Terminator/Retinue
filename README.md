@@ -175,6 +175,8 @@ Without `SUPERVISOR_DAEMON_URL` or `--daemon-url`, CLI keeps the direct local su
 
 ## MCP
 
+For a Claude Code configuration matrix (direct mode vs explicit daemon URL vs discovery), see [Claude Code MCP Configuration](docs/CLAUDE_CODE_MCP.md).
+
 After `npm run build`, configure an MCP client to run:
 
 ```bash
