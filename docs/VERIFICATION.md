@@ -20,6 +20,28 @@ Current baseline:
 - Daemon suite covers `GET /health`, HTTP `run` -> `wait` -> `result`, structured route errors, package `supervisor-daemon` bin exposure, and CLI delegation through `SUPERVISOR_DAEMON_URL`.
 - MCP suite covers stable Claude tool names, direct server construction, explicit daemon-backed supervisor construction, and MCP client tool calls through daemon RPC.
 
+## Daemon RPC Contract Baseline
+
+Date: 2026-05-04
+
+Milestone:
+
+- Daemon errors return `{ "error": { "code": string, "message": string } }`.
+- Unknown routes return HTTP `404` with `code: "not_found"`.
+- Malformed JSON returns HTTP `400` with `code: "bad_json"`.
+- Invalid request bodies return HTTP `400` with `code: "invalid_request"`.
+- Oversized JSON bodies return HTTP `413` with `code: "body_too_large"`.
+- `GET /health` returns `status`, `version`, `pid`, and `stateDir`.
+- `DaemonClient` can read both old string errors and the new structured error shape.
+
+Verified commands:
+
+```bash
+npm run typecheck
+npm test
+npm run build
+```
+
 ## MCP Daemon Adapter Baseline
 
 Date: 2026-05-04

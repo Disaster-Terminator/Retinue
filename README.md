@@ -87,6 +87,30 @@ POST /v1/jobs/kill
 POST /v1/jobs/cleanup
 ```
 
+`GET /health` returns readiness metadata:
+
+```json
+{
+  "status": "ok",
+  "version": "0.1.0",
+  "pid": 12345,
+  "stateDir": "..."
+}
+```
+
+Daemon errors use a stable object shape:
+
+```json
+{
+  "error": {
+    "code": "invalid_request",
+    "message": "Missing required jobId"
+  }
+}
+```
+
+Current daemon error codes are `not_found`, `bad_json`, `body_too_large`, `invalid_request`, and `internal_error`. JSON request bodies are limited to 1 MiB by default.
+
 This is not service installation or auto-start. It is the first step toward the long-term architecture where the daemon owns job lifecycle and CLI/MCP become adapters.
 
 The CLI delegates to a running daemon only when configured explicitly:
