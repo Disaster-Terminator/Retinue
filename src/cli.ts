@@ -87,6 +87,10 @@ async function main(): Promise<void> {
       );
       return;
     }
+    case "daemon-health": {
+      writeJson(await daemonHealth(global));
+      return;
+    }
     default:
       throw new Error(`Unknown command: ${command ?? "(missing)"}`);
   }
@@ -148,6 +152,76 @@ async function discoverDaemonUrl(): Promise<string> {
     env: process.env
   });
   return (await readDaemonDiscovery(stateDir)).url;
+}
+
+
+async function daemonHealth(global: { daemonUrl?: string; discoverDaemon: boolean }): Promise<Record<string, unknown>> {
+  const source = global.daemonUrl ? "explicit_url" : global.discoverDaemon ? "discovery" : "none";
+  if (source === "none") {
+    return {
+      ok: false,
+      source,
+      error: {
+        code: "missing_daemon_target",
+        message: "Provide --daemon-url <url> or --discover-daemon"
+      }
+    };
+  }
+
+  let daemonUrl = global.daemonUrl;
+  let discovery: unknown;
+  if (!daemonUrl) {
+    try {
+      const stateDir = resolveStateDir({
+        explicitStateDir: process.env.SUPERVISOR_STATE_DIR,
+        env: process.env
+      });
+      const discovered = await readDaemonDiscovery(stateDir);
+      daemonUrl = discovered.url;
+      discovery = discovered;
+    } catch (error) {
+      return {
+        ok: false,
+        source,
+        error: {
+          code: "discovery_error",
+          message: error instanceof Error ? error.message : String(error)
+        }
+      };
+    }
+  }
+
+  try {
+    const response = await fetch(`${daemonUrl}/health`);
+    const text = await response.text();
+    const health = text.trim() ? JSON.parse(text) : undefined;
+    if (!response.ok) {
+      return {
+        ok: false,
+        source,
+        daemonUrl,
+        discovery,
+        error: {
+          code: "daemon_http_error",
+          message: `Daemon health failed with HTTP ${response.status}`,
+          status: response.status,
+          body: health
+        }
+      };
+    }
+    return { ok: true, source, daemonUrl, discovery, health };
+  } catch (error) {
+    return {
+      ok: false,
+      source,
+      daemonUrl,
+      discovery,
+      error: {
+        code: "daemon_unreachable",
+        message: error instanceof Error ? error.message : String(error)
+      }
+    };
+  }
 }
 
 function parsePrefixArgs(value: string | undefined): string[] {

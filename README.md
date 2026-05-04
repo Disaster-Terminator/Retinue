@@ -168,6 +168,7 @@ The daemon also writes a discovery file at `<stateDir>/daemon.json` after it bin
 
 ```bash
 node dist/cli.js --discover-daemon status <jobId>
+node dist/cli.js daemon-health --discover-daemon
 SUPERVISOR_DAEMON_DISCOVERY=1 node dist/cli.js status <jobId>
 ```
 
