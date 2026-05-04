@@ -20,6 +20,28 @@ Current baseline:
 - Daemon suite covers `GET /health`, HTTP `run` -> `wait` -> `result`, structured route errors, package `supervisor-daemon` bin exposure, and CLI delegation through `SUPERVISOR_DAEMON_URL`.
 - MCP suite covers stable Claude tool names, direct server construction, explicit daemon-backed supervisor construction, and MCP client tool calls through daemon RPC.
 
+## Explicit Daemon Discovery Baseline
+
+Date: 2026-05-04
+
+Milestone:
+
+- Daemon discovery metadata is stored at `<stateDir>/daemon.json`.
+- Discovery metadata includes `url`, `pid`, `startedAt`, and `version`.
+- Discovery reads reject stale PID metadata.
+- `supervisor-daemon` writes discovery metadata after binding.
+- CLI uses discovery only with `--discover-daemon` or `SUPERVISOR_DAEMON_DISCOVERY=1`.
+- MCP uses discovery only with `SUPERVISOR_DAEMON_DISCOVERY=1`.
+- Direct fallback remains available when URL/discovery is not configured.
+
+Verified commands:
+
+```bash
+npm run typecheck
+npm test
+npm run build
+```
+
 ## Daemon RPC Contract Baseline
 
 Date: 2026-05-04

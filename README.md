@@ -120,6 +120,13 @@ SUPERVISOR_DAEMON_URL=http://127.0.0.1:27777 node dist/cli.js run --cwd . --prom
 node dist/cli.js --daemon-url http://127.0.0.1:27777 status <jobId>
 ```
 
+The daemon also writes a discovery file at `<stateDir>/daemon.json` after it binds. CLI discovery is still explicit:
+
+```bash
+node dist/cli.js --discover-daemon status <jobId>
+SUPERVISOR_DAEMON_DISCOVERY=1 node dist/cli.js status <jobId>
+```
+
 Without `SUPERVISOR_DAEMON_URL` or `--daemon-url`, CLI keeps the direct local supervisor path.
 
 ## MCP
@@ -134,12 +141,13 @@ Environment overrides:
 
 ```text
 SUPERVISOR_DAEMON_URL
+SUPERVISOR_DAEMON_DISCOVERY
 SUPERVISOR_STATE_DIR
 SUPERVISOR_CLAUDE_COMMAND
 SUPERVISOR_CLAUDE_PREFIX_ARGS
 ```
 
-When `SUPERVISOR_DAEMON_URL` is set, MCP tools delegate to the running daemon. Without it, MCP keeps the direct in-process supervisor path for fallback and debugging.
+When `SUPERVISOR_DAEMON_URL` is set, MCP tools delegate to the running daemon. When `SUPERVISOR_DAEMON_DISCOVERY=1` is set, MCP reads `<stateDir>/daemon.json` and rejects stale daemon metadata. Without either setting, MCP keeps the direct in-process supervisor path for fallback and debugging.
 
 `claude_result` returns bounded stdout/stderr by default, plus `stdoutPath`, `stderrPath`, byte counts, and truncation flags. Read the files directly only when a full local artifact is needed.
 
