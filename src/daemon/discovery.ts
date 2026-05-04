@@ -49,6 +49,9 @@ function validateDiscovery(value: Partial<DaemonDiscovery>): DaemonDiscovery {
   if (typeof value.startedAt !== "string" || !value.startedAt) {
     throw new Error("Invalid daemon discovery: missing startedAt");
   }
+  if (Number.isNaN(Date.parse(value.startedAt))) {
+    throw new Error("Invalid daemon discovery: invalid startedAt");
+  }
   if (typeof value.version !== "string" || !value.version) {
     throw new Error("Invalid daemon discovery: missing version");
   }
