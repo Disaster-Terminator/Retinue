@@ -9,6 +9,16 @@ import type { SupervisorApi } from "./core/types.js";
 async function main(): Promise<void> {
   const global = extractGlobalFlags(process.argv.slice(2));
   const [command, ...args] = global.args;
+
+  if (command === "daemon-health") {
+    const health = await daemonHealth(global);
+    writeJson(health);
+    if (isFailureResult(health)) {
+      process.exitCode = 1;
+    }
+    return;
+  }
+
   const supervisor = await createSupervisorFromEnv(global);
 
   switch (command) {
@@ -89,6 +99,87 @@ async function main(): Promise<void> {
     }
     default:
       throw new Error(`Unknown command: ${command ?? "(missing)"}`);
+  }
+}
+
+async function daemonHealth(global: { daemonUrl?: string; discoverDaemon: boolean }): Promise<unknown> {
+  const source = global.daemonUrl ? "explicit_url" : global.discoverDaemon ? "discovery" : "none";
+  if (source === "none") {
+    return {
+      ok: false,
+      source,
+      error: {
+        code: "missing_daemon_target",
+        message: "Provide --daemon-url <url> or enable --discover-daemon"
+      }
+    };
+  }
+
+  let daemonUrl = global.daemonUrl;
+  if (!daemonUrl) {
+    try {
+      daemonUrl = await discoverDaemonUrl();
+    } catch (error) {
+      return {
+        ok: false,
+        source,
+        error: {
+          code: "discovery_error",
+          message: error instanceof Error ? error.message : String(error)
+        }
+      };
+    }
+  }
+
+  return readDaemonHealth(daemonUrl, source);
+}
+
+async function readDaemonHealth(daemonUrl: string, source: "explicit_url" | "discovery"): Promise<unknown> {
+  const normalizedUrl = daemonUrl.replace(/\/+$/, "");
+  try {
+    const response = await fetch(`${normalizedUrl}/health`);
+    const bodyText = await response.text();
+    const body = parseJson(bodyText);
+    if (!response.ok) {
+      return {
+        ok: false,
+        source,
+        daemonUrl,
+        error: {
+          code: "daemon_http_error",
+          message: `Daemon health request failed with HTTP ${response.status}`,
+          status: response.status,
+          details: body
+        }
+      };
+    }
+    return {
+      ok: true,
+      source,
+      daemonUrl,
+      health: body
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      source,
+      daemonUrl,
+      error: {
+        code: "daemon_unreachable",
+        message: error instanceof Error ? error.message : String(error)
+      }
+    };
+  }
+}
+
+function parseJson(text: string): unknown {
+  if (!text.trim()) {
+    return null;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
   }
 }
 
@@ -178,6 +269,10 @@ function required(value: string | undefined, name: string): string {
 
 function writeJson(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+function isFailureResult(value: unknown): boolean {
+  return typeof value === "object" && value !== null && "ok" in value && (value as { ok?: boolean }).ok === false;
 }
 
 main().catch((error) => {
