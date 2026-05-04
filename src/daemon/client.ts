@@ -68,19 +68,27 @@ export class DaemonClient implements SupervisorApi {
   }
 
   private async post<T>(path: string, body: unknown): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body)
-    });
-    const text = await response.text();
-    const parsed = parseJson(text);
-    if (!response.ok) {
-      const error = extractDaemonError(parsed);
-      const message = error?.message ?? `Daemon request failed with HTTP ${response.status}`;
-      throw new DaemonClientError(message, { code: error?.code, status: response.status, path });
+    try {
+      const response = await fetch(`${this.baseUrl}${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const text = await response.text();
+      const parsed = parseJson(text);
+      if (!response.ok) {
+        const error = extractDaemonError(parsed);
+        const message = error?.message ?? `Daemon request failed with HTTP ${response.status}`;
+        throw new DaemonClientError(message, { code: error?.code, status: response.status, path });
+      }
+      return parsed as T;
+    } catch (error) {
+      if (error instanceof DaemonClientError) {
+        throw error;
+      }
+      const { message, code } = classifyTransportError(error);
+      throw new DaemonClientError(message, { code, status: 0, path });
     }
-    return parsed as T;
   }
 }
 
@@ -109,4 +117,15 @@ function extractDaemonError(value: unknown): { message: string; code?: string } 
     return { message, code };
   }
   return undefined;
+}
+
+function classifyTransportError(error: unknown): { message: string; code: string } {
+  if (isAbortError(error)) {
+    return { message: "Daemon request was aborted", code: "aborted" };
+  }
+  return { message: "Failed to reach daemon transport", code: "transport_error" };
+}
+
+function isAbortError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";
 }
