@@ -35,6 +35,15 @@ describe("daemon discovery", () => {
     });
   });
 
+  it("fails when discovery file is missing", async () => {
+    await expect(readDaemonDiscovery(tempDir)).rejects.toThrow();
+  });
+
+  it("fails when discovery file is empty", async () => {
+    await fs.writeFile(getDaemonDiscoveryPath(tempDir), "\n", "utf8");
+    await expect(readDaemonDiscovery(tempDir)).rejects.toThrow();
+  });
+
 
 
   it("rejects discovery metadata with missing or empty url", async () => {
@@ -73,6 +82,30 @@ describe("daemon discovery", () => {
     });
 
     await expect(readDaemonDiscovery(tempDir)).rejects.toThrow(/url/i);
+  });
+
+  it("rejects discovery metadata with ws url protocol", async () => {
+    await writeDaemonDiscovery(tempDir, {
+      url: "ws://127.0.0.1:27777",
+      pid: process.pid,
+      startedAt: "2026-05-04T00:00:00.000Z",
+      version: "0.1.0"
+    });
+
+    await expect(readDaemonDiscovery(tempDir)).rejects.toThrow(/url/i);
+  });
+
+  it("allows loopback localhost discovery urls", async () => {
+    await writeDaemonDiscovery(tempDir, {
+      url: "http://localhost:27777",
+      pid: process.pid,
+      startedAt: "2026-05-04T00:00:00.000Z",
+      version: "0.1.0"
+    });
+
+    await expect(readDaemonDiscovery(tempDir)).resolves.toMatchObject({
+      url: "http://localhost:27777"
+    });
   });
 
   it("rejects discovery metadata with invalid startedAt", async () => {

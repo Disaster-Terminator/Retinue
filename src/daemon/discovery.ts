@@ -76,8 +76,12 @@ function validateDiscoveryUrl(value: unknown): string {
     throw new Error("Invalid daemon discovery: invalid url");
   }
 
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+  if (parsed.protocol !== "http:") {
     throw new Error("Invalid daemon discovery: unsupported url protocol");
+  }
+
+  if (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost") {
+    throw new Error("Invalid daemon discovery: unsupported url host");
   }
 
   return value;
