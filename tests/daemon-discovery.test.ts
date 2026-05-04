@@ -44,8 +44,6 @@ describe("daemon discovery", () => {
     await expect(readDaemonDiscovery(tempDir)).rejects.toThrow();
   });
 
-
-
   it("rejects discovery metadata with missing or empty url", async () => {
     await fs.writeFile(
       getDaemonDiscoveryPath(tempDir),
@@ -95,6 +93,19 @@ describe("daemon discovery", () => {
     await expect(readDaemonDiscovery(tempDir)).rejects.toThrow(/url/i);
   });
 
+  it("normalizes loopback ipv4 discovery urls with a trailing slash", async () => {
+    await writeDaemonDiscovery(tempDir, {
+      url: "http://127.0.0.1:27777/",
+      pid: process.pid,
+      startedAt: "2026-05-04T00:00:00.000Z",
+      version: "0.1.0"
+    });
+
+    await expect(readDaemonDiscovery(tempDir)).resolves.toMatchObject({
+      url: "http://127.0.0.1:27777"
+    });
+  });
+
   it("allows loopback localhost discovery urls", async () => {
     await writeDaemonDiscovery(tempDir, {
       url: "http://localhost:27777",
@@ -106,6 +117,52 @@ describe("daemon discovery", () => {
     await expect(readDaemonDiscovery(tempDir)).resolves.toMatchObject({
       url: "http://localhost:27777"
     });
+  });
+
+  it("normalizes localhost discovery urls with a trailing slash", async () => {
+    await writeDaemonDiscovery(tempDir, {
+      url: "http://localhost:27777/",
+      pid: process.pid,
+      startedAt: "2026-05-04T00:00:00.000Z",
+      version: "0.1.0"
+    });
+
+    await expect(readDaemonDiscovery(tempDir)).resolves.toMatchObject({
+      url: "http://localhost:27777"
+    });
+  });
+
+  it("rejects non-loopback discovery hosts", async () => {
+    await writeDaemonDiscovery(tempDir, {
+      url: "http://example.com:27777",
+      pid: process.pid,
+      startedAt: "2026-05-04T00:00:00.000Z",
+      version: "0.1.0"
+    });
+
+    await expect(readDaemonDiscovery(tempDir)).rejects.toThrow(/host|url/i);
+  });
+
+  it("rejects https discovery urls", async () => {
+    await writeDaemonDiscovery(tempDir, {
+      url: "https://127.0.0.1:27777",
+      pid: process.pid,
+      startedAt: "2026-05-04T00:00:00.000Z",
+      version: "0.1.0"
+    });
+
+    await expect(readDaemonDiscovery(tempDir)).rejects.toThrow(/protocol|url/i);
+  });
+
+  it("rejects ipv6 loopback discovery urls", async () => {
+    await writeDaemonDiscovery(tempDir, {
+      url: "http://[::1]:27777",
+      pid: process.pid,
+      startedAt: "2026-05-04T00:00:00.000Z",
+      version: "0.1.0"
+    });
+
+    await expect(readDaemonDiscovery(tempDir)).rejects.toThrow(/host|url/i);
   });
 
   it("rejects discovery metadata with invalid startedAt", async () => {
