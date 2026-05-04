@@ -67,4 +67,26 @@ describe("daemon discovery", () => {
 
     await expect(readDaemonDiscovery(tempDir)).rejects.toThrow(/stale/i);
   });
+
+  it("rejects discovery metadata with invalid url syntax", async () => {
+    await writeDaemonDiscovery(tempDir, {
+      url: "not-a-url",
+      pid: process.pid,
+      startedAt: "2026-05-04T00:00:00.000Z",
+      version: "0.1.0"
+    });
+
+    await expect(readDaemonDiscovery(tempDir)).rejects.toThrow(/url/i);
+  });
+
+  it("rejects discovery metadata with unsupported url protocol", async () => {
+    await writeDaemonDiscovery(tempDir, {
+      url: "file:///tmp/supervisor.sock",
+      pid: process.pid,
+      startedAt: "2026-05-04T00:00:00.000Z",
+      version: "0.1.0"
+    });
+
+    await expect(readDaemonDiscovery(tempDir)).rejects.toThrow(/url/i);
+  });
 });

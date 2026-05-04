@@ -43,6 +43,7 @@ function validateDiscovery(value: Partial<DaemonDiscovery>): DaemonDiscovery {
   if (typeof value.url !== "string" || !value.url) {
     throw new Error("Invalid daemon discovery: missing url");
   }
+  validateDiscoveryUrl(value.url);
   if (typeof value.pid !== "number" || !Number.isInteger(value.pid)) {
     throw new Error("Invalid daemon discovery: missing pid");
   }
@@ -68,6 +69,18 @@ function validateCanonicalStartedAt(value: string): void {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime()) || parsed.toISOString() !== value) {
     throw new Error("Invalid daemon discovery: invalid startedAt");
+  }
+}
+
+function validateDiscoveryUrl(value: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("Invalid daemon discovery: invalid url");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Invalid daemon discovery: unsupported url protocol");
   }
 }
 
