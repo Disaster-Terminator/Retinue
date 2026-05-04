@@ -76,11 +76,19 @@ function validateDiscoveryUrl(value: unknown): string {
     throw new Error("Invalid daemon discovery: invalid url");
   }
 
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+  if (parsed.protocol !== "http:") {
     throw new Error("Invalid daemon discovery: unsupported url protocol");
   }
 
-  return value;
+  if (!parsed.hostname) {
+    throw new Error("Invalid daemon discovery: missing host");
+  }
+
+  if (parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1" && parsed.hostname !== "::1") {
+    throw new Error("Invalid daemon discovery: unsupported host");
+  }
+
+  return parsed.toString().replace(/\/+$/, "");
 }
 function validateCanonicalStartedAt(value: string): void {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) {
