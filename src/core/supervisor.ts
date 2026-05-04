@@ -338,6 +338,7 @@ export class ClaudeSupervisor implements SupervisorApi {
     const olderThanMs = options.olderThanMs ?? 0;
     const jobsDir = getJobsDir(this.stateDir);
     const removedJobIds: string[] = [];
+    const removedTempFiles: string[] = [];
     const entries = await readDirIfExists(jobsDir);
     const now = Date.now();
 
@@ -360,11 +361,13 @@ export class ClaudeSupervisor implements SupervisorApi {
         continue;
       }
 
-      await fs.rm(getJobPaths(this.stateDir, jobId).dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      const paths = getJobPaths(this.stateDir, jobId);
+      removedTempFiles.push(...(await listTempFiles(paths.dir)));
+      await fs.rm(paths.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
       removedJobIds.push(jobId);
     }
 
-    return { removedJobIds };
+    return { removedJobIds, removedTempFiles };
   }
 
   private async countActiveJobs(): Promise<number> {
@@ -531,6 +534,11 @@ async function readDirIfExists(dirPath: string) {
     }
     throw error;
   }
+}
+
+async function listTempFiles(dirPath: string): Promise<string[]> {
+  const entries = await readDirIfExists(dirPath);
+  return entries.filter((entry) => entry.isFile() && entry.name.endsWith(".tmp")).map((entry) => `${dirPath}${dirPath.includes("\\") ? "\\" : "/"}${entry.name}`);
 }
 
 function waitWithTimeout(promise: Promise<void> | undefined, timeoutMs: number): Promise<void> {

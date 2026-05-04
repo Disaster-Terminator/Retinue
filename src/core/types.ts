@@ -116,6 +116,7 @@ export interface CleanupOptions {
 
 export interface CleanupResult {
   removedJobIds: string[];
+  removedTempFiles: string[];
 }
 
 export interface ContinueOptions {

@@ -66,4 +66,38 @@ describe("ClaudeSupervisor kill and cleanup", () => {
 
     await slow.kill(running.jobId);
   });
+
+  it("reports temp files removed with terminal jobs and preserves running temp files", async () => {
+    const fast = new ClaudeSupervisor({
+      stateDir: tempDir,
+      claudeCommand: process.execPath,
+      claudePrefixArgs: [fixturePath]
+    });
+    const slow = new ClaudeSupervisor({
+      stateDir: tempDir,
+      claudeCommand: process.execPath,
+      claudePrefixArgs: [fixturePath],
+      env: { ...process.env, FAKE_CLAUDE_DELAY_MS: "10000" }
+    });
+
+    const completed = await fast.run({ cwd: tempDir, prompt: "temp done" });
+    await fast.wait(completed.jobId, { timeoutMs: 5000 });
+    const completedTemp = path.join(getJobPaths(tempDir, completed.jobId).dir, "meta.json.123.1.abc.tmp");
+    await fs.writeFile(completedTemp, "partial", "utf8");
+
+    const running = await slow.run({ cwd: tempDir, prompt: "temp running" });
+    const runningTemp = path.join(getJobPaths(tempDir, running.jobId).dir, "meta.json.456.1.def.tmp");
+    await fs.writeFile(runningTemp, "partial", "utf8");
+
+    try {
+      const cleanup = await slow.cleanup({ olderThanMs: 0 });
+
+      expect(cleanup.removedJobIds).toContain(completed.jobId);
+      expect(cleanup.removedTempFiles).toContain(completedTemp);
+      expect(cleanup.removedTempFiles).not.toContain(runningTemp);
+      await expect(fs.stat(runningTemp)).resolves.toBeTruthy();
+    } finally {
+      await slow.kill(running.jobId);
+    }
+  });
 });
