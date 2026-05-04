@@ -64,6 +64,31 @@ SUPERVISOR_CLAUDE_PREFIX_ARGS=/path/to/fake-claude.mjs
 
 `SUPERVISOR_CLAUDE_PREFIX_ARGS` can also be a JSON string array.
 
+## Daemon
+
+The first daemon milestone is manual and loopback-only by default:
+
+```bash
+npm run build
+node dist/daemon.js --host 127.0.0.1 --port 27777
+```
+
+The daemon prints one JSON readiness line and then serves:
+
+```text
+GET  /health
+POST /v1/jobs/run
+POST /v1/jobs/status
+POST /v1/jobs/wait
+POST /v1/jobs/result
+POST /v1/jobs/continue
+POST /v1/jobs/peek
+POST /v1/jobs/kill
+POST /v1/jobs/cleanup
+```
+
+This is not service installation or auto-start. It is the first step toward the long-term architecture where the daemon owns job lifecycle and CLI/MCP become adapters.
+
 ## MCP
 
 After `npm run build`, configure an MCP client to run:

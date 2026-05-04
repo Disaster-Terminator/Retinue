@@ -6,7 +6,8 @@
   "description": "Local MCP and CLI supervisor for spawning Claude Code background jobs.",
   "bin": {
     "supervisor": "./dist/cli.js",
-    "supervisor-mcp": "./dist/mcp.js"
+    "supervisor-mcp": "./dist/mcp.js",
+    "supervisor-daemon": "./dist/daemon.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -28,4 +29,3 @@
     "node": ">=20.0.0"
   }
 }
-
