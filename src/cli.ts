@@ -12,6 +12,44 @@ async function main(): Promise<void> {
   const supervisor = await createSupervisorFromEnv(global);
 
   switch (command) {
+    case "daemon-health": {
+      const explicitUrl = global.daemonUrl;
+      const shouldDiscover = global.discoverDaemon;
+      const source = explicitUrl ? "explicit_url" : "discovery";
+      let resolvedUrl: string | undefined;
+      try {
+        resolvedUrl = explicitUrl ?? (shouldDiscover ? await discoverDaemonUrl() : undefined);
+      } catch (error) {
+        writeJson({
+          ok: false,
+          source,
+          error: {
+            code: "discovery_error",
+            message: error instanceof Error ? error.message : String(error)
+          }
+        });
+        process.exitCode = 1;
+        return;
+      }
+      if (!resolvedUrl) {
+        writeJson({
+          ok: false,
+          source,
+          error: {
+            code: "missing_daemon_target",
+            message: "Provide --daemon-url <url> or enable --discover-daemon"
+          }
+        });
+        process.exitCode = 1;
+        return;
+      }
+      const health = await readDaemonHealth(resolvedUrl, source);
+      writeJson(health);
+      if (isFailureResult(health)) {
+        process.exitCode = 1;
+      }
+      return;
+    }
     case "run": {
       const flags = parseFlags(args);
       const cwd = required(flags.cwd, "--cwd");
@@ -89,6 +127,45 @@ async function main(): Promise<void> {
     }
     default:
       throw new Error(`Unknown command: ${command ?? "(missing)"}`);
+  }
+}
+
+async function readDaemonHealth(
+  daemonUrl: string,
+  source: "explicit_url" | "discovery"
+): Promise<unknown> {
+  try {
+    const response = await fetch(`${daemonUrl.replace(/\/+$/, "")}/health`);
+    const bodyText = await response.text();
+    const body = bodyText.trim() ? JSON.parse(bodyText) : null;
+    if (!response.ok) {
+      return {
+        ok: false,
+        source,
+        daemonUrl,
+        error: {
+          code: "daemon_http_error",
+          message: `Daemon health request failed with HTTP ${response.status}`,
+          details: body
+        }
+      };
+    }
+    return {
+      ok: true,
+      source,
+      daemonUrl,
+      health: body
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      source,
+      daemonUrl,
+      error: {
+        code: "daemon_unreachable",
+        message: error instanceof Error ? error.message : String(error)
+      }
+    };
   }
 }
 
@@ -184,3 +261,8 @@ main().catch((error) => {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
   process.exitCode = 1;
 });
+
+
+function isFailureResult(value: unknown): boolean {
+  return typeof value === "object" && value !== null && "ok" in value && (value as { ok?: boolean }).ok === false;
+}

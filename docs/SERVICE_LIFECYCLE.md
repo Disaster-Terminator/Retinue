@@ -64,6 +64,7 @@ CLI with explicit discovery:
 
 ```bash
 node dist/cli.js --discover-daemon status <jobId>
+node dist/cli.js --discover-daemon daemon-health
 ```
 
 MCP with explicit discovery:

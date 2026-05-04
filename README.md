@@ -75,6 +75,7 @@ node dist/cli.js result <jobId>
 node dist/cli.js continue --cwd . --job-id <jobId> --prompt "Follow up"
 node dist/cli.js kill <jobId>
 node dist/cli.js cleanup --older-than-ms 86400000
+node dist/cli.js daemon-health --daemon-url http://127.0.0.1:27777
 ```
 
 For deterministic tests, override the Claude command:
@@ -221,6 +222,7 @@ Clean terminal jobs with:
 
 ```bash
 node dist/cli.js cleanup --older-than-ms 86400000
+node dist/cli.js daemon-health --daemon-url http://127.0.0.1:27777
 ```
 
 Cleanup removes terminal job directories and reports removed temp files. It preserves `running` and `abandoned` jobs.
