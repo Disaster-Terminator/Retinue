@@ -1,0 +1,102 @@
+import http from "node:http";
+import type { ClaudeSupervisor } from "../core/supervisor.js";
+import type {
+  CleanupOptions,
+  ContinueOptions,
+  PeekOptions,
+  RunOptions,
+  WaitOptions
+} from "../core/types.js";
+
+const version = "0.1.0";
+
+type RouteHandler = (body: unknown) => Promise<unknown>;
+
+export function createDaemonServer(supervisor: ClaudeSupervisor): http.Server {
+  const routes = new Map<string, RouteHandler>([
+    ["POST /v1/jobs/run", (body) => supervisor.run(body as RunOptions)],
+    ["POST /v1/jobs/status", (body) => supervisor.status(requiredJobId(body))],
+    ["POST /v1/jobs/wait", (body) => {
+      const input = requiredObject(body);
+      return supervisor.wait(requiredJobId(input), {
+        timeoutMs: optionalNumber(input.timeoutMs)
+      } satisfies WaitOptions);
+    }],
+    ["POST /v1/jobs/result", (body) => supervisor.result(requiredJobId(body))],
+    ["POST /v1/jobs/continue", (body) => supervisor.continueJob(body as ContinueOptions)],
+    ["POST /v1/jobs/peek", (body) => {
+      const input = requiredObject(body);
+      return supervisor.peek(requiredJobId(input), {
+        stdoutTailBytes: optionalNumber(input.stdoutTailBytes),
+        stderrTailBytes: optionalNumber(input.stderrTailBytes)
+      } satisfies PeekOptions);
+    }],
+    ["POST /v1/jobs/kill", (body) => supervisor.kill(requiredJobId(body))],
+    ["POST /v1/jobs/cleanup", (body) => supervisor.cleanup((body ?? {}) as CleanupOptions)]
+  ]);
+
+  return http.createServer(async (request, response) => {
+    try {
+      if (request.method === "GET" && request.url === "/health") {
+        writeJson(response, 200, { status: "ok", version });
+        return;
+      }
+
+      const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+      const handler = routes.get(`${request.method ?? "GET"} ${path}`);
+      if (!handler) {
+        writeJson(response, 404, { error: `Route not found: ${request.method ?? "GET"} ${path}` });
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      writeJson(response, 200, await handler(body));
+    } catch (error) {
+      writeJson(response, 400, {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+}
+
+function requiredJobId(body: unknown): string {
+  const input = requiredObject(body);
+  if (typeof input.jobId !== "string" || !input.jobId) {
+    throw new Error("Missing required jobId");
+  }
+  return input.jobId;
+}
+
+function requiredObject(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("Expected JSON object body");
+  }
+  return value as Record<string, unknown>;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`Expected number, got ${typeof value}`);
+  }
+  return value;
+}
+
+async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  const text = Buffer.concat(chunks).toString("utf8");
+  if (!text.trim()) {
+    return {};
+  }
+  return JSON.parse(text);
+}
+
+function writeJson(response: http.ServerResponse, statusCode: number, value: unknown): void {
+  response.writeHead(statusCode, { "content-type": "application/json; charset=utf-8" });
+  response.end(`${JSON.stringify(value, null, 2)}\n`);
+}
