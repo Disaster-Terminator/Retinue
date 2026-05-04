@@ -20,6 +20,32 @@ Current baseline:
 - Daemon suite covers `GET /health`, HTTP `run` -> `wait` -> `result`, structured route errors, package `supervisor-daemon` bin exposure, and CLI delegation through `SUPERVISOR_DAEMON_URL`.
 - MCP suite covers stable Claude tool names, direct server construction, explicit daemon-backed supervisor construction, and MCP client tool calls through daemon RPC.
 
+## Service Lifecycle Design Baseline
+
+Date: 2026-05-04
+
+Milestone:
+
+- Manual foreground daemon start remains the current recommended lifecycle.
+- `docs/SERVICE_LIFECYCLE.md` explains how to start, inspect, use, and stop the daemon.
+- The design compares manual daemon, Windows service, Windows scheduled task, systemd user service, and shell startup script.
+- Windows service, scheduled task, systemd unit, and shell startup installation are not automated.
+- Future service installation must be explicit, inspectable, and reversible.
+
+Verified commands:
+
+```bash
+npm run typecheck
+npm test
+npm run build
+```
+
+Observed Windows result:
+
+- `npm run typecheck` passed.
+- `npm test` passed with 13 test files and 45 tests.
+- `npm run build` passed.
+
 ## Durable State Reconciliation Baseline
 
 Date: 2026-05-04
