@@ -1,0 +1,35 @@
+name: Package Smoke
+
+on:
+  push:
+    branches:
+      - feature/spawn-claude-code
+  pull_request:
+    branches:
+      - feature/spawn-claude-code
+  workflow_dispatch:
+
+jobs:
+  package-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Inspect package contents
+        run: npm pack --dry-run --json > pack-output.json
+
+      - name: Verify package metadata and built bins
+        run: node scripts/verify-package.mjs pack-output.json
