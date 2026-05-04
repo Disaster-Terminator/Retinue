@@ -49,6 +49,13 @@ Observed Windows result:
 - The package includes `dist/cli.js`, `dist/mcp.js`, `dist/daemon.js`, runtime `dist/core/**`, runtime `dist/daemon/**`, docs, `scripts/probe-real-claude.mjs`, and `tests/fixtures/fake-claude.mjs`.
 - The package excludes stale `dist/src/**` and `dist/tests/**` build outputs.
 
+Observed WSL/Linux result from a fresh clone:
+
+- `npm ci` passed.
+- `npm run typecheck` passed.
+- `npm test` passed with 14 test files and 50 tests.
+- `npm run build` passed.
+
 ## Real Probe Runner Baseline
 
 Date: 2026-05-04
