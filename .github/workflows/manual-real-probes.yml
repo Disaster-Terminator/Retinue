@@ -1,0 +1,49 @@
+name: Manual Real Claude Probes (quota-risk)
+
+on:
+  workflow_dispatch:
+    inputs:
+      probe_mode:
+        description: "Probe mode to run (may consume real Claude quota)"
+        required: true
+        type: choice
+        options:
+          - direct
+          - daemon
+          - mcp-daemon
+      confirm_real_claude:
+        description: "Type exactly: I_UNDERSTAND_THIS_MAY_USE_REAL_CLAUDE_QUOTA"
+        required: true
+        type: string
+
+jobs:
+  real-probe:
+    name: Run real Claude probe (manual, quota-risk)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Guardrail: explicit quota confirmation is required
+        run: |
+          expected='I_UNDERSTAND_THIS_MAY_USE_REAL_CLAUDE_QUOTA'
+          if [ "${{ github.event.inputs.confirm_real_claude }}" != "$expected" ]; then
+            echo "Refusing to run real probes without exact confirmation string."
+            echo "Expected: $expected"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run selected real probe
+        run: npm run probe:real:${{ github.event.inputs.probe_mode }}

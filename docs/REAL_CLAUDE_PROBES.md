@@ -10,6 +10,18 @@ npm test
 npm run build
 ```
 
+## GitHub Manual Workflow (Quota-Risk)
+
+GitHub Actions real probes are **manual only** and never run on `push` or `pull_request`. Use `.github/workflows/manual-real-probes.yml` from the Actions UI, choose `probe_mode` (`direct`, `daemon`, or `mcp-daemon`), and set `confirm_real_claude` to exactly:
+
+`I_UNDERSTAND_THIS_MAY_USE_REAL_CLAUDE_QUOTA`
+
+If the confirmation string is missing or incorrect, the job fails before probe execution. The workflow then runs:
+
+- `npm ci`
+- `npm run build`
+- `npm run probe:real:<probe_mode>`
+
 ## Fake Dry Run
 
 Use this before a real probe to verify the probe runner, daemon path, and MCP-to-daemon path without calling real Claude Code.
