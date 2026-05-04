@@ -9,11 +9,12 @@ import type {
   PeekOptions,
   PeekResult,
   RunOptions,
+  SupervisorApi,
   WaitOptions,
   WaitResult
 } from "../core/types.js";
 
-export class DaemonClient {
+export class DaemonClient implements SupervisorApi {
   private readonly baseUrl: string;
 
   constructor(baseUrl: string) {

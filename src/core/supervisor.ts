@@ -19,6 +19,7 @@ import type {
   PeekOptions,
   PeekResult,
   RunOptions,
+  SupervisorApi,
   SupervisorOptions,
   WaitOptions,
   WaitResult
@@ -30,7 +31,7 @@ interface TrackedProcess {
   finalized?: Promise<void>;
 }
 
-export class ClaudeSupervisor {
+export class ClaudeSupervisor implements SupervisorApi {
   private readonly stateDir: string;
   private readonly claudeCommand: string;
   private readonly claudePrefixArgs: string[];

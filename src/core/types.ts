@@ -127,3 +127,14 @@ export interface ContinueOptions {
   permissionMode?: PermissionMode;
   timeoutMs?: number;
 }
+
+export interface SupervisorApi {
+  run(options: RunOptions): Promise<JobMeta>;
+  status(jobId: string): Promise<JobStatusResult>;
+  wait(jobId: string, options?: WaitOptions): Promise<WaitResult>;
+  result(jobId: string): Promise<JobResult>;
+  continueJob(options: ContinueOptions): Promise<JobMeta>;
+  peek(jobId: string, options?: PeekOptions): Promise<PeekResult>;
+  kill(jobId: string): Promise<KillResult>;
+  cleanup(options?: CleanupOptions): Promise<CleanupResult>;
+}

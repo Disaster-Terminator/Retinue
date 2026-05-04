@@ -5,6 +5,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { ClaudeSupervisor } from "./core/supervisor.js";
+import type { SupervisorApi } from "./core/types.js";
 
 export const CLAUDE_TOOL_NAMES = [
   "claude_run",
@@ -17,7 +18,7 @@ export const CLAUDE_TOOL_NAMES = [
   "claude_cleanup"
 ] as const;
 
-export function createMcpServer(supervisor = createSupervisorFromEnv()): McpServer {
+export function createMcpServer(supervisor: SupervisorApi = createSupervisorFromEnv()): McpServer {
   const server = new McpServer({
     name: "supervisor",
     version: "0.1.0"
@@ -131,7 +132,7 @@ export function createMcpServer(supervisor = createSupervisorFromEnv()): McpServ
   return server;
 }
 
-function createSupervisorFromEnv(): ClaudeSupervisor {
+function createSupervisorFromEnv(): SupervisorApi {
   return new ClaudeSupervisor({
     stateDir: process.env.SUPERVISOR_STATE_DIR,
     claudeCommand: process.env.SUPERVISOR_CLAUDE_COMMAND,

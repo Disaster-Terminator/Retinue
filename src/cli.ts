@@ -2,22 +2,7 @@
 
 import { ClaudeSupervisor } from "./core/supervisor.js";
 import { DaemonClient } from "./daemon/client.js";
-import type {
-  JobResult,
-  JobStatusResult,
-  KillResult,
-} from "./core/types.js";
-
-interface CliSupervisor {
-  run: ClaudeSupervisor["run"];
-  status: (jobId: string) => Promise<JobStatusResult>;
-  wait: ClaudeSupervisor["wait"];
-  result: (jobId: string) => Promise<JobResult>;
-  continueJob: ClaudeSupervisor["continueJob"];
-  peek: ClaudeSupervisor["peek"];
-  kill: (jobId: string) => Promise<KillResult>;
-  cleanup: ClaudeSupervisor["cleanup"];
-}
+import type { SupervisorApi } from "./core/types.js";
 
 async function main(): Promise<void> {
   const global = extractGlobalFlags(process.argv.slice(2));
@@ -134,7 +119,7 @@ function extractGlobalFlags(args: string[]): { args: string[]; daemonUrl?: strin
   return { args: remaining, daemonUrl };
 }
 
-function createSupervisorFromEnv(daemonUrl: string | undefined): CliSupervisor {
+function createSupervisorFromEnv(daemonUrl: string | undefined): SupervisorApi {
   if (daemonUrl) {
     return new DaemonClient(daemonUrl);
   }
