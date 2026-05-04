@@ -54,11 +54,22 @@ describe("daemon RPC contract", () => {
     });
   });
 
-  it("returns a structured invalid_request error for missing jobId", async () => {
-    await expect(postRaw("/v1/jobs/status", "{}")).resolves.toMatchObject({
-      status: 400,
-      body: { error: { code: "invalid_request" } }
+  it("returns a structured not_found error for wrong HTTP method", async () => {
+    const response = await fetch(`${baseUrl}/v1/jobs/status`, { method: "GET" });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "not_found", message: expect.any(String) }
     });
+  });
+
+  it("returns a structured invalid_request error for missing jobId", async () => {
+    for (const pathname of ["/v1/jobs/status", "/v1/jobs/result", "/v1/jobs/wait", "/v1/jobs/kill"]) {
+      await expect(postRaw(pathname, "{}")).resolves.toMatchObject({
+        status: 400,
+        body: { error: { code: "invalid_request", message: "Missing required jobId" } }
+      });
+    }
   });
 
   it("returns a structured body_too_large error when JSON exceeds the configured limit", async () => {
