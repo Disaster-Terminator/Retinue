@@ -14,6 +14,20 @@ import type {
   WaitResult
 } from "../core/types.js";
 
+export class DaemonClientError extends Error {
+  readonly code?: string;
+  readonly status: number;
+  readonly path: string;
+
+  constructor(message: string, details: { code?: string; status: number; path: string }) {
+    super(message);
+    this.name = "DaemonClientError";
+    this.code = details.code;
+    this.status = details.status;
+    this.path = details.path;
+  }
+}
+
 export class DaemonClient implements SupervisorApi {
   private readonly baseUrl: string;
 
@@ -60,25 +74,39 @@ export class DaemonClient implements SupervisorApi {
       body: JSON.stringify(body)
     });
     const text = await response.text();
-    const parsed = text.trim() ? JSON.parse(text) : undefined;
+    const parsed = parseJson(text);
     if (!response.ok) {
-      const message = extractErrorMessage(parsed) ?? `Daemon request failed with HTTP ${response.status}`;
-      throw new Error(message);
+      const error = extractDaemonError(parsed);
+      const message = error?.message ?? `Daemon request failed with HTTP ${response.status}`;
+      throw new DaemonClientError(message, { code: error?.code, status: response.status, path });
     }
     return parsed as T;
   }
 }
 
-function extractErrorMessage(value: unknown): string | undefined {
+function parseJson(text: string): unknown {
+  if (!text.trim()) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+function extractDaemonError(value: unknown): { message: string; code?: string } | undefined {
   if (typeof value !== "object" || value === null || !("error" in value)) {
     return undefined;
   }
   const error = value.error;
   if (typeof error === "string") {
-    return error;
+    return { message: error };
   }
   if (typeof error === "object" && error !== null && "message" in error) {
-    return String(error.message);
+    const message = String(error.message);
+    const code = "code" in error && typeof error.code === "string" ? error.code : undefined;
+    return { message, code };
   }
   return undefined;
 }
