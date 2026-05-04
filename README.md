@@ -4,6 +4,7 @@ Local MCP and CLI supervisor for spawning Claude Code as managed background jobs
 
 See [Project Boundary and Long-Term Vision](docs/PROJECT_BOUNDARY.md) before changing the architecture. The current stdio MCP implementation is a hardening phase; the long-term lifecycle owner is a durable local daemon. See [Verification Notes](docs/VERIFICATION.md) for the current Windows, WSL, and real Claude Code baseline.
 See [Service Lifecycle](docs/SERVICE_LIFECYCLE.md) for the current manual daemon start, inspect, and stop workflow.
+See [Claude Code MCP Configuration](docs/CLAUDE_CODE_MCP.md) for direct mode, explicit daemon URL mode, and explicit daemon discovery mode examples.
 
 The repository targets a Codex-like lifecycle:
 
@@ -75,6 +76,7 @@ node dist/cli.js result <jobId>
 node dist/cli.js continue --cwd . --job-id <jobId> --prompt "Follow up"
 node dist/cli.js kill <jobId>
 node dist/cli.js cleanup --older-than-ms 86400000
+node dist/cli.js daemon-health --daemon-url http://127.0.0.1:27777
 ```
 
 For deterministic tests, override the Claude command:
@@ -162,12 +164,14 @@ The CLI delegates to a running daemon only when configured explicitly:
 ```bash
 SUPERVISOR_DAEMON_URL=http://127.0.0.1:27777 node dist/cli.js run --cwd . --prompt "Reply exactly: OK"
 node dist/cli.js --daemon-url http://127.0.0.1:27777 status <jobId>
+node dist/cli.js daemon-health --daemon-url http://127.0.0.1:27777
 ```
 
 The daemon also writes a discovery file at `<stateDir>/daemon.json` after it binds. CLI discovery is still explicit:
 
 ```bash
 node dist/cli.js --discover-daemon status <jobId>
+node dist/cli.js --discover-daemon daemon-health
 SUPERVISOR_DAEMON_DISCOVERY=1 node dist/cli.js status <jobId>
 ```
 
