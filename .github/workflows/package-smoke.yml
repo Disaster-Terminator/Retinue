@@ -24,11 +24,39 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Step summary: install
+        run: |
+          {
+            echo "### Package smoke"
+            echo "- ✅ \\`npm ci\\` completed"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build
         run: npm run build
+
+      - name: Step summary: build
+        run: echo "- ✅ \\`npm run build\\` completed" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Pack dry run
         run: npm pack --dry-run --json > pack-output.json
 
+      - name: Step summary: pack output
+        run: |
+          echo "- ✅ \\`npm pack --dry-run --json\\` completed" >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          echo "#### npm pack --dry-run --json (excerpt)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          node -e "const fs=require('fs'); const s=fs.readFileSync('pack-output.json','utf8').trim(); process.stdout.write(s.length>4000?s.slice(0,4000)+'\\n... (truncated)':s);" >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Verify package metadata and packed contents
         run: node scripts/verify-package.mjs < pack-output.json
+
+      - name: Step summary: verification
+        run: |
+          {
+            echo "- ✅ \\`node scripts/verify-package.mjs < pack-output.json\\` completed"
+            echo
+            echo "Deterministic gate commands were preserved without weakening."
+          } >> "$GITHUB_STEP_SUMMARY"

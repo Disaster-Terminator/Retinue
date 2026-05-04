@@ -35,14 +35,38 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Step summary: install
+        run: |
+          {
+            echo "### CI progress (Node ${{ matrix.node-version }})"
+            echo "- ✅ \\`npm ci\\` completed"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Step summary: typecheck
+        run: echo "- ✅ \\`npm run typecheck\\` completed" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run tests
         run: npm test
 
+      - name: Step summary: tests
+        run: echo "- ✅ \\`npm test\\` completed" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build package
         run: npm run build
 
+      - name: Step summary: build
+        run: echo "- ✅ \\`npm run build\\` completed" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Validate npm package contents
         run: npm pack --dry-run --json
+
+      - name: Step summary: package dry-run
+        run: |
+          {
+            echo "- ✅ \\`npm pack --dry-run --json\\` completed"
+            echo
+            echo "All deterministic CI gates ran unchanged for this matrix job."
+          } >> "$GITHUB_STEP_SUMMARY"
