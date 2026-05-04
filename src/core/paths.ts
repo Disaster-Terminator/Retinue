@@ -53,3 +53,7 @@ export function getJobPaths(stateDir: string, jobId: string): JobPaths {
     prompt: path.join(dir, "prompt.md")
   };
 }
+
+export function getDaemonDiscoveryPath(stateDir: string): string {
+  return path.join(stateDir, "daemon.json");
+}
