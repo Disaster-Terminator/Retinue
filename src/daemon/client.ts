@@ -68,11 +68,17 @@ export class DaemonClient implements SupervisorApi {
   }
 
   private async post<T>(path: string, body: unknown): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body)
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
+    } catch (error) {
+      const transport = classifyTransportError(error);
+      throw new DaemonClientError(transport.message, { code: transport.code, status: 0, path });
+    }
     const text = await response.text();
     const parsed = parseJson(text);
     if (!response.ok) {
@@ -82,6 +88,15 @@ export class DaemonClient implements SupervisorApi {
     }
     return parsed as T;
   }
+}
+
+function classifyTransportError(error: unknown): { message: string; code: string } {
+  const maybeError = error as { name?: unknown } | undefined;
+  const name = typeof maybeError?.name === "string" ? maybeError.name : "";
+  if (name === "AbortError" || name === "TimeoutError") {
+    return { message: "Daemon request timed out or was aborted", code: "transport_aborted" };
+  }
+  return { message: "Unable to reach daemon", code: "transport_unreachable" };
 }
 
 function parseJson(text: string): unknown {
