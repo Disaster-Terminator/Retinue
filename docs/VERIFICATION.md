@@ -52,6 +52,13 @@ Observed Windows fake dry-run result:
 - `probe:real:daemon` passed with fake Claude and returned `ok: true`.
 - `probe:real:mcp-daemon` passed with fake Claude and returned `ok: true`.
 
+Observed WSL/Linux result from a fresh clone:
+
+- `npm ci` passed.
+- `npm run typecheck` passed.
+- `npm test` passed with 14 test files and 50 tests.
+- `npm run build` passed.
+
 ## Service Lifecycle Design Baseline
 
 Date: 2026-05-04
