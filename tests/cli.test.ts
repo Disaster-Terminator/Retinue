@@ -126,6 +126,100 @@ describe("CLI", () => {
     expect(parsed.error.code).toBe("daemon_unreachable");
   });
 
+  it("returns structured non-JSON failure for daemon health", async () => {
+    server = http.createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.end("not json");
+    });
+    await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
+    const address = server.address() as AddressInfo;
+    const daemonUrl = `http://127.0.0.1:${address.port}`;
+    const env = cliEnv(tempDir);
+
+    const failing = await execFileAsync(
+      process.execPath,
+      [tsxCliPath, cliPath, "daemon-health", "--daemon-url", daemonUrl],
+      { env }
+    ).catch((error: { stdout: string; code: number }) => error);
+
+    const parsed = JSON.parse(failing.stdout);
+    expect(failing.code).toBe(1);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.source).toBe("explicit_url");
+    expect(parsed.error.code).toBe("daemon_invalid_json");
+    expect(parsed.error.details).toBe("not json");
+  });
+
+  it("returns structured malformed JSON failure for daemon health", async () => {
+    server = http.createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end('{"status":');
+    });
+    await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
+    const address = server.address() as AddressInfo;
+    const daemonUrl = `http://127.0.0.1:${address.port}`;
+    const env = cliEnv(tempDir);
+
+    const failing = await execFileAsync(
+      process.execPath,
+      [tsxCliPath, cliPath, "daemon-health", "--daemon-url", daemonUrl],
+      { env }
+    ).catch((error: { stdout: string; code: number }) => error);
+
+    const parsed = JSON.parse(failing.stdout);
+    expect(failing.code).toBe(1);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.source).toBe("explicit_url");
+    expect(parsed.error.code).toBe("daemon_invalid_json");
+    expect(parsed.error.details).toBe('{"status":');
+  });
+
+  it("returns structured HTTP error failure for daemon health", async () => {
+    server = http.createServer((_request, response) => {
+      response.writeHead(500, { "content-type": "application/json" });
+      response.end('{"status":"down","reason":"boom"}');
+    });
+    await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
+    const address = server.address() as AddressInfo;
+    const daemonUrl = `http://127.0.0.1:${address.port}`;
+    const env = cliEnv(tempDir);
+
+    const failing = await execFileAsync(
+      process.execPath,
+      [tsxCliPath, cliPath, "daemon-health", "--daemon-url", daemonUrl],
+      { env }
+    ).catch((error: { stdout: string; code: number }) => error);
+
+    const parsed = JSON.parse(failing.stdout);
+    expect(failing.code).toBe(1);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.source).toBe("explicit_url");
+    expect(parsed.error.code).toBe("daemon_http_error");
+    expect(parsed.error.status).toBe(500);
+    expect(parsed.error.details).toEqual({ status: "down", reason: "boom" });
+  });
+
+  it("returns structured discovery unreachable failure for daemon health", async () => {
+    await writeDaemonDiscovery(tempDir, {
+      url: "http://127.0.0.1:1",
+      pid: process.pid,
+      startedAt: "2026-05-04T00:00:00.000Z",
+      version: "0.1.0"
+    });
+    const env = cliEnv(tempDir);
+
+    const failing = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "--discover-daemon", "daemon-health"], { env }).catch(
+      (error: { stdout: string; code: number }) => error
+    );
+
+    const parsed = JSON.parse(failing.stdout);
+    expect(failing.code).toBe(1);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.source).toBe("discovery");
+    expect(parsed.daemonUrl).toBe("http://127.0.0.1:1");
+    expect(parsed.error.code).toBe("daemon_unreachable");
+  });
+
   it("discovers a daemon only when explicitly requested", async () => {
     const daemonUrl = await startDaemon();
     await writeDaemonDiscovery(tempDir, {
