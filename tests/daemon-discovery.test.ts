@@ -35,6 +35,46 @@ describe("daemon discovery", () => {
     });
   });
 
+
+
+  it("rejects discovery metadata with missing or empty url", async () => {
+    await fs.writeFile(
+      getDaemonDiscoveryPath(tempDir),
+      JSON.stringify({ pid: process.pid, startedAt: "2026-05-04T00:00:00.000Z", version: "0.1.0" })
+    );
+    await expect(readDaemonDiscovery(tempDir)).rejects.toThrow(/url/i);
+
+    await writeDaemonDiscovery(tempDir, {
+      url: "",
+      pid: process.pid,
+      startedAt: "2026-05-04T00:00:00.000Z",
+      version: "0.1.0"
+    });
+    await expect(readDaemonDiscovery(tempDir)).rejects.toThrow(/url/i);
+  });
+
+  it("rejects discovery metadata with invalid url syntax", async () => {
+    await writeDaemonDiscovery(tempDir, {
+      url: "http://[::1",
+      pid: process.pid,
+      startedAt: "2026-05-04T00:00:00.000Z",
+      version: "0.1.0"
+    });
+
+    await expect(readDaemonDiscovery(tempDir)).rejects.toThrow(/url/i);
+  });
+
+  it("rejects discovery metadata with unsupported url protocol", async () => {
+    await writeDaemonDiscovery(tempDir, {
+      url: "file:///tmp/supervisor.sock",
+      pid: process.pid,
+      startedAt: "2026-05-04T00:00:00.000Z",
+      version: "0.1.0"
+    });
+
+    await expect(readDaemonDiscovery(tempDir)).rejects.toThrow(/url/i);
+  });
+
   it("rejects discovery metadata with invalid startedAt", async () => {
     await writeDaemonDiscovery(tempDir, {
       url: "http://127.0.0.1:27777",
