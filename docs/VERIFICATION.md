@@ -40,6 +40,19 @@ npm test
 npm run build
 ```
 
+Observed Windows result:
+
+- `npm run typecheck` passed.
+- `npm test` passed with 11 test files and 31 tests.
+- `npm run build` passed.
+
+Observed WSL/Linux result from a fresh clone:
+
+- `npm ci` passed.
+- `npm run typecheck` passed.
+- `npm test` passed with 11 test files and 31 tests.
+- `npm run build` passed.
+
 ## Daemon Baseline
 
 Date: 2026-05-04
