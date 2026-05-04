@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
+import { fileURLToPath } from "node:url";
 import { createDaemonServer } from "./daemon/server.js";
+import { writeDaemonDiscovery } from "./daemon/discovery.js";
 import { ClaudeSupervisor } from "./core/supervisor.js";
 
 async function main(): Promise<void> {
@@ -11,11 +13,54 @@ async function main(): Promise<void> {
     throw new Error(`Invalid --port: ${String(flags.port ?? process.env.SUPERVISOR_DAEMON_PORT)}`);
   }
 
-  const server = createDaemonServer(createSupervisorFromEnv());
+  const supervisor = createSupervisorFromEnv();
+  const server = createDaemonServer(supervisor);
   await new Promise<void>((resolve) => server.listen(port, host, resolve));
   const address = server.address();
   const actualPort = typeof address === "object" && address ? address.port : port;
-  process.stdout.write(`${JSON.stringify({ status: "listening", host, port: actualPort })}\n`);
+  const startedAt = new Date().toISOString();
+  const ready = buildDaemonReadyPayload({
+    host,
+    port: actualPort,
+    pid: process.pid,
+    startedAt,
+    version: "0.1.0"
+  });
+  await writeDaemonDiscovery(supervisor.getStateDir(), {
+    url: ready.url,
+    pid: ready.pid,
+    startedAt: ready.startedAt,
+    version: ready.version
+  });
+  process.stdout.write(`${JSON.stringify(ready)}\n`);
+}
+
+export interface DaemonReadyPayload {
+  status: "listening";
+  host: string;
+  port: number;
+  url: string;
+  pid: number;
+  startedAt: string;
+  version: string;
+}
+
+export function buildDaemonReadyPayload(options: {
+  host: string;
+  port: number;
+  pid: number;
+  startedAt: string;
+  version: string;
+}): DaemonReadyPayload {
+  return {
+    status: "listening",
+    host: options.host,
+    port: options.port,
+    url: `http://${options.host}:${options.port}`,
+    pid: options.pid,
+    startedAt: options.startedAt,
+    version: options.version
+  };
 }
 
 function createSupervisorFromEnv(): ClaudeSupervisor {
@@ -61,7 +106,9 @@ function parseOptionalNumber(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((error) => {
+    process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
+    process.exitCode = 1;
+  });
+}
