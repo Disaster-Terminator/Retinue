@@ -1,17 +1,28 @@
 #!/usr/bin/env node
 
 import { ClaudeSupervisor } from "./core/supervisor.js";
+import { DaemonClient } from "./daemon/client.js";
+import type {
+  JobResult,
+  JobStatusResult,
+  KillResult,
+} from "./core/types.js";
+
+interface CliSupervisor {
+  run: ClaudeSupervisor["run"];
+  status: (jobId: string) => Promise<JobStatusResult>;
+  wait: ClaudeSupervisor["wait"];
+  result: (jobId: string) => Promise<JobResult>;
+  continueJob: ClaudeSupervisor["continueJob"];
+  peek: ClaudeSupervisor["peek"];
+  kill: (jobId: string) => Promise<KillResult>;
+  cleanup: ClaudeSupervisor["cleanup"];
+}
 
 async function main(): Promise<void> {
-  const [command, ...args] = process.argv.slice(2);
-  const supervisor = new ClaudeSupervisor({
-    stateDir: process.env.SUPERVISOR_STATE_DIR,
-    claudeCommand: process.env.SUPERVISOR_CLAUDE_COMMAND,
-    claudePrefixArgs: parsePrefixArgs(process.env.SUPERVISOR_CLAUDE_PREFIX_ARGS),
-    env: process.env,
-    defaultRuntimeTimeoutMs: parseOptionalNumber(process.env.SUPERVISOR_DEFAULT_RUNTIME_TIMEOUT_MS),
-    maxConcurrentJobs: parseOptionalNumber(process.env.SUPERVISOR_MAX_CONCURRENT_JOBS)
-  });
+  const global = extractGlobalFlags(process.argv.slice(2));
+  const [command, ...args] = global.args;
+  const supervisor = createSupervisorFromEnv(global.daemonUrl);
 
   switch (command) {
     case "run": {
@@ -105,6 +116,37 @@ function parseFlags(args: string[]): Record<string, string | undefined> {
     index += 1;
   }
   return flags;
+}
+
+function extractGlobalFlags(args: string[]): { args: string[]; daemonUrl?: string } {
+  const remaining: string[] = [];
+  let daemonUrl = process.env.SUPERVISOR_DAEMON_URL;
+
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === "--daemon-url") {
+      daemonUrl = args[index + 1];
+      index += 1;
+      continue;
+    }
+    remaining.push(args[index]);
+  }
+
+  return { args: remaining, daemonUrl };
+}
+
+function createSupervisorFromEnv(daemonUrl: string | undefined): CliSupervisor {
+  if (daemonUrl) {
+    return new DaemonClient(daemonUrl);
+  }
+
+  return new ClaudeSupervisor({
+    stateDir: process.env.SUPERVISOR_STATE_DIR,
+    claudeCommand: process.env.SUPERVISOR_CLAUDE_COMMAND,
+    claudePrefixArgs: parsePrefixArgs(process.env.SUPERVISOR_CLAUDE_PREFIX_ARGS),
+    env: process.env,
+    defaultRuntimeTimeoutMs: parseOptionalNumber(process.env.SUPERVISOR_DEFAULT_RUNTIME_TIMEOUT_MS),
+    maxConcurrentJobs: parseOptionalNumber(process.env.SUPERVISOR_MAX_CONCURRENT_JOBS)
+  });
 }
 
 function parsePrefixArgs(value: string | undefined): string[] {
