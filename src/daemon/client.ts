@@ -14,6 +14,20 @@ import type {
   WaitResult
 } from "../core/types.js";
 
+export class DaemonClientError extends Error {
+  readonly code?: string;
+  readonly status: number;
+  readonly path: string;
+
+  constructor(message: string, options: { code?: string; status: number; path: string }) {
+    super(message);
+    this.name = "DaemonClientError";
+    this.code = options.code;
+    this.status = options.status;
+    this.path = options.path;
+  }
+}
+
 export class DaemonClient implements SupervisorApi {
   private readonly baseUrl: string;
 
@@ -60,25 +74,48 @@ export class DaemonClient implements SupervisorApi {
       body: JSON.stringify(body)
     });
     const text = await response.text();
-    const parsed = text.trim() ? JSON.parse(text) : undefined;
+    const parsed = parseJson(text);
     if (!response.ok) {
-      const message = extractErrorMessage(parsed) ?? `Daemon request failed with HTTP ${response.status}`;
-      throw new Error(message);
+      const extracted = extractDaemonError(parsed);
+      const message = extracted.message ?? `Daemon request failed with HTTP ${response.status}`;
+      throw new DaemonClientError(message, {
+        code: extracted.code,
+        status: response.status,
+        path
+      });
     }
     return parsed as T;
   }
 }
 
-function extractErrorMessage(value: unknown): string | undefined {
-  if (typeof value !== "object" || value === null || !("error" in value)) {
+function parseJson(text: string): unknown {
+  const trimmed = text.trim();
+  if (!trimmed) {
     return undefined;
   }
-  const error = value.error;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return undefined;
+  }
+}
+
+function extractDaemonError(value: unknown): { message?: string; code?: string } {
+  if (typeof value !== "object" || value === null || !("error" in value)) {
+    return {};
+  }
+
+  const error = (value as { error: unknown }).error;
   if (typeof error === "string") {
-    return error;
+    return { message: error };
   }
-  if (typeof error === "object" && error !== null && "message" in error) {
-    return String(error.message);
+
+  if (typeof error !== "object" || error === null) {
+    return {};
   }
-  return undefined;
+
+  const structured = error as { message?: unknown; code?: unknown };
+  const message = "message" in structured ? String(structured.message) : undefined;
+  const code = typeof structured.code === "string" ? structured.code : undefined;
+  return { message, code };
 }
