@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { DaemonClient } from "./daemon/client.js";
 import { ClaudeSupervisor } from "./core/supervisor.js";
 import type { SupervisorApi } from "./core/types.js";
 
@@ -18,7 +19,7 @@ export const CLAUDE_TOOL_NAMES = [
   "claude_cleanup"
 ] as const;
 
-export function createMcpServer(supervisor: SupervisorApi = createSupervisorFromEnv()): McpServer {
+export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorFromEnv()): McpServer {
   const server = new McpServer({
     name: "supervisor",
     version: "0.1.0"
@@ -132,14 +133,20 @@ export function createMcpServer(supervisor: SupervisorApi = createSupervisorFrom
   return server;
 }
 
-function createSupervisorFromEnv(): SupervisorApi {
+export function createMcpSupervisorFromEnv(
+  env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env
+): SupervisorApi {
+  if (env.SUPERVISOR_DAEMON_URL) {
+    return new DaemonClient(env.SUPERVISOR_DAEMON_URL);
+  }
+
   return new ClaudeSupervisor({
-    stateDir: process.env.SUPERVISOR_STATE_DIR,
-    claudeCommand: process.env.SUPERVISOR_CLAUDE_COMMAND,
-    claudePrefixArgs: parsePrefixArgs(process.env.SUPERVISOR_CLAUDE_PREFIX_ARGS),
-    env: process.env,
-    defaultRuntimeTimeoutMs: parseOptionalNumber(process.env.SUPERVISOR_DEFAULT_RUNTIME_TIMEOUT_MS),
-    maxConcurrentJobs: parseOptionalNumber(process.env.SUPERVISOR_MAX_CONCURRENT_JOBS)
+    stateDir: env.SUPERVISOR_STATE_DIR,
+    claudeCommand: env.SUPERVISOR_CLAUDE_COMMAND,
+    claudePrefixArgs: parsePrefixArgs(env.SUPERVISOR_CLAUDE_PREFIX_ARGS),
+    env,
+    defaultRuntimeTimeoutMs: parseOptionalNumber(env.SUPERVISOR_DEFAULT_RUNTIME_TIMEOUT_MS),
+    maxConcurrentJobs: parseOptionalNumber(env.SUPERVISOR_MAX_CONCURRENT_JOBS)
   });
 }
 
