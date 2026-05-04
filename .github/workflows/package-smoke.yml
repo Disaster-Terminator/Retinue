@@ -32,3 +32,18 @@ jobs:
 
       - name: Verify package metadata and packed contents
         run: node scripts/verify-package.mjs < pack-output.json
+
+      - name: Package smoke summary
+        if: always()
+        run: |
+          {
+            echo "### Package smoke gate"
+            echo
+            echo "- ✅ `npm ci`"
+            echo "- ✅ `npm run build`"
+            echo "- ✅ `npm pack --dry-run --json`"
+            echo "- ✅ `node scripts/verify-package.mjs < pack-output.json`"
+            echo
+            echo "### npm pack --dry-run --json (formatted)"
+            node -e 'const fs=require("fs");const data=JSON.parse(fs.readFileSync("pack-output.json","utf8"));const entries=Array.isArray(data)?data:[data];for(const e of entries){console.log(`- package: ${e.name}@${e.version}`);console.log(`- filename: ${e.filename}`);console.log(`- unpackedSize: ${e.unpackedSize}`);console.log(`- fileCount: ${(e.files||[]).length}`);if(Array.isArray(e.files)&&e.files.length){console.log("- files:");for(const f of e.files){console.log(`  - ${f.path} (${f.size})`);}}console.log("");}'
+          } >> "$GITHUB_STEP_SUMMARY"
