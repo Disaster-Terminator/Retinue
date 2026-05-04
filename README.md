@@ -15,6 +15,27 @@ The repository targets a Codex-like lifecycle:
 - `claude_kill`: kill the process tree
 - `claude_cleanup`: remove terminal job directories while preserving running jobs
 
+## Quickstart
+
+Install, build, and run the deterministic gate:
+
+```bash
+npm install
+npm run build
+npm run typecheck
+npm test
+```
+
+Run a fake-Claude CLI job before spending real Claude Code quota:
+
+```bash
+SUPERVISOR_CLAUDE_COMMAND=node SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs node dist/cli.js run --cwd . --prompt "hello"
+node dist/cli.js wait <jobId> --timeout-ms 30000
+node dist/cli.js result <jobId>
+```
+
+PowerShell users can set the same overrides with `$env:SUPERVISOR_CLAUDE_COMMAND = "node"` and `$env:SUPERVISOR_CLAUDE_PREFIX_ARGS = "tests/fixtures/fake-claude.mjs"`.
+
 ## Safety Defaults
 
 The supervisor calls the system `claude` command by default and does not add permission-bypass flags. It intentionally does not expose Claude Code `bypassPermissions` / `--dangerously-skip-permissions`. If local `claude` is managed by cc-switch, routing and quota remain controlled by that existing Claude Code setup.
@@ -64,6 +85,28 @@ SUPERVISOR_CLAUDE_PREFIX_ARGS=/path/to/fake-claude.mjs
 ```
 
 `SUPERVISOR_CLAUDE_PREFIX_ARGS` can also be a JSON string array.
+
+## Entrypoints
+
+After `npm run build`, package bins point at:
+
+| Bin | Built file | Purpose |
+| --- | --- | --- |
+| `supervisor` | `dist/cli.js` | Local CLI for run/status/wait/result/continue/peek/kill/cleanup |
+| `supervisor-mcp` | `dist/mcp.js` | Stdio MCP server exposing Claude lifecycle tools |
+| `supervisor-daemon` | `dist/daemon.js` | Manual loopback daemon for durable lifecycle ownership |
+
+## Environment Variables
+
+| Variable | Used by | Purpose |
+| --- | --- | --- |
+| `SUPERVISOR_STATE_DIR` | CLI, MCP, daemon | Override the state directory for job metadata and artifacts |
+| `SUPERVISOR_CLAUDE_COMMAND` | CLI, MCP, daemon | Override the executable, usually for fake-Claude tests |
+| `SUPERVISOR_CLAUDE_PREFIX_ARGS` | CLI, MCP, daemon | Add fixed arguments before supervisor's Claude Code arguments |
+| `SUPERVISOR_DAEMON_URL` | CLI, MCP | Explicit daemon URL for adapter mode |
+| `SUPERVISOR_DAEMON_DISCOVERY` | CLI, MCP | Set to `1` to read `<stateDir>/daemon.json` explicitly |
+| `SUPERVISOR_DEFAULT_RUNTIME_TIMEOUT_MS` | CLI, MCP, daemon | Default runtime timeout for jobs that do not pass `timeoutMs` |
+| `SUPERVISOR_MAX_CONCURRENT_JOBS` | CLI, MCP, daemon | Limit concurrent running jobs for that supervisor process |
 
 ## Daemon
 
@@ -150,7 +193,37 @@ SUPERVISOR_CLAUDE_PREFIX_ARGS
 
 When `SUPERVISOR_DAEMON_URL` is set, MCP tools delegate to the running daemon. When `SUPERVISOR_DAEMON_DISCOVERY=1` is set, MCP reads `<stateDir>/daemon.json` and rejects stale daemon metadata. Without either setting, MCP keeps the direct in-process supervisor path for fallback and debugging.
 
+Example MCP configuration using explicit daemon discovery:
+
+```json
+{
+  "mcpServers": {
+    "supervisor": {
+      "command": "node",
+      "args": ["G:/repository/supervisor/dist/mcp.js"],
+      "env": {
+        "SUPERVISOR_DAEMON_DISCOVERY": "1"
+      }
+    }
+  }
+}
+```
+
+Use `SUPERVISOR_DAEMON_URL` instead of discovery when the daemon URL is fixed and known.
+
 `claude_result` returns bounded stdout/stderr by default, plus `stdoutPath`, `stderrPath`, byte counts, and truncation flags. Read the files directly only when a full local artifact is needed.
+
+## Result Artifacts And Cleanup
+
+`claude_result` and `claude_peek` return bounded stdout/stderr text for client safety. Full local artifacts remain available at `stdoutPath` and `stderrPath`.
+
+Clean terminal jobs with:
+
+```bash
+node dist/cli.js cleanup --older-than-ms 86400000
+```
+
+Cleanup removes terminal job directories and reports removed temp files. It preserves `running` and `abandoned` jobs.
 
 ## Reliability Notes
 
@@ -162,6 +235,14 @@ When `SUPERVISOR_DAEMON_URL` is set, MCP tools delegate to the running daemon. W
 - If stale `running` metadata points at a live PID that the current supervisor instance does not own, status reconciliation marks it as `abandoned` rather than reporting normal `running`.
 - Cleanup removes terminal job directories and reports temp JSON files removed with those directories; it preserves `running` and `abandoned` job directories.
 - Windows and WSL should not share one `node_modules` directory. Run `npm ci` separately inside WSL before Linux-side tests because packages such as Rollup install OS-specific optional dependencies.
+
+## Troubleshooting
+
+- `Unknown command: ...`: run `node dist/cli.js <command>` after `npm run build`; package bins also require built `dist/` files.
+- `Stale daemon discovery`: stop the old PID if it is still running, or start a new daemon so `<stateDir>/daemon.json` is refreshed.
+- `Cannot find module` after moving between Windows and WSL: run `npm ci` separately in that environment.
+- `claude` is missing or routes unexpectedly: check `where.exe claude` on Windows or `which claude` on WSL/Linux. Supervisor does not route providers itself.
+- Job output looks truncated: use `stdoutPath` and `stderrPath` from `claude_result` for full artifacts.
 
 ## Verify
 

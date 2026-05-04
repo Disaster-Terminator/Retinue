@@ -9,6 +9,17 @@
     "supervisor-mcp": "./dist/mcp.js",
     "supervisor-daemon": "./dist/daemon.js"
   },
+  "files": [
+    "README.md",
+    "dist/cli.*",
+    "dist/core/**",
+    "dist/daemon.*",
+    "dist/daemon/**",
+    "dist/mcp.*",
+    "docs/**",
+    "scripts/**",
+    "tests/fixtures/**"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev:mcp": "tsx src/mcp.ts",

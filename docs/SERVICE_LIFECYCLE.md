@@ -17,6 +17,8 @@ Start the daemon in the foreground:
 node dist/daemon.js --host 127.0.0.1 --port 27777
 ```
 
+The bind address and port are explicit. Use `--host 127.0.0.1` for loopback-only local use and choose a different `--port` if `27777` is already occupied.
+
 The daemon writes discovery metadata to:
 
 ```text
@@ -29,6 +31,20 @@ Health:
 
 ```bash
 curl http://127.0.0.1:27777/health
+```
+
+PowerShell:
+
+```powershell
+curl.exe http://127.0.0.1:27777/health
+Get-Content <stateDir>\daemon.json
+```
+
+Bash:
+
+```bash
+curl http://127.0.0.1:27777/health
+cat <stateDir>/daemon.json
 ```
 
 Discovery metadata contains:
@@ -62,6 +78,8 @@ Direct URL mode:
 SUPERVISOR_DAEMON_URL=http://127.0.0.1:27777
 ```
 
+Discovery remains opt-in for clients. Without `SUPERVISOR_DAEMON_URL`, `--daemon-url`, `SUPERVISOR_DAEMON_DISCOVERY=1`, or `--discover-daemon`, CLI and MCP use direct local mode.
+
 ## Stop
 
 Stop the daemon by terminating the PID in `daemon.json`.
@@ -77,6 +95,8 @@ On WSL/Linux:
 ```bash
 kill <pid>
 ```
+
+No command in this project installs a Windows service, scheduled task, systemd unit, or shell startup hook.
 
 ## Windows And WSL Notes
 

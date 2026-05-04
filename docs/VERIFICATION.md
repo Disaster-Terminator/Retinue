@@ -20,6 +20,35 @@ Current baseline:
 - Daemon suite covers `GET /health`, HTTP `run` -> `wait` -> `result`, structured route errors, package `supervisor-daemon` bin exposure, and CLI delegation through `SUPERVISOR_DAEMON_URL`.
 - MCP suite covers stable Claude tool names, direct server construction, explicit daemon-backed supervisor construction, and MCP client tool calls through daemon RPC.
 
+## User-Facing Polish Baseline
+
+Date: 2026-05-04
+
+Milestone:
+
+- README includes quickstart, package entrypoints, environment variables, MCP configuration, bounded output, cleanup, and troubleshooting guidance.
+- `docs/SERVICE_LIFECYCLE.md` includes PowerShell and Bash daemon inspect/stop commands.
+- `package.json` uses a `files` whitelist for runtime entrypoints, docs, probe scripts, and the fake-Claude fixture.
+- No service auto-start, provider routing, or permission bypass was added.
+
+Verified commands:
+
+```bash
+npm run typecheck
+npm test
+npm run build
+npm pack --dry-run --json
+```
+
+Observed Windows result:
+
+- `npm run typecheck` passed.
+- `npm test` passed with 14 test files and 50 tests.
+- `npm run build` passed.
+- `npm pack --dry-run --json` passed with 52 package entries.
+- The package includes `dist/cli.js`, `dist/mcp.js`, `dist/daemon.js`, runtime `dist/core/**`, runtime `dist/daemon/**`, docs, `scripts/probe-real-claude.mjs`, and `tests/fixtures/fake-claude.mjs`.
+- The package excludes stale `dist/src/**` and `dist/tests/**` build outputs.
+
 ## Real Probe Runner Baseline
 
 Date: 2026-05-04
