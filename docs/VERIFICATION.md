@@ -42,6 +42,19 @@ npm test
 npm run build
 ```
 
+Observed Windows result:
+
+- `npm run typecheck` passed.
+- `npm test` passed with 13 test files and 42 tests.
+- `npm run build` passed.
+
+Observed WSL/Linux result from a fresh clone:
+
+- `npm ci` passed.
+- `npm run typecheck` passed.
+- `npm test` passed with 13 test files and 42 tests.
+- `npm run build` passed.
+
 ## Daemon RPC Contract Baseline
 
 Date: 2026-05-04
