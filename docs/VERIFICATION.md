@@ -46,6 +46,13 @@ Observed Windows result:
 - `npm run build` passed.
 - `npm pack --dry-run --json` passed with 52 package entries.
 
+Observed WSL/Linux result from a fresh clone:
+
+- `npm ci` passed.
+- `npm run typecheck` passed.
+- `npm test` passed with 14 test files and 51 tests.
+- `npm run build` passed.
+
 ## User-Facing Polish Baseline
 
 Date: 2026-05-04
