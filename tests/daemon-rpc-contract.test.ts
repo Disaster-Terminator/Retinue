@@ -35,6 +35,18 @@ describe("daemon RPC contract", () => {
     });
   });
 
+  it("returns daemon health metadata", async () => {
+    const response = await fetch(`${baseUrl}/health`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "ok",
+      version: "0.1.0",
+      pid: process.pid,
+      stateDir: tempDir
+    });
+  });
+
   it("returns a structured bad_json error for malformed JSON", async () => {
     await expect(postRaw("/v1/jobs/status", "{")).resolves.toMatchObject({
       status: 400,

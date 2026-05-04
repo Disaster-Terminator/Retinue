@@ -54,7 +54,12 @@ export function createDaemonServer(supervisor: ClaudeSupervisor, options: Daemon
   return http.createServer(async (request, response) => {
     try {
       if (request.method === "GET" && request.url === "/health") {
-        writeJson(response, 200, { status: "ok", version });
+        writeJson(response, 200, {
+          status: "ok",
+          version,
+          pid: process.pid,
+          stateDir: supervisor.getStateDir()
+        });
         return;
       }
 

@@ -51,6 +51,10 @@ export class ClaudeSupervisor implements SupervisorApi {
     this.maxConcurrentJobs = options.maxConcurrentJobs ?? Number.POSITIVE_INFINITY;
   }
 
+  getStateDir(): string {
+    return this.stateDir;
+  }
+
   async run(options: RunOptions): Promise<JobMeta> {
     if ((await this.countActiveJobs()) >= this.maxConcurrentJobs) {
       throw new Error(`Claude job concurrency limit reached: ${this.maxConcurrentJobs}`);
