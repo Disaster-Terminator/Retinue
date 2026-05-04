@@ -31,6 +31,18 @@ describe("daemon discovery", () => {
     });
   });
 
+
+  it("rejects daemon discovery metadata with an invalid startedAt timestamp", async () => {
+    await writeDaemonDiscovery(tempDir, {
+      url: "http://127.0.0.1:27777",
+      pid: process.pid,
+      startedAt: "not-a-date",
+      version: "0.1.0"
+    });
+
+    await expect(readDaemonDiscovery(tempDir)).rejects.toThrow(/startedAt/i);
+  });
+
   it("rejects stale daemon discovery metadata", async () => {
     await writeDaemonDiscovery(tempDir, {
       url: "http://127.0.0.1:27777",
