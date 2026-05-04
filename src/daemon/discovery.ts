@@ -40,9 +40,7 @@ function normalizeDiscovery(parsed: Partial<DaemonDiscovery>): DaemonDiscovery {
 }
 
 function validateDiscovery(value: Partial<DaemonDiscovery>): DaemonDiscovery {
-  if (typeof value.url !== "string" || !value.url) {
-    throw new Error("Invalid daemon discovery: missing url");
-  }
+  const url = validateDiscoveryUrl(value.url);
   if (typeof value.pid !== "number" || !Number.isInteger(value.pid)) {
     throw new Error("Invalid daemon discovery: missing pid");
   }
@@ -54,13 +52,36 @@ function validateDiscovery(value: Partial<DaemonDiscovery>): DaemonDiscovery {
     throw new Error("Invalid daemon discovery: missing version");
   }
   return {
-    url: value.url,
+    url,
     pid: value.pid,
     startedAt: value.startedAt,
     version: value.version
   };
 }
 
+
+
+function validateDiscoveryUrl(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new Error("Invalid daemon discovery: missing url");
+  }
+  if (!value.trim()) {
+    throw new Error("Invalid daemon discovery: missing url");
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("Invalid daemon discovery: invalid url");
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Invalid daemon discovery: unsupported url protocol");
+  }
+
+  return value;
+}
 function validateCanonicalStartedAt(value: string): void {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) {
     throw new Error("Invalid daemon discovery: invalid startedAt");
