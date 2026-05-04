@@ -169,6 +169,59 @@ describe("MCP tools", () => {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("returns structured MCP errors for missing required fields", async () => {
+    const connection = await connectMcpClientForValidation();
+    try {
+      const error = await callToolError(connection.client, "claude_status", {});
+      expect(error.error.code).toBe("invalid_arguments");
+      expect(error.error.message).toBe("Invalid tool arguments");
+      expect(error.error.issues[0].path).toEqual(["jobId"]);
+    } finally {
+      await closeMcpClient(connection);
+    }
+  });
+
+  it("returns structured MCP errors for wrong field types", async () => {
+    const connection = await connectMcpClientForValidation();
+    try {
+      const error = await callToolError(connection.client, "claude_run", { cwd: 123, prompt: true });
+      expect(error.error.code).toBe("invalid_arguments");
+      expect(error.error.issues).toHaveLength(2);
+    } finally {
+      await closeMcpClient(connection);
+    }
+  });
+
+  it("returns structured MCP errors for unsupported mode values", async () => {
+    const connection = await connectMcpClientForValidation();
+    try {
+      const error = await callToolError(connection.client, "claude_run", {
+        cwd: process.cwd(),
+        prompt: "bad mode",
+        permissionMode: "unsupported"
+      });
+      expect(error.error.code).toBe("invalid_arguments");
+      expect(error.error.issues.some((issue: { path: string[] }) => issue.path.includes("permissionMode"))).toBe(true);
+    } finally {
+      await closeMcpClient(connection);
+    }
+  });
+
+  it("throws when daemon discovery metadata is invalid", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-discovery-invalid-test-"));
+    try {
+      await fs.writeFile(path.join(tempDir, "daemon.json"), "not-json", "utf8");
+      expect(() =>
+        createMcpSupervisorFromEnv({
+          SUPERVISOR_STATE_DIR: tempDir,
+          SUPERVISOR_DAEMON_DISCOVERY: "1"
+        })
+      ).toThrow();
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
 });
 
 function parseToolJson(result: unknown): any {
@@ -206,4 +259,18 @@ async function connectMcpClient(daemonUrl: string) {
 
 async function closeMcpClient(connection: Awaited<ReturnType<typeof connectMcpClient>>): Promise<void> {
   await Promise.allSettled([connection.client.close(), connection.clientTransport.close(), connection.serverTransport.close()]);
+}
+
+async function connectMcpClientForValidation() {
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "supervisor-test-client", version: "0.1.0" });
+  const mcpServer = createMcpServer(new ClaudeSupervisor({ stateDir: "unused" }));
+  await Promise.all([mcpServer.connect(serverTransport), client.connect(clientTransport)]);
+  return { client, clientTransport, serverTransport };
+}
+
+async function callToolError(client: Client, name: string, args: Record<string, unknown>) {
+  const response = await client.callTool({ name, arguments: args });
+  expect(response.isError).toBe(true);
+  return parseToolJson(response) as { error: { code: string; message: string; issues: Array<{ path: string[] }> } };
 }

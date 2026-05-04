@@ -21,6 +21,37 @@ export const CLAUDE_TOOL_NAMES = [
   "claude_cleanup"
 ] as const;
 
+const runInputSchema = z.object({
+  cwd: z.string(),
+  prompt: z.string(),
+  name: z.string().optional(),
+  resume: z.string().optional(),
+  maxTurns: z.number().int().positive().optional(),
+  permissionMode: z.enum(["default", "acceptEdits", "plan", "auto", "dontAsk"]).optional(),
+  timeoutMs: z.number().int().positive().optional()
+});
+
+const statusInputSchema = z.object({ jobId: z.string() });
+const waitInputSchema = z.object({ jobId: z.string(), timeoutMs: z.number().int().positive().optional() });
+const resultInputSchema = z.object({ jobId: z.string() });
+const continueInputSchema = z.object({
+  cwd: z.string(),
+  prompt: z.string(),
+  jobId: z.string().optional(),
+  sessionId: z.string().optional(),
+  name: z.string().optional(),
+  maxTurns: z.number().int().positive().optional(),
+  permissionMode: z.enum(["default", "acceptEdits", "plan", "auto", "dontAsk"]).optional(),
+  timeoutMs: z.number().int().positive().optional()
+});
+const peekInputSchema = z.object({
+  jobId: z.string(),
+  stdoutTailBytes: z.number().int().positive().optional(),
+  stderrTailBytes: z.number().int().positive().optional()
+});
+const killInputSchema = z.object({ jobId: z.string() });
+const cleanupInputSchema = z.object({ olderThanMs: z.number().int().nonnegative().optional() });
+
 export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorFromEnv()): McpServer {
   const server = new McpServer({
     name: "supervisor",
@@ -32,17 +63,9 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
     {
       title: "Run Claude Code Job",
       description: "Start a Claude Code background job and return a job handle.",
-      inputSchema: {
-        cwd: z.string(),
-        prompt: z.string(),
-        name: z.string().optional(),
-        resume: z.string().optional(),
-        maxTurns: z.number().int().positive().optional(),
-        permissionMode: z.enum(["default", "acceptEdits", "plan", "auto", "dontAsk"]).optional(),
-        timeoutMs: z.number().int().positive().optional()
-      }
+      inputSchema: z.object({}).passthrough()
     },
-    async (args) => jsonToolResult(await supervisor.run(args))
+    withValidatedArgs(runInputSchema, async (args) => jsonToolResult(await supervisor.run(args)))
   );
 
   server.registerTool(
@@ -50,9 +73,9 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
     {
       title: "Get Claude Code Job Status",
       description: "Read current status metadata for a Claude Code job.",
-      inputSchema: { jobId: z.string() }
+      inputSchema: z.object({}).passthrough()
     },
-    async ({ jobId }) => jsonToolResult(await supervisor.status(jobId))
+    withValidatedArgs(statusInputSchema, async ({ jobId }) => jsonToolResult(await supervisor.status(jobId)))
   );
 
   server.registerTool(
@@ -60,12 +83,9 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
     {
       title: "Wait For Claude Code Job",
       description: "Wait briefly for a Claude Code job to reach a terminal state.",
-      inputSchema: {
-        jobId: z.string(),
-        timeoutMs: z.number().int().positive().optional()
-      }
+      inputSchema: z.object({}).passthrough()
     },
-    async ({ jobId, timeoutMs }) => jsonToolResult(await supervisor.wait(jobId, { timeoutMs }))
+    withValidatedArgs(waitInputSchema, async ({ jobId, timeoutMs }) => jsonToolResult(await supervisor.wait(jobId, { timeoutMs })))
   );
 
   server.registerTool(
@@ -73,9 +93,9 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
     {
       title: "Read Claude Code Job Result",
       description: "Read stdout, stderr, parsed JSON, and exit status for a Claude Code job.",
-      inputSchema: { jobId: z.string() }
+      inputSchema: z.object({}).passthrough()
     },
-    async ({ jobId }) => jsonToolResult(await supervisor.result(jobId))
+    withValidatedArgs(resultInputSchema, async ({ jobId }) => jsonToolResult(await supervisor.result(jobId)))
   );
 
   server.registerTool(
@@ -83,18 +103,9 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
     {
       title: "Continue Claude Code Session",
       description: "Start a new Claude Code job using a prior job session id or an explicit session id.",
-      inputSchema: {
-        cwd: z.string(),
-        prompt: z.string(),
-        jobId: z.string().optional(),
-        sessionId: z.string().optional(),
-        name: z.string().optional(),
-        maxTurns: z.number().int().positive().optional(),
-        permissionMode: z.enum(["default", "acceptEdits", "plan", "auto", "dontAsk"]).optional(),
-        timeoutMs: z.number().int().positive().optional()
-      }
+      inputSchema: z.object({}).passthrough()
     },
-    async (args) => jsonToolResult(await supervisor.continueJob(args))
+    withValidatedArgs(continueInputSchema, async (args) => jsonToolResult(await supervisor.continueJob(args)))
   );
 
   server.registerTool(
@@ -102,14 +113,11 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
     {
       title: "Peek Claude Code Job Output",
       description: "Read bounded stdout/stderr tails for a running or completed Claude Code job.",
-      inputSchema: {
-        jobId: z.string(),
-        stdoutTailBytes: z.number().int().positive().optional(),
-        stderrTailBytes: z.number().int().positive().optional()
-      }
+      inputSchema: z.object({}).passthrough()
     },
-    async ({ jobId, stdoutTailBytes, stderrTailBytes }) =>
+    withValidatedArgs(peekInputSchema, async ({ jobId, stdoutTailBytes, stderrTailBytes }) =>
       jsonToolResult(await supervisor.peek(jobId, { stdoutTailBytes, stderrTailBytes }))
+    )
   );
 
   server.registerTool(
@@ -117,9 +125,9 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
     {
       title: "Kill Claude Code Job",
       description: "Kill a running Claude Code job process tree.",
-      inputSchema: { jobId: z.string() }
+      inputSchema: z.object({}).passthrough()
     },
-    async ({ jobId }) => jsonToolResult(await supervisor.kill(jobId))
+    withValidatedArgs(killInputSchema, async ({ jobId }) => jsonToolResult(await supervisor.kill(jobId)))
   );
 
   server.registerTool(
@@ -127,9 +135,9 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
     {
       title: "Cleanup Claude Code Jobs",
       description: "Remove terminal job directories while preserving running jobs.",
-      inputSchema: { olderThanMs: z.number().int().nonnegative().optional() }
+      inputSchema: z.object({}).passthrough()
     },
-    async ({ olderThanMs }) => jsonToolResult(await supervisor.cleanup({ olderThanMs }))
+    withValidatedArgs(cleanupInputSchema, async ({ olderThanMs }) => jsonToolResult(await supervisor.cleanup({ olderThanMs })))
   );
 
   return server;
@@ -178,6 +186,8 @@ function parseOptionalNumber(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+type ToolResponse = ReturnType<typeof jsonToolResult> & { isError?: boolean };
+
 function jsonToolResult(value: unknown) {
   return {
     content: [
@@ -186,6 +196,30 @@ function jsonToolResult(value: unknown) {
         text: JSON.stringify(value, null, 2)
       }
     ]
+  };
+}
+
+function withValidatedArgs<T extends z.ZodTypeAny>(schema: T, handler: (args: z.infer<T>) => Promise<ToolResponse>) {
+  return async (rawArgs: unknown): Promise<ToolResponse> => {
+    const parsed = schema.safeParse(rawArgs);
+    if (!parsed.success) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              error: {
+                code: "invalid_arguments",
+                message: "Invalid tool arguments",
+                issues: parsed.error.issues
+              }
+            })
+          }
+        ]
+      };
+    }
+    return handler(parsed.data);
   };
 }
 
