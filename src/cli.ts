@@ -2,12 +2,14 @@
 
 import { ClaudeSupervisor } from "./core/supervisor.js";
 import { DaemonClient } from "./daemon/client.js";
+import { readDaemonDiscovery } from "./daemon/discovery.js";
+import { resolveStateDir } from "./core/paths.js";
 import type { SupervisorApi } from "./core/types.js";
 
 async function main(): Promise<void> {
   const global = extractGlobalFlags(process.argv.slice(2));
   const [command, ...args] = global.args;
-  const supervisor = createSupervisorFromEnv(global.daemonUrl);
+  const supervisor = await createSupervisorFromEnv(global);
 
   switch (command) {
     case "run": {
@@ -103,9 +105,10 @@ function parseFlags(args: string[]): Record<string, string | undefined> {
   return flags;
 }
 
-function extractGlobalFlags(args: string[]): { args: string[]; daemonUrl?: string } {
+function extractGlobalFlags(args: string[]): { args: string[]; daemonUrl?: string; discoverDaemon: boolean } {
   const remaining: string[] = [];
   let daemonUrl = process.env.SUPERVISOR_DAEMON_URL;
+  let discoverDaemon = process.env.SUPERVISOR_DAEMON_DISCOVERY === "1";
 
   for (let index = 0; index < args.length; index += 1) {
     if (args[index] === "--daemon-url") {
@@ -113,13 +116,18 @@ function extractGlobalFlags(args: string[]): { args: string[]; daemonUrl?: strin
       index += 1;
       continue;
     }
+    if (args[index] === "--discover-daemon") {
+      discoverDaemon = true;
+      continue;
+    }
     remaining.push(args[index]);
   }
 
-  return { args: remaining, daemonUrl };
+  return { args: remaining, daemonUrl, discoverDaemon };
 }
 
-function createSupervisorFromEnv(daemonUrl: string | undefined): SupervisorApi {
+async function createSupervisorFromEnv(global: { daemonUrl?: string; discoverDaemon: boolean }): Promise<SupervisorApi> {
+  const daemonUrl = global.daemonUrl ?? (global.discoverDaemon ? await discoverDaemonUrl() : undefined);
   if (daemonUrl) {
     return new DaemonClient(daemonUrl);
   }
@@ -132,6 +140,14 @@ function createSupervisorFromEnv(daemonUrl: string | undefined): SupervisorApi {
     defaultRuntimeTimeoutMs: parseOptionalNumber(process.env.SUPERVISOR_DEFAULT_RUNTIME_TIMEOUT_MS),
     maxConcurrentJobs: parseOptionalNumber(process.env.SUPERVISOR_MAX_CONCURRENT_JOBS)
   });
+}
+
+async function discoverDaemonUrl(): Promise<string> {
+  const stateDir = resolveStateDir({
+    explicitStateDir: process.env.SUPERVISOR_STATE_DIR,
+    env: process.env
+  });
+  return (await readDaemonDiscovery(stateDir)).url;
 }
 
 function parsePrefixArgs(value: string | undefined): string[] {

@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { createDaemonServer } from "../src/daemon/server.js";
+import { writeDaemonDiscovery } from "../src/daemon/discovery.js";
 import { ClaudeSupervisor } from "../src/core/supervisor.js";
 
 const cliPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/cli.ts");
@@ -63,6 +64,42 @@ describe("CLI", () => {
 
     const result = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "result", started.jobId], { env });
     expect(JSON.parse(result.stdout).parsedStdout.result).toBe("fake result: daemon cli");
+  });
+
+  it("discovers a daemon only when explicitly requested", async () => {
+    const daemonUrl = await startDaemon();
+    await writeDaemonDiscovery(tempDir, {
+      url: daemonUrl,
+      pid: process.pid,
+      startedAt: "2026-05-04T00:00:00.000Z",
+      version: "0.1.0"
+    });
+    const env = {
+      ...process.env,
+      SUPERVISOR_STATE_DIR: tempDir,
+      SUPERVISOR_CLAUDE_COMMAND: path.join(tempDir, "missing-local-claude")
+    };
+
+    const run = await execFileAsync(
+      process.execPath,
+      [tsxCliPath, cliPath, "--discover-daemon", "run", "--cwd", tempDir, "--prompt", "discovered cli"],
+      { env }
+    );
+    const started = JSON.parse(run.stdout);
+
+    const wait = await execFileAsync(
+      process.execPath,
+      [tsxCliPath, cliPath, "--discover-daemon", "wait", started.jobId, "--timeout-ms", "5000"],
+      { env }
+    );
+    expect(JSON.parse(wait.stdout).status).toBe("completed");
+
+    const result = await execFileAsync(
+      process.execPath,
+      [tsxCliPath, cliPath, "--discover-daemon", "result", started.jobId],
+      { env }
+    );
+    expect(JSON.parse(result.stdout).parsedStdout.result).toBe("fake result: discovered cli");
   });
 
   function cliEnv(stateDir: string): NodeJS.ProcessEnv {
