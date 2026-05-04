@@ -139,7 +139,7 @@ async function readDaemonHealth(daemonUrl: string, source: "explicit_url" | "dis
   try {
     const response = await fetch(`${normalizedUrl}/health`);
     const bodyText = await response.text();
-    const body = parseJson(bodyText);
+    const { parsed, value } = parseJson(bodyText);
     if (!response.ok) {
       return {
         ok: false,
@@ -149,7 +149,19 @@ async function readDaemonHealth(daemonUrl: string, source: "explicit_url" | "dis
           code: "daemon_http_error",
           message: `Daemon health request failed with HTTP ${response.status}`,
           status: response.status,
-          details: body
+          details: value
+        }
+      };
+    }
+    if (!parsed) {
+      return {
+        ok: false,
+        source,
+        daemonUrl,
+        error: {
+          code: "daemon_invalid_json",
+          message: "Daemon health response was not valid JSON",
+          details: bodyText
         }
       };
     }
@@ -157,7 +169,7 @@ async function readDaemonHealth(daemonUrl: string, source: "explicit_url" | "dis
       ok: true,
       source,
       daemonUrl,
-      health: body
+      health: value
     };
   } catch (error) {
     return {
@@ -172,14 +184,14 @@ async function readDaemonHealth(daemonUrl: string, source: "explicit_url" | "dis
   }
 }
 
-function parseJson(text: string): unknown {
+function parseJson(text: string): { parsed: boolean; value: unknown } {
   if (!text.trim()) {
-    return null;
+    return { parsed: true, value: null };
   }
   try {
-    return JSON.parse(text);
+    return { parsed: true, value: JSON.parse(text) };
   } catch {
-    return text;
+    return { parsed: false, value: text };
   }
 }
 
