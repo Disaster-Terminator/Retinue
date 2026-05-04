@@ -26,6 +26,7 @@ export interface SupervisorOptions {
 }
 
 export interface JobMeta {
+  schemaVersion?: number;
   jobId: string;
   pid: number;
   status: JobStatus;

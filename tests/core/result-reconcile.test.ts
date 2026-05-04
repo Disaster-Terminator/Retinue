@@ -73,6 +73,38 @@ describe("result limits and status reconciliation", () => {
     });
   });
 
+  it("reads old job metadata without schemaVersion", async () => {
+    const supervisor = new ClaudeSupervisor({ stateDir: tempDir });
+    const paths = getJobPaths(tempDir, "job_old_schema");
+    const now = new Date().toISOString();
+    await fs.mkdir(paths.dir, { recursive: true });
+    await fs.writeFile(
+      paths.meta,
+      JSON.stringify(
+        {
+          jobId: "job_old_schema",
+          pid: 99999999,
+          status: "completed",
+          cwd: tempDir,
+          args: ["-p", "--output-format", "json"],
+          promptPath: path.join(paths.dir, "prompt.md"),
+          promptPreview: "old",
+          promptSha256: "2".repeat(64),
+          createdAt: now,
+          updatedAt: now
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+
+    await expect(supervisor.status("job_old_schema")).resolves.toMatchObject({
+      jobId: "job_old_schema",
+      status: "completed"
+    });
+  });
+
   it("returns structured not_found for missing jobs", async () => {
     const supervisor = new ClaudeSupervisor({ stateDir: tempDir });
 

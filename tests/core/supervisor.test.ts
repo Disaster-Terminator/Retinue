@@ -35,12 +35,16 @@ describe("ClaudeSupervisor lifecycle", () => {
     });
 
     expect(started.status).toBe("running");
+    expect(started.schemaVersion).toBe(1);
     expect(started.pid).toBeGreaterThan(0);
     expect(started.prompt).toBeUndefined();
     expect(started.promptPreview).toBe("hello");
     expect(started.promptSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(started.promptPath).toMatch(/prompt\.md$/);
     await expect(fs.readFile(started.promptPath, "utf8")).resolves.toBe("hello");
+    await expect(fs.readFile(getJobPaths(tempDir, started.jobId).meta, "utf8").then(JSON.parse)).resolves.toMatchObject({
+      schemaVersion: 1
+    });
 
     const waited = await supervisor.wait(started.jobId, { timeoutMs: 5000 });
     expect(waited.status).toBe("completed");

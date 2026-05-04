@@ -83,6 +83,7 @@ export class ClaudeSupervisor implements SupervisorApi {
     const now = new Date().toISOString();
     const runtimeTimeoutMs = options.timeoutMs ?? this.defaultRuntimeTimeoutMs;
     const meta: JobMeta = {
+      schemaVersion: 1,
       jobId,
       pid: child.pid ?? -1,
       status: "running",
