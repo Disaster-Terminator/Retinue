@@ -2,6 +2,15 @@
 
 These probes are manual and opt-in. They may consume Claude Code quota because they call the system `claude` command through supervisor. The default deterministic suite still uses fake Claude only.
 
+## GitHub Manual Workflow
+
+GitHub Actions real probes are intentionally manual-only and quota-gated. In the Actions UI, run **Manual Real Claude Probes (Quota Risk)** and provide:
+
+- `probe_mode`: `direct`, `daemon`, or `mcp-daemon`
+- `confirm_real_claude`: `I_UNDERSTAND_THIS_MAY_USE_REAL_CLAUDE_QUOTA`
+
+If the confirmation string does not match exactly, the workflow fails before running any probe.
+
 Run the deterministic gates first:
 
 ```bash
