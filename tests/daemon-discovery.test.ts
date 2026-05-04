@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -10,6 +10,10 @@ describe("daemon discovery", () => {
 
   beforeEach(async () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-discovery-test-"));
+  });
+
+  afterEach(async () => {
+    await fs.rm(tempDir, { recursive: true, force: true });
   });
 
   it("stores discovery metadata at the state directory root", () => {
@@ -29,6 +33,28 @@ describe("daemon discovery", () => {
       pid: process.pid,
       version: "0.1.0"
     });
+  });
+
+  it("rejects discovery metadata with invalid startedAt", async () => {
+    await writeDaemonDiscovery(tempDir, {
+      url: "http://127.0.0.1:27777",
+      pid: process.pid,
+      startedAt: "not-a-date",
+      version: "0.1.0"
+    });
+
+    await expect(readDaemonDiscovery(tempDir)).rejects.toThrow(/startedAt/i);
+  });
+
+  it("rejects discovery metadata with non-canonical startedAt", async () => {
+    await writeDaemonDiscovery(tempDir, {
+      url: "http://127.0.0.1:27777",
+      pid: process.pid,
+      startedAt: "2026-05-04",
+      version: "0.1.0"
+    });
+
+    await expect(readDaemonDiscovery(tempDir)).rejects.toThrow(/startedAt/i);
   });
 
   it("rejects stale daemon discovery metadata", async () => {

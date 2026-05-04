@@ -49,6 +49,7 @@ function validateDiscovery(value: Partial<DaemonDiscovery>): DaemonDiscovery {
   if (typeof value.startedAt !== "string" || !value.startedAt) {
     throw new Error("Invalid daemon discovery: missing startedAt");
   }
+  validateCanonicalStartedAt(value.startedAt);
   if (typeof value.version !== "string" || !value.version) {
     throw new Error("Invalid daemon discovery: missing version");
   }
@@ -58,6 +59,16 @@ function validateDiscovery(value: Partial<DaemonDiscovery>): DaemonDiscovery {
     startedAt: value.startedAt,
     version: value.version
   };
+}
+
+function validateCanonicalStartedAt(value: string): void {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) {
+    throw new Error("Invalid daemon discovery: invalid startedAt");
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString() !== value) {
+    throw new Error("Invalid daemon discovery: invalid startedAt");
+  }
 }
 
 function isPidAlive(pid: number): boolean {
