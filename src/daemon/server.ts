@@ -13,6 +13,10 @@ const version = "0.1.0";
 type RouteHandler = (body: unknown) => Promise<unknown>;
 type DaemonErrorCode = "not_found" | "bad_json" | "body_too_large" | "invalid_request" | "internal_error";
 
+export interface DaemonServerOptions {
+  maxBodyBytes?: number;
+}
+
 class DaemonHttpError extends Error {
   constructor(
     readonly statusCode: number,
@@ -23,7 +27,8 @@ class DaemonHttpError extends Error {
   }
 }
 
-export function createDaemonServer(supervisor: ClaudeSupervisor): http.Server {
+export function createDaemonServer(supervisor: ClaudeSupervisor, options: DaemonServerOptions = {}): http.Server {
+  const maxBodyBytes = options.maxBodyBytes ?? 1024 * 1024;
   const routes = new Map<string, RouteHandler>([
     ["POST /v1/jobs/run", (body) => supervisor.run(body as RunOptions)],
     ["POST /v1/jobs/status", (body) => supervisor.status(requiredJobId(body))],
@@ -60,7 +65,7 @@ export function createDaemonServer(supervisor: ClaudeSupervisor): http.Server {
         return;
       }
 
-      const body = await readJsonBody(request);
+      const body = await readJsonBody(request, maxBodyBytes);
       writeJson(response, 200, await handler(body));
     } catch (error) {
       writeError(response, normalizeDaemonError(error));
@@ -93,10 +98,16 @@ function optionalNumber(value: unknown): number | undefined {
   return value;
 }
 
-async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
+async function readJsonBody(request: http.IncomingMessage, maxBodyBytes: number): Promise<unknown> {
   const chunks: Buffer[] = [];
+  let totalBytes = 0;
   for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.byteLength;
+    if (totalBytes > maxBodyBytes) {
+      throw new DaemonHttpError(413, "body_too_large", `JSON body exceeds ${maxBodyBytes} bytes`);
+    }
+    chunks.push(buffer);
   }
   const text = Buffer.concat(chunks).toString("utf8");
   if (!text.trim()) {

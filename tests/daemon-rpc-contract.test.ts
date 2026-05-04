@@ -49,6 +49,19 @@ describe("daemon RPC contract", () => {
     });
   });
 
+  it("returns a structured body_too_large error when JSON exceeds the configured limit", async () => {
+    await closeServer(server!);
+    server = createDaemonServer(new ClaudeSupervisor({ stateDir: tempDir }), { maxBodyBytes: 16 });
+    await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
+    const address = server.address() as AddressInfo;
+    baseUrl = `http://127.0.0.1:${address.port}`;
+
+    await expect(postRaw("/v1/jobs/status", JSON.stringify({ jobId: "job_large_body" }))).resolves.toMatchObject({
+      status: 413,
+      body: { error: { code: "body_too_large" } }
+    });
+  });
+
   async function postRaw(pathname: string, body: string): Promise<{ status: number; body: any }> {
     const response = await fetch(`${baseUrl}${pathname}`, {
       method: "POST",
