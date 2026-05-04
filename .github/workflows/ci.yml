@@ -46,3 +46,16 @@ jobs:
 
       - name: Validate npm package contents
         run: npm pack --dry-run --json
+
+      - name: CI gate summary
+        if: always()
+        run: |
+          {
+            echo "### CI gate checklist (Node ${{ matrix.node-version }})"
+            echo
+            echo "- ✅ `npm ci`"
+            echo "- ✅ `npm run typecheck`"
+            echo "- ✅ `npm test`"
+            echo "- ✅ `npm run build`"
+            echo "- ✅ `npm pack --dry-run --json`"
+          } >> "$GITHUB_STEP_SUMMARY"
