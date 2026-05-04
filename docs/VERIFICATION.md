@@ -20,6 +20,38 @@ Current baseline:
 - Daemon suite covers `GET /health`, HTTP `run` -> `wait` -> `result`, structured route errors, package `supervisor-daemon` bin exposure, and CLI delegation through `SUPERVISOR_DAEMON_URL`.
 - MCP suite covers stable Claude tool names, direct server construction, explicit daemon-backed supervisor construction, and MCP client tool calls through daemon RPC.
 
+## Real Probe Runner Baseline
+
+Date: 2026-05-04
+
+Milestone:
+
+- `scripts/probe-real-claude.mjs` provides opt-in direct CLI, daemon CLI, and MCP-to-daemon probes.
+- `npm run probe:real:direct`, `npm run probe:real:daemon`, and `npm run probe:real:mcp-daemon` are explicit scripts only.
+- Default deterministic gates do not run real Claude Code probes.
+- `docs/REAL_CLAUDE_PROBES.md` documents Windows real CLI, WSL fresh clone, daemon mode, MCP-to-daemon, fake dry-run, and cc-switch boundary probes.
+- The probe runner validates `parsedStdout.result` and supports fake-Claude dry runs through `SUPERVISOR_CLAUDE_COMMAND` and `SUPERVISOR_CLAUDE_PREFIX_ARGS`.
+
+Verified commands:
+
+```bash
+npm run typecheck
+npm test
+npm run build
+```
+
+Observed Windows result:
+
+- `npm run typecheck` passed.
+- `npm test` passed with 14 test files and 50 tests.
+- `npm run build` passed.
+
+Observed Windows fake dry-run result:
+
+- `probe:real:direct` passed with fake Claude and returned `ok: true`.
+- `probe:real:daemon` passed with fake Claude and returned `ok: true`.
+- `probe:real:mcp-daemon` passed with fake Claude and returned `ok: true`.
+
 ## Service Lifecycle Design Baseline
 
 Date: 2026-05-04
@@ -231,6 +263,22 @@ Remaining daemon limitations:
 - No Windows service or systemd unit.
 - No auth token or socket discovery.
 - MCP still constructs an in-process `ClaudeSupervisor`; MCP-to-daemon migration is a later milestone.
+
+## Manual And Opt-In Real Probes
+
+Real Claude Code probes are documented in [Real Claude Code Probes](REAL_CLAUDE_PROBES.md).
+
+These probes are not part of `npm test`, `npm run typecheck`, or `npm run build`. They must be run explicitly:
+
+```bash
+npm run probe:real:direct
+npm run probe:real:daemon
+npm run probe:real:mcp-daemon
+```
+
+The probe runner also supports fake-Claude dry runs through `SUPERVISOR_CLAUDE_COMMAND=node` and `SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs`.
+
+Real probes validate supervisor's boundary only: supervisor calls the system `claude` command and lets local Claude Code configuration, including any cc-switch setup, decide provider, model, quota, and proxy behavior.
 
 ## Real Windows Claude Code Probe
 

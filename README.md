@@ -171,3 +171,5 @@ npm test
 npm run build
 ```
 
+Manual and opt-in real Claude Code probes are documented in [Real Claude Code Probes](docs/REAL_CLAUDE_PROBES.md). They are not part of the default deterministic test suite.
+
