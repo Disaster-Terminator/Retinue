@@ -1,0 +1,47 @@
+name: Manual Real Claude Probes (Quota Risk)
+
+on:
+  workflow_dispatch:
+    inputs:
+      probe_mode:
+        description: "Probe mode to run (may call real Claude Code and consume quota)."
+        required: true
+        type: choice
+        options:
+          - direct
+          - daemon
+          - mcp-daemon
+      confirm_real_claude:
+        description: "Type exactly: I_UNDERSTAND_THIS_MAY_USE_REAL_CLAUDE_QUOTA"
+        required: true
+        type: string
+
+jobs:
+  run-real-probe:
+    name: Run real probe (${{ inputs.probe_mode }})
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Confirm real Claude quota risk
+        run: |
+          if [ "${{ inputs.confirm_real_claude }}" != "I_UNDERSTAND_THIS_MAY_USE_REAL_CLAUDE_QUOTA" ]; then
+            echo "Confirmation mismatch. Refusing to run real Claude probe to protect quota."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run selected real probe
+        run: npm run probe:real:${{ inputs.probe_mode }}
