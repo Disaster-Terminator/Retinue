@@ -18,6 +18,27 @@ Current baseline:
 - WSL/Linux: fresh clone, `npm ci`, `npm run typecheck`, `npm test`, and `npm run build` pass.
 - Fake Claude suite covers spawn/close/error ordering, permission mode validation, atomic state writes, structured `not_found` and `corrupted` states, disk-backed concurrency, durable kill status, and running-job peek/tail.
 - Daemon suite covers `GET /health`, HTTP `run` -> `wait` -> `result`, structured route errors, package `supervisor-daemon` bin exposure, and CLI delegation through `SUPERVISOR_DAEMON_URL`.
+- MCP suite covers stable Claude tool names, direct server construction, explicit daemon-backed supervisor construction, and MCP client tool calls through daemon RPC.
+
+## MCP Daemon Adapter Baseline
+
+Date: 2026-05-04
+
+Milestone:
+
+- `SupervisorApi` is the shared boundary implemented by `ClaudeSupervisor` and `DaemonClient`.
+- MCP constructs a daemon-backed supervisor when `SUPERVISOR_DAEMON_URL` is set.
+- MCP keeps direct in-process supervisor fallback when `SUPERVISOR_DAEMON_URL` is not set.
+- MCP tool names and JSON text response shape remain unchanged.
+- An in-memory MCP client/server test calls `claude_run`, `claude_wait`, and `claude_result` through daemon RPC with fake Claude.
+
+Verified commands:
+
+```bash
+npm run typecheck
+npm test
+npm run build
+```
 
 ## Daemon Baseline
 

@@ -109,12 +109,13 @@ node G:/repository/supervisor/dist/mcp.js
 Environment overrides:
 
 ```text
+SUPERVISOR_DAEMON_URL
 SUPERVISOR_STATE_DIR
 SUPERVISOR_CLAUDE_COMMAND
 SUPERVISOR_CLAUDE_PREFIX_ARGS
 ```
 
-The MCP server is the intended spawn surface. It stays alive while child jobs run, so it can record exit status and final metadata.
+When `SUPERVISOR_DAEMON_URL` is set, MCP tools delegate to the running daemon. Without it, MCP keeps the direct in-process supervisor path for fallback and debugging.
 
 `claude_result` returns bounded stdout/stderr by default, plus `stdoutPath`, `stderrPath`, byte counts, and truncation flags. Read the files directly only when a full local artifact is needed.
 
