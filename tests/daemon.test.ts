@@ -69,7 +69,10 @@ describe("supervisor daemon", () => {
     const response = await fetch(`${daemon.url}/v1/jobs/missing`, { method: "POST" });
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toMatchObject({
-      error: expect.stringMatching(/not found/i)
+      error: {
+        code: "not_found",
+        message: expect.stringMatching(/not found/i)
+      }
     });
   });
 

@@ -62,12 +62,23 @@ export class DaemonClient implements SupervisorApi {
     const text = await response.text();
     const parsed = text.trim() ? JSON.parse(text) : undefined;
     if (!response.ok) {
-      const message =
-        typeof parsed === "object" && parsed !== null && "error" in parsed
-          ? String(parsed.error)
-          : `Daemon request failed with HTTP ${response.status}`;
+      const message = extractErrorMessage(parsed) ?? `Daemon request failed with HTTP ${response.status}`;
       throw new Error(message);
     }
     return parsed as T;
   }
+}
+
+function extractErrorMessage(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null || !("error" in value)) {
+    return undefined;
+  }
+  const error = value.error;
+  if (typeof error === "string") {
+    return error;
+  }
+  if (typeof error === "object" && error !== null && "message" in error) {
+    return String(error.message);
+  }
+  return undefined;
 }

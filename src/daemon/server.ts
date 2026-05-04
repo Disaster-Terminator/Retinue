@@ -11,6 +11,17 @@ import type {
 const version = "0.1.0";
 
 type RouteHandler = (body: unknown) => Promise<unknown>;
+type DaemonErrorCode = "not_found" | "bad_json" | "body_too_large" | "invalid_request" | "internal_error";
+
+class DaemonHttpError extends Error {
+  constructor(
+    readonly statusCode: number,
+    readonly code: DaemonErrorCode,
+    message: string
+  ) {
+    super(message);
+  }
+}
 
 export function createDaemonServer(supervisor: ClaudeSupervisor): http.Server {
   const routes = new Map<string, RouteHandler>([
@@ -45,16 +56,14 @@ export function createDaemonServer(supervisor: ClaudeSupervisor): http.Server {
       const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
       const handler = routes.get(`${request.method ?? "GET"} ${path}`);
       if (!handler) {
-        writeJson(response, 404, { error: `Route not found: ${request.method ?? "GET"} ${path}` });
+        writeError(response, new DaemonHttpError(404, "not_found", `Route not found: ${request.method ?? "GET"} ${path}`));
         return;
       }
 
       const body = await readJsonBody(request);
       writeJson(response, 200, await handler(body));
     } catch (error) {
-      writeJson(response, 400, {
-        error: error instanceof Error ? error.message : String(error)
-      });
+      writeError(response, normalizeDaemonError(error));
     }
   });
 }
@@ -93,10 +102,33 @@ async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
   if (!text.trim()) {
     return {};
   }
-  return JSON.parse(text);
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    throw new DaemonHttpError(400, "bad_json", error instanceof Error ? error.message : String(error));
+  }
 }
 
 function writeJson(response: http.ServerResponse, statusCode: number, value: unknown): void {
   response.writeHead(statusCode, { "content-type": "application/json; charset=utf-8" });
   response.end(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+function writeError(response: http.ServerResponse, error: DaemonHttpError): void {
+  writeJson(response, error.statusCode, {
+    error: {
+      code: error.code,
+      message: error.message
+    }
+  });
+}
+
+function normalizeDaemonError(error: unknown): DaemonHttpError {
+  if (error instanceof DaemonHttpError) {
+    return error;
+  }
+  if (error instanceof Error) {
+    return new DaemonHttpError(400, "invalid_request", error.message);
+  }
+  return new DaemonHttpError(500, "internal_error", String(error));
 }
