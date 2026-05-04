@@ -18,7 +18,33 @@ Current baseline:
 - WSL/Linux: fresh clone, `npm ci`, `npm run typecheck`, `npm test`, and `npm run build` pass.
 - Fake Claude suite covers spawn/close/error ordering, permission mode validation, atomic state writes, structured `not_found` and `corrupted` states, disk-backed concurrency, durable kill status, and running-job peek/tail.
 - Daemon suite covers `GET /health`, HTTP `run` -> `wait` -> `result`, structured route errors, package `supervisor-daemon` bin exposure, and CLI delegation through `SUPERVISOR_DAEMON_URL`.
-- MCP suite covers stable Claude tool names, direct server construction, explicit daemon-backed supervisor construction, and MCP client tool calls through daemon RPC.
+- MCP suite covers stable Claude tool names, direct server construction, explicit daemon-backed supervisor construction, MCP client tool calls through daemon RPC, and daemon job truth after MCP adapter reconnect.
+
+## Completion Audit Baseline
+
+Date: 2026-05-04
+
+Milestone:
+
+- Added deterministic coverage for MCP adapter reconnect against a daemon-owned job.
+- The first MCP adapter starts a job through daemon RPC, disconnects, and a second MCP adapter waits for and reads the same job through daemon RPC.
+- This proves the Codex/MCP adapter process can disconnect/reconnect without becoming the lifecycle owner.
+
+Verified commands:
+
+```bash
+npm run typecheck
+npm test
+npm run build
+npm pack --dry-run --json
+```
+
+Observed Windows result:
+
+- `npm run typecheck` passed.
+- `npm test` passed with 14 test files and 51 tests.
+- `npm run build` passed.
+- `npm pack --dry-run --json` passed with 52 package entries.
 
 ## User-Facing Polish Baseline
 

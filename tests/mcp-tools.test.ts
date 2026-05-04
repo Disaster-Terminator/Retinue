@@ -114,6 +114,61 @@ describe("MCP tools", () => {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("keeps daemon job truth after MCP adapter reconnects", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-reconnect-test-"));
+    const daemon = createDaemonServer(
+      new ClaudeSupervisor({
+        stateDir: tempDir,
+        claudeCommand: process.execPath,
+        claudePrefixArgs: [fixturePath],
+        env: { ...process.env, FAKE_CLAUDE_DELAY_MS: "300" }
+      })
+    );
+    let first: Awaited<ReturnType<typeof connectMcpClient>> | undefined;
+    let second: Awaited<ReturnType<typeof connectMcpClient>> | undefined;
+
+    try {
+      await new Promise<void>((resolve) => daemon.listen(0, "127.0.0.1", resolve));
+      const address = daemon.address() as AddressInfo;
+      const daemonUrl = `http://127.0.0.1:${address.port}`;
+
+      first = await connectMcpClient(daemonUrl);
+      const run = parseToolJson(
+        await first.client.callTool({
+          name: "claude_run",
+          arguments: { cwd: tempDir, prompt: "mcp reconnect" }
+        })
+      );
+      expect(run.status).toBe("running");
+      await closeMcpClient(first);
+      first = undefined;
+
+      second = await connectMcpClient(daemonUrl);
+      const wait = parseToolJson(
+        await second.client.callTool({
+          name: "claude_wait",
+          arguments: { jobId: run.jobId, timeoutMs: 5000 }
+        })
+      );
+      expect(wait.status).toBe("completed");
+
+      const result = parseToolJson(
+        await second.client.callTool({
+          name: "claude_result",
+          arguments: { jobId: run.jobId }
+        })
+      );
+      expect(result.parsedStdout.result).toBe("fake result: mcp reconnect");
+    } finally {
+      await Promise.allSettled([
+        first ? closeMcpClient(first) : Promise.resolve(),
+        second ? closeMcpClient(second) : Promise.resolve(),
+        closeServer(daemon)
+      ]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
 });
 
 function parseToolJson(result: unknown): any {
@@ -135,4 +190,20 @@ function closeServer(server: http.Server): Promise<void> {
       resolve();
     });
   });
+}
+
+async function connectMcpClient(daemonUrl: string) {
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "supervisor-test-client", version: "0.1.0" });
+  const mcpServer = createMcpServer(
+    createMcpSupervisorFromEnv({
+      SUPERVISOR_DAEMON_URL: daemonUrl
+    })
+  );
+  await Promise.all([mcpServer.connect(serverTransport), client.connect(clientTransport)]);
+  return { client, clientTransport, serverTransport };
+}
+
+async function closeMcpClient(connection: Awaited<ReturnType<typeof connectMcpClient>>): Promise<void> {
+  await Promise.allSettled([connection.client.close(), connection.clientTransport.close(), connection.serverTransport.close()]);
 }
