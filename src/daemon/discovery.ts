@@ -59,8 +59,6 @@ function validateDiscovery(value: Partial<DaemonDiscovery>): DaemonDiscovery {
   };
 }
 
-
-
 function validateDiscoveryUrl(value: unknown): string {
   if (typeof value !== "string") {
     throw new Error("Invalid daemon discovery: missing url");
@@ -84,7 +82,7 @@ function validateDiscoveryUrl(value: unknown): string {
     throw new Error("Invalid daemon discovery: unsupported url host");
   }
 
-  return value;
+  return parsed.origin;
 }
 function validateCanonicalStartedAt(value: string): void {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) {
