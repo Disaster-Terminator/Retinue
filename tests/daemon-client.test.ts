@@ -69,4 +69,35 @@ describe("DaemonClient errors", () => {
 
     await expect(client.status("job_any")).rejects.toBeInstanceOf(DaemonClientError);
   });
+
+  it("classifies unreachable daemon transport failures", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("fetch failed"))));
+
+    const client = new DaemonClient("http://daemon");
+
+    await expect(client.status("job_down")).rejects.toMatchObject({
+      name: "DaemonClientError",
+      message: "Unable to reach daemon",
+      code: "transport_unreachable",
+      status: 0,
+      path: "/v1/jobs/status"
+    });
+  });
+
+  it("classifies aborted transport failures", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Promise.reject(new DOMException("The operation was aborted", "AbortError")))
+    );
+
+    const client = new DaemonClient("http://daemon");
+
+    await expect(client.status("job_abort")).rejects.toMatchObject({
+      name: "DaemonClientError",
+      message: "Daemon request timed out or was aborted",
+      code: "transport_aborted",
+      status: 0,
+      path: "/v1/jobs/status"
+    });
+  });
 });
