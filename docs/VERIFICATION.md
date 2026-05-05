@@ -59,6 +59,47 @@ Observed WSL/Linux result from a fresh clone:
 - `pnpm run build` passed.
 - Fresh clone path: `/tmp/supervisor-main-pnpm-wsl-test-L4utS4`.
 
+## OpenCode Backend Branch Baseline
+
+Date: 2026-05-05
+
+Branch: `feature/spawn-opencode`
+
+Milestone:
+
+- Added fake OpenCode HTTP server for deterministic tests.
+- Added narrow `OpenCodeClient` over loopback HTTP.
+- Added `OpenCodeBackend` run/result/continue/abort/cleanup against fake OpenCode server.
+- Added backend metadata fields for `backend`, `externalSessionId`, `externalServerUrl`, `externalMessageId`, `model`, `agent`, and `title`.
+- Added attach/serve policy helpers. Auto-serve remains opt-in policy and is not silently started by CLI/MCP.
+- Added CLI `opencode-*` commands and MCP `opencode_*` tools for explicit server attach.
+- Added `dist/backends/**` to package files so OpenCode runtime is included.
+- No provider/model routing and no permission bypass surface were added.
+
+Verified commands:
+
+```bash
+pnpm run typecheck
+pnpm test
+pnpm run build
+pnpm pack --dry-run --json
+```
+
+Observed Windows result:
+
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 18 test files and 102 tests.
+- `pnpm run build` passed.
+- `pnpm pack --dry-run --json` passed and included `dist/backends/**`.
+
+Observed WSL/Linux result from a fresh clone:
+
+- `pnpm install --frozen-lockfile` passed using pnpm v10.33.2.
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 18 test files and 102 tests.
+- `pnpm run build` passed.
+- Fresh clone path: `/tmp/supervisor-opencode-wsl-test-C7hVR1`.
+
 ## Completion Audit Baseline
 
 Date: 2026-05-04
