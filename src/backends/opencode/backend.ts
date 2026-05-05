@@ -1,0 +1,181 @@
+import fs from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { getJobPaths, resolveStateDir } from "../../core/paths.js";
+import type { JobMeta, JobProblem, JobResult, JobStatusResult, SupervisorOptions } from "../../core/types.js";
+import type { AgentBackend, AgentContinueOptions, AgentHandle, AgentRunOptions } from "../types.js";
+import { OpenCodeClient } from "./client.js";
+
+export interface OpenCodeBackendOptions {
+  client: OpenCodeClient;
+  baseUrl: string;
+  stateDir?: string;
+  env?: SupervisorOptions["env"];
+}
+
+export class OpenCodeBackend implements AgentBackend {
+  readonly kind = "opencode" as const;
+  private readonly client: OpenCodeClient;
+  private readonly baseUrl: string;
+  private readonly stateDir: string;
+
+  constructor(options: OpenCodeBackendOptions) {
+    this.client = options.client;
+    this.baseUrl = options.baseUrl.replace(/\/+$/, "");
+    this.stateDir = resolveStateDir({ explicitStateDir: options.stateDir, env: options.env });
+  }
+
+  async run(options: AgentRunOptions): Promise<JobMeta> {
+    const jobId = `job_${randomUUID()}`;
+    const paths = getJobPaths(this.stateDir, jobId);
+    await fs.mkdir(paths.dir, { recursive: true });
+    await fs.writeFile(paths.prompt, options.prompt, "utf8");
+
+    const session = await this.client.createSession({ cwd: options.cwd, title: options.title ?? options.name });
+    const prompt = await this.client.promptAsync(session.id, {
+      prompt: options.prompt,
+      model: options.model,
+      agent: options.agent
+    });
+    const now = new Date().toISOString();
+    const meta: JobMeta = {
+      schemaVersion: 1,
+      backend: "opencode",
+      jobId,
+      pid: -1,
+      status: "running",
+      cwd: options.cwd,
+      promptPath: paths.prompt,
+      promptPreview: createPromptPreview(options.prompt),
+      promptSha256: sha256(options.prompt),
+      name: options.name,
+      title: options.title,
+      model: options.model,
+      agent: options.agent,
+      externalSessionId: session.id,
+      externalServerUrl: this.baseUrl,
+      externalMessageId: prompt.messageId,
+      args: [],
+      createdAt: now,
+      updatedAt: now
+    };
+    await writeJsonAtomic(paths.meta, meta);
+    return meta;
+  }
+
+  async continueJob(options: AgentContinueOptions): Promise<JobMeta> {
+    if (!options.externalSessionId) {
+      return this.run(options);
+    }
+    const jobId = `job_${randomUUID()}`;
+    const paths = getJobPaths(this.stateDir, jobId);
+    await fs.mkdir(paths.dir, { recursive: true });
+    await fs.writeFile(paths.prompt, options.prompt, "utf8");
+    const prompt = await this.client.promptAsync(options.externalSessionId, {
+      prompt: options.prompt,
+      model: options.model,
+      agent: options.agent
+    });
+    const now = new Date().toISOString();
+    const meta: JobMeta = {
+      schemaVersion: 1,
+      backend: "opencode",
+      jobId,
+      pid: -1,
+      status: "running",
+      cwd: options.cwd,
+      promptPath: paths.prompt,
+      promptPreview: createPromptPreview(options.prompt),
+      promptSha256: sha256(options.prompt),
+      name: options.name,
+      title: options.title,
+      model: options.model,
+      agent: options.agent,
+      externalSessionId: options.externalSessionId,
+      externalServerUrl: this.baseUrl,
+      externalMessageId: prompt.messageId,
+      parentJobId: options.parentJobId,
+      parentSessionId: options.parentSessionId,
+      args: [],
+      createdAt: now,
+      updatedAt: now
+    };
+    await writeJsonAtomic(paths.meta, meta);
+    return meta;
+  }
+
+  async status(handle: AgentHandle): Promise<JobStatusResult> {
+    return this.readMeta(handle.jobId);
+  }
+
+  async result(handle: AgentHandle): Promise<JobResult> {
+    const meta = await this.readMeta(handle.jobId);
+    if (isProblem(meta)) {
+      return { jobId: handle.jobId, status: meta.status, error: meta.error };
+    }
+    if (!meta.externalSessionId) {
+      return { jobId: handle.jobId, status: "corrupted", error: "Missing OpenCode session id" };
+    }
+    const messages = await this.client.messages(meta.externalSessionId);
+    const text = [...messages].reverse().find((message) => typeof message.text === "string")?.text ?? "";
+    const completed = { ...meta, status: "completed" as const, updatedAt: new Date().toISOString() };
+    await writeJsonAtomic(getJobPaths(this.stateDir, handle.jobId).meta, completed);
+    return {
+      jobId: handle.jobId,
+      status: "completed",
+      stdout: text,
+      stderr: "",
+      stdoutPath: getJobPaths(this.stateDir, handle.jobId).stdout,
+      stderrPath: getJobPaths(this.stateDir, handle.jobId).stderr,
+      stdoutBytes: Buffer.byteLength(text, "utf8"),
+      stderrBytes: 0,
+      stdoutTruncated: false,
+      stderrTruncated: false,
+      sessionId: meta.externalSessionId,
+      parsedStdout: { result: text }
+    };
+  }
+
+  async abort(handle: AgentHandle): Promise<void> {
+    const meta = await this.readMeta(handle.jobId);
+    if (isProblem(meta) || !meta.externalSessionId) {
+      return;
+    }
+    await this.client.abort(meta.externalSessionId);
+    await writeJsonAtomic(getJobPaths(this.stateDir, handle.jobId).meta, {
+      ...meta,
+      status: "killed",
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+  private async readMeta(jobId: string): Promise<JobMeta | JobProblem> {
+    try {
+      return JSON.parse(await fs.readFile(getJobPaths(this.stateDir, jobId).meta, "utf8")) as JobMeta;
+    } catch (error) {
+      if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
+        return { jobId, status: "not_found" };
+      }
+      return { jobId, status: "corrupted", error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+}
+
+function isProblem(value: JobStatusResult): value is JobProblem {
+  return value.status === "not_found" || value.status === "corrupted";
+}
+
+async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> {
+  await fs.mkdir(filePath.replace(/[\\/][^\\/]+$/, ""), { recursive: true });
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
+  await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  await fs.rename(tempPath, filePath);
+}
+
+function createPromptPreview(prompt: string): string {
+  const normalized = prompt.replace(/\s+/g, " ").trim();
+  return normalized.length > 120 ? `${normalized.slice(0, 117)}...` : normalized;
+}
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
