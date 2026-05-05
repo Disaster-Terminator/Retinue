@@ -31,6 +31,7 @@ Milestone:
 - `package-lock.json` was removed and `pnpm-lock.yaml` was added.
 - Only backend-neutral hardening was absorbed from `review/codex-web-nightly-2026-05-04`.
 - Absorbed hardening: typed daemon client errors, daemon discovery URL/timestamp validation, read-only daemon health diagnostics, and MCP input schema validation tests.
+- Probe helper tests import TypeScript helpers instead of importing the executable `.mjs` probe script directly.
 - Rejected as-is: npm GitHub Actions, package-lock based package verifier, npm command documentation, and Claude Code MCP matrix as a new product direction.
 - No provider/model routing and no permission bypass surface were added.
 
@@ -56,7 +57,7 @@ Observed WSL/Linux result from a fresh clone:
 - `pnpm run typecheck` passed.
 - `pnpm test` passed with 15 test files and 85 tests.
 - `pnpm run build` passed.
-- Fresh clone path: `/tmp/supervisor-pnpm-wsl-test-HvYP6O`.
+- Fresh clone path: `/tmp/supervisor-main-pnpm-wsl-test-L4utS4`.
 
 ## Completion Audit Baseline
 
