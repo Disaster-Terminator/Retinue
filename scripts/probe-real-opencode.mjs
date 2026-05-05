@@ -38,7 +38,7 @@ async function main() {
   output.operations.getSession = summarizeResult(session);
 
   const prompt = await requestJson(baseUrl, "POST", `/session/${encodeURIComponent(sessionId)}/prompt_async`, {
-    prompt: "Reply exactly: SUPERVISOR_OPENCODE_REAL_OK"
+    parts: [{ type: "text", text: "Reply exactly: SUPERVISOR_OPENCODE_REAL_OK" }]
   });
   output.operations.promptAsync = summarizeResult(prompt);
 
