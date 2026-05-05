@@ -211,6 +211,13 @@ Example MCP configuration using explicit daemon discovery:
 
 Use `SUPERVISOR_DAEMON_URL` instead of discovery when the daemon URL is fixed and known.
 
+Inspect a daemon without running a job:
+
+```bash
+node dist/cli.js daemon-health --daemon-url http://127.0.0.1:27777
+node dist/cli.js --discover-daemon daemon-health
+```
+
 `claude_result` returns bounded stdout/stderr by default, plus `stdoutPath`, `stderrPath`, byte counts, and truncation flags. Read the files directly only when a full local artifact is needed.
 
 ## Result Artifacts And Cleanup

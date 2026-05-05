@@ -66,6 +66,145 @@ describe("CLI", () => {
     expect(JSON.parse(result.stdout).parsedStdout.result).toBe("fake result: daemon cli");
   });
 
+  it("returns daemon health from an explicit URL", async () => {
+    const daemonUrl = await startDaemon();
+    const env = cliEnv(tempDir);
+
+    const result = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "daemon-health", "--daemon-url", daemonUrl], {
+      env
+    });
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.source).toBe("explicit_url");
+    expect(parsed.daemonUrl).toBe(daemonUrl);
+    expect(parsed.health.status).toBe("ok");
+  });
+
+  it("returns daemon health through discovery", async () => {
+    const daemonUrl = await startDaemon();
+    await writeDaemonDiscovery(tempDir, {
+      url: daemonUrl,
+      pid: process.pid,
+      startedAt: "2026-05-04T00:00:00.000Z",
+      version: "0.1.0"
+    });
+    const env = cliEnv(tempDir);
+
+    const result = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "--discover-daemon", "daemon-health"], { env });
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.source).toBe("discovery");
+    expect(parsed.daemonUrl).toBe(daemonUrl);
+    expect(parsed.health.status).toBe("ok");
+  });
+
+  it("returns structured missing target failure for daemon health", async () => {
+    const env = cliEnv(tempDir);
+    const failing = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "daemon-health"], { env }).catch(
+      (error: { stdout: string; code: number }) => error
+    );
+
+    const parsed = JSON.parse(failing.stdout);
+    expect(failing.code).toBe(1);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.source).toBe("none");
+    expect(parsed.error.code).toBe("missing_daemon_target");
+  });
+
+  it("returns structured unreachable failure for daemon health", async () => {
+    const env = cliEnv(tempDir);
+    const failing = await execFileAsync(
+      process.execPath,
+      [tsxCliPath, cliPath, "daemon-health", "--daemon-url", "http://127.0.0.1:1"],
+      { env }
+    ).catch((error: { stdout: string; code: number }) => error);
+
+    const parsed = JSON.parse(failing.stdout);
+    expect(failing.code).toBe(1);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.source).toBe("explicit_url");
+    expect(parsed.error.code).toBe("daemon_unreachable");
+  });
+
+  it("returns structured unreachable failure for discovered daemon health", async () => {
+    await writeDaemonDiscovery(tempDir, {
+      url: "http://127.0.0.1:1",
+      pid: process.pid,
+      startedAt: "2026-05-04T00:00:00.000Z",
+      version: "0.1.0"
+    });
+    const env = cliEnv(tempDir);
+
+    const failing = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "--discover-daemon", "daemon-health"], {
+      env
+    }).catch((error: { stdout: string; code: number }) => error);
+
+    const parsed = JSON.parse(failing.stdout);
+    expect(failing.code).toBe(1);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.source).toBe("discovery");
+    expect(parsed.daemonUrl).toBe("http://127.0.0.1:1");
+    expect(parsed.error.code).toBe("daemon_unreachable");
+  });
+
+  it("returns daemon_invalid_json for HTTP 200 non-JSON daemon health", async () => {
+    const daemonUrl = await startHealthServer(200, "not json");
+    const env = cliEnv(tempDir);
+    const failing = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "daemon-health", "--daemon-url", daemonUrl], {
+      env
+    }).catch((error: { stdout: string; code: number }) => error);
+
+    const parsed = JSON.parse(failing.stdout);
+    expect(failing.code).toBe(1);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.error.code).toBe("daemon_invalid_json");
+    expect(parsed.error.details).toBe("not json");
+  });
+
+  it("returns daemon_invalid_json for HTTP 200 malformed JSON daemon health", async () => {
+    const daemonUrl = await startHealthServer(200, '{"status":');
+    const env = cliEnv(tempDir);
+    const failing = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "daemon-health", "--daemon-url", daemonUrl], {
+      env
+    }).catch((error: { stdout: string; code: number }) => error);
+
+    const parsed = JSON.parse(failing.stdout);
+    expect(failing.code).toBe(1);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.error.code).toBe("daemon_invalid_json");
+    expect(parsed.error.details).toBe('{"status":');
+  });
+
+  it("returns daemon_http_error with JSON details for non-OK daemon health response", async () => {
+    const daemonUrl = await startHealthServer(500, '{"error":"boom","retry":false}');
+    const env = cliEnv(tempDir);
+    const failing = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "daemon-health", "--daemon-url", daemonUrl], {
+      env
+    }).catch((error: { stdout: string; code: number }) => error);
+
+    const parsed = JSON.parse(failing.stdout);
+    expect(failing.code).toBe(1);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.error.code).toBe("daemon_http_error");
+    expect(parsed.error.status).toBe(500);
+    expect(parsed.error.details).toEqual({ error: "boom", retry: false });
+  });
+
+  it("returns daemon_http_error with raw body details for non-JSON non-OK daemon health response", async () => {
+    const daemonUrl = await startHealthServer(500, "internal error");
+    const env = cliEnv(tempDir);
+    const failing = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "daemon-health", "--daemon-url", daemonUrl], {
+      env
+    }).catch((error: { stdout: string; code: number }) => error);
+
+    const parsed = JSON.parse(failing.stdout);
+    expect(failing.code).toBe(1);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.error.code).toBe("daemon_http_error");
+    expect(parsed.error.status).toBe(500);
+    expect(parsed.error.details).toBe("internal error");
+  });
+
   it("discovers a daemon only when explicitly requested", async () => {
     const daemonUrl = await startDaemon();
     await writeDaemonDiscovery(tempDir, {
@@ -118,6 +257,22 @@ describe("CLI", () => {
       claudePrefixArgs: [fixturePath]
     });
     server = createDaemonServer(supervisor);
+    await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
+    const address = server.address() as AddressInfo;
+    return `http://127.0.0.1:${address.port}`;
+  }
+
+  async function startHealthServer(statusCode: number, body: string): Promise<string> {
+    server = http.createServer((request, response) => {
+      if (request.method !== "GET" || request.url !== "/health") {
+        response.statusCode = 404;
+        response.end();
+        return;
+      }
+      response.statusCode = statusCode;
+      response.setHeader("content-type", "text/plain; charset=utf-8");
+      response.end(body);
+    });
     await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
     const address = server.address() as AddressInfo;
     return `http://127.0.0.1:${address.port}`;
