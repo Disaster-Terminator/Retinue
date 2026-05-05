@@ -95,6 +95,18 @@ describe("OpenCodeBackend", () => {
     await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "killed" });
   });
 
+  it("cleans terminal OpenCode jobs and preserves running jobs", async () => {
+    const backend = createBackend();
+    const completed = await backend.run({ cwd: tempDir, prompt: "done" });
+    const running = await backend.run({ cwd: tempDir, prompt: "keep" });
+    await backend.result({ jobId: completed.jobId });
+
+    await expect(backend.cleanup()).resolves.toMatchObject({ removedJobIds: [completed.jobId] });
+
+    await expect(fs.stat(getJobPaths(tempDir, completed.jobId).dir)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(fs.stat(getJobPaths(tempDir, running.jobId).dir)).resolves.toBeTruthy();
+  });
+
   function createBackend(): OpenCodeBackend {
     return new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),

@@ -38,10 +38,11 @@ Implemented:
 - `OpenCodeBackend` run/result/continue/abort against the fake server
 - backend metadata fields on job records
 - attach/serve policy helpers
+- CLI `opencode-run`, `opencode-status`, `opencode-wait`, `opencode-result`, `opencode-continue`, `opencode-kill`, and `opencode-cleanup`
+- MCP `opencode_*` lifecycle tools
+- deterministic CLI/MCP tests using a fake OpenCode server
 
 Not implemented yet:
 
-- CLI `opencode-*` commands
-- MCP `opencode_*` tools
 - daemon RPC routing for OpenCode jobs
 - real OpenCode probe script

@@ -17,6 +17,8 @@ The repository targets a Codex-like lifecycle:
 - `claude_kill`: kill the process tree
 - `claude_cleanup`: remove terminal job directories while preserving running jobs
 
+OpenCode work is on `feature/spawn-opencode`. Its first explicit surfaces are `opencode-run` CLI commands and `opencode_*` MCP tools that attach to a loopback OpenCode server URL; provider/model routing remains owned by OpenCode.
+
 ## Quickstart
 
 Install, build, and run the deterministic gate:

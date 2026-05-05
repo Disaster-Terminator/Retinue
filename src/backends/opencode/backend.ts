@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { getJobPaths, resolveStateDir } from "../../core/paths.js";
-import type { JobMeta, JobProblem, JobResult, JobStatusResult, SupervisorOptions } from "../../core/types.js";
+import type { CleanupOptions, CleanupResult, JobMeta, JobProblem, JobResult, JobStatusResult, SupervisorOptions } from "../../core/types.js";
 import type { AgentBackend, AgentContinueOptions, AgentHandle, AgentRunOptions } from "../types.js";
 import { OpenCodeClient } from "./client.js";
 
@@ -148,6 +148,33 @@ export class OpenCodeBackend implements AgentBackend {
     });
   }
 
+  async cleanup(options: CleanupOptions = {}): Promise<CleanupResult> {
+    const olderThanMs = options.olderThanMs ?? 0;
+    const removedJobIds: string[] = [];
+    const removedTempFiles: string[] = [];
+    const now = Date.now();
+
+    for (const entry of await readDirIfExists(getJobsDir(this.stateDir))) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const meta = await this.readMeta(entry.name);
+      if (isProblem(meta) || meta.backend !== "opencode" || meta.status === "running") {
+        continue;
+      }
+      const updatedAt = Date.parse(meta.updatedAt);
+      if (Number.isFinite(updatedAt) && now - updatedAt < olderThanMs) {
+        continue;
+      }
+      const paths = getJobPaths(this.stateDir, entry.name);
+      removedTempFiles.push(...(await listTempFiles(paths.dir)));
+      await fs.rm(paths.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      removedJobIds.push(entry.name);
+    }
+
+    return { removedJobIds, removedTempFiles };
+  }
+
   private async readMeta(jobId: string): Promise<JobMeta | JobProblem> {
     try {
       return JSON.parse(await fs.readFile(getJobPaths(this.stateDir, jobId).meta, "utf8")) as JobMeta;
@@ -178,4 +205,26 @@ function createPromptPreview(prompt: string): string {
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function getJobsDir(stateDir: string): string {
+  return getJobPaths(stateDir, "placeholder").dir.replace(/[\\/]placeholder$/, "");
+}
+
+async function readDirIfExists(dirPath: string) {
+  try {
+    return await fs.readdir(dirPath, { withFileTypes: true });
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+}
+
+async function listTempFiles(dirPath: string): Promise<string[]> {
+  const entries = await readDirIfExists(dirPath);
+  return entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".tmp"))
+    .map((entry) => `${dirPath}${dirPath.includes("\\") ? "\\" : "/"}${entry.name}`);
 }

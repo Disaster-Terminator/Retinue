@@ -10,6 +10,7 @@ import type { AddressInfo } from "node:net";
 import { createDaemonServer } from "../src/daemon/server.js";
 import { writeDaemonDiscovery } from "../src/daemon/discovery.js";
 import { ClaudeSupervisor } from "../src/core/supervisor.js";
+import { startFakeOpenCodeServer, type FakeOpenCodeServer } from "./fixtures/fake-opencode-server.js";
 
 const cliPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/cli.ts");
 const fixturePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/fake-claude.mjs");
@@ -19,6 +20,7 @@ const execFileAsync = promisify(execFile);
 describe("CLI", () => {
   let tempDir: string;
   let server: http.Server | undefined;
+  let fakeOpenCode: FakeOpenCodeServer | undefined;
 
   beforeEach(async () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-cli-test-"));
@@ -28,6 +30,10 @@ describe("CLI", () => {
     if (server) {
       await closeServer(server);
       server = undefined;
+    }
+    if (fakeOpenCode) {
+      await fakeOpenCode.close();
+      fakeOpenCode = undefined;
     }
     await fs.rm(tempDir, { recursive: true, force: true });
   });
@@ -239,6 +245,39 @@ describe("CLI", () => {
       { env }
     );
     expect(JSON.parse(result.stdout).parsedStdout.result).toBe("fake result: discovered cli");
+  });
+
+  it("runs and reads an OpenCode job through an explicit server URL", async () => {
+    fakeOpenCode = await startFakeOpenCodeServer();
+    const env = { ...process.env, SUPERVISOR_STATE_DIR: tempDir };
+
+    const run = await execFileAsync(
+      process.execPath,
+      [
+        tsxCliPath,
+        cliPath,
+        "opencode-run",
+        "--cwd",
+        tempDir,
+        "--prompt",
+        "opencode cli",
+        "--title",
+        "cli test",
+        "--opencode-base-url",
+        fakeOpenCode.url
+      ],
+      { env }
+    );
+    const started = JSON.parse(run.stdout);
+    expect(started.backend).toBe("opencode");
+    expect(started.externalSessionId).toMatch(/^ses_/);
+
+    const result = await execFileAsync(
+      process.execPath,
+      [tsxCliPath, cliPath, "opencode-result", started.jobId, "--opencode-base-url", fakeOpenCode.url],
+      { env }
+    );
+    expect(JSON.parse(result.stdout).parsedStdout.result).toBe("fake result: opencode cli");
   });
 
   function cliEnv(stateDir: string): NodeJS.ProcessEnv {

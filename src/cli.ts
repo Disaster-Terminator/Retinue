@@ -4,6 +4,9 @@ import { ClaudeSupervisor } from "./core/supervisor.js";
 import { DaemonClient } from "./daemon/client.js";
 import { readDaemonDiscovery } from "./daemon/discovery.js";
 import { resolveStateDir } from "./core/paths.js";
+import { OpenCodeBackend } from "./backends/opencode/backend.js";
+import { OpenCodeClient } from "./backends/opencode/client.js";
+import { resolveOpenCodeServerFromEnv } from "./backends/opencode/serverManager.js";
 import type { SupervisorApi } from "./core/types.js";
 
 async function main(): Promise<void> {
@@ -22,6 +25,70 @@ async function main(): Promise<void> {
   const supervisor = await createSupervisorFromEnv(global);
 
   switch (command) {
+    case "opencode-run": {
+      const flags = parseFlags(args);
+      const backend = createOpenCodeBackend(flags);
+      writeJson(
+        await backend.run({
+          cwd: required(flags.cwd, "--cwd"),
+          prompt: required(flags.prompt, "--prompt"),
+          name: flags.name,
+          title: flags.title,
+          model: flags.model,
+          agent: flags.agent
+        })
+      );
+      return;
+    }
+    case "opencode-status": {
+      writeJson(await createOpenCodeBackend(parseFlags(args)).status({ jobId: required(args[0], "jobId") }));
+      return;
+    }
+    case "opencode-wait": {
+      const [jobId, ...rest] = args;
+      const backend = createOpenCodeBackend(parseFlags(rest));
+      const result = await backend.result({ jobId: required(jobId, "jobId") });
+      writeJson({ jobId: result.jobId, status: result.status, exitCode: result.exitStatus?.exitCode });
+      return;
+    }
+    case "opencode-result": {
+      writeJson(await createOpenCodeBackend(parseFlags(args.slice(1))).result({ jobId: required(args[0], "jobId") }));
+      return;
+    }
+    case "opencode-continue": {
+      const flags = parseFlags(args);
+      const backend = createOpenCodeBackend(flags);
+      writeJson(
+        await backend.continueJob({
+          cwd: required(flags.cwd, "--cwd"),
+          prompt: required(flags.prompt, "--prompt"),
+          externalSessionId: required(flags["external-session-id"], "--external-session-id"),
+          parentJobId: flags["job-id"],
+          parentSessionId: flags["external-session-id"],
+          name: flags.name,
+          title: flags.title,
+          model: flags.model,
+          agent: flags.agent
+        })
+      );
+      return;
+    }
+    case "opencode-kill": {
+      const [jobId, ...rest] = args;
+      const backend = createOpenCodeBackend(parseFlags(rest));
+      await backend.abort({ jobId: required(jobId, "jobId") });
+      writeJson({ jobId, status: "killed" });
+      return;
+    }
+    case "opencode-cleanup": {
+      const flags = parseFlags(args);
+      writeJson(
+        await createOpenCodeBackend(flags).cleanup({
+          olderThanMs: flags["older-than-ms"] ? Number(flags["older-than-ms"]) : undefined
+        })
+      );
+      return;
+    }
     case "run": {
       const flags = parseFlags(args);
       const cwd = required(flags.cwd, "--cwd");
@@ -100,6 +167,23 @@ async function main(): Promise<void> {
     default:
       throw new Error(`Unknown command: ${command ?? "(missing)"}`);
   }
+}
+
+function createOpenCodeBackend(flags: Record<string, string | undefined>): OpenCodeBackend {
+  const env = {
+    ...process.env,
+    SUPERVISOR_OPENCODE_BASE_URL: flags["opencode-base-url"] ?? process.env.SUPERVISOR_OPENCODE_BASE_URL
+  };
+  const resolution = resolveOpenCodeServerFromEnv(env);
+  if (resolution.mode !== "attach") {
+    throw new Error("OpenCode auto-serve is not wired to CLI/MCP yet; provide --opencode-base-url or SUPERVISOR_OPENCODE_BASE_URL");
+  }
+  return new OpenCodeBackend({
+    client: new OpenCodeClient(resolution.baseUrl),
+    baseUrl: resolution.baseUrl,
+    stateDir: process.env.SUPERVISOR_STATE_DIR,
+    env: process.env
+  });
 }
 
 async function daemonHealth(global: { daemonUrl?: string; discoverDaemon: boolean }): Promise<unknown> {
