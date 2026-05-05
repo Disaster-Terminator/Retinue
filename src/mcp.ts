@@ -170,10 +170,10 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
     {
       title: "Wait For OpenCode Job",
       description: "Wait for an OpenCode job result through the attached OpenCode server.",
-      inputSchema: { jobId: z.string(), opencodeBaseUrl: z.string().optional() }
+      inputSchema: { jobId: z.string(), timeoutMs: z.number().int().positive().optional(), opencodeBaseUrl: z.string().optional() }
     },
-    async ({ jobId, opencodeBaseUrl }) => {
-      const result = await createOpenCodeBackend({ opencodeBaseUrl }).result({ jobId });
+    async ({ jobId, timeoutMs, opencodeBaseUrl }) => {
+      const result = await createOpenCodeBackend({ opencodeBaseUrl }).wait({ jobId }, { timeoutMs });
       return jsonToolResult({ jobId: result.jobId, status: result.status, exitCode: result.exitStatus?.exitCode });
     }
   );

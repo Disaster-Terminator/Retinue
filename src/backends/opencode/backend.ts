@@ -102,7 +102,11 @@ export class OpenCodeBackend implements AgentBackend {
   }
 
   async status(handle: AgentHandle): Promise<JobStatusResult> {
-    return this.readMeta(handle.jobId);
+    const meta = await this.readMeta(handle.jobId);
+    if (isProblem(meta)) {
+      return meta;
+    }
+    return this.reconcileMeta(meta);
   }
 
   async result(handle: AgentHandle): Promise<JobResult> {
@@ -113,17 +117,19 @@ export class OpenCodeBackend implements AgentBackend {
     if (!meta.externalSessionId) {
       return { jobId: handle.jobId, status: "corrupted", error: "Missing OpenCode session id" };
     }
-    const messages = await this.client.messages(meta.externalSessionId);
+    const reconciled = await this.reconcileMeta(meta);
+    if (isProblem(reconciled)) {
+      return { jobId: handle.jobId, status: reconciled.status, error: reconciled.error };
+    }
+    const messages = await this.client.messages(reconciled.externalSessionId!);
     const text =
       [...messages]
         .reverse()
         .map(extractMessageText)
         .find((messageText) => messageText.length > 0) ?? "";
-    const completed = { ...meta, status: "completed" as const, updatedAt: new Date().toISOString() };
-    await writeJsonAtomic(getJobPaths(this.stateDir, handle.jobId).meta, completed);
     return {
       jobId: handle.jobId,
-      status: "completed",
+      status: reconciled.status,
       stdout: text,
       stderr: "",
       stdoutPath: getJobPaths(this.stateDir, handle.jobId).stdout,
@@ -132,9 +138,22 @@ export class OpenCodeBackend implements AgentBackend {
       stderrBytes: 0,
       stdoutTruncated: false,
       stderrTruncated: false,
-      sessionId: meta.externalSessionId,
+      sessionId: reconciled.externalSessionId,
       parsedStdout: { result: text }
     };
+  }
+
+  async wait(handle: AgentHandle, options: { timeoutMs?: number; pollIntervalMs?: number } = {}): Promise<JobResult> {
+    const timeoutMs = options.timeoutMs ?? 30_000;
+    const pollIntervalMs = options.pollIntervalMs ?? 100;
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const result = await this.result(handle);
+      if (isTerminal(result.status) || Date.now() >= deadline) {
+        return result;
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    }
   }
 
   async abort(handle: AgentHandle): Promise<void> {
@@ -187,6 +206,41 @@ export class OpenCodeBackend implements AgentBackend {
       return { jobId, status: "corrupted", error: error instanceof Error ? error.message : String(error) };
     }
   }
+
+  private async reconcileMeta(meta: JobMeta): Promise<JobMeta | JobProblem> {
+    if (!meta.externalSessionId || isTerminal(meta.status) || meta.status === "killed") {
+      return meta;
+    }
+    try {
+      const session = await this.client.getSession(meta.externalSessionId);
+      let status: JobMeta["status"] = meta.status;
+      if (session["aborted"] === true) {
+        status = "killed";
+      } else if (session["state"] === "completed") {
+        status = "completed";
+      } else if (session["state"] === "failed") {
+        status = "failed";
+      } else if (session["state"] === "running") {
+        status = "running";
+      }
+      if (status === meta.status) {
+        return meta;
+      }
+      const nextMeta: JobMeta = { ...meta, status, updatedAt: new Date().toISOString() };
+      await writeJsonAtomic(getJobPaths(this.stateDir, meta.jobId).meta, nextMeta);
+      return nextMeta;
+    } catch (error) {
+      return {
+        jobId: meta.jobId,
+        status: "corrupted",
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+}
+
+function isTerminal(status: string): boolean {
+  return status === "completed" || status === "failed" || status === "killed" || status === "timed_out";
 }
 
 function isProblem(value: JobStatusResult): value is JobProblem {

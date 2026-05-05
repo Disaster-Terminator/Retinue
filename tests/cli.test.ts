@@ -272,6 +272,15 @@ describe("CLI", () => {
     expect(started.backend).toBe("opencode");
     expect(started.externalSessionId).toMatch(/^ses_/);
 
+    const earlyWait = await execFileAsync(
+      process.execPath,
+      [tsxCliPath, cliPath, "opencode-wait", started.jobId, "--timeout-ms", "30", "--opencode-base-url", fakeOpenCode.url],
+      { env }
+    );
+    expect(JSON.parse(earlyWait.stdout).status).toBe("running");
+
+    fakeOpenCode.completeSession(started.externalSessionId);
+
     const result = await execFileAsync(
       process.execPath,
       [tsxCliPath, cliPath, "opencode-result", started.jobId, "--opencode-base-url", fakeOpenCode.url],

@@ -54,11 +54,15 @@ describe("OpenCodeBackend", () => {
     });
   });
 
-  it("reads results from OpenCode messages", async () => {
+  it("keeps newly started OpenCode jobs running until fake completion", async () => {
     const backend = createBackend();
     const started = await backend.run({ cwd: tempDir, prompt: "result please" });
 
     await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "running" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({ status: "running" });
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "running" });
+
+    server!.completeSession(started.externalSessionId!);
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
       status: "completed",
       sessionId: started.externalSessionId,
@@ -80,9 +84,25 @@ describe("OpenCodeBackend", () => {
 
     expect(continued.externalSessionId).toBe(first.externalSessionId);
     expect(continued.parentJobId).toBe(first.jobId);
+    server!.completeSession(first.externalSessionId!);
     await expect(backend.result({ jobId: continued.jobId })).resolves.toMatchObject({
       parsedStdout: { result: "fake result: second" }
     });
+  });
+
+  it("wait returns running before completion when timeout expires", async () => {
+    const backend = createBackend();
+    const started = await backend.run({ cwd: tempDir, prompt: "still running" });
+
+    await expect(backend.wait({ jobId: started.jobId }, { timeoutMs: 20, pollIntervalMs: 5 })).resolves.toMatchObject({ status: "running" });
+  });
+
+  it("wait returns completed after fake completion", async () => {
+    const backend = createBackend();
+    const started = await backend.run({ cwd: tempDir, prompt: "done later" });
+
+    setTimeout(() => server!.completeSession(started.externalSessionId!), 30);
+    await expect(backend.wait({ jobId: started.jobId }, { timeoutMs: 500, pollIntervalMs: 10 })).resolves.toMatchObject({ status: "completed" });
   });
 
   it("aborts OpenCode sessions", async () => {
@@ -92,12 +112,14 @@ describe("OpenCodeBackend", () => {
     await backend.abort({ jobId: started.jobId });
 
     await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "killed" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({ status: "killed" });
   });
 
   it("cleans terminal OpenCode jobs and preserves running jobs", async () => {
     const backend = createBackend();
     const completed = await backend.run({ cwd: tempDir, prompt: "done" });
     const running = await backend.run({ cwd: tempDir, prompt: "keep" });
+    server!.completeSession(completed.externalSessionId!);
     await backend.result({ jobId: completed.jobId });
 
     await expect(backend.cleanup()).resolves.toMatchObject({ removedJobIds: [completed.jobId] });
