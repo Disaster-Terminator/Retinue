@@ -7,6 +7,7 @@ import type {
   RunOptions,
   WaitOptions
 } from "../core/types.js";
+import { parseBackendSelection } from "./backendSelection.js";
 
 const version = "0.1.0";
 
@@ -30,7 +31,10 @@ class DaemonHttpError extends Error {
 export function createDaemonServer(supervisor: ClaudeSupervisor, options: DaemonServerOptions = {}): http.Server {
   const maxBodyBytes = options.maxBodyBytes ?? 1024 * 1024;
   const routes = new Map<string, RouteHandler>([
-    ["POST /v1/jobs/run", (body) => supervisor.run(body as RunOptions)],
+    ["POST /v1/jobs/run", (body) => {
+      parseBackendSelection(requiredObject(body));
+      return supervisor.run(body as RunOptions);
+    }],
     ["POST /v1/jobs/status", (body) => supervisor.status(requiredJobId(body))],
     ["POST /v1/jobs/wait", (body) => {
       const input = requiredObject(body);
@@ -39,7 +43,10 @@ export function createDaemonServer(supervisor: ClaudeSupervisor, options: Daemon
       } satisfies WaitOptions);
     }],
     ["POST /v1/jobs/result", (body) => supervisor.result(requiredJobId(body))],
-    ["POST /v1/jobs/continue", (body) => supervisor.continueJob(body as ContinueOptions)],
+    ["POST /v1/jobs/continue", (body) => {
+      parseBackendSelection(requiredObject(body));
+      return supervisor.continueJob(body as ContinueOptions);
+    }],
     ["POST /v1/jobs/peek", (body) => {
       const input = requiredObject(body);
       return supervisor.peek(requiredJobId(input), {
