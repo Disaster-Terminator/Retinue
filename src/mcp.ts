@@ -170,12 +170,9 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
     {
       title: "Wait For OpenCode Job",
       description: "Wait for an OpenCode job result through the attached OpenCode server.",
-      inputSchema: { jobId: z.string(), opencodeBaseUrl: z.string().optional() }
+      inputSchema: { jobId: z.string(), timeoutMs: z.number().int().positive().optional(), opencodeBaseUrl: z.string().optional() }
     },
-    async ({ jobId, opencodeBaseUrl }) => {
-      const result = await createOpenCodeBackend({ opencodeBaseUrl }).result({ jobId });
-      return jsonToolResult({ jobId: result.jobId, status: result.status, exitCode: result.exitStatus?.exitCode });
-    }
+    async ({ jobId, timeoutMs, opencodeBaseUrl }) => jsonToolResult(await waitForOpenCode(createOpenCodeBackend({ opencodeBaseUrl }), jobId, timeoutMs))
   );
 
   server.registerTool(
@@ -328,4 +325,15 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
     process.exitCode = 1;
   });
+}
+
+
+async function waitForOpenCode(backend: OpenCodeBackend, jobId: string, timeoutMs = 30_000): Promise<{ jobId: string; status: string }> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const status = await backend.status({ jobId });
+    if (status.status !== "running") return { jobId, status: status.status };
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return { jobId, status: "running" };
 }

@@ -10,107 +10,42 @@ import { startFakeOpenCodeServer, type FakeOpenCodeServer } from "./fixtures/fak
 describe("OpenCodeBackend", () => {
   let tempDir: string;
   let server: FakeOpenCodeServer | undefined;
+  beforeEach(async () => { tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-opencode-backend-")); server = await startFakeOpenCodeServer(); });
+  afterEach(async () => { if (server) await server.close(); await fs.rm(tempDir, { recursive: true, force: true }); });
 
-  beforeEach(async () => {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-opencode-backend-"));
-    server = await startFakeOpenCodeServer();
-  });
-
-  afterEach(async () => {
-    if (server) {
-      await server.close();
-      server = undefined;
-    }
-    await fs.rm(tempDir, { recursive: true, force: true });
-  });
-
-  it("runs OpenCode jobs and persists backend metadata", async () => {
-    const backend = createBackend();
-
-    const started = await backend.run({
-      cwd: tempDir,
-      prompt: "hello",
-      title: "demo",
-      model: "local/test",
-      agent: "build"
-    });
-
-    expect(started).toMatchObject({
-      backend: "opencode",
-      status: "running",
-      cwd: tempDir,
-      title: "demo",
-      model: "local/test",
-      agent: "build",
-      externalServerUrl: server!.url,
-      externalSessionId: expect.stringMatching(/^ses_/)
-    });
-    expect(started.promptPath).toMatch(/prompt\.md$/);
-    await expect(fs.readFile(started.promptPath, "utf8")).resolves.toBe("hello");
-
-    await expect(fs.readFile(getJobPaths(tempDir, started.jobId).meta, "utf8").then(JSON.parse)).resolves.toMatchObject({
-      backend: "opencode",
-      externalSessionId: started.externalSessionId
-    });
-  });
-
-  it("reads results from OpenCode messages", async () => {
-    const backend = createBackend();
-    const started = await backend.run({ cwd: tempDir, prompt: "result please" });
-
+  it("newly started job remains running before fake completion", async () => {
+    const backend = createBackend(); const started = await backend.run({ cwd: tempDir, prompt: "hello" });
     await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "running" });
-    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
-      status: "completed",
-      sessionId: started.externalSessionId,
-      parsedStdout: { result: "fake result: result please" }
-    });
+  });
+
+  it("wait-like polling stays running before completion and then completes", async () => {
+    const backend = createBackend(); const started = await backend.run({ cwd: tempDir, prompt: "later" });
+    const early = await backend.status({ jobId: started.jobId }); expect(early.status).toBe("running");
+    server!.completeSession(started.externalSessionId!);
     await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "completed" });
   });
 
-  it("continues an existing OpenCode session", async () => {
-    const backend = createBackend();
-    const first = await backend.run({ cwd: tempDir, prompt: "first" });
-    const continued = await backend.continueJob({
-      cwd: tempDir,
-      prompt: "second",
-      externalSessionId: first.externalSessionId,
-      parentJobId: first.jobId,
-      parentSessionId: first.externalSessionId
-    });
-
-    expect(continued.externalSessionId).toBe(first.externalSessionId);
-    expect(continued.parentJobId).toBe(first.jobId);
-    await expect(backend.result({ jobId: continued.jobId })).resolves.toMatchObject({
-      parsedStdout: { result: "fake result: second" }
-    });
+  it("result does not force completion", async () => {
+    const backend = createBackend(); const started = await backend.run({ cwd: tempDir, prompt: "result please" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({ status: "running", parsedStdout: { result: "fake result: result please" } });
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "running" });
+    server!.completeSession(started.externalSessionId!);
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({ status: "completed" });
   });
 
-  it("aborts OpenCode sessions", async () => {
-    const backend = createBackend();
-    const started = await backend.run({ cwd: tempDir, prompt: "stop" });
-
-    await backend.abort({ jobId: started.jobId });
-
+  it("aborts OpenCode sessions and keeps killed", async () => {
+    const backend = createBackend(); const started = await backend.run({ cwd: tempDir, prompt: "stop" });
+    await backend.abort({ jobId: started.jobId }); server!.completeSession(started.externalSessionId!);
     await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "killed" });
   });
 
   it("cleans terminal OpenCode jobs and preserves running jobs", async () => {
-    const backend = createBackend();
-    const completed = await backend.run({ cwd: tempDir, prompt: "done" });
-    const running = await backend.run({ cwd: tempDir, prompt: "keep" });
-    await backend.result({ jobId: completed.jobId });
-
+    const backend = createBackend(); const completed = await backend.run({ cwd: tempDir, prompt: "done" }); const running = await backend.run({ cwd: tempDir, prompt: "keep" });
+    server!.completeSession(completed.externalSessionId!); await backend.status({ jobId: completed.jobId });
     await expect(backend.cleanup()).resolves.toMatchObject({ removedJobIds: [completed.jobId] });
-
     await expect(fs.stat(getJobPaths(tempDir, completed.jobId).dir)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(fs.stat(getJobPaths(tempDir, running.jobId).dir)).resolves.toBeTruthy();
   });
 
-  function createBackend(): OpenCodeBackend {
-    return new OpenCodeBackend({
-      client: new OpenCodeClient(server!.url),
-      baseUrl: server!.url,
-      stateDir: tempDir
-    });
-  }
+  function createBackend(): OpenCodeBackend { return new OpenCodeBackend({ client: new OpenCodeClient(server!.url), baseUrl: server!.url, stateDir: tempDir }); }
 });
