@@ -15,7 +15,7 @@ pnpm run build
 Current baseline:
 
 - Windows: `pnpm run typecheck`, `pnpm test`, and `pnpm run build` pass.
-- WSL/Linux: pending fresh-clone re-verification after pnpm migration.
+- WSL/Linux: fresh clone, `pnpm install --frozen-lockfile`, `pnpm run typecheck`, `pnpm test`, and `pnpm run build` pass.
 - Fake Claude suite covers spawn/close/error ordering, permission mode validation, atomic state writes, structured `not_found` and `corrupted` states, disk-backed concurrency, durable kill status, and running-job peek/tail.
 - Daemon suite covers `GET /health`, HTTP `run` -> `wait` -> `result`, structured route errors, package `supervisor-daemon` bin exposure, and CLI delegation through `SUPERVISOR_DAEMON_URL`.
 - MCP suite covers stable Claude tool names, direct server construction, explicit daemon-backed supervisor construction, MCP client tool calls through daemon RPC, and daemon job truth after MCP adapter reconnect.
@@ -50,9 +50,13 @@ Observed Windows result:
 - `pnpm run build` passed.
 - `pnpm pack --dry-run --json` passed and included runtime entrypoints, docs, probe script, and the fake-Claude fixture.
 
-Remaining verification:
+Observed WSL/Linux result from a fresh clone:
 
-- WSL/Linux fresh clone verification should run after this branch is pushed, using `pnpm install --frozen-lockfile`, `pnpm run typecheck`, `pnpm test`, and `pnpm run build`.
+- `pnpm install --frozen-lockfile` passed using pnpm v10.33.2.
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 15 test files and 85 tests.
+- `pnpm run build` passed.
+- Fresh clone path: `/tmp/supervisor-pnpm-wsl-test-HvYP6O`.
 
 ## Completion Audit Baseline
 
