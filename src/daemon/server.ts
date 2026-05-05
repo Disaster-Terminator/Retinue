@@ -1,5 +1,6 @@
 import http from "node:http";
 import type { ClaudeSupervisor } from "../core/supervisor.js";
+import { parseDaemonBackend } from "./backend.js";
 import type {
   CleanupOptions,
   ContinueOptions,
@@ -30,7 +31,14 @@ class DaemonHttpError extends Error {
 export function createDaemonServer(supervisor: ClaudeSupervisor, options: DaemonServerOptions = {}): http.Server {
   const maxBodyBytes = options.maxBodyBytes ?? 1024 * 1024;
   const routes = new Map<string, RouteHandler>([
-    ["POST /v1/jobs/run", (body) => supervisor.run(body as RunOptions)],
+    ["POST /v1/jobs/run", (body) => {
+      const input = requiredObject(body);
+      const backend = parseDaemonBackend(input.backend);
+      if (backend !== "claude-code") {
+        throw new Error(`Backend not yet supported by daemon: ${backend}`);
+      }
+      return supervisor.run(input as unknown as RunOptions);
+    }],
     ["POST /v1/jobs/status", (body) => supervisor.status(requiredJobId(body))],
     ["POST /v1/jobs/wait", (body) => {
       const input = requiredObject(body);

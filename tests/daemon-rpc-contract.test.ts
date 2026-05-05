@@ -61,6 +61,18 @@ describe("daemon RPC contract", () => {
     });
   });
 
+  it("rejects unknown backend with structured invalid_request error", async () => {
+    await expect(postRaw("/v1/jobs/run", JSON.stringify({ prompt: "hello", backend: "unknown" }))).resolves.toMatchObject({
+      status: 400,
+      body: {
+        error: {
+          code: "invalid_request",
+          message: "Unsupported backend: unknown"
+        }
+      }
+    });
+  });
+
   it("returns a structured body_too_large error when JSON exceeds the configured limit", async () => {
     await closeServer(server!);
     server = createDaemonServer(new ClaudeSupervisor({ stateDir: tempDir }), { maxBodyBytes: 16 });
