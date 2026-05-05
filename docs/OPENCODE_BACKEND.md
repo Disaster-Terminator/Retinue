@@ -2,6 +2,10 @@
 
 The OpenCode backend is a thin lifecycle adapter. It does not configure providers, models, endpoint routing, `/connect`, credentials, or permission policy. OpenCode owns those concerns.
 
+Current default mode is **attach-only**. There is no hidden auto-serve path: supervisor only starts a local OpenCode server when `SUPERVISOR_OPENCODE_AUTO_SERVE=1` is explicitly set and the corresponding runtime path is implemented.
+
+Supervisor is not a provider/model router, and it does not bypass permissions for OpenCode or Claude Code paths.
+
 ## Server Target
 
 The safest first integration mode is attach-only:
@@ -33,16 +37,19 @@ Supervisor must not auto-start OpenCode unless `SUPERVISOR_OPENCODE_AUTO_SERVE=1
 
 Implemented:
 
-- fake OpenCode HTTP server for deterministic tests
+- fake OpenCode HTTP server for deterministic, repeatable tests
 - narrow `OpenCodeClient`
 - `OpenCodeBackend` run/result/continue/abort against the fake server
 - backend metadata fields on job records
 - attach/serve policy helpers
 - CLI `opencode-run`, `opencode-status`, `opencode-wait`, `opencode-result`, `opencode-continue`, `opencode-kill`, and `opencode-cleanup`
 - MCP `opencode_*` lifecycle tools
-- deterministic CLI/MCP tests using a fake OpenCode server
+- deterministic CLI/MCP tests using a fake OpenCode server only
 
 Not implemented yet:
 
 - daemon RPC routing for OpenCode jobs
 - real OpenCode probe script
+
+
+Real OpenCode probes are manual-only and are intentionally excluded from automated `pnpm test` gates.
