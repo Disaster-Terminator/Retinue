@@ -6,6 +6,8 @@ interface FakeSession {
   title?: string;
   cwd?: string;
   aborted?: boolean;
+  state: "running" | "completed" | "failed";
+  failureReason?: string;
   messages: Array<{
     info: { id: string; sessionID: string; role: string };
     parts: Array<{ type: "text"; text: string }>;
@@ -14,6 +16,8 @@ interface FakeSession {
 
 export interface FakeOpenCodeServer {
   url: string;
+  completeSession(sessionId: string): void;
+  failSession(sessionId: string, reason?: string): void;
   close(): Promise<void>;
 }
 
@@ -37,6 +41,7 @@ export async function startFakeOpenCodeServer(): Promise<FakeOpenCodeServer> {
         id: `ses_${nextSession++}`,
         title: typeof body.title === "string" ? body.title : undefined,
         cwd: typeof body.cwd === "string" ? body.cwd : undefined,
+        state: "running",
         messages: []
       };
       sessions.set(session.id, session);
@@ -67,7 +72,14 @@ export async function startFakeOpenCodeServer(): Promise<FakeOpenCodeServer> {
 
     const action = sessionMatch[2];
     if (request.method === "GET" && !action) {
-      writeJson(response, 200, { id: session.id, title: session.title, cwd: session.cwd, aborted: session.aborted === true });
+      writeJson(response, 200, {
+        id: session.id,
+        title: session.title,
+        cwd: session.cwd,
+        aborted: session.aborted === true,
+        state: session.state,
+        failureReason: session.failureReason
+      });
       return;
     }
 
@@ -82,6 +94,7 @@ export async function startFakeOpenCodeServer(): Promise<FakeOpenCodeServer> {
         info: { id: messageId, sessionID: session.id, role: "assistant" },
         parts: [{ type: "text", text: `fake result: ${prompt}` }]
       });
+      session.state = "running";
       response.statusCode = 204;
       response.end();
       return;
@@ -105,6 +118,19 @@ export async function startFakeOpenCodeServer(): Promise<FakeOpenCodeServer> {
   const address = server.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${address.port}`,
+    completeSession: (sessionId: string) => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.state = "completed";
+      }
+    },
+    failSession: (sessionId: string, reason?: string) => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.state = "failed";
+        session.failureReason = reason;
+      }
+    },
     close: () =>
       new Promise((resolve, reject) => {
         server.close((error) => {
