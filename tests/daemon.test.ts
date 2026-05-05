@@ -44,6 +44,7 @@ describe("supervisor daemon", () => {
       prompt: "daemon hello"
     });
     expect(started.status).toBe("running");
+    expect(started.backend).toBe("claude-code");
 
     const waited = await postJson(`${daemon.url}/v1/jobs/wait`, {
       jobId: started.jobId,

@@ -74,6 +74,13 @@ describe("daemon RPC contract", () => {
     });
   });
 
+
+  it("rejects unknown backend with a structured invalid_request error", async () => {
+    await expect(postRaw("/v1/jobs/run", JSON.stringify({ cwd: tempDir, prompt: "hi", backend: "unknown" }))).resolves.toMatchObject({
+      status: 400,
+      body: { error: { code: "invalid_request", message: "Unknown backend: unknown" } }
+    });
+  });
   async function postRaw(pathname: string, body: string): Promise<{ status: number; body: any }> {
     const response = await fetch(`${baseUrl}${pathname}`, {
       method: "POST",
