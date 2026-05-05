@@ -1,6 +1,6 @@
 # OpenCode Backend
 
-The OpenCode backend is a thin lifecycle adapter. It does not configure providers, models, endpoint routing, `/connect`, credentials, or permission policy. OpenCode owns those concerns.
+The OpenCode backend is experimental/in-progress and intentionally thin. It is attach-first by default and does not configure providers, models, endpoint routing, `/connect`, credentials, or permission policy. OpenCode owns those concerns.
 
 ## Server Target
 
@@ -27,7 +27,7 @@ SUPERVISOR_OPENCODE_HOST=127.0.0.1
 SUPERVISOR_OPENCODE_PORT=0
 ```
 
-Supervisor must not auto-start OpenCode unless `SUPERVISOR_OPENCODE_AUTO_SERVE=1` is explicit.
+Supervisor defaults to attach-only behavior. It must not auto-start OpenCode unless `SUPERVISOR_OPENCODE_AUTO_SERVE=1` is explicit and corresponding serve behavior is implemented.
 
 ## Current Status
 
@@ -46,3 +46,13 @@ Not implemented yet:
 
 - daemon RPC routing for OpenCode jobs
 - real OpenCode probe script
+
+
+## Guardrails
+
+- attach-only is the default backend posture.
+- no hidden auto-serve defaults; auto-serve requires explicit opt-in plus implemented support.
+- no provider/model router is implemented in supervisor; OpenCode remains the owner.
+- no permission bypass behavior is exposed through supervisor inputs.
+- fake OpenCode server tests are deterministic and default.
+- real OpenCode probes are manual-only and never part of default CI gates.
