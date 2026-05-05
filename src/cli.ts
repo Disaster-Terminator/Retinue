@@ -46,9 +46,10 @@ async function main(): Promise<void> {
     }
     case "opencode-wait": {
       const [jobId, ...rest] = args;
-      const backend = createOpenCodeBackend(parseFlags(rest));
-      const result = await backend.result({ jobId: required(jobId, "jobId") });
-      writeJson({ jobId: result.jobId, status: result.status, exitCode: result.exitStatus?.exitCode });
+      const flags = parseFlags(rest);
+      const backend = createOpenCodeBackend(flags);
+      const waited = await backend.wait({ jobId: required(jobId, "jobId") }, flags["timeout-ms"] ? Number(flags["timeout-ms"]) : undefined);
+      writeJson(waited);
       return;
     }
     case "opencode-result": {

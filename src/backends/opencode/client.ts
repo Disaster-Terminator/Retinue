@@ -6,10 +6,17 @@ export interface OpenCodeSession {
 }
 
 export interface OpenCodeMessage {
-  id: string;
-  sessionId: string;
-  role?: string;
-  text?: string;
+  info?: {
+    id?: string;
+    sessionID?: string;
+    role?: string;
+    [key: string]: unknown;
+  };
+  parts?: Array<{
+    type?: string;
+    text?: string;
+    [key: string]: unknown;
+  }>;
   [key: string]: unknown;
 }
 
@@ -49,8 +56,12 @@ export class OpenCodeClient {
     return this.request("GET", `/session/${encodeURIComponent(sessionId)}`);
   }
 
-  promptAsync(sessionId: string, options: { prompt: string; model?: string; agent?: string }): Promise<{ messageId: string }> {
-    return this.request("POST", `/session/${encodeURIComponent(sessionId)}/prompt_async`, options);
+  promptAsync(sessionId: string, options: { prompt: string; model?: string; agent?: string }): Promise<void> {
+    return this.requestVoid("POST", `/session/${encodeURIComponent(sessionId)}/prompt_async`, {
+      model: options.model,
+      agent: options.agent,
+      parts: [{ type: "text", text: options.prompt }]
+    });
   }
 
   messages(sessionId: string): Promise<OpenCodeMessage[]> {
@@ -62,17 +73,7 @@ export class OpenCodeClient {
   }
 
   private async request<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
-    let response: Response;
-    try {
-      response = await fetch(`${this.baseUrl}${path}`, {
-        method,
-        headers: method === "POST" ? { "content-type": "application/json" } : undefined,
-        body: method === "POST" ? JSON.stringify(body ?? {}) : undefined
-      });
-    } catch (error) {
-      throw new OpenCodeClientError(error instanceof Error ? error.message : String(error), "transport_error", 0, path);
-    }
-
+    const response = await this.fetch(method, path, body);
     const text = await response.text();
     const parsed = parseJson(text);
     if (!parsed.ok) {
@@ -83,6 +84,31 @@ export class OpenCodeClient {
       throw new OpenCodeClientError(message, "http_error", response.status, path, parsed.value);
     }
     return parsed.value as T;
+  }
+
+  private async requestVoid(method: "GET" | "POST", path: string, body?: unknown): Promise<void> {
+    const response = await this.fetch(method, path, body);
+    if (!response.ok) {
+      const text = await response.text();
+      const parsed = parseJson(text);
+      const details = parsed.ok ? parsed.value : text;
+      const message = parsed.ok ? extractErrorMessage(parsed.value) : undefined;
+      throw new OpenCodeClientError(message ?? `OpenCode request failed with HTTP ${response.status}`, "http_error", response.status, path, details);
+    }
+  }
+
+  private async fetch(method: "GET" | "POST", path: string, body?: unknown): Promise<Response> {
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${path}`, {
+        method,
+        headers: method === "POST" ? { "content-type": "application/json" } : undefined,
+        body: method === "POST" ? JSON.stringify(body ?? {}) : undefined
+      });
+    } catch (error) {
+      throw new OpenCodeClientError(error instanceof Error ? error.message : String(error), "transport_error", 0, path);
+    }
+    return response;
   }
 }
 

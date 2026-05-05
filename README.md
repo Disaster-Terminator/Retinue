@@ -1,11 +1,13 @@
-# supervisor
+# Anchorpoint
 
-Local MCP and CLI supervisor for spawning external coding agents as managed background jobs.
+Local control plane for long-running coding-agent jobs via CLI, MCP, and a durable daemon path.
 
 See [Project Boundary and Long-Term Vision](docs/PROJECT_BOUNDARY.md) before changing the architecture. The current stdio MCP implementation is a hardening phase; the long-term lifecycle owner is a durable local daemon. See [Verification Notes](docs/VERIFICATION.md) for the current Windows, WSL, and real Claude Code baseline.
 See [Service Lifecycle](docs/SERVICE_LIFECYCLE.md) for the current manual daemon start, inspect, and stop workflow.
 
-Claude Code is the frozen compatibility backend. New agent integration work should happen behind backend adapters, starting with OpenCode. Supervisor must remain a lifecycle owner and must not become a provider/model router.
+Claude Code is the frozen compatibility backend. New agent integration work should happen behind backend adapters, starting with OpenCode. Anchorpoint must remain a lifecycle owner and must not become a provider/model router.
+
+The package and original command names still use `supervisor` for compatibility. `Anchorpoint` is the product identity for the durable local lifecycle boundary: callers submit a job, receive a handle, and can later inspect, wait, read results, continue, kill, or clean up without turning the agent runtime into this project's responsibility.
 
 The repository targets a Codex-like lifecycle:
 
@@ -96,6 +98,9 @@ After `pnpm run build`, package bins point at:
 
 | Bin | Built file | Purpose |
 | --- | --- | --- |
+| `anchorpoint` | `dist/cli.js` | Alias for the local CLI |
+| `anchorpoint-mcp` | `dist/mcp.js` | Alias for the stdio MCP server |
+| `anchorpointd` | `dist/daemon.js` | Alias for the manual loopback daemon |
 | `supervisor` | `dist/cli.js` | Local CLI for run/status/wait/result/continue/peek/kill/cleanup |
 | `supervisor-mcp` | `dist/mcp.js` | Stdio MCP server exposing Claude lifecycle tools |
 | `supervisor-daemon` | `dist/daemon.js` | Manual loopback daemon for durable lifecycle ownership |

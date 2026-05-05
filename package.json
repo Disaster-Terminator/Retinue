@@ -4,8 +4,11 @@
   "private": true,
   "packageManager": "pnpm@10.33.2",
   "type": "module",
-  "description": "Local MCP and CLI supervisor for spawning Claude Code background jobs.",
+  "description": "Local control plane for long-running coding-agent jobs.",
   "bin": {
+    "anchorpoint": "./dist/cli.js",
+    "anchorpoint-mcp": "./dist/mcp.js",
+    "anchorpointd": "./dist/daemon.js",
     "supervisor": "./dist/cli.js",
     "supervisor-mcp": "./dist/mcp.js",
     "supervisor-daemon": "./dist/daemon.js"
@@ -28,8 +31,10 @@
     "probe:real:daemon": "node scripts/probe-real-claude.mjs daemon",
     "probe:real:direct": "node scripts/probe-real-claude.mjs direct",
     "probe:real:mcp-daemon": "node scripts/probe-real-claude.mjs mcp-daemon",
+    "probe:real:opencode": "node scripts/probe-real-opencode.mjs",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "verify:package": "pnpm pack --dry-run --json | node scripts/verify-package.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.5",

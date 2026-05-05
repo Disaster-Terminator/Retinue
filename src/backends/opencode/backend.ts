@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { getJobPaths, resolveStateDir } from "../../core/paths.js";
 import type { CleanupOptions, CleanupResult, JobMeta, JobProblem, JobResult, JobStatusResult, SupervisorOptions } from "../../core/types.js";
 import type { AgentBackend, AgentContinueOptions, AgentHandle, AgentRunOptions } from "../types.js";
-import { OpenCodeClient } from "./client.js";
+import { OpenCodeClient, OpenCodeClientError } from "./client.js";
 
 export interface OpenCodeBackendOptions {
   client: OpenCodeClient;
@@ -11,6 +11,8 @@ export interface OpenCodeBackendOptions {
   stateDir?: string;
   env?: SupervisorOptions["env"];
 }
+const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
+const DEFAULT_WAIT_POLL_MS = 250;
 
 export class OpenCodeBackend implements AgentBackend {
   readonly kind = "opencode" as const;
@@ -31,7 +33,7 @@ export class OpenCodeBackend implements AgentBackend {
     await fs.writeFile(paths.prompt, options.prompt, "utf8");
 
     const session = await this.client.createSession({ cwd: options.cwd, title: options.title ?? options.name });
-    const prompt = await this.client.promptAsync(session.id, {
+    await this.client.promptAsync(session.id, {
       prompt: options.prompt,
       model: options.model,
       agent: options.agent
@@ -53,7 +55,6 @@ export class OpenCodeBackend implements AgentBackend {
       agent: options.agent,
       externalSessionId: session.id,
       externalServerUrl: this.baseUrl,
-      externalMessageId: prompt.messageId,
       args: [],
       createdAt: now,
       updatedAt: now
@@ -70,7 +71,7 @@ export class OpenCodeBackend implements AgentBackend {
     const paths = getJobPaths(this.stateDir, jobId);
     await fs.mkdir(paths.dir, { recursive: true });
     await fs.writeFile(paths.prompt, options.prompt, "utf8");
-    const prompt = await this.client.promptAsync(options.externalSessionId, {
+    await this.client.promptAsync(options.externalSessionId, {
       prompt: options.prompt,
       model: options.model,
       agent: options.agent
@@ -92,7 +93,6 @@ export class OpenCodeBackend implements AgentBackend {
       agent: options.agent,
       externalSessionId: options.externalSessionId,
       externalServerUrl: this.baseUrl,
-      externalMessageId: prompt.messageId,
       parentJobId: options.parentJobId,
       parentSessionId: options.parentSessionId,
       args: [],
@@ -104,11 +104,15 @@ export class OpenCodeBackend implements AgentBackend {
   }
 
   async status(handle: AgentHandle): Promise<JobStatusResult> {
-    return this.readMeta(handle.jobId);
+    const meta = await this.readMeta(handle.jobId);
+    if (isProblem(meta)) {
+      return meta;
+    }
+    return this.reconcileStatus(meta);
   }
 
   async result(handle: AgentHandle): Promise<JobResult> {
-    const meta = await this.readMeta(handle.jobId);
+    const meta = await this.status(handle);
     if (isProblem(meta)) {
       return { jobId: handle.jobId, status: meta.status, error: meta.error };
     }
@@ -116,12 +120,14 @@ export class OpenCodeBackend implements AgentBackend {
       return { jobId: handle.jobId, status: "corrupted", error: "Missing OpenCode session id" };
     }
     const messages = await this.client.messages(meta.externalSessionId);
-    const text = [...messages].reverse().find((message) => typeof message.text === "string")?.text ?? "";
-    const completed = { ...meta, status: "completed" as const, updatedAt: new Date().toISOString() };
-    await writeJsonAtomic(getJobPaths(this.stateDir, handle.jobId).meta, completed);
+    const text =
+      [...messages]
+        .reverse()
+        .map(extractMessageText)
+        .find((messageText) => messageText.length > 0) ?? "";
     return {
       jobId: handle.jobId,
-      status: "completed",
+      status: meta.status,
       stdout: text,
       stderr: "",
       stdoutPath: getJobPaths(this.stateDir, handle.jobId).stdout,
@@ -146,6 +152,20 @@ export class OpenCodeBackend implements AgentBackend {
       status: "killed",
       updatedAt: new Date().toISOString()
     });
+  }
+
+  async wait(handle: AgentHandle, timeoutMs = DEFAULT_WAIT_TIMEOUT_MS): Promise<{ jobId: string; status: JobStatusResult["status"] }> {
+    const deadline = Date.now() + Math.max(0, timeoutMs);
+    for (;;) {
+      const status = await this.status(handle);
+      if (isProblem(status) || isTerminal(status.status)) {
+        return { jobId: handle.jobId, status: status.status };
+      }
+      if (Date.now() >= deadline) {
+        return { jobId: handle.jobId, status: "running" };
+      }
+      await sleep(DEFAULT_WAIT_POLL_MS);
+    }
   }
 
   async cleanup(options: CleanupOptions = {}): Promise<CleanupResult> {
@@ -185,10 +205,57 @@ export class OpenCodeBackend implements AgentBackend {
       return { jobId, status: "corrupted", error: error instanceof Error ? error.message : String(error) };
     }
   }
+
+  private async reconcileStatus(meta: JobMeta): Promise<JobMeta | JobProblem> {
+    if (!meta.externalSessionId || isTerminal(meta.status)) {
+      return meta;
+    }
+    try {
+      const session = await this.client.getSession(meta.externalSessionId);
+      let status = meta.status;
+      if (session.aborted === true) {
+        status = "killed";
+      } else if (session.state === "completed") {
+        status = "completed";
+      } else if (session.state === "failed") {
+        status = "failed";
+      } else {
+        status = "running";
+      }
+      if (status === meta.status) {
+        return meta;
+      }
+      const updated: JobMeta = { ...meta, status, updatedAt: new Date().toISOString() };
+      await writeJsonAtomic(getJobPaths(this.stateDir, meta.jobId).meta, updated);
+      return updated;
+    } catch (error) {
+      if (error instanceof OpenCodeClientError && error.status === 404) {
+        return { jobId: meta.jobId, status: "not_found", error: "OpenCode session not found" };
+      }
+      return { jobId: meta.jobId, status: "corrupted", error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+}
+
+function isTerminal(status: JobStatusResult["status"]): boolean {
+  return status === "completed" || status === "failed" || status === "killed" || status === "timed_out";
+}
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function isProblem(value: JobStatusResult): value is JobProblem {
   return value.status === "not_found" || value.status === "corrupted";
+}
+
+function extractMessageText(message: { parts?: Array<{ type?: string; text?: string }> }): string {
+  if (!Array.isArray(message.parts)) {
+    return "";
+  }
+  return message.parts
+    .filter((part) => part?.type === "text" && typeof part.text === "string")
+    .map((part) => part.text ?? "")
+    .join("");
 }
 
 async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> {

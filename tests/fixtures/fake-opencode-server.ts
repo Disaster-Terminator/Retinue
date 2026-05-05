@@ -6,11 +6,18 @@ interface FakeSession {
   title?: string;
   cwd?: string;
   aborted?: boolean;
-  messages: Array<{ id: string; sessionId: string; role: string; text: string }>;
+  state: "running" | "completed" | "failed";
+  failureReason?: string;
+  messages: Array<{
+    info: { id: string; sessionID: string; role: string };
+    parts: Array<{ type: "text"; text: string }>;
+  }>;
 }
 
 export interface FakeOpenCodeServer {
   url: string;
+  completeSession(sessionId: string): void;
+  failSession(sessionId: string, reason?: string): void;
   close(): Promise<void>;
 }
 
@@ -34,6 +41,7 @@ export async function startFakeOpenCodeServer(): Promise<FakeOpenCodeServer> {
         id: `ses_${nextSession++}`,
         title: typeof body.title === "string" ? body.title : undefined,
         cwd: typeof body.cwd === "string" ? body.cwd : undefined,
+        state: "running",
         messages: []
       };
       sessions.set(session.id, session);
@@ -64,16 +72,31 @@ export async function startFakeOpenCodeServer(): Promise<FakeOpenCodeServer> {
 
     const action = sessionMatch[2];
     if (request.method === "GET" && !action) {
-      writeJson(response, 200, { id: session.id, title: session.title, cwd: session.cwd, aborted: session.aborted === true });
+      writeJson(response, 200, {
+        id: session.id,
+        title: session.title,
+        cwd: session.cwd,
+        aborted: session.aborted === true,
+        state: session.state,
+        failureReason: session.failureReason
+      });
       return;
     }
 
     if (request.method === "POST" && action === "prompt_async") {
       const body = await readJson(request);
-      const prompt = typeof body.prompt === "string" ? body.prompt : "";
+      const prompt =
+        Array.isArray(body.parts) && typeof body.parts[0] === "object" && body.parts[0] !== null && "text" in body.parts[0]
+          ? String((body.parts[0] as { text?: unknown }).text ?? "")
+          : "";
       const messageId = `msg_${nextMessage++}`;
-      session.messages.push({ id: messageId, sessionId: session.id, role: "assistant", text: `fake result: ${prompt}` });
-      writeJson(response, 200, { messageId });
+      session.messages.push({
+        info: { id: messageId, sessionID: session.id, role: "assistant" },
+        parts: [{ type: "text", text: `fake result: ${prompt}` }]
+      });
+      session.state = "running";
+      response.statusCode = 204;
+      response.end();
       return;
     }
 
@@ -95,6 +118,19 @@ export async function startFakeOpenCodeServer(): Promise<FakeOpenCodeServer> {
   const address = server.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${address.port}`,
+    completeSession: (sessionId: string) => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.state = "completed";
+      }
+    },
+    failSession: (sessionId: string, reason?: string) => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.state = "failed";
+        session.failureReason = reason;
+      }
+    },
     close: () =>
       new Promise((resolve, reject) => {
         server.close((error) => {

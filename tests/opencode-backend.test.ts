@@ -43,8 +43,7 @@ describe("OpenCodeBackend", () => {
       model: "local/test",
       agent: "build",
       externalServerUrl: server!.url,
-      externalSessionId: expect.stringMatching(/^ses_/),
-      externalMessageId: expect.stringMatching(/^msg_/)
+      externalSessionId: expect.stringMatching(/^ses_/)
     });
     expect(started.promptPath).toMatch(/prompt\.md$/);
     await expect(fs.readFile(started.promptPath, "utf8")).resolves.toBe("hello");
@@ -55,11 +54,24 @@ describe("OpenCodeBackend", () => {
     });
   });
 
-  it("reads results from OpenCode messages", async () => {
+  it("keeps newly started jobs running until fake completion", async () => {
     const backend = createBackend();
     const started = await backend.run({ cwd: tempDir, prompt: "result please" });
 
     await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "running" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "running",
+      sessionId: started.externalSessionId,
+      parsedStdout: { result: "fake result: result please" }
+    });
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "running" });
+  });
+
+  it("transitions to completed after fake completion", async () => {
+    const backend = createBackend();
+    const started = await backend.run({ cwd: tempDir, prompt: "result please" });
+    server!.completeSession(started.externalSessionId!);
+
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
       status: "completed",
       sessionId: started.externalSessionId,
@@ -93,12 +105,31 @@ describe("OpenCodeBackend", () => {
     await backend.abort({ jobId: started.jobId });
 
     await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "killed" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({ status: "killed" });
+  });
+
+  it("wait returns running before completion then completed after completion", async () => {
+    const backend = createBackend();
+    const started = await backend.run({ cwd: tempDir, prompt: "wait-me" });
+
+    await expect(backend.wait({ jobId: started.jobId }, 1)).resolves.toMatchObject({ status: "running" });
+    server!.completeSession(started.externalSessionId!);
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
+  });
+
+  it("reconciles failed state from fake server", async () => {
+    const backend = createBackend();
+    const started = await backend.run({ cwd: tempDir, prompt: "fail-me" });
+    server!.failSession(started.externalSessionId!, "boom");
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "failed" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({ status: "failed" });
   });
 
   it("cleans terminal OpenCode jobs and preserves running jobs", async () => {
     const backend = createBackend();
     const completed = await backend.run({ cwd: tempDir, prompt: "done" });
     const running = await backend.run({ cwd: tempDir, prompt: "keep" });
+    server!.completeSession(completed.externalSessionId!);
     await backend.result({ jobId: completed.jobId });
 
     await expect(backend.cleanup()).resolves.toMatchObject({ removedJobIds: [completed.jobId] });
