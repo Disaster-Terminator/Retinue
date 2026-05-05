@@ -59,6 +59,17 @@ Observed WSL/Linux result from a fresh clone:
 - `pnpm run build` passed.
 - Fresh clone path: `/tmp/supervisor-main-pnpm-wsl-test-L4utS4`.
 
+
+## CI Guardrails (pnpm + package verification)
+
+Date: 2026-05-05
+
+- Default CI uses pnpm only (`pnpm/action-setup`) and installs with `pnpm install --frozen-lockfile`.
+- Default CI runs `typecheck`, `test`, `build`, and `verify:package`.
+- `verify:package` fails if `package-lock.json` exists.
+- `verify:package` enforces packaged runtime files for `dist/backends/**`, `dist/cli.*`, `dist/mcp.*`, `dist/daemon.*`, and required docs (`docs/VERIFICATION.md`, `docs/OPENCODE_BACKEND.md`).
+- Real Claude/OpenCode probes remain opt-in scripts and are not run by default CI.
+
 ## OpenCode Backend Branch Baseline
 
 Date: 2026-05-05
