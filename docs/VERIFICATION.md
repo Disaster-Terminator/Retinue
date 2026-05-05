@@ -15,10 +15,44 @@ pnpm run build
 Current baseline:
 
 - Windows: `pnpm run typecheck`, `pnpm test`, and `pnpm run build` pass.
-- WSL/Linux: fresh clone, `pnpm install --frozen-lockfile`, `pnpm run typecheck`, `pnpm test`, and `pnpm run build` pass.
+- WSL/Linux: pending fresh-clone re-verification after pnpm migration.
 - Fake Claude suite covers spawn/close/error ordering, permission mode validation, atomic state writes, structured `not_found` and `corrupted` states, disk-backed concurrency, durable kill status, and running-job peek/tail.
 - Daemon suite covers `GET /health`, HTTP `run` -> `wait` -> `result`, structured route errors, package `supervisor-daemon` bin exposure, and CLI delegation through `SUPERVISOR_DAEMON_URL`.
 - MCP suite covers stable Claude tool names, direct server construction, explicit daemon-backed supervisor construction, MCP client tool calls through daemon RPC, and daemon job truth after MCP adapter reconnect.
+
+## Claude Freeze And Review Absorption Baseline
+
+Date: 2026-05-05
+
+Milestone:
+
+- Claude Code is the frozen compatibility backend.
+- The repository standard is pnpm with `packageManager: pnpm@10.33.2`.
+- `package-lock.json` was removed and `pnpm-lock.yaml` was added.
+- Only backend-neutral hardening was absorbed from `review/codex-web-nightly-2026-05-04`.
+- Absorbed hardening: typed daemon client errors, daemon discovery URL/timestamp validation, read-only daemon health diagnostics, and MCP input schema validation tests.
+- Rejected as-is: npm GitHub Actions, package-lock based package verifier, npm command documentation, and Claude Code MCP matrix as a new product direction.
+- No provider/model routing and no permission bypass surface were added.
+
+Verified commands:
+
+```bash
+pnpm run typecheck
+pnpm test
+pnpm run build
+pnpm pack --dry-run --json
+```
+
+Observed Windows result:
+
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 15 test files and 85 tests.
+- `pnpm run build` passed.
+- `pnpm pack --dry-run --json` passed and included runtime entrypoints, docs, probe script, and the fake-Claude fixture.
+
+Remaining verification:
+
+- WSL/Linux fresh clone verification should run after this branch is pushed, using `pnpm install --frozen-lockfile`, `pnpm run typecheck`, `pnpm test`, and `pnpm run build`.
 
 ## Completion Audit Baseline
 
