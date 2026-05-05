@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertExpectedResult, parseProbeArgs, readJsonOutput } from "../scripts/probe-real-claude.mjs";
+import { assertExpectedResult, parseProbeArgs, readJsonOutput } from "../src/core/probeRealClaudeHelpers.js";
 
 describe("real Claude probe helpers", () => {
   it("parses mode and common probe flags", () => {
