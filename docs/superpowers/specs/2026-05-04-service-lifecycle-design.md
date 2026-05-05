@@ -116,8 +116,8 @@ This keeps the product honest while preparing for a later reversible installer m
 ### Build
 
 ```bash
-npm install
-npm run build
+pnpm install
+pnpm run build
 ```
 
 ### Start Foreground
