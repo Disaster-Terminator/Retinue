@@ -7,22 +7,26 @@ interface FakeSession {
   cwd?: string;
   aborted?: boolean;
   state: "running" | "completed" | "failed";
+  omitState?: boolean;
   failureReason?: string;
   messages: Array<{
-    info: { id: string; sessionID: string; role: string };
+    info: { id: string; sessionID: string; role: string; time?: { completed?: number }; finish?: string };
     parts: Array<{ type: "text"; text: string }>;
   }>;
 }
 
 export interface FakeOpenCodeServer {
   url: string;
+  promptRequests: Array<Record<string, unknown>>;
   completeSession(sessionId: string): void;
+  completeSessionByMessageOnly(sessionId: string): void;
   failSession(sessionId: string, reason?: string): void;
   close(): Promise<void>;
 }
 
 export async function startFakeOpenCodeServer(): Promise<FakeOpenCodeServer> {
   const sessions = new Map<string, FakeSession>();
+  const promptRequests: Array<Record<string, unknown>> = [];
   let nextSession = 1;
   let nextMessage = 1;
 
@@ -77,7 +81,7 @@ export async function startFakeOpenCodeServer(): Promise<FakeOpenCodeServer> {
         title: session.title,
         cwd: session.cwd,
         aborted: session.aborted === true,
-        state: session.state,
+        state: session.omitState ? undefined : session.state,
         failureReason: session.failureReason
       });
       return;
@@ -85,6 +89,7 @@ export async function startFakeOpenCodeServer(): Promise<FakeOpenCodeServer> {
 
     if (request.method === "POST" && action === "prompt_async") {
       const body = await readJson(request);
+      promptRequests.push(body);
       const prompt =
         Array.isArray(body.parts) && typeof body.parts[0] === "object" && body.parts[0] !== null && "text" in body.parts[0]
           ? String((body.parts[0] as { text?: unknown }).text ?? "")
@@ -118,10 +123,22 @@ export async function startFakeOpenCodeServer(): Promise<FakeOpenCodeServer> {
   const address = server.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${address.port}`,
+    promptRequests,
     completeSession: (sessionId: string) => {
       const session = sessions.get(sessionId);
       if (session) {
         session.state = "completed";
+      }
+    },
+    completeSessionByMessageOnly: (sessionId: string) => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.omitState = true;
+        const last = session.messages.at(-1);
+        if (last) {
+          last.info.time = { completed: Date.now() };
+          last.info.finish = "stop";
+        }
       }
     },
     failSession: (sessionId: string, reason?: string) => {

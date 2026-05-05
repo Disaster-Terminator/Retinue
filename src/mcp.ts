@@ -152,7 +152,7 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
       description: "Start an OpenCode background job through an attached OpenCode server.",
       inputSchema: opencodeRunSchema()
     },
-    async (args) => jsonToolResult(await createOpenCodeBackend(args).run(args))
+    async (args) => jsonToolResult(await createOpenCodeBackend(args).run(withOpenCodeDefaults(args)))
   );
 
   server.registerTool(
@@ -202,7 +202,7 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
     async (args) =>
       jsonToolResult(
         await createOpenCodeBackend(args).continueJob({
-          ...args,
+          ...withOpenCodeDefaults(args),
           parentJobId: args.jobId,
           parentSessionId: args.externalSessionId
         })
@@ -262,6 +262,14 @@ function createOpenCodeBackend(args: { opencodeBaseUrl?: string }): OpenCodeBack
     stateDir: process.env.SUPERVISOR_STATE_DIR,
     env: process.env
   });
+}
+
+function withOpenCodeDefaults<T extends { model?: string; agent?: string }>(args: T): T {
+  return {
+    ...args,
+    model: args.model ?? process.env.SUPERVISOR_OPENCODE_MODEL,
+    agent: args.agent ?? process.env.SUPERVISOR_OPENCODE_AGENT
+  };
 }
 
 export function createMcpSupervisorFromEnv(

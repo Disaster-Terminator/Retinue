@@ -219,6 +219,8 @@ export class OpenCodeBackend implements AgentBackend {
         status = "completed";
       } else if (session.state === "failed") {
         status = "failed";
+      } else if (session.state === undefined && (await this.hasCompletedAssistantMessage(meta.externalSessionId))) {
+        status = "completed";
       } else {
         status = "running";
       }
@@ -234,6 +236,18 @@ export class OpenCodeBackend implements AgentBackend {
       }
       return { jobId: meta.jobId, status: "corrupted", error: error instanceof Error ? error.message : String(error) };
     }
+  }
+
+  private async hasCompletedAssistantMessage(sessionId: string): Promise<boolean> {
+    const messages = await this.client.messages(sessionId);
+    return messages.some((message) => {
+      const info = message.info;
+      if (info?.role !== "assistant") {
+        return false;
+      }
+      const time = typeof info.time === "object" && info.time !== null ? info.time : undefined;
+      return Boolean(time && "completed" in time && typeof time.completed === "number");
+    });
   }
 }
 

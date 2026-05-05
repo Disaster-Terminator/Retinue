@@ -57,12 +57,12 @@ async function main() {
 async function probeSessionStatus(baseUrl, sessionId) {
   const candidates = [`/session/${encodeURIComponent(sessionId)}/status`, `/session/${encodeURIComponent(sessionId)}`];
   for (const path of candidates) {
-    const result = await requestJson(baseUrl, "GET", path, undefined, { allow404: true });
-    if (result.status !== 404) {
+    const result = await requestJson(baseUrl, "GET", path, undefined, { allow404: true, allowNonJson: true });
+    if (result.status !== 404 && result.data !== undefined) {
       return { endpoint: path, ...summarizeResult(result) };
     }
   }
-  return { ok: false, skipped: true, reason: "No session status endpoint detected (404)" };
+  return { ok: false, skipped: true, reason: "No JSON session status endpoint detected" };
 }
 
 function summarizeResult(result) {
@@ -89,6 +89,14 @@ async function requestJson(baseUrl, method, path, body, options = {}) {
   const text = await response.text();
   const data = parseJson(text);
   if (data === undefined) {
+    if (options.allowNonJson) {
+      return {
+        ok: response.ok,
+        status: response.status,
+        path,
+        data: undefined
+      };
+    }
     throw new Error(`Expected JSON response for ${method} ${path} but got: ${text.slice(0, 200)}`);
   }
 

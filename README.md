@@ -116,6 +116,9 @@ After `pnpm run build`, package bins point at:
 | `SUPERVISOR_DAEMON_DISCOVERY` | CLI, MCP | Set to `1` to read `<stateDir>/daemon.json` explicitly |
 | `SUPERVISOR_DEFAULT_RUNTIME_TIMEOUT_MS` | CLI, MCP, daemon | Default runtime timeout for jobs that do not pass `timeoutMs` |
 | `SUPERVISOR_MAX_CONCURRENT_JOBS` | CLI, MCP, daemon | Limit concurrent running jobs for that supervisor process |
+| `SUPERVISOR_OPENCODE_BASE_URL` | OpenCode CLI/MCP | Attach to a loopback OpenCode server |
+| `SUPERVISOR_OPENCODE_MODEL` | OpenCode CLI/MCP | Optional default model override as `provider/model`; omitted when unset |
+| `SUPERVISOR_OPENCODE_AGENT` | OpenCode CLI/MCP | Optional default OpenCode agent override; omitted when unset |
 
 ## Daemon
 
@@ -269,4 +272,5 @@ pnpm run build
 ```
 
 Manual and opt-in real Claude Code probes are documented in [Real Claude Code Probes](docs/REAL_CLAUDE_PROBES.md). They are not part of the default deterministic test suite.
+Manual and opt-in real OpenCode probes are documented in [Real OpenCode Probes](docs/REAL_OPENCODE_PROBES.md).
 

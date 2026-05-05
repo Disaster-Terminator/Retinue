@@ -25,6 +25,11 @@ describe("OpenCodeClient", () => {
     await expect(client.getSession(session.id)).resolves.toMatchObject({ id: session.id });
 
     await expect(client.promptAsync(session.id, { prompt: "hello", model: "local/test", agent: "build" })).resolves.toBeUndefined();
+    expect(server.promptRequests.at(-1)).toMatchObject({
+      model: { providerID: "local", modelID: "test" },
+      agent: "build",
+      parts: [{ type: "text", text: "hello" }]
+    });
 
     await expect(client.messages(session.id)).resolves.toContainEqual(
       expect.objectContaining({

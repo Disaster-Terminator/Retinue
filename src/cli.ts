@@ -34,8 +34,8 @@ async function main(): Promise<void> {
           prompt: required(flags.prompt, "--prompt"),
           name: flags.name,
           title: flags.title,
-          model: flags.model,
-          agent: flags.agent
+          model: resolveOpenCodeModel(flags),
+          agent: resolveOpenCodeAgent(flags)
         })
       );
       return;
@@ -68,8 +68,8 @@ async function main(): Promise<void> {
           parentSessionId: flags["external-session-id"],
           name: flags.name,
           title: flags.title,
-          model: flags.model,
-          agent: flags.agent
+          model: resolveOpenCodeModel(flags),
+          agent: resolveOpenCodeAgent(flags)
         })
       );
       return;
@@ -185,6 +185,14 @@ function createOpenCodeBackend(flags: Record<string, string | undefined>): OpenC
     stateDir: process.env.SUPERVISOR_STATE_DIR,
     env: process.env
   });
+}
+
+function resolveOpenCodeModel(flags: Record<string, string | undefined>): string | undefined {
+  return flags.model ?? process.env.SUPERVISOR_OPENCODE_MODEL;
+}
+
+function resolveOpenCodeAgent(flags: Record<string, string | undefined>): string | undefined {
+  return flags.agent ?? process.env.SUPERVISOR_OPENCODE_AGENT;
 }
 
 async function daemonHealth(global: { daemonUrl?: string; discoverDaemon: boolean }): Promise<unknown> {

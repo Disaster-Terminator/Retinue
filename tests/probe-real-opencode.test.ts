@@ -76,6 +76,31 @@ describe("probe-real-opencode", () => {
     const promptReq = requests.find((r) => r.method === "POST" && r.url === "/session/s1/prompt_async");
     expect(promptReq?.body).toEqual({ parts: [{ type: "text", text: "Reply exactly: SUPERVISOR_OPENCODE_REAL_OK" }] });
   });
+
+  it("falls back to session details when status endpoint returns HTML", async () => {
+    await withServer(async (req, res) => {
+      if (req.method === "GET" && req.url === "/global/health") return json(res, 200, { ok: true });
+      if (req.method === "POST" && req.url === "/session") return json(res, 200, { id: "s1" });
+      if (req.method === "GET" && req.url === "/session/s1") return json(res, 200, { id: "s1", state: "running" });
+      if (req.method === "POST" && req.url === "/session/s1/prompt_async") { res.writeHead(204); res.end(); return; }
+      if (req.method === "GET" && req.url === "/session/s1/message") return json(res, 200, []);
+      if (req.method === "GET" && req.url === "/session/s1/status") {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end("<!doctype html><html></html>");
+        return;
+      }
+      if (req.method === "POST" && req.url === "/session/s1/abort") return json(res, 200, { ok: true });
+      return json(res, 500, { error: `unexpected ${req.method} ${req.url}` });
+    }, async (baseUrl) => {
+      const result = await runProbeAsync(["--base-url", baseUrl], { SUPERVISOR_REAL_OPENCODE_PROBE: "1" });
+      const output = JSON.parse(result.stdout);
+      expect(output.operations.sessionStatus).toMatchObject({
+        ok: true,
+        endpoint: "/session/s1",
+        data: { id: "s1", state: "running" }
+      });
+    });
+  });
 });
 
 function json(res: http.ServerResponse, status: number, value: unknown) {

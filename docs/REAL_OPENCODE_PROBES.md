@@ -33,6 +33,8 @@ When available, the script probes:
 - session status endpoint (`GET /session/:id/status` when available; fallback detection)
 - `POST /session/:id/abort`
 
+OpenCode 1.14.35 may return the web app HTML for `/session/:id/status`; the probe treats non-JSON status responses as unavailable and falls back to `GET /session/:id`.
+
 Output is concise JSON intended for copying into docs or issue comments.
 
 ## Examples
@@ -58,3 +60,5 @@ node scripts/probe-real-opencode.mjs --base-url http://localhost:4096
 - `pnpm test` does **not** require a live OpenCode server.
 - No provider/model routing changes are introduced by this probe.
 - No permission-bypass behavior is introduced by this probe.
+
+For the production-style CLI/MCP lifecycle flow, including optional `SUPERVISOR_OPENCODE_MODEL=litellm/pro-router`, see [Production OpenCode E2E](PRODUCTION_OPENCODE_E2E.md).

@@ -58,7 +58,7 @@ export class OpenCodeClient {
 
   promptAsync(sessionId: string, options: { prompt: string; model?: string; agent?: string }): Promise<void> {
     return this.requestVoid("POST", `/session/${encodeURIComponent(sessionId)}/prompt_async`, {
-      model: options.model,
+      model: formatModelOverride(options.model),
       agent: options.agent,
       parts: [{ type: "text", text: options.prompt }]
     });
@@ -140,4 +140,18 @@ function extractErrorMessage(value: unknown): string | undefined {
     }
   }
   return undefined;
+}
+
+function formatModelOverride(model: string | undefined): { providerID: string; modelID: string } | undefined {
+  if (model === undefined) {
+    return undefined;
+  }
+  const separator = model.indexOf("/");
+  if (separator <= 0 || separator === model.length - 1) {
+    throw new OpenCodeClientError(`Invalid OpenCode model override: expected provider/model, got ${model}`, "invalid_model");
+  }
+  return {
+    providerID: model.slice(0, separator),
+    modelID: model.slice(separator + 1)
+  };
 }

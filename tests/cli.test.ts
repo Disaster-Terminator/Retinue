@@ -280,6 +280,37 @@ describe("CLI", () => {
     expect(JSON.parse(result.stdout).parsedStdout.result).toBe("fake result: opencode cli");
   });
 
+  it("uses OpenCode model and agent defaults from environment", async () => {
+    fakeOpenCode = await startFakeOpenCodeServer();
+    const env = {
+      ...process.env,
+      SUPERVISOR_STATE_DIR: tempDir,
+      SUPERVISOR_OPENCODE_MODEL: "litellm/pro-router",
+      SUPERVISOR_OPENCODE_AGENT: "build"
+    };
+
+    await execFileAsync(
+      process.execPath,
+      [
+        tsxCliPath,
+        cliPath,
+        "opencode-run",
+        "--cwd",
+        tempDir,
+        "--prompt",
+        "opencode env defaults",
+        "--opencode-base-url",
+        fakeOpenCode.url
+      ],
+      { env }
+    );
+
+    expect(fakeOpenCode.promptRequests[0]).toMatchObject({
+      model: { providerID: "litellm", modelID: "pro-router" },
+      agent: "build"
+    });
+  });
+
   function cliEnv(stateDir: string): NodeJS.ProcessEnv {
     return {
       ...process.env,

@@ -80,6 +80,19 @@ describe("OpenCodeBackend", () => {
     await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "completed" });
   });
 
+  it("transitions to completed from completed assistant messages when session state is absent", async () => {
+    const backend = createBackend();
+    const started = await backend.run({ cwd: tempDir, prompt: "result please" });
+    server!.completeSessionByMessageOnly(started.externalSessionId!);
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "completed",
+      sessionId: started.externalSessionId,
+      parsedStdout: { result: "fake result: result please" }
+    });
+  });
+
   it("continues an existing OpenCode session", async () => {
     const backend = createBackend();
     const first = await backend.run({ cwd: tempDir, prompt: "first" });

@@ -1,0 +1,168 @@
+# Production OpenCode E2E
+
+This document records the production-style OpenCode path for `feature/spawn-opencode`.
+
+Supervisor stays a thin lifecycle wrapper. OpenCode owns provider configuration, endpoint routing, login, model availability, agent behavior, and permission policy. Supervisor owns job metadata, wait/result/continue/kill/cleanup, and MCP/CLI surfaces.
+
+## WSL Baseline
+
+The current real baseline is the user's WSL OpenCode configuration:
+
+```text
+OpenCode version: 1.14.35
+Config path: /home/raystorm/.config/opencode/opencode.json
+Provider id: litellm
+Model id: pro-router
+Model override: litellm/pro-router
+Provider base URL: http://localhost:4000/v1
+Secret env name: LITELLM_API_KEY
+```
+
+Do not copy API keys into this repository. If OpenCode is started non-interactively, load the user's OpenCode env before serving:
+
+```bash
+set -a
+. "$HOME/.config/opencode/.env"
+set +a
+opencode serve --hostname 127.0.0.1 --port 4096
+```
+
+Windows can either attach to that WSL server through the loopback URL or maintain its own equivalent OpenCode config. The old Windows OpenCode config is not the baseline for this project.
+
+## Supervisor Configuration
+
+Attach to the server:
+
+```bash
+SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096
+```
+
+Use the production model only when explicitly configured:
+
+```bash
+SUPERVISOR_OPENCODE_MODEL=litellm/pro-router
+SUPERVISOR_OPENCODE_AGENT=build
+```
+
+Precedence is:
+
+1. CLI/MCP input fields.
+2. `SUPERVISOR_OPENCODE_MODEL` and `SUPERVISOR_OPENCODE_AGENT`.
+3. Unset: omit the field and let OpenCode choose its default.
+
+`SUPERVISOR_OPENCODE_MODEL=litellm/pro-router` is sent to OpenCode as:
+
+```json
+{
+  "providerID": "litellm",
+  "modelID": "pro-router"
+}
+```
+
+## CLI E2E Flow
+
+Build first:
+
+```bash
+pnpm run build
+```
+
+Run:
+
+```bash
+SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
+SUPERVISOR_OPENCODE_MODEL=litellm/pro-router \
+node dist/cli.js opencode-run \
+  --cwd /mnt/g/repository/supervisor \
+  --prompt "Reply exactly: SUPERVISOR_SPAWN_OPENCODE_OK" \
+  --title supervisor-spawn-opencode-live
+```
+
+Wait and read:
+
+```bash
+node dist/cli.js opencode-wait <jobId> --timeout-ms 180000
+node dist/cli.js opencode-result <jobId>
+```
+
+Continue:
+
+```bash
+SUPERVISOR_OPENCODE_MODEL=litellm/pro-router \
+node dist/cli.js opencode-continue \
+  --cwd /mnt/g/repository/supervisor \
+  --external-session-id <sessionId> \
+  --job-id <jobId> \
+  --prompt "Reply exactly: SUPERVISOR_SPAWN_OPENCODE_CONTINUE_OK"
+```
+
+Kill and cleanup:
+
+```bash
+node dist/cli.js opencode-kill <jobId>
+node dist/cli.js opencode-cleanup --older-than-ms 0
+```
+
+PowerShell uses the same commands with `$env:SUPERVISOR_OPENCODE_BASE_URL` and `$env:SUPERVISOR_OPENCODE_MODEL`.
+
+## 2026-05-05 E2E Result
+
+Environment:
+
+```text
+Host runner: Windows PowerShell
+OpenCode server: WSL Ubuntu-22.04, http://127.0.0.1:4096
+OpenCode version: 1.14.35
+Workspace sent to OpenCode: /mnt/g/repository/supervisor
+Model override: litellm/pro-router
+Agent: build
+```
+
+Run result:
+
+```text
+jobId: job_aee04909-0b97-47f0-8c76-c75b2fc86f20
+sessionId: ses_2075283c6ffezabgaTHjAQGj3s
+providerID: litellm
+modelID: pro-router
+status: completed
+stdout: SUPERVISOR_SPAWN_OPENCODE_OK
+```
+
+Continue result:
+
+```text
+jobId: job_04fa0583-3968-429d-801e-242ea6b0ee0d
+sessionId: ses_2075283c6ffezabgaTHjAQGj3s
+providerID: litellm
+modelID: pro-router
+status: completed
+stdout: SUPERVISOR_SPAWN_OPENCODE_CONTINUE_OK
+```
+
+Kill and cleanup were also exercised:
+
+```text
+kill jobId: job_e89aabf1-f6ad-494f-a62f-5c5ef956d757
+kill status: killed
+cleanup removed: job_aee04909-0b97-47f0-8c76-c75b2fc86f20, job_04fa0583-3968-429d-801e-242ea6b0ee0d, job_e89aabf1-f6ad-494f-a62f-5c5ef956d757
+```
+
+OpenCode message metadata confirmed `providerID=litellm` and `modelID=pro-router`. No API key or provider secret is recorded here.
+
+WSL-side CLI result:
+
+```text
+runner: WSL Ubuntu-22.04
+jobId: job_3eb667da-a718-4670-ba7a-2c60deb63de0
+sessionId: ses_2074a18d2ffe9opvrLoLl1PdvE
+providerID: litellm
+modelID: pro-router
+status: completed
+stdout: SUPERVISOR_WSL_OPENCODE_OK
+cleanup removed: job_3eb667da-a718-4670-ba7a-2c60deb63de0
+```
+
+## Known Environment Note
+
+During the same session, direct WSL userland commands briefly returned `Wsl/Service/0x8007274c`, while the already running WSL OpenCode server remained reachable over loopback from Windows. WSL later recovered and completed the CLI E2E above. Do not reset or terminate WSL as an automatic fix; confirm with the user before any WSL lifecycle action.

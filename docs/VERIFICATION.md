@@ -127,6 +127,42 @@ Observed WSL/Linux result from a fresh clone:
 - `pnpm run build` passed.
 - Fresh clone path: `/tmp/supervisor-opencode-wsl-test-C7hVR1`.
 
+## OpenCode Production E2E Milestone
+
+Date: 2026-05-05
+
+Branch: `feature/spawn-opencode`
+
+Milestone:
+
+- Added CLI/MCP model and agent defaults through `SUPERVISOR_OPENCODE_MODEL` and `SUPERVISOR_OPENCODE_AGENT`.
+- Kept defaults thin: unset model/agent fields are omitted so OpenCode owns default selection.
+- Fixed OpenCode 1.14.35 compatibility for object-shaped model overrides, 204 `prompt_async` responses, HTML `/session/:id/status` fallback, and sessions without a `state` field.
+- Recorded WSL OpenCode baseline and production E2E steps in `docs/PRODUCTION_OPENCODE_E2E.md`.
+
+Verified commands:
+
+```bash
+pnpm run typecheck
+pnpm test
+pnpm run build
+pnpm run verify:package
+```
+
+Observed Windows result:
+
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 21 test files and 120 tests.
+- `pnpm run build` passed.
+- `pnpm run verify:package` passed.
+
+Observed real OpenCode result:
+
+- Windows PowerShell runner attached to WSL OpenCode server `1.14.35` on `http://127.0.0.1:4096`.
+- `opencode-run`, `opencode-wait`, `opencode-result`, `opencode-continue`, `opencode-kill`, and `opencode-cleanup` completed against `litellm/pro-router`.
+- OpenCode message metadata confirmed `providerID=litellm` and `modelID=pro-router`.
+- WSL runner also completed `opencode-run`, `opencode-wait`, `opencode-result`, and `opencode-cleanup` against the same model.
+
 ## Completion Audit Baseline
 
 Date: 2026-05-04
