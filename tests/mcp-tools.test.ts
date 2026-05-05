@@ -258,6 +258,16 @@ describe("MCP tools", () => {
       );
       expect(run.backend).toBe("opencode");
 
+      const waitRunning = parseToolJson(
+        await connection.client.callTool({
+          name: "opencode_wait",
+          arguments: { jobId: run.jobId, timeoutMs: 25, opencodeBaseUrl: fakeOpenCode.url }
+        })
+      );
+      expect(waitRunning.status).toBe("running");
+
+      fakeOpenCode.completeSession(run.externalSessionId);
+
       const result = parseToolJson(
         await connection.client.callTool({
           name: "opencode_result",
