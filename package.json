@@ -1,11 +1,14 @@
 {
-  "name": "@disaster-terminator/supervisor",
+  "name": "@disaster-terminator/anchorpoint",
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@10.33.2",
   "type": "module",
-  "description": "Local MCP and CLI supervisor for spawning Claude Code background jobs.",
+  "description": "Local control plane for long-running coding-agent jobs.",
   "bin": {
+    "anchorpoint": "./dist/cli.js",
+    "anchorpoint-mcp": "./dist/mcp.js",
+    "anchorpointd": "./dist/daemon.js",
     "supervisor": "./dist/cli.js",
     "supervisor-mcp": "./dist/mcp.js",
     "supervisor-daemon": "./dist/daemon.js"
