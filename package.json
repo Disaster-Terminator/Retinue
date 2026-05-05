@@ -30,7 +30,8 @@
     "probe:real:mcp-daemon": "node scripts/probe-real-claude.mjs mcp-daemon",
     "probe:real:opencode": "node scripts/probe-real-opencode.mjs",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "verify:package": "pnpm pack --dry-run --json | node scripts/verify-package.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.5",
