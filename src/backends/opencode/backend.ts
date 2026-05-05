@@ -31,7 +31,7 @@ export class OpenCodeBackend implements AgentBackend {
     await fs.writeFile(paths.prompt, options.prompt, "utf8");
 
     const session = await this.client.createSession({ cwd: options.cwd, title: options.title ?? options.name });
-    const prompt = await this.client.promptAsync(session.id, {
+    await this.client.promptAsync(session.id, {
       prompt: options.prompt,
       model: options.model,
       agent: options.agent
@@ -53,7 +53,7 @@ export class OpenCodeBackend implements AgentBackend {
       agent: options.agent,
       externalSessionId: session.id,
       externalServerUrl: this.baseUrl,
-      externalMessageId: prompt.messageId,
+      externalMessageId: undefined,
       args: [],
       createdAt: now,
       updatedAt: now
@@ -70,7 +70,7 @@ export class OpenCodeBackend implements AgentBackend {
     const paths = getJobPaths(this.stateDir, jobId);
     await fs.mkdir(paths.dir, { recursive: true });
     await fs.writeFile(paths.prompt, options.prompt, "utf8");
-    const prompt = await this.client.promptAsync(options.externalSessionId, {
+    await this.client.promptAsync(options.externalSessionId, {
       prompt: options.prompt,
       model: options.model,
       agent: options.agent
@@ -92,7 +92,7 @@ export class OpenCodeBackend implements AgentBackend {
       agent: options.agent,
       externalSessionId: options.externalSessionId,
       externalServerUrl: this.baseUrl,
-      externalMessageId: prompt.messageId,
+      externalMessageId: undefined,
       parentJobId: options.parentJobId,
       parentSessionId: options.parentSessionId,
       args: [],
@@ -116,7 +116,7 @@ export class OpenCodeBackend implements AgentBackend {
       return { jobId: handle.jobId, status: "corrupted", error: "Missing OpenCode session id" };
     }
     const messages = await this.client.messages(meta.externalSessionId);
-    const text = [...messages].reverse().find((message) => typeof message.text === "string")?.text ?? "";
+    const text = extractResultText(messages);
     const completed = { ...meta, status: "completed" as const, updatedAt: new Date().toISOString() };
     await writeJsonAtomic(getJobPaths(this.stateDir, handle.jobId).meta, completed);
     return {
@@ -185,6 +185,17 @@ export class OpenCodeBackend implements AgentBackend {
       return { jobId, status: "corrupted", error: error instanceof Error ? error.message : String(error) };
     }
   }
+}
+
+function extractResultText(messages: Array<{ parts?: Array<{ type?: string; text?: string }> }>): string {
+  for (const message of [...messages].reverse()) {
+    for (const part of message.parts ?? []) {
+      if (part.type === "text" && typeof part.text === "string" && part.text.length > 0) {
+        return part.text;
+      }
+    }
+  }
+  return "";
 }
 
 function isProblem(value: JobStatusResult): value is JobProblem {

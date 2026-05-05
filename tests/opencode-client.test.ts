@@ -24,11 +24,13 @@ describe("OpenCodeClient", () => {
     await expect(client.listSessions()).resolves.toContainEqual(expect.objectContaining({ id: session.id }));
     await expect(client.getSession(session.id)).resolves.toMatchObject({ id: session.id });
 
-    const prompt = await client.promptAsync(session.id, { prompt: "hello", model: "local/test", agent: "build" });
-    expect(prompt.messageId).toMatch(/^msg_/);
+    await expect(client.promptAsync(session.id, { prompt: "hello", model: "local/test", agent: "build" })).resolves.toBeUndefined();
 
     await expect(client.messages(session.id)).resolves.toContainEqual(
-      expect.objectContaining({ sessionId: session.id, text: "fake result: hello" })
+      expect.objectContaining({
+        info: expect.objectContaining({ sessionID: session.id }),
+        parts: expect.arrayContaining([expect.objectContaining({ type: "text", text: "fake result: hello" })])
+      })
     );
   });
 

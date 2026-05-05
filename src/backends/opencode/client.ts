@@ -6,10 +6,17 @@ export interface OpenCodeSession {
 }
 
 export interface OpenCodeMessage {
-  id: string;
-  sessionId: string;
-  role?: string;
-  text?: string;
+  info: {
+    id: string;
+    sessionID?: string;
+    role?: string;
+    [key: string]: unknown;
+  };
+  parts: Array<{
+    type?: string;
+    text?: string;
+    [key: string]: unknown;
+  }>;
   [key: string]: unknown;
 }
 
@@ -49,8 +56,12 @@ export class OpenCodeClient {
     return this.request("GET", `/session/${encodeURIComponent(sessionId)}`);
   }
 
-  promptAsync(sessionId: string, options: { prompt: string; model?: string; agent?: string }): Promise<{ messageId: string }> {
-    return this.request("POST", `/session/${encodeURIComponent(sessionId)}/prompt_async`, options);
+  async promptAsync(sessionId: string, options: { prompt: string; model?: string; agent?: string }): Promise<void> {
+    await this.request<void>("POST", `/session/${encodeURIComponent(sessionId)}/prompt_async`, {
+      model: options.model,
+      agent: options.agent,
+      parts: [{ type: "text", text: options.prompt }]
+    });
   }
 
   messages(sessionId: string): Promise<OpenCodeMessage[]> {
