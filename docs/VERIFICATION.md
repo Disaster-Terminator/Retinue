@@ -7,15 +7,15 @@ This document records the current hardening baseline. Keep it factual and update
 Run these before any real Claude Code integration test:
 
 ```bash
-npm run typecheck
-npm test
-npm run build
+pnpm run typecheck
+pnpm test
+pnpm run build
 ```
 
 Current baseline:
 
-- Windows: `npm run typecheck`, `npm test`, and `npm run build` pass.
-- WSL/Linux: fresh clone, `npm ci`, `npm run typecheck`, `npm test`, and `npm run build` pass.
+- Windows: `pnpm run typecheck`, `pnpm test`, and `pnpm run build` pass.
+- WSL/Linux: fresh clone, `pnpm install --frozen-lockfile`, `pnpm run typecheck`, `pnpm test`, and `pnpm run build` pass.
 - Fake Claude suite covers spawn/close/error ordering, permission mode validation, atomic state writes, structured `not_found` and `corrupted` states, disk-backed concurrency, durable kill status, and running-job peek/tail.
 - Daemon suite covers `GET /health`, HTTP `run` -> `wait` -> `result`, structured route errors, package `supervisor-daemon` bin exposure, and CLI delegation through `SUPERVISOR_DAEMON_URL`.
 - MCP suite covers stable Claude tool names, direct server construction, explicit daemon-backed supervisor construction, MCP client tool calls through daemon RPC, and daemon job truth after MCP adapter reconnect.
@@ -33,25 +33,25 @@ Milestone:
 Verified commands:
 
 ```bash
-npm run typecheck
-npm test
-npm run build
-npm pack --dry-run --json
+pnpm run typecheck
+pnpm test
+pnpm run build
+pnpm pack --dry-run --json
 ```
 
 Observed Windows result:
 
-- `npm run typecheck` passed.
-- `npm test` passed with 14 test files and 51 tests.
-- `npm run build` passed.
-- `npm pack --dry-run --json` passed with 52 package entries.
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 14 test files and 51 tests.
+- `pnpm run build` passed.
+- `pnpm pack --dry-run --json` passed with 52 package entries.
 
 Observed WSL/Linux result from a fresh clone:
 
-- `npm ci` passed.
-- `npm run typecheck` passed.
-- `npm test` passed with 14 test files and 51 tests.
-- `npm run build` passed.
+- `pnpm install --frozen-lockfile` passed.
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 14 test files and 51 tests.
+- `pnpm run build` passed.
 
 ## User-Facing Polish Baseline
 
@@ -67,27 +67,27 @@ Milestone:
 Verified commands:
 
 ```bash
-npm run typecheck
-npm test
-npm run build
-npm pack --dry-run --json
+pnpm run typecheck
+pnpm test
+pnpm run build
+pnpm pack --dry-run --json
 ```
 
 Observed Windows result:
 
-- `npm run typecheck` passed.
-- `npm test` passed with 14 test files and 50 tests.
-- `npm run build` passed.
-- `npm pack --dry-run --json` passed with 52 package entries.
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 14 test files and 50 tests.
+- `pnpm run build` passed.
+- `pnpm pack --dry-run --json` passed with 52 package entries.
 - The package includes `dist/cli.js`, `dist/mcp.js`, `dist/daemon.js`, runtime `dist/core/**`, runtime `dist/daemon/**`, docs, `scripts/probe-real-claude.mjs`, and `tests/fixtures/fake-claude.mjs`.
 - The package excludes stale `dist/src/**` and `dist/tests/**` build outputs.
 
 Observed WSL/Linux result from a fresh clone:
 
-- `npm ci` passed.
-- `npm run typecheck` passed.
-- `npm test` passed with 14 test files and 50 tests.
-- `npm run build` passed.
+- `pnpm install --frozen-lockfile` passed.
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 14 test files and 50 tests.
+- `pnpm run build` passed.
 
 ## Real Probe Runner Baseline
 
@@ -96,7 +96,7 @@ Date: 2026-05-04
 Milestone:
 
 - `scripts/probe-real-claude.mjs` provides opt-in direct CLI, daemon CLI, and MCP-to-daemon probes.
-- `npm run probe:real:direct`, `npm run probe:real:daemon`, and `npm run probe:real:mcp-daemon` are explicit scripts only.
+- `pnpm run probe:real:direct`, `pnpm run probe:real:daemon`, and `pnpm run probe:real:mcp-daemon` are explicit scripts only.
 - Default deterministic gates do not run real Claude Code probes.
 - `docs/REAL_CLAUDE_PROBES.md` documents Windows real CLI, WSL fresh clone, daemon mode, MCP-to-daemon, fake dry-run, and cc-switch boundary probes.
 - The probe runner validates `parsedStdout.result` and supports fake-Claude dry runs through `SUPERVISOR_CLAUDE_COMMAND` and `SUPERVISOR_CLAUDE_PREFIX_ARGS`.
@@ -104,16 +104,16 @@ Milestone:
 Verified commands:
 
 ```bash
-npm run typecheck
-npm test
-npm run build
+pnpm run typecheck
+pnpm test
+pnpm run build
 ```
 
 Observed Windows result:
 
-- `npm run typecheck` passed.
-- `npm test` passed with 14 test files and 50 tests.
-- `npm run build` passed.
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 14 test files and 50 tests.
+- `pnpm run build` passed.
 
 Observed Windows fake dry-run result:
 
@@ -123,10 +123,10 @@ Observed Windows fake dry-run result:
 
 Observed WSL/Linux result from a fresh clone:
 
-- `npm ci` passed.
-- `npm run typecheck` passed.
-- `npm test` passed with 14 test files and 50 tests.
-- `npm run build` passed.
+- `pnpm install --frozen-lockfile` passed.
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 14 test files and 50 tests.
+- `pnpm run build` passed.
 
 ## Service Lifecycle Design Baseline
 
@@ -143,23 +143,23 @@ Milestone:
 Verified commands:
 
 ```bash
-npm run typecheck
-npm test
-npm run build
+pnpm run typecheck
+pnpm test
+pnpm run build
 ```
 
 Observed Windows result:
 
-- `npm run typecheck` passed.
-- `npm test` passed with 13 test files and 45 tests.
-- `npm run build` passed.
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 13 test files and 45 tests.
+- `pnpm run build` passed.
 
 Observed WSL/Linux result from a fresh clone:
 
-- `npm ci` passed.
-- `npm run typecheck` passed.
-- `npm test` passed with 13 test files and 45 tests.
-- `npm run build` passed.
+- `pnpm install --frozen-lockfile` passed.
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 13 test files and 45 tests.
+- `pnpm run build` passed.
 
 ## Durable State Reconciliation Baseline
 
@@ -178,23 +178,23 @@ Milestone:
 Verified commands:
 
 ```bash
-npm run typecheck
-npm test
-npm run build
+pnpm run typecheck
+pnpm test
+pnpm run build
 ```
 
 Observed Windows result:
 
-- `npm run typecheck` passed.
-- `npm test` passed with 13 test files and 45 tests.
-- `npm run build` passed.
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 13 test files and 45 tests.
+- `pnpm run build` passed.
 
 Observed WSL/Linux result from a fresh clone:
 
-- `npm ci` passed.
-- `npm run typecheck` passed.
-- `npm test` passed with 13 test files and 45 tests.
-- `npm run build` passed.
+- `pnpm install --frozen-lockfile` passed.
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 13 test files and 45 tests.
+- `pnpm run build` passed.
 
 ## Explicit Daemon Discovery Baseline
 
@@ -213,23 +213,23 @@ Milestone:
 Verified commands:
 
 ```bash
-npm run typecheck
-npm test
-npm run build
+pnpm run typecheck
+pnpm test
+pnpm run build
 ```
 
 Observed Windows result:
 
-- `npm run typecheck` passed.
-- `npm test` passed with 13 test files and 42 tests.
-- `npm run build` passed.
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 13 test files and 42 tests.
+- `pnpm run build` passed.
 
 Observed WSL/Linux result from a fresh clone:
 
-- `npm ci` passed.
-- `npm run typecheck` passed.
-- `npm test` passed with 13 test files and 42 tests.
-- `npm run build` passed.
+- `pnpm install --frozen-lockfile` passed.
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 13 test files and 42 tests.
+- `pnpm run build` passed.
 
 ## Daemon RPC Contract Baseline
 
@@ -248,23 +248,23 @@ Milestone:
 Verified commands:
 
 ```bash
-npm run typecheck
-npm test
-npm run build
+pnpm run typecheck
+pnpm test
+pnpm run build
 ```
 
 Observed Windows result:
 
-- `npm run typecheck` passed.
-- `npm test` passed with 12 test files and 36 tests.
-- `npm run build` passed.
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 12 test files and 36 tests.
+- `pnpm run build` passed.
 
 Observed WSL/Linux result from a fresh clone:
 
-- `npm ci` passed.
-- `npm run typecheck` passed.
-- `npm test` passed with 12 test files and 36 tests.
-- `npm run build` passed.
+- `pnpm install --frozen-lockfile` passed.
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 12 test files and 36 tests.
+- `pnpm run build` passed.
 
 ## MCP Daemon Adapter Baseline
 
@@ -281,23 +281,23 @@ Milestone:
 Verified commands:
 
 ```bash
-npm run typecheck
-npm test
-npm run build
+pnpm run typecheck
+pnpm test
+pnpm run build
 ```
 
 Observed Windows result:
 
-- `npm run typecheck` passed.
-- `npm test` passed with 11 test files and 31 tests.
-- `npm run build` passed.
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 11 test files and 31 tests.
+- `pnpm run build` passed.
 
 Observed WSL/Linux result from a fresh clone:
 
-- `npm ci` passed.
-- `npm run typecheck` passed.
-- `npm test` passed with 11 test files and 31 tests.
-- `npm run build` passed.
+- `pnpm install --frozen-lockfile` passed.
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 11 test files and 31 tests.
+- `pnpm run build` passed.
 
 ## Daemon Baseline
 
@@ -315,23 +315,23 @@ Milestone:
 Verified commands:
 
 ```bash
-npm run typecheck
-npm test
-npm run build
+pnpm run typecheck
+pnpm test
+pnpm run build
 ```
 
 Observed Windows result:
 
-- `npm run typecheck` passed.
-- `npm test` passed with 10 test files and 28 tests.
-- `npm run build` passed.
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 10 test files and 28 tests.
+- `pnpm run build` passed.
 
 Observed WSL/Linux result from a fresh clone:
 
-- `npm ci` passed.
-- `npm run typecheck` passed.
-- `npm test` passed with 10 test files and 28 tests.
-- `npm run build` passed.
+- `pnpm install --frozen-lockfile` passed.
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 10 test files and 28 tests.
+- `pnpm run build` passed.
 
 Remaining daemon limitations:
 
@@ -344,12 +344,12 @@ Remaining daemon limitations:
 
 Real Claude Code probes are documented in [Real Claude Code Probes](REAL_CLAUDE_PROBES.md).
 
-These probes are not part of `npm test`, `npm run typecheck`, or `npm run build`. They must be run explicitly:
+These probes are not part of `pnpm test`, `pnpm run typecheck`, or `pnpm run build`. They must be run explicitly:
 
 ```bash
-npm run probe:real:direct
-npm run probe:real:daemon
-npm run probe:real:mcp-daemon
+pnpm run probe:real:direct
+pnpm run probe:real:daemon
+pnpm run probe:real:mcp-daemon
 ```
 
 The probe runner also supports fake-Claude dry runs through `SUPERVISOR_CLAUDE_COMMAND=node` and `SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs`.

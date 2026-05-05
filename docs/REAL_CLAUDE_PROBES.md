@@ -5,9 +5,9 @@ These probes are manual and opt-in. They may consume Claude Code quota because t
 Run the deterministic gates first:
 
 ```bash
-npm run typecheck
-npm test
-npm run build
+pnpm run typecheck
+pnpm test
+pnpm run build
 ```
 
 ## Fake Dry Run
@@ -19,9 +19,9 @@ PowerShell:
 ```powershell
 $env:SUPERVISOR_CLAUDE_COMMAND = "node"
 $env:SUPERVISOR_CLAUDE_PREFIX_ARGS = "tests/fixtures/fake-claude.mjs"
-npm run probe:real:direct -- --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
-npm run probe:real:daemon -- --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
-npm run probe:real:mcp-daemon -- --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
+pnpm run probe:real:direct -- --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
+pnpm run probe:real:daemon -- --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
+pnpm run probe:real:mcp-daemon -- --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
 Remove-Item Env:\SUPERVISOR_CLAUDE_COMMAND
 Remove-Item Env:\SUPERVISOR_CLAUDE_PREFIX_ARGS
 ```
@@ -29,9 +29,9 @@ Remove-Item Env:\SUPERVISOR_CLAUDE_PREFIX_ARGS
 Bash:
 
 ```bash
-SUPERVISOR_CLAUDE_COMMAND=node SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs npm run probe:real:direct -- --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
-SUPERVISOR_CLAUDE_COMMAND=node SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs npm run probe:real:daemon -- --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
-SUPERVISOR_CLAUDE_COMMAND=node SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs npm run probe:real:mcp-daemon -- --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
+SUPERVISOR_CLAUDE_COMMAND=node SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs pnpm run probe:real:direct -- --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
+SUPERVISOR_CLAUDE_COMMAND=node SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs pnpm run probe:real:daemon -- --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
+SUPERVISOR_CLAUDE_COMMAND=node SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs pnpm run probe:real:mcp-daemon -- --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
 ```
 
 Each command should print JSON with `ok: true`, a `jobId`, the validated `result`, and the probe `stateDir`.
@@ -41,9 +41,9 @@ Each command should print JSON with `ok: true`, a `jobId`, the validated `result
 Build first, then verify that Windows resolves the intended Claude Code executable:
 
 ```powershell
-npm run build
+pnpm run build
 where.exe claude
-npm run probe:real:direct
+pnpm run probe:real:direct
 ```
 
 Expected result:
@@ -63,10 +63,10 @@ d=$(mktemp -d /tmp/supervisor-wsl-test-XXXXXX)
 git clone /mnt/g/repository/supervisor "$d" >/dev/null
 cd "$d"
 git checkout feature/spawn-claude-code >/dev/null
-npm ci
-npm run typecheck
-npm test
-npm run build
+pnpm install --frozen-lockfile
+pnpm run typecheck
+pnpm test
+pnpm run build
 echo "WSL_TEST_DIR=$d"
 ```
 
@@ -77,7 +77,7 @@ If WSL has a separate Claude Code installation and quota path, run the real prob
 This starts a temporary foreground daemon process from the probe runner, calls the CLI through `SUPERVISOR_DAEMON_URL`, validates the result, and stops the daemon process:
 
 ```bash
-npm run probe:real:daemon
+pnpm run probe:real:daemon
 ```
 
 Expected result:
@@ -92,7 +92,7 @@ Expected result:
 This starts a temporary daemon, starts `dist/mcp.js` through MCP stdio, calls `claude_run`, `claude_wait`, and `claude_result`, then stops the child processes:
 
 ```bash
-npm run probe:real:mcp-daemon
+pnpm run probe:real:mcp-daemon
 ```
 
 Expected result:

@@ -7,8 +7,8 @@
 Build first:
 
 ```bash
-npm install
-npm run build
+pnpm install
+pnpm run build
 ```
 
 Start the daemon in the foreground:

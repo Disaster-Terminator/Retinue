@@ -1,6 +1,6 @@
 # supervisor
 
-Local MCP and CLI supervisor for spawning Claude Code as managed background jobs.
+Local MCP and CLI supervisor for spawning external coding agents as managed background jobs.
 
 See [Project Boundary and Long-Term Vision](docs/PROJECT_BOUNDARY.md) before changing the architecture. The current stdio MCP implementation is a hardening phase; the long-term lifecycle owner is a durable local daemon. See [Verification Notes](docs/VERIFICATION.md) for the current Windows, WSL, and real Claude Code baseline.
 See [Service Lifecycle](docs/SERVICE_LIFECYCLE.md) for the current manual daemon start, inspect, and stop workflow.
@@ -20,10 +20,10 @@ The repository targets a Codex-like lifecycle:
 Install, build, and run the deterministic gate:
 
 ```bash
-npm install
-npm run build
-npm run typecheck
-npm test
+pnpm install
+pnpm run build
+pnpm run typecheck
+pnpm test
 ```
 
 Run a fake-Claude CLI job before spending real Claude Code quota:
@@ -60,14 +60,14 @@ on Linux/WSL. Set `SUPERVISOR_STATE_DIR` to override this.
 ## Install
 
 ```bash
-npm install
-npm run build
+pnpm install
+pnpm run build
 ```
 
 ## CLI
 
 ```bash
-npm run build
+pnpm run build
 node dist/cli.js run --cwd . --prompt "Reply exactly: OK"
 node dist/cli.js status <jobId>
 node dist/cli.js wait <jobId> --timeout-ms 30000
@@ -88,7 +88,7 @@ SUPERVISOR_CLAUDE_PREFIX_ARGS=/path/to/fake-claude.mjs
 
 ## Entrypoints
 
-After `npm run build`, package bins point at:
+After `pnpm run build`, package bins point at:
 
 | Bin | Built file | Purpose |
 | --- | --- | --- |
@@ -113,7 +113,7 @@ After `npm run build`, package bins point at:
 The first daemon milestone is manual and loopback-only by default:
 
 ```bash
-npm run build
+pnpm run build
 node dist/daemon.js --host 127.0.0.1 --port 27777
 ```
 
@@ -175,7 +175,7 @@ Without `SUPERVISOR_DAEMON_URL` or `--daemon-url`, CLI keeps the direct local su
 
 ## MCP
 
-After `npm run build`, configure an MCP client to run:
+After `pnpm run build`, configure an MCP client to run:
 
 ```bash
 node G:/repository/supervisor/dist/mcp.js
@@ -234,22 +234,22 @@ Cleanup removes terminal job directories and reports removed temp files. It pres
 - If a previous MCP process exited and left stale `running` metadata, status reconciliation marks a missing PID as `orphaned`.
 - If stale `running` metadata points at a live PID that the current supervisor instance does not own, status reconciliation marks it as `abandoned` rather than reporting normal `running`.
 - Cleanup removes terminal job directories and reports temp JSON files removed with those directories; it preserves `running` and `abandoned` job directories.
-- Windows and WSL should not share one `node_modules` directory. Run `npm ci` separately inside WSL before Linux-side tests because packages such as Rollup install OS-specific optional dependencies.
+- Windows and WSL should not share one `node_modules` directory. Run `pnpm install --frozen-lockfile` separately inside WSL before Linux-side tests because packages such as Rollup install OS-specific optional dependencies.
 
 ## Troubleshooting
 
-- `Unknown command: ...`: run `node dist/cli.js <command>` after `npm run build`; package bins also require built `dist/` files.
+- `Unknown command: ...`: run `node dist/cli.js <command>` after `pnpm run build`; package bins also require built `dist/` files.
 - `Stale daemon discovery`: stop the old PID if it is still running, or start a new daemon so `<stateDir>/daemon.json` is refreshed.
-- `Cannot find module` after moving between Windows and WSL: run `npm ci` separately in that environment.
+- `Cannot find module` after moving between Windows and WSL: run `pnpm install --frozen-lockfile` separately in that environment.
 - `claude` is missing or routes unexpectedly: check `where.exe claude` on Windows or `which claude` on WSL/Linux. Supervisor does not route providers itself.
 - Job output looks truncated: use `stdoutPath` and `stderrPath` from `claude_result` for full artifacts.
 
 ## Verify
 
 ```bash
-npm run typecheck
-npm test
-npm run build
+pnpm run typecheck
+pnpm test
+pnpm run build
 ```
 
 Manual and opt-in real Claude Code probes are documented in [Real Claude Code Probes](docs/REAL_CLAUDE_PROBES.md). They are not part of the default deterministic test suite.

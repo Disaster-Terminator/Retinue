@@ -2,6 +2,7 @@
   "name": "@disaster-terminator/supervisor",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.33.2",
   "type": "module",
   "description": "Local MCP and CLI supervisor for spawning Claude Code background jobs.",
   "bin": {
