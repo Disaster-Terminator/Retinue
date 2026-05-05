@@ -43,8 +43,7 @@ describe("OpenCodeBackend", () => {
       model: "local/test",
       agent: "build",
       externalServerUrl: server!.url,
-      externalSessionId: expect.stringMatching(/^ses_/),
-      externalMessageId: expect.stringMatching(/^msg_/)
+      externalSessionId: expect.stringMatching(/^ses_/)
     });
     expect(started.promptPath).toMatch(/prompt\.md$/);
     await expect(fs.readFile(started.promptPath, "utf8")).resolves.toBe("hello");

@@ -6,9 +6,18 @@ export interface OpenCodeSession {
 }
 
 export interface OpenCodeMessage {
-  id: string;
-  sessionId: string;
-  role?: string;
+  info?: {
+    id?: string;
+    role?: string;
+    sessionID?: string;
+    [key: string]: unknown;
+  };
+  parts?: OpenCodePart[];
+  [key: string]: unknown;
+}
+
+export interface OpenCodePart {
+  type?: string;
   text?: string;
   [key: string]: unknown;
 }
@@ -49,7 +58,7 @@ export class OpenCodeClient {
     return this.request("GET", `/session/${encodeURIComponent(sessionId)}`);
   }
 
-  promptAsync(sessionId: string, options: { prompt: string; model?: string; agent?: string }): Promise<{ messageId: string }> {
+  promptAsync(sessionId: string, options: { prompt: string; model?: string; agent?: string }): Promise<void> {
     return this.request("POST", `/session/${encodeURIComponent(sessionId)}/prompt_async`, options);
   }
 
@@ -74,6 +83,12 @@ export class OpenCodeClient {
     }
 
     const text = await response.text();
+    if (response.status === 204) {
+      if (!response.ok) {
+        throw new OpenCodeClientError(`OpenCode request failed with HTTP ${response.status}`, "http_error", response.status, path);
+      }
+      return undefined as T;
+    }
     const parsed = parseJson(text);
     if (!parsed.ok) {
       throw new OpenCodeClientError("OpenCode response was not valid JSON", "invalid_json", response.status, path, text);
