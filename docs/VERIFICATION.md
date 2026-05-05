@@ -10,6 +10,7 @@ Run these before any real Claude Code integration test:
 pnpm run typecheck
 pnpm test
 pnpm run build
+pnpm run verify:package
 ```
 
 Current baseline:
@@ -19,6 +20,32 @@ Current baseline:
 - Fake Claude suite covers spawn/close/error ordering, permission mode validation, atomic state writes, structured `not_found` and `corrupted` states, disk-backed concurrency, durable kill status, and running-job peek/tail.
 - Daemon suite covers `GET /health`, HTTP `run` -> `wait` -> `result`, structured route errors, package `supervisor-daemon` bin exposure, and CLI delegation through `SUPERVISOR_DAEMON_URL`.
 - MCP suite covers stable Claude tool names, direct server construction, explicit daemon-backed supervisor construction, MCP client tool calls through daemon RPC, and daemon job truth after MCP adapter reconnect.
+
+## CI Guardrails Baseline
+
+Date: 2026-05-05
+
+Milestone:
+
+- Default GitHub Actions CI uses pnpm only.
+- CI installs dependencies with `pnpm install --frozen-lockfile`.
+- CI runs `pnpm run typecheck`, `pnpm test`, `pnpm run build`, and `pnpm run verify:package`.
+- `verify:package` parses `pnpm pack --dry-run --json` output.
+- `verify:package` fails if `package-lock.json` exists.
+- `verify:package` enforces packaged runtime artifacts for `dist/backends/**`, `dist/cli.*`, `dist/mcp.*`, and `dist/daemon.*`.
+- `verify:package` enforces required docs: `README.md`, `docs/OPENCODE_BACKEND.md`, `docs/VERIFICATION.md`, and `docs/PROJECT_BOUNDARY.md`.
+- Default CI does not run any `probe:real:*` script.
+
+Verified commands:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm run typecheck
+pnpm test
+pnpm run build
+pnpm pack --dry-run --json
+pnpm run verify:package
+```
 
 ## Claude Freeze And Review Absorption Baseline
 
