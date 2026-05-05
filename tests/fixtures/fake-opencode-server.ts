@@ -6,7 +6,10 @@ interface FakeSession {
   title?: string;
   cwd?: string;
   aborted?: boolean;
-  messages: Array<{ id: string; sessionId: string; role: string; text: string }>;
+  messages: Array<{
+    info: { id: string; sessionID: string; role: string };
+    parts: Array<{ type: "text"; text: string }>;
+  }>;
 }
 
 export interface FakeOpenCodeServer {
@@ -70,10 +73,17 @@ export async function startFakeOpenCodeServer(): Promise<FakeOpenCodeServer> {
 
     if (request.method === "POST" && action === "prompt_async") {
       const body = await readJson(request);
-      const prompt = typeof body.prompt === "string" ? body.prompt : "";
+      const prompt =
+        Array.isArray(body.parts) && typeof body.parts[0] === "object" && body.parts[0] !== null && "text" in body.parts[0]
+          ? String((body.parts[0] as { text?: unknown }).text ?? "")
+          : "";
       const messageId = `msg_${nextMessage++}`;
-      session.messages.push({ id: messageId, sessionId: session.id, role: "assistant", text: `fake result: ${prompt}` });
-      writeJson(response, 200, { messageId });
+      session.messages.push({
+        info: { id: messageId, sessionID: session.id, role: "assistant" },
+        parts: [{ type: "text", text: `fake result: ${prompt}` }]
+      });
+      response.statusCode = 204;
+      response.end();
       return;
     }
 
