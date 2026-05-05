@@ -47,8 +47,8 @@ async function main(): Promise<void> {
     case "opencode-wait": {
       const [jobId, ...rest] = args;
       const backend = createOpenCodeBackend(parseFlags(rest));
-      const result = await backend.result({ jobId: required(jobId, "jobId") });
-      writeJson({ jobId: result.jobId, status: result.status, exitCode: result.exitStatus?.exitCode });
+      const result = await waitForOpenCode(backend, required(jobId, "jobId"), parseFlags(rest)["timeout-ms"] ? Number(parseFlags(rest)["timeout-ms"]) : undefined);
+      writeJson(result);
       return;
     }
     case "opencode-result": {
@@ -375,3 +375,14 @@ main().catch((error) => {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
   process.exitCode = 1;
 });
+
+
+async function waitForOpenCode(backend: OpenCodeBackend, jobId: string, timeoutMs = 30_000): Promise<{ jobId: string; status: string; exitCode?: number | null }> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const status = await backend.status({ jobId });
+    if (status.status !== "running") return { jobId, status: status.status };
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return { jobId, status: "running" };
+}
