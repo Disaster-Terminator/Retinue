@@ -1,0 +1,46 @@
+{
+  "name": "@disaster-terminator/supervisor",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.2",
+  "type": "module",
+  "description": "Local MCP and CLI supervisor for spawning Claude Code background jobs.",
+  "bin": {
+    "supervisor": "./dist/cli.js",
+    "supervisor-mcp": "./dist/mcp.js",
+    "supervisor-daemon": "./dist/daemon.js"
+  },
+  "files": [
+    "README.md",
+    "dist/cli.*",
+    "dist/core/**",
+    "dist/daemon.*",
+    "dist/daemon/**",
+    "dist/mcp.*",
+    "docs/**",
+    "scripts/**",
+    "tests/fixtures/**"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev:mcp": "tsx src/mcp.ts",
+    "probe:real:daemon": "node scripts/probe-real-claude.mjs daemon",
+    "probe:real:direct": "node scripts/probe-real-claude.mjs direct",
+    "probe:real:mcp-daemon": "node scripts/probe-real-claude.mjs mcp-daemon",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.5",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
