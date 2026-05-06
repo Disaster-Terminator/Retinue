@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { getJobPaths, resolveStateDir } from "../../core/paths.js";
 import type { CleanupOptions, CleanupResult, JobMeta, JobProblem, JobResult, JobStatusResult, SupervisorOptions } from "../../core/types.js";
 import type { AgentBackend, AgentContinueOptions, AgentHandle, AgentRunOptions } from "../types.js";
-import { OpenCodeClient, OpenCodeClientError } from "./client.js";
+import { OpenCodeClient, OpenCodeClientError, type OpenCodeMessage } from "./client.js";
 
 export interface OpenCodeBackendOptions {
   client: OpenCodeClient;
@@ -33,6 +33,7 @@ export class OpenCodeBackend implements AgentBackend {
     await fs.writeFile(paths.prompt, options.prompt, "utf8");
 
     const session = await this.client.createSession({ cwd: options.cwd, title: options.title ?? options.name });
+    const baseline = await this.captureMessageBaseline(session.id);
     await this.client.promptAsync(session.id, {
       prompt: options.prompt,
       model: options.model,
@@ -55,6 +56,8 @@ export class OpenCodeBackend implements AgentBackend {
       agent: options.agent,
       externalSessionId: session.id,
       externalServerUrl: this.baseUrl,
+      externalMessageBaselineCount: baseline.messageCount,
+      externalCompletedAssistantBaselineCount: baseline.completedAssistantCount,
       args: [],
       createdAt: now,
       updatedAt: now
@@ -71,6 +74,7 @@ export class OpenCodeBackend implements AgentBackend {
     const paths = getJobPaths(this.stateDir, jobId);
     await fs.mkdir(paths.dir, { recursive: true });
     await fs.writeFile(paths.prompt, options.prompt, "utf8");
+    const baseline = await this.captureMessageBaseline(options.externalSessionId);
     await this.client.promptAsync(options.externalSessionId, {
       prompt: options.prompt,
       model: options.model,
@@ -93,6 +97,8 @@ export class OpenCodeBackend implements AgentBackend {
       agent: options.agent,
       externalSessionId: options.externalSessionId,
       externalServerUrl: this.baseUrl,
+      externalMessageBaselineCount: baseline.messageCount,
+      externalCompletedAssistantBaselineCount: baseline.completedAssistantCount,
       parentJobId: options.parentJobId,
       parentSessionId: options.parentSessionId,
       args: [],
@@ -120,11 +126,8 @@ export class OpenCodeBackend implements AgentBackend {
       return { jobId: handle.jobId, status: "corrupted", error: "Missing OpenCode session id" };
     }
     const messages = await this.client.messages(meta.externalSessionId);
-    const text =
-      [...messages]
-        .reverse()
-        .map(extractMessageText)
-        .find((messageText) => messageText.length > 0) ?? "";
+    const jobMessages = selectMessagesForMeta(messages, meta);
+    const text = latestMessageText(jobMessages) || latestMessageText(messages);
     return {
       jobId: handle.jobId,
       status: meta.status,
@@ -219,7 +222,7 @@ export class OpenCodeBackend implements AgentBackend {
         status = "completed";
       } else if (session.state === "failed") {
         status = "failed";
-      } else if (session.state === undefined && (await this.hasCompletedAssistantMessage(meta.externalSessionId))) {
+      } else if (session.state === undefined && (await this.hasNewCompletedAssistantMessage(meta.externalSessionId, meta))) {
         status = "completed";
       } else {
         status = "running";
@@ -238,16 +241,24 @@ export class OpenCodeBackend implements AgentBackend {
     }
   }
 
-  private async hasCompletedAssistantMessage(sessionId: string): Promise<boolean> {
+  private async captureMessageBaseline(sessionId: string): Promise<{ messageCount: number; completedAssistantCount: number }> {
     const messages = await this.client.messages(sessionId);
-    return messages.some((message) => {
-      const info = message.info;
-      if (info?.role !== "assistant") {
-        return false;
-      }
-      const time = typeof info.time === "object" && info.time !== null ? info.time : undefined;
-      return Boolean(time && "completed" in time && typeof time.completed === "number");
-    });
+    return {
+      messageCount: messages.length,
+      completedAssistantCount: countCompletedAssistantMessages(messages)
+    };
+  }
+
+  private async hasNewCompletedAssistantMessage(sessionId: string, meta: JobMeta): Promise<boolean> {
+    const messages = await this.client.messages(sessionId);
+    const jobMessages = selectMessagesForMeta(messages, meta);
+    if (jobMessages.some(isCompletedAssistantMessage)) {
+      return true;
+    }
+    if (meta.externalMessageBaselineCount !== undefined) {
+      return false;
+    }
+    return countCompletedAssistantMessages(messages) > (meta.externalCompletedAssistantBaselineCount ?? 0);
   }
 }
 
@@ -260,6 +271,35 @@ function sleep(ms: number): Promise<void> {
 
 function isProblem(value: JobStatusResult): value is JobProblem {
   return value.status === "not_found" || value.status === "corrupted";
+}
+
+function selectMessagesForMeta(messages: OpenCodeMessage[], meta: JobMeta): OpenCodeMessage[] {
+  if (meta.externalMessageBaselineCount === undefined) {
+    return messages;
+  }
+  return messages.slice(Math.max(0, meta.externalMessageBaselineCount));
+}
+
+function latestMessageText(messages: OpenCodeMessage[]): string {
+  return (
+    [...messages]
+      .reverse()
+      .map(extractMessageText)
+      .find((messageText) => messageText.length > 0) ?? ""
+  );
+}
+
+function countCompletedAssistantMessages(messages: OpenCodeMessage[]): number {
+  return messages.filter(isCompletedAssistantMessage).length;
+}
+
+function isCompletedAssistantMessage(message: OpenCodeMessage): boolean {
+  const info = message.info;
+  if (info?.role !== "assistant") {
+    return false;
+  }
+  const time = typeof info.time === "object" && info.time !== null ? info.time : undefined;
+  return Boolean(time && "completed" in time && typeof time.completed === "number");
 }
 
 function extractMessageText(message: { parts?: Array<{ type?: string; text?: string }> }): string {
