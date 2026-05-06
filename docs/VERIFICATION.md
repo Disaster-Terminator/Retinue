@@ -10,6 +10,7 @@ Run these before any real Claude Code integration test:
 pnpm run typecheck
 pnpm test
 pnpm run build
+pnpm run verify:package
 ```
 
 Current baseline:
@@ -19,6 +20,33 @@ Current baseline:
 - Fake Claude suite covers spawn/close/error ordering, permission mode validation, atomic state writes, structured `not_found` and `corrupted` states, disk-backed concurrency, durable kill status, and running-job peek/tail.
 - Daemon suite covers `GET /health`, HTTP `run` -> `wait` -> `result`, structured route errors, package `supervisor-daemon` bin exposure, and CLI delegation through `SUPERVISOR_DAEMON_URL`.
 - MCP suite covers stable Claude tool names, direct server construction, explicit daemon-backed supervisor construction, MCP client tool calls through daemon RPC, and daemon job truth after MCP adapter reconnect.
+
+## CI Guardrails Baseline
+
+Date: 2026-05-05
+
+Milestone:
+
+- Default GitHub Actions CI uses pnpm only.
+- CI installs dependencies with `pnpm install --frozen-lockfile`.
+- CI runs `pnpm run typecheck`, `pnpm test`, `pnpm run build`, and `pnpm run verify:package`.
+- `verify:package` parses `pnpm pack --dry-run --json` output.
+- `verify:package` fails if `package-lock.json` exists.
+- `verify:package` enforces packaged runtime artifacts for `dist/backends/**`, `dist/cli.*`, `dist/mcp.*`, and `dist/daemon.*`.
+- `verify:package` enforces required docs: `README.md`, `docs/OPENCODE_BACKEND.md`, `docs/VERIFICATION.md`, and `docs/PROJECT_BOUNDARY.md`.
+- `verify:package` enforces the Codex plugin surface: `.agents/plugins/marketplace.json`, `plugins/anchorpoint/.codex-plugin/plugin.json`, `plugins/anchorpoint/.mcp.json`, and `plugins/anchorpoint/skills/anchorpoint/SKILL.md`.
+- Default CI does not run any `probe:real:*` script.
+
+Verified commands:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm run typecheck
+pnpm test
+pnpm run build
+pnpm pack --dry-run --json
+pnpm run verify:package
+```
 
 ## Claude Freeze And Review Absorption Baseline
 
@@ -58,6 +86,83 @@ Observed WSL/Linux result from a fresh clone:
 - `pnpm test` passed with 15 test files and 85 tests.
 - `pnpm run build` passed.
 - Fresh clone path: `/tmp/supervisor-main-pnpm-wsl-test-L4utS4`.
+
+## OpenCode Backend Branch Baseline
+
+Date: 2026-05-05
+
+Branch: `feature/spawn-opencode`
+
+Milestone:
+
+- Added fake OpenCode HTTP server for deterministic tests.
+- Added narrow `OpenCodeClient` over loopback HTTP.
+- Added `OpenCodeBackend` run/result/continue/abort/cleanup against fake OpenCode server.
+- Added backend metadata fields for `backend`, `externalSessionId`, `externalServerUrl`, `externalMessageId`, `model`, `agent`, and `title`.
+- Added attach/serve policy helpers. Auto-serve remains opt-in policy and is not silently started by CLI/MCP.
+- Added CLI `opencode-*` commands and MCP `opencode_*` tools for explicit server attach.
+- Added `dist/backends/**` to package files so OpenCode runtime is included.
+- No provider/model routing and no permission bypass surface were added.
+
+Verified commands:
+
+```bash
+pnpm run typecheck
+pnpm test
+pnpm run build
+pnpm pack --dry-run --json
+```
+
+Observed Windows result:
+
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 18 test files and 102 tests.
+- `pnpm run build` passed.
+- `pnpm pack --dry-run --json` passed and included `dist/backends/**`.
+
+Observed WSL/Linux result from a fresh clone:
+
+- `pnpm install --frozen-lockfile` passed using pnpm v10.33.2.
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 18 test files and 102 tests.
+- `pnpm run build` passed.
+- Fresh clone path: `/tmp/supervisor-opencode-wsl-test-C7hVR1`.
+
+## OpenCode Production E2E Milestone
+
+Date: 2026-05-05
+
+Branch: `feature/spawn-opencode`
+
+Milestone:
+
+- Added CLI/MCP model and agent defaults through `SUPERVISOR_OPENCODE_MODEL` and `SUPERVISOR_OPENCODE_AGENT`.
+- Kept defaults thin: unset model/agent fields are omitted so OpenCode owns default selection.
+- Fixed OpenCode 1.14.35 compatibility for object-shaped model overrides, 204 `prompt_async` responses, HTML `/session/:id/status` fallback, and sessions without a `state` field.
+- Recorded WSL OpenCode baseline and production E2E steps in `docs/PRODUCTION_OPENCODE_E2E.md`.
+
+Verified commands:
+
+```bash
+pnpm run typecheck
+pnpm test
+pnpm run build
+pnpm run verify:package
+```
+
+Observed Windows result:
+
+- `pnpm run typecheck` passed.
+- `pnpm test` passed with 21 test files and 120 tests.
+- `pnpm run build` passed.
+- `pnpm run verify:package` passed.
+
+Observed real OpenCode result:
+
+- Windows PowerShell runner attached to WSL OpenCode server `1.14.35` on `http://127.0.0.1:4096`.
+- `opencode-run`, `opencode-wait`, `opencode-result`, `opencode-continue`, `opencode-kill`, and `opencode-cleanup` completed against `litellm/pro-router`.
+- OpenCode message metadata confirmed `providerID=litellm` and `modelID=pro-router`.
+- WSL runner also completed `opencode-run`, `opencode-wait`, `opencode-result`, and `opencode-cleanup` against the same model.
 
 ## Completion Audit Baseline
 

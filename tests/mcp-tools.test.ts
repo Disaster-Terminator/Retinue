@@ -9,8 +9,9 @@ import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { createDaemonServer } from "../src/daemon/server.js";
 import { writeDaemonDiscovery } from "../src/daemon/discovery.js";
-import { CLAUDE_TOOL_NAMES, createMcpServer, createMcpSupervisorFromEnv } from "../src/mcp.js";
+import { CLAUDE_TOOL_NAMES, OPENCODE_TOOL_NAMES, createMcpServer, createMcpSupervisorFromEnv } from "../src/mcp.js";
 import { ClaudeSupervisor } from "../src/core/supervisor.js";
+import { startFakeOpenCodeServer } from "./fixtures/fake-opencode-server.js";
 
 const fixturePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/fake-claude.mjs");
 
@@ -25,6 +26,18 @@ describe("MCP tools", () => {
       "claude_peek",
       "claude_kill",
       "claude_cleanup"
+    ]);
+  });
+
+  it("declares the OpenCode lifecycle tools", () => {
+    expect(OPENCODE_TOOL_NAMES).toEqual([
+      "opencode_run",
+      "opencode_status",
+      "opencode_wait",
+      "opencode_result",
+      "opencode_continue",
+      "opencode_kill",
+      "opencode_cleanup"
     ]);
   });
 
@@ -222,8 +235,67 @@ describe("MCP tools", () => {
       assertRequiredFields(tools.tools, "claude_wait", ["jobId"]);
       assertOptionalField(tools.tools, "claude_wait", "timeoutMs");
       assertOptionalField(tools.tools, "claude_cleanup", "olderThanMs");
+      assertRequiredFields(tools.tools, "opencode_run", ["cwd", "prompt"]);
+      assertOptionalField(tools.tools, "opencode_run", "opencodeBaseUrl");
+      assertOptionalField(tools.tools, "opencode_run", "model");
+      assertOptionalField(tools.tools, "opencode_run", "agent");
     } finally {
       await closeMcpClient(connection);
+    }
+  });
+
+  it("calls OpenCode lifecycle tools through an explicit server URL", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-opencode-test-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }));
+    try {
+      process.env.SUPERVISOR_STATE_DIR = tempDir;
+      const run = parseToolJson(
+        await connection.client.callTool({
+          name: "opencode_run",
+          arguments: { cwd: tempDir, prompt: "mcp opencode", title: "mcp test", opencodeBaseUrl: fakeOpenCode.url }
+        })
+      );
+      expect(run.backend).toBe("opencode");
+
+      const result = parseToolJson(
+        await connection.client.callTool({
+          name: "opencode_result",
+          arguments: { jobId: run.jobId, opencodeBaseUrl: fakeOpenCode.url }
+        })
+      );
+      expect(result.parsedStdout.result).toBe("fake result: mcp opencode");
+    } finally {
+      delete process.env.SUPERVISOR_STATE_DIR;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses OpenCode model and agent defaults from environment for MCP runs", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-opencode-defaults-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }));
+    try {
+      process.env.SUPERVISOR_STATE_DIR = tempDir;
+      process.env.SUPERVISOR_OPENCODE_MODEL = "litellm/pro-router";
+      process.env.SUPERVISOR_OPENCODE_AGENT = "build";
+      parseToolJson(
+        await connection.client.callTool({
+          name: "opencode_run",
+          arguments: { cwd: tempDir, prompt: "mcp env defaults", opencodeBaseUrl: fakeOpenCode.url }
+        })
+      );
+      expect(fakeOpenCode.promptRequests[0]).toMatchObject({
+        model: { providerID: "litellm", modelID: "pro-router" },
+        agent: "build"
+      });
+    } finally {
+      delete process.env.SUPERVISOR_STATE_DIR;
+      delete process.env.SUPERVISOR_OPENCODE_MODEL;
+      delete process.env.SUPERVISOR_OPENCODE_AGENT;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
 
