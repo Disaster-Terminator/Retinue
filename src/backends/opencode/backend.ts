@@ -127,7 +127,7 @@ export class OpenCodeBackend implements AgentBackend {
     }
     const messages = await this.client.messages(meta.externalSessionId);
     const jobMessages = selectMessagesForMeta(messages, meta);
-    const text = latestMessageText(jobMessages) || latestMessageText(messages);
+    const text = meta.externalMessageBaselineCount === undefined ? latestMessageText(messages) : latestMessageText(jobMessages);
     return {
       jobId: handle.jobId,
       status: meta.status,
