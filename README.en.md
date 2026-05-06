@@ -13,7 +13,7 @@
 
 **Retinue lets Codex run local coding agents as controllable subagents.**
 
-Codex submits a coding job, Retinue returns a job handle immediately, and the caller can later inspect status, wait for completion, read results, continue an external session, stop work, or clean local artifacts. Claude Code and OpenCode still own their provider, model, quota, proxy, login, and runtime policy; Retinue makes those local agent runtimes callable, trackable, and recoverable from Codex.
+Codex submits a coding job, Retinue returns a job handle immediately, and the caller can later inspect status, wait for completion, read results, continue an external session, kill work, or clean local artifacts. Claude Code and OpenCode still own their provider, model, quota, proxy, login, and runtime policy; Retinue makes those local agent runtimes callable, trackable, and recoverable from Codex.
 
 ```text
 Codex / MCP client
@@ -32,7 +32,7 @@ Codex / MCP client
 | Wait or poll | Wait within a short timeout window without blocking the main agent's whole task |
 | Read results | Return bounded stdout/stderr, exit metadata, external session ids, and local artifact paths |
 | Continue sessions | Continue an existing Claude/OpenCode session when the backend supports it |
-| Stop and clean up | End selected jobs and remove terminal job directories while preserving running or ambiguous jobs |
+| Kill and clean up | Kill selected jobs and remove terminal job directories while preserving running or ambiguous jobs |
 
 ## Boundary
 
@@ -84,6 +84,7 @@ node dist/cli.js status <jobId>
 node dist/cli.js wait <jobId> --timeout-ms 30000
 node dist/cli.js result <jobId>
 node dist/cli.js continue --cwd . --job-id <jobId> --prompt "Follow up"
+node dist/cli.js kill <jobId>
 node dist/cli.js cleanup --older-than-ms 86400000
 ```
 
@@ -97,6 +98,7 @@ node dist/cli.js opencode-run \
 
 node dist/cli.js opencode-wait <jobId> --timeout-ms 180000
 node dist/cli.js opencode-result <jobId>
+node dist/cli.js opencode-kill <jobId>
 ```
 
 Optional model and agent defaults are passed to OpenCode through environment variables. When unset, Retinue omits those fields and lets OpenCode use its own configuration:
@@ -114,9 +116,9 @@ After building, configure an MCP client to run:
 node /path/to/Retinue/dist/mcp.js
 ```
 
-Claude Code tools: `claude_run`, `claude_status`, `claude_wait`, `claude_result`, `claude_continue`, `claude_peek`, `claude_cleanup`.
+Claude Code tools: `claude_run`, `claude_status`, `claude_wait`, `claude_result`, `claude_continue`, `claude_peek`, `claude_kill`, `claude_cleanup`.
 
-OpenCode tools: `opencode_run`, `opencode_status`, `opencode_wait`, `opencode_result`, `opencode_continue`, `opencode_cleanup`.
+OpenCode tools: `opencode_run`, `opencode_status`, `opencode_wait`, `opencode_result`, `opencode_continue`, `opencode_kill`, `opencode_cleanup`.
 
 ## State directory
 

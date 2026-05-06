@@ -1,6 +1,6 @@
 .worktrees/
+.serena/
 node_modules/
 dist/
 coverage/
 *.log
-
