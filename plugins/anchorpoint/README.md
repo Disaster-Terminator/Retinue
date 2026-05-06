@@ -1,6 +1,6 @@
-# Anchorpoint Plugin
+# Retinue Plugin
 
-This repo-local Codex plugin exposes Anchorpoint as an agent-facing product surface:
+This repo-local Codex plugin exposes Retinue as an agent-facing product surface:
 
 - skill instructions under `skills/`
 - MCP server configuration in `.mcp.json`

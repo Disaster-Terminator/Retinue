@@ -1,15 +1,15 @@
 ---
-name: anchorpoint
-description: Use Anchorpoint when Codex needs to spawn, monitor, continue, kill, or clean up local Claude Code or OpenCode coding-agent jobs through the Anchorpoint MCP tools.
+name: retinue
+description: Use Retinue when Codex needs to run, monitor, continue, kill, or clean up local Claude Code or OpenCode coding-agent jobs through Retinue MCP tools.
 ---
 
-# Anchorpoint
+# Retinue
 
-Anchorpoint is a local lifecycle plugin for coding-agent jobs. Use its MCP tools when a task should keep running outside the current Codex turn, when a job handle is needed, or when OpenCode should own provider/model/login while Codex owns job supervision.
+Retinue is a local subagent execution plugin for Codex. Use its MCP tools when Codex should hand work to Claude Code or OpenCode, receive a job handle, and later inspect, wait, read results, continue the same external session, kill the job, or clean local artifacts.
 
-## Product Boundary
+## Boundary
 
-Anchorpoint is not a provider router. OpenCode owns provider configuration, login, endpoint routing, model defaults, agents, and permission policy. Anchorpoint owns:
+Retinue is not a provider router. OpenCode owns provider configuration, login, endpoint routing, model defaults, agents, and runtime policy. Retinue owns:
 
 - `run`
 - `status`
@@ -29,7 +29,7 @@ SUPERVISOR_OPENCODE_MODEL=litellm/pro-router
 SUPERVISOR_OPENCODE_AGENT=build
 ```
 
-If `SUPERVISOR_OPENCODE_MODEL` is unset and the MCP call does not include `model`, Anchorpoint omits the model field and lets OpenCode choose its default.
+If `SUPERVISOR_OPENCODE_MODEL` is unset and the MCP call does not include `model`, Retinue omits the model field and lets OpenCode choose its default.
 
 ## Tool Use
 
@@ -43,7 +43,7 @@ Use these OpenCode tools for new work:
 - `opencode_kill`
 - `opencode_cleanup`
 
-Use the Claude tools only for the frozen Claude Code compatibility backend:
+Use the Claude tools for Claude Code work:
 
 - `claude_run`
 - `claude_status`

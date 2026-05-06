@@ -1,6 +1,6 @@
-# Anchorpoint Codex Plugin Deployment
+# Retinue Codex Plugin Deployment
 
-Anchorpoint's deployable product shape is a Codex plugin. The plugin contains:
+Retinue ships as a repo-local Codex plugin. The plugin contains:
 
 - `.codex-plugin/plugin.json` for discovery and product metadata
 - `.mcp.json` for MCP tool exposure
@@ -29,30 +29,32 @@ The repo-local plugin is:
 plugins/anchorpoint
 ```
 
+The repo-local directory name remains `plugins/anchorpoint` for compatibility with the current package layout. The plugin identity inside the manifest and marketplace entry is `retinue`.
+
 The repo-local marketplace entry is:
 
 ```text
 .agents/plugins/marketplace.json
 ```
 
-This is the source of truth for PR review and packaging. It keeps plugin assets versioned with the runtime they start.
+This keeps plugin assets versioned with the runtime they start.
 
 ## Home-Local Plugin Install
 
-For local Codex use, copy or sync the plugin directory into the user's plugin root:
+For local Codex use, copy or sync the repo-local plugin directory into the user's plugin root. If you rename the copied directory to `retinue`, point the marketplace entry at that renamed directory:
 
 ```text
-C:\Users\Disas\plugins\anchorpoint
+C:\Users\Disas\plugins\retinue
 ```
 
 Then add or update the local marketplace entry:
 
 ```json
 {
-  "name": "anchorpoint",
+  "name": "retinue",
   "source": {
     "source": "local",
-    "path": "./plugins/anchorpoint"
+    "path": "./plugins/retinue"
   },
   "policy": {
     "installation": "INSTALLED_BY_DEFAULT",
@@ -64,7 +66,9 @@ Then add or update the local marketplace entry:
 
 The plugin expects the built runtime to remain available relative to the plugin MCP config. For repo-local testing, build the repository first and use `plugins/anchorpoint/.mcp.json` directly.
 
-The plugin does not enable daemon discovery by default. Add `SUPERVISOR_DAEMON_URL` or `SUPERVISOR_DAEMON_DISCOVERY=1` only when a daemon is already running and discoverable. Without those variables, the MCP server starts in direct fallback mode.
+If you keep the copied directory name as `anchorpoint`, keep the marketplace `name` as `retinue` but set `source.path` to `./plugins/anchorpoint` instead.
+
+The plugin does not enable daemon discovery by default. Add `SUPERVISOR_DAEMON_URL` or `SUPERVISOR_DAEMON_DISCOVERY=1` only when a daemon is already running and discoverable. Without those variables, the MCP server starts in direct local mode.
 
 ## OpenCode Production E2E
 
