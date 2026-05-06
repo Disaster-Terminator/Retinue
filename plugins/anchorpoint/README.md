@@ -15,3 +15,11 @@ pnpm run verify:package
 ```
 
 For production OpenCode E2E, see `../../docs/runbooks/PRODUCTION_OPENCODE_E2E.md`.
+
+Codex-facing product delegation should use:
+
+- `retinue_spawn_agent`
+- `retinue_wait_agent`
+- `retinue_close_agent`
+
+Backend-specific `opencode_*` and `claude_*` tools remain available for adapter debugging and runbook probes.

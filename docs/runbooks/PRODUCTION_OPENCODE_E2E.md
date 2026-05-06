@@ -118,6 +118,7 @@ It intentionally does not pass a backend, profile, model, agent, or permission m
 ```bash
 pnpm run build
 SUPERVISOR_REAL_OPENCODE_PROBE=1 \
+SUPERVISOR_RETINUE_BACKEND=opencode \
 SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
 pnpm run probe:real:retinue-opencode
 ```
@@ -126,6 +127,7 @@ On PowerShell:
 
 ```powershell
 $env:SUPERVISOR_REAL_OPENCODE_PROBE = "1"
+$env:SUPERVISOR_RETINUE_BACKEND = "opencode"
 $env:SUPERVISOR_OPENCODE_BASE_URL = "http://127.0.0.1:4096"
 pnpm run probe:real:retinue-opencode
 ```

@@ -116,9 +116,25 @@ After building, configure an MCP client to run:
 node /path/to/Retinue/dist/mcp.js
 ```
 
-Claude Code tools: `claude_run`, `claude_status`, `claude_wait`, `claude_result`, `claude_continue`, `claude_peek`, `claude_kill`, `claude_cleanup`.
+Codex product entrypoint: `retinue_spawn_agent`, `retinue_wait_agent`, `retinue_close_agent`.
 
-OpenCode tools: `opencode_run`, `opencode_status`, `opencode_wait`, `opencode_result`, `opencode_continue`, `opencode_kill`, `opencode_cleanup`.
+`retinue_*` chooses its backend from deployment environment and defaults to OpenCode. Do not pass backend, profile, model, agent, or permission choices in tool arguments.
+
+```bash
+SUPERVISOR_RETINUE_BACKEND=opencode
+SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096
+```
+
+Claude Code deployments can use:
+
+```bash
+SUPERVISOR_RETINUE_BACKEND=claude-code
+```
+
+Debug tools remain available:
+
+- Claude Code: `claude_run`, `claude_status`, `claude_wait`, `claude_result`, `claude_continue`, `claude_peek`, `claude_kill`, `claude_cleanup`
+- OpenCode: `opencode_run`, `opencode_status`, `opencode_wait`, `opencode_result`, `opencode_continue`, `opencode_kill`, `opencode_cleanup`
 
 ## State directory
 
@@ -149,6 +165,7 @@ Set `SUPERVISOR_STATE_DIR` to override the state directory.
 | `SUPERVISOR_OPENCODE_BASE_URL` | Attach to a local OpenCode loopback server |
 | `SUPERVISOR_OPENCODE_MODEL` | Optional OpenCode default model in `provider/model` form |
 | `SUPERVISOR_OPENCODE_AGENT` | Optional OpenCode default agent |
+| `SUPERVISOR_RETINUE_BACKEND` | Deployment backend for `retinue_*`; supports `opencode` or `claude-code` |
 | `SUPERVISOR_DAEMON_URL` | Make CLI/MCP explicitly connect to a local loopback daemon |
 | `SUPERVISOR_DAEMON_DISCOVERY` | Set to `1` to discover a daemon from `<stateDir>/daemon.json` |
 

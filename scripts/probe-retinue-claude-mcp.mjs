@@ -1,34 +1,34 @@
 #!/usr/bin/env node
 
+import { mkdtemp } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { assertExpectedResult, parseProbeArgs } from "../dist/core/probeRealClaudeHelpers.js";
 import { createMcpServer } from "../dist/mcp.js";
 
-const OPT_IN_ENV = "SUPERVISOR_REAL_OPENCODE_PROBE";
-
 async function main() {
-  if (process.env[OPT_IN_ENV] !== "1") {
-    throw new Error(`Manual probe blocked. Set ${OPT_IN_ENV}=1 to run this script.`);
-  }
-  if (!process.env.SUPERVISOR_OPENCODE_BASE_URL) {
-    throw new Error("Missing SUPERVISOR_OPENCODE_BASE_URL.");
-  }
-  process.env.SUPERVISOR_RETINUE_BACKEND = "opencode";
+  const options = parseProbeArgs(["direct", ...process.argv.slice(2)]);
+  const stateDir = options.stateDir ?? (await mkdtemp(path.join(os.tmpdir(), "retinue-claude-real-state-")));
+  const previousStateDir = process.env.SUPERVISOR_STATE_DIR;
+  const previousBackend = process.env.SUPERVISOR_RETINUE_BACKEND;
+  process.env.SUPERVISOR_STATE_DIR = stateDir;
+  process.env.SUPERVISOR_RETINUE_BACKEND = "claude-code";
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  const client = new Client({ name: "retinue-opencode-real-probe", version: "0.1.0" });
+  const client = new Client({ name: "retinue-claude-real-probe", version: "0.1.0" });
   const server = createMcpServer();
 
   try {
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
-    const cwd = process.cwd();
     const spawn = parseToolJson(
       await client.callTool({
         name: "retinue_spawn_agent",
         arguments: {
-          cwd,
-          task_name: "real-opencode-smoke",
-          message: "Reply exactly: RETINUE_OPENCODE_REAL_OK"
+          cwd: options.cwd,
+          task_name: "real-claude-smoke",
+          message: options.prompt
         }
       })
     );
@@ -36,14 +36,10 @@ async function main() {
     const wait = parseToolJson(
       await client.callTool({
         name: "retinue_wait_agent",
-        arguments: { jobId: spawn.jobId, timeoutMs: 120000 }
+        arguments: { jobId: spawn.jobId, timeoutMs: options.timeoutMs }
       })
     );
-
-    const actual = wait?.result?.parsedStdout?.result;
-    if (wait.status !== "completed" || typeof actual !== "string" || !actual.includes("RETINUE_OPENCODE_REAL_OK")) {
-      throw new Error(`Unexpected Retinue/OpenCode result: ${JSON.stringify(wait)}`);
-    }
+    const actual = assertExpectedResult(wait.result, options.expected);
 
     const close = parseToolJson(
       await client.callTool({
@@ -60,10 +56,10 @@ async function main() {
           backend: spawn.backend,
           task_name: spawn.task_name,
           jobId: spawn.jobId,
-          externalSessionId: spawn.externalSessionId,
           status: wait.status,
           result: actual,
-          closeStatus: close.status
+          closeStatus: close.status,
+          stateDir
         },
         null,
         2
@@ -71,6 +67,8 @@ async function main() {
     );
   } finally {
     await Promise.allSettled([client.close(), clientTransport.close(), serverTransport.close()]);
+    restoreEnv("SUPERVISOR_STATE_DIR", previousStateDir);
+    restoreEnv("SUPERVISOR_RETINUE_BACKEND", previousBackend);
   }
 }
 
@@ -80,6 +78,14 @@ function parseToolJson(result) {
     throw new Error("Tool result did not include text content");
   }
   return JSON.parse(text);
+}
+
+function restoreEnv(name, value) {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
 }
 
 main().catch((error) => {

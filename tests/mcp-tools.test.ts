@@ -246,8 +246,11 @@ describe("MCP tools", () => {
       assertRequiredFields(tools.tools, "retinue_spawn_agent", ["message"]);
       assertOptionalField(tools.tools, "retinue_spawn_agent", "task_name");
       assertOptionalField(tools.tools, "retinue_spawn_agent", "cwd");
+      assertAbsentFields(tools.tools, "retinue_spawn_agent", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
       assertRequiredFields(tools.tools, "retinue_wait_agent", ["jobId"]);
+      assertAbsentFields(tools.tools, "retinue_wait_agent", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
       assertRequiredFields(tools.tools, "retinue_close_agent", ["jobId"]);
+      assertAbsentFields(tools.tools, "retinue_close_agent", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
     } finally {
       await closeMcpClient(connection);
     }
@@ -294,6 +297,153 @@ describe("MCP tools", () => {
       delete process.env.SUPERVISOR_STATE_DIR;
       delete process.env.SUPERVISOR_OPENCODE_BASE_URL;
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps Retinue wait/close bound to the spawned OpenCode backend even if deployment env changes", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-retinue-opencode-bound-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: tempDir }));
+    try {
+      process.env.SUPERVISOR_STATE_DIR = tempDir;
+      process.env.SUPERVISOR_OPENCODE_BASE_URL = fakeOpenCode.url;
+
+      const spawn = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue bound opencode", task_name: "bound-opencode" }
+        })
+      );
+      expect(spawn).toMatchObject({ task_name: "bound-opencode", backend: "opencode", status: "running" });
+      fakeOpenCode.completeSession(spawn.externalSessionId);
+
+      process.env.SUPERVISOR_RETINUE_BACKEND = "claude-code";
+
+      const wait = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_wait_agent",
+          arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
+        })
+      );
+      expect(wait).toMatchObject({
+        task_name: "bound-opencode",
+        jobId: spawn.jobId,
+        status: "completed",
+        result: { parsedStdout: { result: "fake result: retinue bound opencode" } }
+      });
+
+      const close = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_close_agent",
+          arguments: { jobId: spawn.jobId }
+        })
+      );
+      expect(close).toMatchObject({ jobId: spawn.jobId, status: "completed" });
+    } finally {
+      delete process.env.SUPERVISOR_STATE_DIR;
+      delete process.env.SUPERVISOR_OPENCODE_BASE_URL;
+      delete process.env.SUPERVISOR_RETINUE_BACKEND;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("runs the Retinue Claude Code parity flow when deployment selects claude-code", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-retinue-claude-"));
+    const connection = await connectMcpClientWithSupervisor(
+      new ClaudeSupervisor({
+        stateDir: tempDir,
+        claudeCommand: process.execPath,
+        claudePrefixArgs: [fixturePath]
+      })
+    );
+    try {
+      process.env.SUPERVISOR_RETINUE_BACKEND = "claude-code";
+
+      const spawn = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue claude", task_name: "claude-smoke" }
+        })
+      );
+      expect(spawn).toMatchObject({ task_name: "claude-smoke", backend: "claude-code", status: "running" });
+      expect(spawn).not.toHaveProperty("externalSessionId");
+
+      const wait = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_wait_agent",
+          arguments: { jobId: spawn.jobId, timeoutMs: 5000 }
+        })
+      );
+      expect(wait).toMatchObject({
+        task_name: "claude-smoke",
+        jobId: spawn.jobId,
+        status: "completed",
+        result: { parsedStdout: { result: "fake result: retinue claude" } }
+      });
+
+      const close = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_close_agent",
+          arguments: { jobId: spawn.jobId }
+        })
+      );
+      expect(close).toMatchObject({ jobId: spawn.jobId, status: "completed" });
+    } finally {
+      delete process.env.SUPERVISOR_RETINUE_BACKEND;
+      await closeMcpClient(connection);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps Retinue wait/close bound to the spawned Claude backend even if deployment env changes", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-retinue-claude-bound-"));
+    const connection = await connectMcpClientWithSupervisor(
+      new ClaudeSupervisor({
+        stateDir: tempDir,
+        claudeCommand: process.execPath,
+        claudePrefixArgs: [fixturePath]
+      })
+    );
+    try {
+      process.env.SUPERVISOR_STATE_DIR = tempDir;
+      process.env.SUPERVISOR_RETINUE_BACKEND = "claude-code";
+
+      const spawn = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue bound claude", task_name: "bound-claude" }
+        })
+      );
+      expect(spawn).toMatchObject({ task_name: "bound-claude", backend: "claude-code", status: "running" });
+
+      process.env.SUPERVISOR_RETINUE_BACKEND = "opencode";
+
+      const wait = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_wait_agent",
+          arguments: { jobId: spawn.jobId, timeoutMs: 5000 }
+        })
+      );
+      expect(wait).toMatchObject({
+        task_name: "bound-claude",
+        jobId: spawn.jobId,
+        status: "completed",
+        result: { parsedStdout: { result: "fake result: retinue bound claude" } }
+      });
+
+      const close = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_close_agent",
+          arguments: { jobId: spawn.jobId }
+        })
+      );
+      expect(close).toMatchObject({ jobId: spawn.jobId, status: "completed" });
+    } finally {
+      delete process.env.SUPERVISOR_STATE_DIR;
+      delete process.env.SUPERVISOR_RETINUE_BACKEND;
+      await closeMcpClient(connection);
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
@@ -446,6 +596,18 @@ function assertOptionalField(
   const schema = getToolSchema(tools, toolName);
   expect(Object.keys(schema.properties ?? {})).toContain(optionalField);
   expect(schema.required ?? []).not.toContain(optionalField);
+}
+
+function assertAbsentFields(
+  tools: Array<{ name: string; inputSchema?: { properties?: Record<string, unknown>; required?: string[] } }>,
+  toolName: string,
+  absentFields: string[]
+): void {
+  const schema = getToolSchema(tools, toolName);
+  for (const field of absentFields) {
+    expect(Object.keys(schema.properties ?? {}), `${toolName} must not expose ${field}`).not.toContain(field);
+    expect(schema.required ?? [], `${toolName} must not require ${field}`).not.toContain(field);
+  }
 }
 
 function getToolSchema(

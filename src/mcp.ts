@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -9,9 +10,10 @@ import { OpenCodeClient } from "./backends/opencode/client.js";
 import { resolveOpenCodeServerFromEnv } from "./backends/opencode/serverManager.js";
 import { DaemonClient } from "./daemon/client.js";
 import { readDaemonDiscoverySync } from "./daemon/discovery.js";
-import { resolveStateDir } from "./core/paths.js";
+import { getJobPaths, resolveStateDir } from "./core/paths.js";
 import { ClaudeSupervisor } from "./core/supervisor.js";
-import type { SupervisorApi } from "./core/types.js";
+import type { AgentBackendKind, JobMeta, JobStatusResult, SupervisorApi, WaitResult } from "./core/types.js";
+import type { AgentBackend, AgentContinueOptions, AgentHandle, AgentRunOptions } from "./backends/types.js";
 
 export const CLAUDE_TOOL_NAMES = [
   "claude_run",
@@ -249,7 +251,7 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
     },
     async (args) => {
       const taskName = normalizeTaskName(args);
-      const started = await createOpenCodeBackend({}).run({
+      const started = await createRetinueBackend(supervisor).run({
         cwd: args.cwd ?? process.cwd(),
         prompt: args.message,
         name: taskName,
@@ -260,6 +262,7 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
         jobId: started.jobId,
         status: started.status,
         backend: started.backend,
+        sessionId: started.sessionId,
         externalSessionId: started.externalSessionId
       });
     }
@@ -276,7 +279,7 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
       }
     },
     async ({ jobId, timeoutMs }) => {
-      const backend = createOpenCodeBackend({});
+      const backend = await createRetinueBackendForJob(supervisor, jobId);
       const waited = await backend.wait({ jobId }, timeoutMs);
       const status = await backend.status({ jobId });
       if (waited.status === "running") {
@@ -306,7 +309,7 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
       }
     },
     async ({ jobId }) => {
-      const backend = createOpenCodeBackend({});
+      const backend = await createRetinueBackendForJob(supervisor, jobId);
       const status = await backend.status({ jobId });
       if (isJobMeta(status) && status.status === "running") {
         await backend.abort({ jobId });
@@ -354,6 +357,87 @@ function withOpenCodeDefaults<T extends { model?: string; agent?: string }>(args
     model: args.model ?? process.env.SUPERVISOR_OPENCODE_MODEL,
     agent: args.agent ?? process.env.SUPERVISOR_OPENCODE_AGENT
   };
+}
+
+type RetinueBackend = AgentBackend & {
+  wait(handle: AgentHandle, timeoutMs?: number): Promise<Pick<WaitResult, "jobId" | "status">>;
+};
+
+function createRetinueBackend(supervisor: SupervisorApi): RetinueBackend {
+  return createRetinueBackendByKind(readRetinueBackendKindFromEnv(), supervisor);
+}
+
+async function createRetinueBackendForJob(supervisor: SupervisorApi, jobId: string): Promise<RetinueBackend> {
+  const recordedKind = await readRetinueJobBackendKind(jobId);
+  if (recordedKind) {
+    return createRetinueBackendByKind(recordedKind, supervisor);
+  }
+  return createRetinueBackend(supervisor);
+}
+
+function createRetinueBackendByKind(kind: AgentBackendKind, supervisor: SupervisorApi): RetinueBackend {
+  if (kind === "opencode") {
+    return createOpenCodeBackend({});
+  }
+  if (kind === "claude-code") {
+    return new SupervisorAgentBackend(supervisor);
+  }
+  throw new Error(`Unsupported Retinue backend: ${kind satisfies never}`);
+}
+
+function readRetinueBackendKindFromEnv(): AgentBackendKind {
+  const backend = (process.env.SUPERVISOR_RETINUE_BACKEND ?? "opencode").trim().toLowerCase();
+  if (backend === "opencode") {
+    return "opencode";
+  }
+  if (backend === "claude-code" || backend === "claude") {
+    return "claude-code";
+  }
+  throw new Error(`Unsupported SUPERVISOR_RETINUE_BACKEND: ${backend}`);
+}
+
+async function readRetinueJobBackendKind(jobId: string): Promise<AgentBackendKind | undefined> {
+  const stateDir = resolveStateDir({
+    explicitStateDir: process.env.SUPERVISOR_STATE_DIR,
+    env: process.env
+  });
+  try {
+    const meta = JSON.parse(await fs.readFile(getJobPaths(stateDir, jobId).meta, "utf8")) as Partial<JobMeta>;
+    return meta.backend === "opencode" || meta.backend === "claude-code" ? meta.backend : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+class SupervisorAgentBackend implements RetinueBackend {
+  readonly kind = "claude-code" as const;
+
+  constructor(private readonly supervisor: SupervisorApi) {}
+
+  run(options: AgentRunOptions) {
+    return this.supervisor.run(options);
+  }
+
+  continueJob(options: AgentContinueOptions) {
+    return this.supervisor.run(options);
+  }
+
+  status(handle: AgentHandle): Promise<JobStatusResult> {
+    return this.supervisor.status(handle.jobId);
+  }
+
+  result(handle: AgentHandle) {
+    return this.supervisor.result(handle.jobId);
+  }
+
+  async abort(handle: AgentHandle): Promise<void> {
+    await this.supervisor.kill(handle.jobId);
+  }
+
+  async wait(handle: AgentHandle, timeoutMs?: number): Promise<Pick<WaitResult, "jobId" | "status">> {
+    const result = await this.supervisor.wait(handle.jobId, { timeoutMs });
+    return { jobId: result.jobId, status: result.status };
+  }
 }
 
 function normalizeTaskName(args: { task_name?: string; taskName?: string }): string {

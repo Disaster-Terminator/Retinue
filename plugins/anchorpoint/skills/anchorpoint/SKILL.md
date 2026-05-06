@@ -1,70 +1,52 @@
 ---
 name: retinue
-description: Use Retinue when Codex needs to run, monitor, continue, kill, or clean up local Claude Code or OpenCode coding-agent jobs through Retinue MCP tools.
+description: Use Retinue when Codex needs to spawn, wait for, and close local coding-agent subagents through the backend-selected Retinue MCP tools.
 ---
 
 # Retinue
 
-Retinue is a local subagent execution plugin for Codex. Use its MCP tools when Codex should hand work to Claude Code or OpenCode, receive a job handle, and later inspect, wait, read results, continue the same external session, kill the job, or clean local artifacts.
+Retinue is a local subagent execution plugin for Codex. Use its `retinue_*` MCP tools when Codex should hand work to the deployment-selected backend, receive a job handle, wait for terminal output, and close the child agent.
 
 ## Boundary
 
-Retinue is not a provider router. OpenCode owns provider configuration, login, endpoint routing, model defaults, agents, and runtime policy. Retinue owns:
+Retinue is not a provider router and does not select backend profiles from tool calls. OpenCode and Claude Code own provider configuration, login, endpoint routing, model defaults, agents, permissions, plugins, skills, and runtime policy through their active profiles. Retinue owns:
 
-- `run`
-- `status`
+- `spawn`
 - `wait`
-- `result`
-- `continue`
-- `kill`
-- `cleanup`
+- terminal result return through `wait`
+- `close`
 
-## OpenCode Defaults
+## Deployment Defaults
 
-Prefer explicit user configuration. If a production OpenCode model should be selected by default, set:
+Backend selection is deployment state, not a Codex tool argument:
 
 ```text
+SUPERVISOR_RETINUE_BACKEND=opencode
 SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096
-SUPERVISOR_OPENCODE_MODEL=litellm/pro-router
-SUPERVISOR_OPENCODE_AGENT=build
 ```
 
-If `SUPERVISOR_OPENCODE_MODEL` is unset and the MCP call does not include `model`, Retinue omits the model field and lets OpenCode choose its default.
+Use `SUPERVISOR_RETINUE_BACKEND=claude-code` only when the deployment should route the same `retinue_*` tools to Claude Code. Do not pass backend, profile, model, agent, or permission choices in `retinue_*` tool arguments.
 
 ## Tool Use
 
-Use these OpenCode tools for new work:
+Use these Retinue tools for normal Codex subagent work:
 
-- `opencode_run`
-- `opencode_status`
-- `opencode_wait`
-- `opencode_result`
-- `opencode_continue`
-- `opencode_kill`
-- `opencode_cleanup`
+- `retinue_spawn_agent`
+- `retinue_wait_agent`
+- `retinue_close_agent`
 
-Use the Claude tools for Claude Code work:
-
-- `claude_run`
-- `claude_status`
-- `claude_wait`
-- `claude_result`
-- `claude_continue`
-- `claude_peek`
-- `claude_kill`
-- `claude_cleanup`
+Backend-specific `opencode_*` and `claude_*` tools are adapter/debug surfaces. Do not prefer them for product-level Codex subagent delegation unless debugging a backend-specific issue.
 
 ## Production E2E Gate
 
 Before saying the plugin is production-ready, verify the real environment. Static tests are not enough for OpenCode server contract drift.
 
-Minimum OpenCode E2E:
+Minimum product E2E:
 
 1. Confirm the OpenCode server is reachable at `SUPERVISOR_OPENCODE_BASE_URL`.
-2. Run `opencode_run` with a prompt that has a deterministic reply.
-3. Wait with `opencode_wait`.
-4. Read with `opencode_result`.
-5. Continue the same session with `opencode_continue`.
-6. Verify the continued result is not the previous assistant answer.
-7. Exercise `opencode_kill` and `opencode_cleanup`.
-8. Record only redacted provider/model metadata, job id, session id, and result. Do not record API keys.
+2. Set `SUPERVISOR_RETINUE_BACKEND=opencode`.
+3. Run `retinue_spawn_agent` with a deterministic prompt.
+4. Wait with `retinue_wait_agent` and verify the result.
+5. Close with `retinue_close_agent`.
+6. Run the same fake E2E against `SUPERVISOR_RETINUE_BACKEND=claude-code`.
+7. Record only redacted backend/profile metadata, job id, session id, and result. Do not record API keys.
