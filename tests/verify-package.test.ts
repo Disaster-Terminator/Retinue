@@ -11,10 +11,12 @@ function validPackJson() {
     {
       files: [
         { path: "README.md" },
-        { path: "docs/OPENCODE_BACKEND.md" },
-        { path: "docs/PLUGIN_DEPLOYMENT.md" },
+        { path: "docs/README.md" },
+        { path: "docs/LONG_TERM_VISION.md" },
+        { path: "docs/backends/OPENCODE.md" },
+        { path: "docs/deployment/PLUGIN_DEPLOYMENT.md" },
         { path: "docs/VERIFICATION.md" },
-        { path: "docs/PROJECT_BOUNDARY.md" },
+        { path: "docs/architecture/PROJECT_BOUNDARY.md" },
         { path: ".agents/plugins/marketplace.json" },
         { path: "plugins/anchorpoint/.codex-plugin/plugin.json" },
         { path: "plugins/anchorpoint/.mcp.json" },
@@ -53,7 +55,7 @@ describe("verify-package script", () => {
   it("fails when runtime files are missing", () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "verify-package-missing-runtime-"));
     const packJsonPath = path.join(dir, "pack.json");
-    writeFileSync(packJsonPath, JSON.stringify([{ files: [{ path: "README.md" }, { path: "docs/OPENCODE_BACKEND.md" }] }]));
+    writeFileSync(packJsonPath, JSON.stringify([{ files: [{ path: "README.md" }, { path: "docs/backends/OPENCODE.md" }] }]));
 
     const result = spawnSync(process.execPath, [scriptPath, packJsonPath], { cwd: dir, encoding: "utf8" });
     expect(result.status).toBe(1);

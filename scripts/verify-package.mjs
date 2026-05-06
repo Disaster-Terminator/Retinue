@@ -3,10 +3,12 @@ import { existsSync, readFileSync } from "node:fs";
 
 const requiredDocs = [
   "README.md",
-  "docs/OPENCODE_BACKEND.md",
-  "docs/PLUGIN_DEPLOYMENT.md",
+  "docs/README.md",
+  "docs/LONG_TERM_VISION.md",
+  "docs/backends/OPENCODE.md",
+  "docs/deployment/PLUGIN_DEPLOYMENT.md",
   "docs/VERIFICATION.md",
-  "docs/PROJECT_BOUNDARY.md"
+  "docs/architecture/PROJECT_BOUNDARY.md"
 ];
 
 const requiredPluginFiles = [
