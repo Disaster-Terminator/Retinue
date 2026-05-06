@@ -116,9 +116,25 @@ SUPERVISOR_OPENCODE_AGENT=build
 node /path/to/Retinue/dist/mcp.js
 ```
 
-Claude Code 工具：`claude_run`、`claude_status`、`claude_wait`、`claude_result`、`claude_continue`、`claude_peek`、`claude_kill`、`claude_cleanup`。
+Codex 产品入口：`retinue_spawn_agent`、`retinue_wait_agent`、`retinue_close_agent`。
 
-OpenCode 工具：`opencode_run`、`opencode_status`、`opencode_wait`、`opencode_result`、`opencode_continue`、`opencode_kill`、`opencode_cleanup`。
+`retinue_*` 通过部署环境选择后端，默认走 OpenCode；不要在工具参数里传 backend、profile、model、agent 或权限模式。
+
+```bash
+SUPERVISOR_RETINUE_BACKEND=opencode
+SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096
+```
+
+Claude Code 部署可以改为：
+
+```bash
+SUPERVISOR_RETINUE_BACKEND=claude-code
+```
+
+调试工具仍然保留：
+
+- Claude Code：`claude_run`、`claude_status`、`claude_wait`、`claude_result`、`claude_continue`、`claude_peek`、`claude_kill`、`claude_cleanup`
+- OpenCode：`opencode_run`、`opencode_status`、`opencode_wait`、`opencode_result`、`opencode_continue`、`opencode_kill`、`opencode_cleanup`
 
 ## 状态目录
 
@@ -149,6 +165,7 @@ $XDG_STATE_HOME/supervisor
 | `SUPERVISOR_OPENCODE_BASE_URL` | 指向本地 OpenCode loopback server |
 | `SUPERVISOR_OPENCODE_MODEL` | 可选 OpenCode 默认模型，格式为 `provider/model` |
 | `SUPERVISOR_OPENCODE_AGENT` | 可选 OpenCode 默认 agent |
+| `SUPERVISOR_RETINUE_BACKEND` | `retinue_*` 产品入口使用的部署后端，支持 `opencode` 或 `claude-code` |
 | `SUPERVISOR_DAEMON_URL` | 让 CLI/MCP 显式连接本地 loopback daemon |
 | `SUPERVISOR_DAEMON_DISCOVERY` | 设为 `1` 时从 `<stateDir>/daemon.json` 发现 daemon |
 

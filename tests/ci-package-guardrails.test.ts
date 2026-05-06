@@ -45,7 +45,7 @@ describe("package.json guardrails", () => {
     for (const scriptName of realProbeScriptNames) {
       const command = scripts[scriptName];
       expect(command).toBeTypeOf("string");
-      expect(command).toMatch(/scripts\/(probe-real-(claude|opencode)|probe-retinue-opencode-mcp)\.mjs/);
+      expect(command).toMatch(/scripts\/(probe-real-(claude|opencode)|probe-retinue-(opencode|claude)-mcp)\.mjs/);
     }
 
     expect(scripts.test).not.toContain("probe:real:");

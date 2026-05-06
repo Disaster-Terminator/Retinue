@@ -22,6 +22,7 @@ $env:SUPERVISOR_CLAUDE_PREFIX_ARGS = "tests/fixtures/fake-claude.mjs"
 pnpm run probe:real:direct -- --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
 pnpm run probe:real:daemon -- --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
 pnpm run probe:real:mcp-daemon -- --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
+pnpm run probe:real:retinue-claude -- --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
 Remove-Item Env:\SUPERVISOR_CLAUDE_COMMAND
 Remove-Item Env:\SUPERVISOR_CLAUDE_PREFIX_ARGS
 ```
@@ -32,6 +33,7 @@ Bash:
 SUPERVISOR_CLAUDE_COMMAND=node SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs pnpm run probe:real:direct -- --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
 SUPERVISOR_CLAUDE_COMMAND=node SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs pnpm run probe:real:daemon -- --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
 SUPERVISOR_CLAUDE_COMMAND=node SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs pnpm run probe:real:mcp-daemon -- --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
+SUPERVISOR_CLAUDE_COMMAND=node SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs pnpm run probe:real:retinue-claude -- --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
 ```
 
 Each command should print JSON with `ok: true`, a `jobId`, the validated `result`, and the probe `stateDir`.
@@ -44,6 +46,7 @@ Build first, then verify that Windows resolves the intended Claude Code executab
 pnpm run build
 where.exe claude
 pnpm run probe:real:direct
+pnpm run probe:real:retinue-claude
 ```
 
 Expected result:
@@ -52,6 +55,13 @@ Expected result:
 - `mode` is `direct`
 - `result` is `SUPERVISOR_REAL_OK`
 - `stateDir` points at the local probe artifacts
+
+For the Retinue product entrypoint, expected result:
+
+- the probe prints `ok: true`
+- `retinueBackend` is `claude-code`
+- `backend` is `claude-code`
+- `result` is `SUPERVISOR_REAL_OK`
 
 ## WSL Fresh Clone Gate
 
@@ -102,6 +112,21 @@ Expected result:
 - `daemonUrl` is a loopback URL
 - `result` is `SUPERVISOR_REAL_OK`
 
+## Retinue MCP Real Probe
+
+This calls the product-facing MCP tools directly in memory: `retinue_spawn_agent`, `retinue_wait_agent`, and `retinue_close_agent`. The script sets `SUPERVISOR_RETINUE_BACKEND=claude-code` for the probe process and leaves provider, model, proxy, permission, plugin, and profile behavior to the installed Claude Code runtime.
+
+```bash
+pnpm run probe:real:retinue-claude
+```
+
+Expected result:
+
+- `ok: true`
+- `backend` is `claude-code`
+- `result` is `SUPERVISOR_REAL_OK`
+- `closeStatus` is `completed`
+
 ## Custom Probe Inputs
 
 All modes support:
@@ -110,6 +135,7 @@ All modes support:
 node scripts/probe-real-claude.mjs direct --cwd . --prompt "Reply exactly: SUPERVISOR_REAL_OK" --expect SUPERVISOR_REAL_OK --timeout-ms 90000
 node scripts/probe-real-claude.mjs daemon --host 127.0.0.1 --port 0 --state-dir /tmp/supervisor-real-probe
 node scripts/probe-real-claude.mjs mcp-daemon --timeout-ms 120000
+node scripts/probe-retinue-claude-mcp.mjs --timeout-ms 120000
 ```
 
 Use `--state-dir` when you want probe artifacts in a known location. Without it, the script creates a temporary state directory and prints it.

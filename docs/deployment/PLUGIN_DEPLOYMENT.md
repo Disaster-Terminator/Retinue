@@ -72,15 +72,24 @@ The plugin does not enable daemon discovery by default. Add `SUPERVISOR_DAEMON_U
 
 ## OpenCode Production E2E
 
-Before calling the plugin production-ready, run the real OpenCode lifecycle from the plugin-exposed MCP tools:
+Before calling the plugin production-ready, run the real OpenCode lifecycle through the product `retinue_*` MCP tools:
 
 1. Set `SUPERVISOR_OPENCODE_BASE_URL` to the loopback OpenCode server.
-2. Optionally set `SUPERVISOR_OPENCODE_MODEL=litellm/pro-router`.
-3. Use `opencode_run` with a deterministic prompt.
-4. Use `opencode_wait`.
-5. Use `opencode_result`.
-6. Use `opencode_continue` against the same `externalSessionId`.
-7. Verify the continued result is the new assistant answer, not an earlier assistant answer or the user prompt.
-8. Exercise `opencode_kill` and `opencode_cleanup`.
+2. Set `SUPERVISOR_RETINUE_BACKEND=opencode`.
+3. Use `retinue_spawn_agent` with a deterministic prompt.
+4. Use `retinue_wait_agent` and verify the terminal result.
+5. Use `retinue_close_agent`.
+6. Confirm tool arguments did not include backend, profile, model, agent, or permission selection.
+7. Run the fake Claude parity path with `SUPERVISOR_RETINUE_BACKEND=claude-code`.
+8. When Claude Code is locally usable, run the best-effort real Retinue Claude probe:
 
-Record only redacted provider/model metadata, job id, session id, and observed result. Do not record API keys or provider secrets.
+```powershell
+pnpm run build
+pnpm run probe:real:retinue-claude
+```
+
+The Claude real probe is allowed to fail on upstream model, quota, proxy, or Claude Code runtime instability. Treat a failure there as a local backend readiness signal, not as permission to skip fake Claude parity or the OpenCode production E2E.
+
+Backend-specific `opencode_*` and `claude_*` tools remain available for adapter debugging and older runbooks, but they are not the primary Codex delegation surface.
+
+Record only redacted backend/profile metadata, job id, session id, and observed result. Do not record API keys or provider secrets.
