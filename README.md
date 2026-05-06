@@ -1,30 +1,50 @@
-# Anchorpoint
+# Retinue
 
-Local control plane for long-running coding-agent jobs via CLI, MCP, and a durable daemon path.
+<p align="left">
+  <img alt="runtime Node.js 20+" src="https://img.shields.io/badge/runtime-Node.js%2020%2B-339933">
+  <img alt="language TypeScript" src="https://img.shields.io/badge/language-TypeScript-3178C6">
+  <img alt="package manager pnpm" src="https://img.shields.io/badge/package%20manager-pnpm-F69220">
+  <img alt="interface MCP + CLI" src="https://img.shields.io/badge/interface-MCP%20%2B%20CLI-4B5563">
+  <img alt="backends Claude Code and OpenCode" src="https://img.shields.io/badge/backends-Claude%20Code%20%2B%20OpenCode-111827">
+  <img alt="scope local first" src="https://img.shields.io/badge/scope-local--first-0F766E">
+</p>
 
-See [Project Boundary and Long-Term Vision](docs/PROJECT_BOUNDARY.md) before changing the architecture. The current stdio MCP implementation is a hardening phase; the long-term lifecycle owner is a durable local daemon. See [Verification Notes](docs/VERIFICATION.md) for the current Windows, WSL, and real Claude Code baseline.
-See [Service Lifecycle](docs/SERVICE_LIFECYCLE.md) for the current manual daemon start, inspect, and stop workflow.
-See [Anchorpoint Codex Plugin Deployment](docs/PLUGIN_DEPLOYMENT.md) for the plugin product shape that packages the MCP server and skill together.
+[English](README.en.md)
 
-Claude Code is the frozen compatibility backend. New agent integration work should happen behind backend adapters, starting with OpenCode. Anchorpoint must remain a lifecycle owner and must not become a provider/model router.
+**Retinue 让 Codex 把本地 coding agents 当作可控子代理来运行。**
 
-The package and original command names still use `supervisor` for compatibility. `Anchorpoint` is the product identity for the durable local lifecycle boundary: callers submit a job, receive a handle, and can later inspect, wait, read results, continue, kill, or clean up without turning the agent runtime into this project's responsibility.
+Codex 提交一个 coding job，Retinue 立刻返回 job handle；之后可以查状态、等待完成、读取结果、继续外部会话、结束任务或清理本地产物。Claude Code、OpenCode 仍然负责自己的 provider、model、quota、proxy、login 和运行策略；Retinue 负责把这些本地 agent runtime 变成 Codex 可调用、可追踪、可接回的子代理能力。
 
-The repository targets a Codex-like lifecycle:
+```text
+Codex / MCP client
+  -> Retinue MCP 或 CLI
+    -> backend adapter
+      -> Claude Code / OpenCode
+    -> local job state + bounded result artifacts
+```
 
-- `claude_run`: start Claude Code and return a job handle quickly
-- `claude_status`: inspect current job metadata
-- `claude_wait`: wait briefly for a terminal state
-- `claude_result`: read stdout, stderr, parsed JSON, and exit metadata
-- `claude_continue`: start a new job from a persisted Claude Code session id
-- `claude_kill`: kill the process tree
-- `claude_cleanup`: remove terminal job directories while preserving running jobs
+## 核心能力
 
-OpenCode work is on `feature/spawn-opencode`. Its first explicit surfaces are `opencode-run` CLI commands and `opencode_*` MCP tools that attach to a loopback OpenCode server URL; provider/model routing remains owned by OpenCode.
+| 能力 | 说明 |
+| --- | --- |
+| 启动子代理 | 让 Codex 启动 Claude Code 或 OpenCode coding job，并快速拿到 `jobId` |
+| 查询状态 | 用 `status` 查看 running、completed、failed、stopped、orphaned、abandoned 等状态 |
+| 等待和轮询 | 用 `wait` 在短时间窗口内等待终态，不阻塞主 agent 的整段任务 |
+| 读取结果 | 用 `result` 获取 bounded stdout/stderr、exit metadata、外部 session id 和本地 artifact path |
+| 继续会话 | 后端支持时，用 `continue` 接回已有 Claude/OpenCode session 继续工作 |
+| 结束和清理 | 结束指定 job，或用 `cleanup` 删除终态 job 目录，同时保留运行中或状态不确定的任务 |
 
-## Quickstart
+## 边界
 
-Install, build, and run the deterministic gate:
+Retinue 是本地子代理执行面，不是模型网关，也不是 provider router。
+
+- 不选择或切换模型供应商。
+- 不接管 Claude Code / OpenCode 的登录、配额、代理、模型默认值或运行策略。
+- 不把 prompt 放进进程 argv。
+- 不在默认 `status` 响应里返回完整 prompt。
+- 不把自己扩展成通用进程管理器或云端队列。
+
+## 快速开始
 
 ```bash
 pnpm install
@@ -33,254 +53,123 @@ pnpm run typecheck
 pnpm test
 ```
 
-Run a fake-Claude CLI job before spending real Claude Code quota:
+先用 fake Claude 跑一条确定性本地 job，避免消耗真实 Claude Code quota：
 
 ```bash
-SUPERVISOR_CLAUDE_COMMAND=node SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs node dist/cli.js run --cwd . --prompt "hello"
+SUPERVISOR_CLAUDE_COMMAND=node \
+SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs \
+node dist/cli.js run --cwd . --prompt "hello"
+
 node dist/cli.js wait <jobId> --timeout-ms 30000
 node dist/cli.js result <jobId>
 ```
 
-PowerShell users can set the same overrides with `$env:SUPERVISOR_CLAUDE_COMMAND = "node"` and `$env:SUPERVISOR_CLAUDE_PREFIX_ARGS = "tests/fixtures/fake-claude.mjs"`.
+PowerShell：
 
-## Safety Defaults
-
-The supervisor calls the system `claude` command by default and does not add permission-bypass flags. It intentionally does not expose Claude Code `bypassPermissions` / `--dangerously-skip-permissions`. If local `claude` is managed by cc-switch, routing and quota remain controlled by that existing Claude Code setup.
-
-Prompts are written to job-local `prompt.md` and sent to Claude Code over stdin. They are not passed as command-line arguments and are not returned by default in `status`; metadata stores only `promptPath`, `promptPreview`, and `promptSha256`.
-
-Jobs are stored under:
-
-```text
-%LOCALAPPDATA%\supervisor
-```
-
-on Windows, or:
-
-```text
-$XDG_STATE_HOME/supervisor
-~/.local/state/supervisor
-```
-
-on Linux/WSL. Set `SUPERVISOR_STATE_DIR` to override this.
-
-## Install
-
-```bash
-pnpm install
-pnpm run build
+```powershell
+$env:SUPERVISOR_CLAUDE_COMMAND = "node"
+$env:SUPERVISOR_CLAUDE_PREFIX_ARGS = "tests/fixtures/fake-claude.mjs"
+node dist/cli.js run --cwd . --prompt "hello"
+node dist/cli.js wait <jobId> --timeout-ms 30000
+node dist/cli.js result <jobId>
 ```
 
 ## CLI
 
 ```bash
 pnpm run build
+
 node dist/cli.js run --cwd . --prompt "Reply exactly: OK"
 node dist/cli.js status <jobId>
 node dist/cli.js wait <jobId> --timeout-ms 30000
 node dist/cli.js result <jobId>
 node dist/cli.js continue --cwd . --job-id <jobId> --prompt "Follow up"
-node dist/cli.js kill <jobId>
 node dist/cli.js cleanup --older-than-ms 86400000
 ```
 
-For deterministic tests, override the Claude command:
+OpenCode 后端连接本地 loopback server：
 
 ```bash
-SUPERVISOR_CLAUDE_COMMAND=node
-SUPERVISOR_CLAUDE_PREFIX_ARGS=/path/to/fake-claude.mjs
+SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
+node dist/cli.js opencode-run \
+  --cwd . \
+  --prompt "Reply exactly: RETINUE_OPENCODE_OK"
+
+node dist/cli.js opencode-wait <jobId> --timeout-ms 180000
+node dist/cli.js opencode-result <jobId>
 ```
 
-`SUPERVISOR_CLAUDE_PREFIX_ARGS` can also be a JSON string array.
+可选模型和 agent 默认值由环境变量传给 OpenCode；未设置时，Retinue 省略这些字段，让 OpenCode 使用自己的配置：
 
-## Entrypoints
+```bash
+SUPERVISOR_OPENCODE_MODEL=litellm/pro-router
+SUPERVISOR_OPENCODE_AGENT=build
+```
 
-After `pnpm run build`, package bins point at:
+## MCP 工具
 
-| Bin | Built file | Purpose |
-| --- | --- | --- |
-| `anchorpoint` | `dist/cli.js` | Alias for the local CLI |
-| `anchorpoint-mcp` | `dist/mcp.js` | Alias for the stdio MCP server |
-| `anchorpointd` | `dist/daemon.js` | Alias for the manual loopback daemon |
-| `supervisor` | `dist/cli.js` | Local CLI for run/status/wait/result/continue/peek/kill/cleanup |
-| `supervisor-mcp` | `dist/mcp.js` | Stdio MCP server exposing Claude lifecycle tools |
-| `supervisor-daemon` | `dist/daemon.js` | Manual loopback daemon for durable lifecycle ownership |
+构建后，把 MCP client 配到：
 
-## Codex Plugin
+```bash
+node /path/to/Retinue/dist/mcp.js
+```
 
-The deployable product surface is the repo-local Codex plugin at:
+Claude Code 工具：`claude_run`、`claude_status`、`claude_wait`、`claude_result`、`claude_continue`、`claude_peek`、`claude_cleanup`。
+
+OpenCode 工具：`opencode_run`、`opencode_status`、`opencode_wait`、`opencode_result`、`opencode_continue`、`opencode_cleanup`。
+
+## 状态目录
+
+Windows：
 
 ```text
-plugins/anchorpoint
+%LOCALAPPDATA%\supervisor
 ```
 
-It includes:
+Linux / WSL：
 
-- `.codex-plugin/plugin.json`
-- `.mcp.json`
-- `skills/anchorpoint/SKILL.md`
+```text
+$XDG_STATE_HOME/supervisor
+~/.local/state/supervisor
+```
 
-Run `pnpm run build` before enabling the plugin because its MCP config starts `dist/mcp.js`. `pnpm run verify:package` checks that plugin files and runtime files are packaged together.
+用 `SUPERVISOR_STATE_DIR` 可以覆盖状态目录。
 
-## Environment Variables
+## 环境变量
 
-| Variable | Used by | Purpose |
-| --- | --- | --- |
-| `SUPERVISOR_STATE_DIR` | CLI, MCP, daemon | Override the state directory for job metadata and artifacts |
-| `SUPERVISOR_CLAUDE_COMMAND` | CLI, MCP, daemon | Override the executable, usually for fake-Claude tests |
-| `SUPERVISOR_CLAUDE_PREFIX_ARGS` | CLI, MCP, daemon | Add fixed arguments before supervisor's Claude Code arguments |
-| `SUPERVISOR_DAEMON_URL` | CLI, MCP | Explicit daemon URL for adapter mode |
-| `SUPERVISOR_DAEMON_DISCOVERY` | CLI, MCP | Set to `1` to read `<stateDir>/daemon.json` explicitly |
-| `SUPERVISOR_DEFAULT_RUNTIME_TIMEOUT_MS` | CLI, MCP, daemon | Default runtime timeout for jobs that do not pass `timeoutMs` |
-| `SUPERVISOR_MAX_CONCURRENT_JOBS` | CLI, MCP, daemon | Limit concurrent running jobs for that supervisor process |
-| `SUPERVISOR_OPENCODE_BASE_URL` | OpenCode CLI/MCP | Attach to a loopback OpenCode server |
-| `SUPERVISOR_OPENCODE_MODEL` | OpenCode CLI/MCP | Optional default model override as `provider/model`; omitted when unset |
-| `SUPERVISOR_OPENCODE_AGENT` | OpenCode CLI/MCP | Optional default OpenCode agent override; omitted when unset |
+| 变量 | 用途 |
+| --- | --- |
+| `SUPERVISOR_STATE_DIR` | 覆盖 job metadata 和 artifact 的状态目录 |
+| `SUPERVISOR_CLAUDE_COMMAND` | 覆盖 Claude Code 可执行文件，常用于 fake runtime 测试 |
+| `SUPERVISOR_CLAUDE_PREFIX_ARGS` | 在 Retinue 生成的 Claude Code 参数前追加固定参数 |
+| `SUPERVISOR_DEFAULT_RUNTIME_TIMEOUT_MS` | 设置未显式传入 `timeoutMs` 时的默认 runtime timeout |
+| `SUPERVISOR_MAX_CONCURRENT_JOBS` | 限制当前进程内并发运行 job 数 |
+| `SUPERVISOR_OPENCODE_BASE_URL` | 指向本地 OpenCode loopback server |
+| `SUPERVISOR_OPENCODE_MODEL` | 可选 OpenCode 默认模型，格式为 `provider/model` |
+| `SUPERVISOR_OPENCODE_AGENT` | 可选 OpenCode 默认 agent |
+| `SUPERVISOR_DAEMON_URL` | 让 CLI/MCP 显式连接本地 loopback daemon |
+| `SUPERVISOR_DAEMON_DISCOVERY` | 设为 `1` 时从 `<stateDir>/daemon.json` 发现 daemon |
 
-## Daemon
+## 安全和可靠性默认值
 
-The first daemon milestone is manual and loopback-only by default:
+- Prompt 写入 job-local `prompt.md`，再通过 stdin 传给后端 agent。
+- `status` 默认只暴露 `promptPath`、`promptPreview` 和 `promptSha256`。
+- `result` 和 `peek` 默认返回 bounded stdout/stderr，并给出 `stdoutPath`、`stderrPath`、字节数和截断标记。
+- 缺失 PID、旧状态文件或损坏 metadata 会被标成明确状态，不伪装成成功。
+- Windows 和 WSL 不应共用同一个 `node_modules`；两个环境分别执行 `pnpm install --frozen-lockfile`。
+
+## 可选 daemon 模式
+
+Retinue 可以直接在 CLI/MCP 进程内运行，也可以显式连接本地 loopback daemon：
 
 ```bash
 pnpm run build
 node dist/daemon.js --host 127.0.0.1 --port 27777
 ```
 
-The daemon prints one JSON readiness line and then serves:
+未设置 `SUPERVISOR_DAEMON_URL`、`--daemon-url`、`SUPERVISOR_DAEMON_DISCOVERY=1` 或 `--discover-daemon` 时，CLI/MCP 使用直接本地路径。
 
-```text
-GET  /health
-POST /v1/jobs/run
-POST /v1/jobs/status
-POST /v1/jobs/wait
-POST /v1/jobs/result
-POST /v1/jobs/continue
-POST /v1/jobs/peek
-POST /v1/jobs/kill
-POST /v1/jobs/cleanup
-```
-
-`GET /health` returns readiness metadata:
-
-```json
-{
-  "status": "ok",
-  "version": "0.1.0",
-  "pid": 12345,
-  "stateDir": "..."
-}
-```
-
-Daemon errors use a stable object shape:
-
-```json
-{
-  "error": {
-    "code": "invalid_request",
-    "message": "Missing required jobId"
-  }
-}
-```
-
-Current daemon error codes are `not_found`, `bad_json`, `body_too_large`, `invalid_request`, and `internal_error`. JSON request bodies are limited to 1 MiB by default.
-
-This is not service installation or auto-start. It is the first step toward the long-term architecture where the daemon owns job lifecycle and CLI/MCP become adapters.
-
-The CLI delegates to a running daemon only when configured explicitly:
-
-```bash
-SUPERVISOR_DAEMON_URL=http://127.0.0.1:27777 node dist/cli.js run --cwd . --prompt "Reply exactly: OK"
-node dist/cli.js --daemon-url http://127.0.0.1:27777 status <jobId>
-```
-
-The daemon also writes a discovery file at `<stateDir>/daemon.json` after it binds. CLI discovery is still explicit:
-
-```bash
-node dist/cli.js --discover-daemon status <jobId>
-SUPERVISOR_DAEMON_DISCOVERY=1 node dist/cli.js status <jobId>
-```
-
-Without `SUPERVISOR_DAEMON_URL` or `--daemon-url`, CLI keeps the direct local supervisor path.
-
-## MCP
-
-After `pnpm run build`, configure an MCP client to run:
-
-```bash
-node G:/repository/supervisor/dist/mcp.js
-```
-
-Environment overrides:
-
-```text
-SUPERVISOR_DAEMON_URL
-SUPERVISOR_DAEMON_DISCOVERY
-SUPERVISOR_STATE_DIR
-SUPERVISOR_CLAUDE_COMMAND
-SUPERVISOR_CLAUDE_PREFIX_ARGS
-```
-
-When `SUPERVISOR_DAEMON_URL` is set, MCP tools delegate to the running daemon. When `SUPERVISOR_DAEMON_DISCOVERY=1` is set, MCP reads `<stateDir>/daemon.json` and rejects stale daemon metadata. Without either setting, MCP keeps the direct in-process supervisor path for fallback and debugging.
-
-Example MCP configuration using explicit daemon discovery:
-
-```json
-{
-  "mcpServers": {
-    "supervisor": {
-      "command": "node",
-      "args": ["G:/repository/supervisor/dist/mcp.js"],
-      "env": {
-        "SUPERVISOR_DAEMON_DISCOVERY": "1"
-      }
-    }
-  }
-}
-```
-
-Use `SUPERVISOR_DAEMON_URL` instead of discovery when the daemon URL is fixed and known.
-
-Inspect a daemon without running a job:
-
-```bash
-node dist/cli.js daemon-health --daemon-url http://127.0.0.1:27777
-node dist/cli.js --discover-daemon daemon-health
-```
-
-`claude_result` returns bounded stdout/stderr by default, plus `stdoutPath`, `stderrPath`, byte counts, and truncation flags. Read the files directly only when a full local artifact is needed.
-
-## Result Artifacts And Cleanup
-
-`claude_result` and `claude_peek` return bounded stdout/stderr text for client safety. Full local artifacts remain available at `stdoutPath` and `stderrPath`.
-
-Clean terminal jobs with:
-
-```bash
-node dist/cli.js cleanup --older-than-ms 86400000
-```
-
-Cleanup removes terminal job directories and reports removed temp files. It preserves `running` and `abandoned` jobs.
-
-## Reliability Notes
-
-- Job finalization is handled from the child `close` event so stdout/stderr pipes have closed before metadata is finalized.
-- Completed Claude JSON `session_id` is persisted to `meta.json` as `sessionId`.
-- New job metadata is written with `schemaVersion: 1`; older metadata without a schema version remains readable.
-- Running jobs can be limited with `maxConcurrentJobs` in code and `timeoutMs` per run.
-- If a previous MCP process exited and left stale `running` metadata, status reconciliation marks a missing PID as `orphaned`.
-- If stale `running` metadata points at a live PID that the current supervisor instance does not own, status reconciliation marks it as `abandoned` rather than reporting normal `running`.
-- Cleanup removes terminal job directories and reports temp JSON files removed with those directories; it preserves `running` and `abandoned` job directories.
-- Windows and WSL should not share one `node_modules` directory. Run `pnpm install --frozen-lockfile` separately inside WSL before Linux-side tests because packages such as Rollup install OS-specific optional dependencies.
-
-## Troubleshooting
-
-- `Unknown command: ...`: run `node dist/cli.js <command>` after `pnpm run build`; package bins also require built `dist/` files.
-- `Stale daemon discovery`: stop the old PID if it is still running, or start a new daemon so `<stateDir>/daemon.json` is refreshed.
-- `Cannot find module` after moving between Windows and WSL: run `pnpm install --frozen-lockfile` separately in that environment.
-- `claude` is missing or routes unexpectedly: check `where.exe claude` on Windows or `which claude` on WSL/Linux. Supervisor does not route providers itself.
-- Job output looks truncated: use `stdoutPath` and `stderrPath` from `claude_result` for full artifacts.
-
-## Verify
+## 验证
 
 ```bash
 pnpm run typecheck
@@ -288,6 +177,14 @@ pnpm test
 pnpm run build
 ```
 
-Manual and opt-in real Claude Code probes are documented in [Real Claude Code Probes](docs/REAL_CLAUDE_PROBES.md). They are not part of the default deterministic test suite.
-Manual and opt-in real OpenCode probes are documented in [Real OpenCode Probes](docs/REAL_OPENCODE_PROBES.md).
+真实后端探针默认不进 CI，也不属于确定性测试套件：
 
+- [Real Claude Code Probes](docs/REAL_CLAUDE_PROBES.md)
+- [Real OpenCode Probes](docs/REAL_OPENCODE_PROBES.md)
+- [Production OpenCode E2E](docs/PRODUCTION_OPENCODE_E2E.md)
+
+更多边界和运行方式见：
+
+- [Project Boundary](docs/PROJECT_BOUNDARY.md)
+- [Service Lifecycle](docs/SERVICE_LIFECYCLE.md)
+- [Plugin Deployment](docs/PLUGIN_DEPLOYMENT.md)
