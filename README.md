@@ -13,7 +13,7 @@
 
 **Retinue 让 Codex 把本地 coding agents 当作可控子代理来运行。**
 
-Codex 提交一个 coding job，Retinue 立刻返回 job handle；之后可以查状态、等待完成、读取结果、继续外部会话、结束任务或清理本地产物。Claude Code、OpenCode 仍然负责自己的 provider、model、quota、proxy、login 和运行策略；Retinue 负责把这些本地 agent runtime 变成 Codex 可调用、可追踪、可接回的子代理能力。
+Codex 提交一个 coding job，Retinue 立刻返回 job handle；之后可以查状态、等待完成、读取结果、继续外部会话、终止任务或清理本地产物。Claude Code、OpenCode 仍然负责自己的 provider、model、quota、proxy、login 和运行策略；Retinue 负责把这些本地 agent runtime 变成 Codex 可调用、可追踪、可接回的子代理能力。
 
 ```text
 Codex / MCP client
@@ -28,11 +28,11 @@ Codex / MCP client
 | 能力 | 说明 |
 | --- | --- |
 | 启动子代理 | 让 Codex 启动 Claude Code 或 OpenCode coding job，并快速拿到 `jobId` |
-| 查询状态 | 用 `status` 查看 running、completed、failed、stopped、orphaned、abandoned 等状态 |
+| 查询状态 | 用 `status` 查看 running、completed、failed、killed、orphaned、abandoned 等状态 |
 | 等待和轮询 | 用 `wait` 在短时间窗口内等待终态，不阻塞主 agent 的整段任务 |
 | 读取结果 | 用 `result` 获取 bounded stdout/stderr、exit metadata、外部 session id 和本地 artifact path |
 | 继续会话 | 后端支持时，用 `continue` 接回已有 Claude/OpenCode session 继续工作 |
-| 结束和清理 | 结束指定 job，或用 `cleanup` 删除终态 job 目录，同时保留运行中或状态不确定的任务 |
+| 终止和清理 | 用 `kill` 终止指定 job，或用 `cleanup` 删除终态 job 目录，同时保留运行中或状态不确定的任务 |
 
 ## 边界
 
@@ -84,6 +84,7 @@ node dist/cli.js status <jobId>
 node dist/cli.js wait <jobId> --timeout-ms 30000
 node dist/cli.js result <jobId>
 node dist/cli.js continue --cwd . --job-id <jobId> --prompt "Follow up"
+node dist/cli.js kill <jobId>
 node dist/cli.js cleanup --older-than-ms 86400000
 ```
 
@@ -97,6 +98,7 @@ node dist/cli.js opencode-run \
 
 node dist/cli.js opencode-wait <jobId> --timeout-ms 180000
 node dist/cli.js opencode-result <jobId>
+node dist/cli.js opencode-kill <jobId>
 ```
 
 可选模型和 agent 默认值由环境变量传给 OpenCode；未设置时，Retinue 省略这些字段，让 OpenCode 使用自己的配置：
@@ -114,9 +116,9 @@ SUPERVISOR_OPENCODE_AGENT=build
 node /path/to/Retinue/dist/mcp.js
 ```
 
-Claude Code 工具：`claude_run`、`claude_status`、`claude_wait`、`claude_result`、`claude_continue`、`claude_peek`、`claude_cleanup`。
+Claude Code 工具：`claude_run`、`claude_status`、`claude_wait`、`claude_result`、`claude_continue`、`claude_peek`、`claude_kill`、`claude_cleanup`。
 
-OpenCode 工具：`opencode_run`、`opencode_status`、`opencode_wait`、`opencode_result`、`opencode_continue`、`opencode_cleanup`。
+OpenCode 工具：`opencode_run`、`opencode_status`、`opencode_wait`、`opencode_result`、`opencode_continue`、`opencode_kill`、`opencode_cleanup`。
 
 ## 状态目录
 
