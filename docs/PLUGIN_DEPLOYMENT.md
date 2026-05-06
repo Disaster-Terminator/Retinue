@@ -1,11 +1,13 @@
-# Anchorpoint Codex Plugin Deployment
+# RunLatch Codex Plugin Deployment
 
-Anchorpoint's deployable product shape is a Codex plugin. The plugin contains:
+RunLatch's deployable product shape is a Codex plugin. The plugin contains:
 
 - `.codex-plugin/plugin.json` for discovery and product metadata
 - `.mcp.json` for MCP tool exposure
 - `skills/anchorpoint/SKILL.md` for agent-facing operating guidance
 - the repository runtime built under `dist/`
+
+The current plugin directory and skill name still use `anchorpoint` as transitional compatibility names. A follow-up package/runtime rename should move them to `runlatch` after `runlatch`, `runlatch-mcp`, and `runlatchd` aliases exist.
 
 ## Build Gate
 
@@ -23,7 +25,7 @@ pnpm run verify:package
 
 ## Repo-Local Plugin
 
-The repo-local plugin is:
+The repo-local plugin is currently:
 
 ```text
 plugins/anchorpoint
@@ -61,6 +63,8 @@ Then add or update the local marketplace entry:
   "category": "Coding"
 }
 ```
+
+These local names are transitional. They should move to `runlatch` in the same follow-up that adds `runlatch-mcp` runtime aliases.
 
 The plugin expects the built runtime to remain available relative to the plugin MCP config. For repo-local testing, build the repository first and use `plugins/anchorpoint/.mcp.json` directly.
 
