@@ -181,12 +181,14 @@ pnpm run build
 
 Real backend probes are manual and opt-in; they are not part of CI or the deterministic test suite:
 
-- [Real Claude Code Probes](docs/REAL_CLAUDE_PROBES.md)
-- [Real OpenCode Probes](docs/REAL_OPENCODE_PROBES.md)
-- [Production OpenCode E2E](docs/PRODUCTION_OPENCODE_E2E.md)
+- [Real Claude Code Probes](docs/runbooks/REAL_CLAUDE_PROBES.md)
+- [Real OpenCode Probes](docs/runbooks/REAL_OPENCODE_PROBES.md)
+- [Production OpenCode E2E](docs/runbooks/PRODUCTION_OPENCODE_E2E.md)
 
 More details:
 
-- [Project Boundary](docs/PROJECT_BOUNDARY.md)
-- [Service Lifecycle](docs/SERVICE_LIFECYCLE.md)
-- [Plugin Deployment](docs/PLUGIN_DEPLOYMENT.md)
+- [Docs Index](docs/README.md)
+- [Long-Term Vision](docs/LONG_TERM_VISION.md)
+- [Project Boundary](docs/architecture/PROJECT_BOUNDARY.md)
+- [Service Lifecycle](docs/deployment/SERVICE_LIFECYCLE.md)
+- [Plugin Deployment](docs/deployment/PLUGIN_DEPLOYMENT.md)

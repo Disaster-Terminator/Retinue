@@ -14,4 +14,4 @@ pnpm run build
 pnpm run verify:package
 ```
 
-For production OpenCode E2E, see `../../docs/PRODUCTION_OPENCODE_E2E.md`.
+For production OpenCode E2E, see `../../docs/runbooks/PRODUCTION_OPENCODE_E2E.md`.

@@ -181,12 +181,14 @@ pnpm run build
 
 真实后端探针默认不进 CI，也不属于确定性测试套件：
 
-- [Real Claude Code Probes](docs/REAL_CLAUDE_PROBES.md)
-- [Real OpenCode Probes](docs/REAL_OPENCODE_PROBES.md)
-- [Production OpenCode E2E](docs/PRODUCTION_OPENCODE_E2E.md)
+- [Real Claude Code Probes](docs/runbooks/REAL_CLAUDE_PROBES.md)
+- [Real OpenCode Probes](docs/runbooks/REAL_OPENCODE_PROBES.md)
+- [Production OpenCode E2E](docs/runbooks/PRODUCTION_OPENCODE_E2E.md)
 
 更多边界和运行方式见：
 
-- [Project Boundary](docs/PROJECT_BOUNDARY.md)
-- [Service Lifecycle](docs/SERVICE_LIFECYCLE.md)
-- [Plugin Deployment](docs/PLUGIN_DEPLOYMENT.md)
+- [Docs Index](docs/README.md)
+- [Long-Term Vision](docs/LONG_TERM_VISION.md)
+- [Project Boundary](docs/architecture/PROJECT_BOUNDARY.md)
+- [Service Lifecycle](docs/deployment/SERVICE_LIFECYCLE.md)
+- [Plugin Deployment](docs/deployment/PLUGIN_DEPLOYMENT.md)
