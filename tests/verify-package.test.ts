@@ -12,8 +12,13 @@ function validPackJson() {
       files: [
         { path: "README.md" },
         { path: "docs/OPENCODE_BACKEND.md" },
+        { path: "docs/PLUGIN_DEPLOYMENT.md" },
         { path: "docs/VERIFICATION.md" },
         { path: "docs/PROJECT_BOUNDARY.md" },
+        { path: ".agents/plugins/marketplace.json" },
+        { path: "plugins/anchorpoint/.codex-plugin/plugin.json" },
+        { path: "plugins/anchorpoint/.mcp.json" },
+        { path: "plugins/anchorpoint/skills/anchorpoint/SKILL.md" },
         { path: "dist/backends/opencode/backend.js" },
         { path: "dist/cli.js" },
         { path: "dist/mcp.js" },

@@ -163,6 +163,50 @@ stdout: SUPERVISOR_WSL_OPENCODE_OK
 cleanup removed: job_3eb667da-a718-4670-ba7a-2c60deb63de0
 ```
 
+## 2026-05-06 PR #58 Review E2E
+
+Environment:
+
+```text
+Host runner: Windows PowerShell
+OpenCode server: WSL Ubuntu-22.04, http://127.0.0.1:4096
+OpenCode version: 1.14.35
+Workspace sent to OpenCode: /mnt/g/repository/supervisor
+Model override: litellm/pro-router
+Provider/model confirmed by OpenCode messages: litellm/pro-router
+```
+
+Run result:
+
+```text
+jobId: job_e69a6efb-3273-429c-9fd1-f7af8a88bf59
+sessionId: ses_202bb3938ffeBGQVwiD0NWN4YV
+status: completed
+stdout: ANCHORPOINT_E2E_RUN_OK
+```
+
+Continue result:
+
+```text
+jobId: job_07346cfd-6876-432e-9bb8-b4528312d434
+sessionId: ses_202bb3938ffeBGQVwiD0NWN4YV
+externalMessageBaselineCount: 2
+externalCompletedAssistantBaselineCount: 1
+status: completed
+stdout: ANCHORPOINT_E2E_CONTINUE_OK
+```
+
+Kill and cleanup result:
+
+```text
+kill jobId: job_1c0bf160-afc6-4e33-972a-33b0369f68be
+kill status: killed
+cleanup removed completed jobs: job_e69a6efb-3273-429c-9fd1-f7af8a88bf59, job_07346cfd-6876-432e-9bb8-b4528312d434
+cleanup removed killed job on second sequential cleanup: job_1c0bf160-afc6-4e33-972a-33b0369f68be
+```
+
+The continued job returned the new assistant answer, not the previous assistant answer and not the user prompt.
+
 ## Known Environment Note
 
 During the same session, direct WSL userland commands briefly returned `Wsl/Service/0x8007274c`, while the already running WSL OpenCode server remained reachable over loopback from Windows. WSL later recovered and completed the CLI E2E above. Do not reset or terminate WSL as an automatic fix; confirm with the user before any WSL lifecycle action.

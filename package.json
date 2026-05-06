@@ -22,6 +22,8 @@
     "dist/daemon/**",
     "dist/mcp.*",
     "docs/**",
+    "plugins/**",
+    ".agents/plugins/**",
     "scripts/**",
     "tests/fixtures/**"
   ],

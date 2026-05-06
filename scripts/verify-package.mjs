@@ -4,8 +4,16 @@ import { existsSync, readFileSync } from "node:fs";
 const requiredDocs = [
   "README.md",
   "docs/OPENCODE_BACKEND.md",
+  "docs/PLUGIN_DEPLOYMENT.md",
   "docs/VERIFICATION.md",
   "docs/PROJECT_BOUNDARY.md"
+];
+
+const requiredPluginFiles = [
+  ".agents/plugins/marketplace.json",
+  "plugins/anchorpoint/.codex-plugin/plugin.json",
+  "plugins/anchorpoint/.mcp.json",
+  "plugins/anchorpoint/skills/anchorpoint/SKILL.md"
 ];
 
 const requiredRuntimePatterns = ["dist/backends/", "dist/cli.", "dist/mcp.", "dist/daemon."];
@@ -46,6 +54,12 @@ for (const requiredRuntimePattern of requiredRuntimePatterns) {
 for (const requiredDoc of requiredDocs) {
   if (!packagedPaths.has(requiredDoc)) {
     fail(`missing required doc: ${requiredDoc}`);
+  }
+}
+
+for (const requiredPluginFile of requiredPluginFiles) {
+  if (!packagedPaths.has(requiredPluginFile)) {
+    fail(`missing required plugin file: ${requiredPluginFile}`);
   }
 }
 

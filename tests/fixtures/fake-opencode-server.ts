@@ -18,6 +18,7 @@ interface FakeSession {
 export interface FakeOpenCodeServer {
   url: string;
   promptRequests: Array<Record<string, unknown>>;
+  setAutoAssistantResponses(enabled: boolean): void;
   completeSession(sessionId: string): void;
   completeSessionByMessageOnly(sessionId: string): void;
   failSession(sessionId: string, reason?: string): void;
@@ -27,6 +28,7 @@ export interface FakeOpenCodeServer {
 export async function startFakeOpenCodeServer(): Promise<FakeOpenCodeServer> {
   const sessions = new Map<string, FakeSession>();
   const promptRequests: Array<Record<string, unknown>> = [];
+  let autoAssistantResponses = true;
   let nextSession = 1;
   let nextMessage = 1;
 
@@ -96,9 +98,16 @@ export async function startFakeOpenCodeServer(): Promise<FakeOpenCodeServer> {
           : "";
       const messageId = `msg_${nextMessage++}`;
       session.messages.push({
-        info: { id: messageId, sessionID: session.id, role: "assistant" },
-        parts: [{ type: "text", text: `fake result: ${prompt}` }]
+        info: { id: messageId, sessionID: session.id, role: "user" },
+        parts: [{ type: "text", text: prompt }]
       });
+      if (autoAssistantResponses) {
+        const assistantMessageId = `msg_${nextMessage++}`;
+        session.messages.push({
+          info: { id: assistantMessageId, sessionID: session.id, role: "assistant" },
+          parts: [{ type: "text", text: `fake result: ${prompt}` }]
+        });
+      }
       session.state = "running";
       response.statusCode = 204;
       response.end();
@@ -124,6 +133,9 @@ export async function startFakeOpenCodeServer(): Promise<FakeOpenCodeServer> {
   return {
     url: `http://127.0.0.1:${address.port}`,
     promptRequests,
+    setAutoAssistantResponses: (enabled: boolean) => {
+      autoAssistantResponses = enabled;
+    },
     completeSession: (sessionId: string) => {
       const session = sessions.get(sessionId);
       if (session) {

@@ -117,6 +117,17 @@ describe("OpenCodeBackend", () => {
     await expect(backend.wait({ jobId: continued.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
   });
 
+  it("does not expose the current user prompt as result before an assistant response exists", async () => {
+    server!.setAutoAssistantResponses(false);
+    const backend = createBackend();
+    const started = await backend.run({ cwd: tempDir, prompt: "do not echo me" });
+
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "running",
+      parsedStdout: { result: "" }
+    });
+  });
+
   it("continues an existing OpenCode session", async () => {
     const backend = createBackend();
     const first = await backend.run({ cwd: tempDir, prompt: "first" });

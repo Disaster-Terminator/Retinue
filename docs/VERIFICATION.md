@@ -34,6 +34,7 @@ Milestone:
 - `verify:package` fails if `package-lock.json` exists.
 - `verify:package` enforces packaged runtime artifacts for `dist/backends/**`, `dist/cli.*`, `dist/mcp.*`, and `dist/daemon.*`.
 - `verify:package` enforces required docs: `README.md`, `docs/OPENCODE_BACKEND.md`, `docs/VERIFICATION.md`, and `docs/PROJECT_BOUNDARY.md`.
+- `verify:package` enforces the Codex plugin surface: `.agents/plugins/marketplace.json`, `plugins/anchorpoint/.codex-plugin/plugin.json`, `plugins/anchorpoint/.mcp.json`, and `plugins/anchorpoint/skills/anchorpoint/SKILL.md`.
 - Default CI does not run any `probe:real:*` script.
 
 Verified commands:

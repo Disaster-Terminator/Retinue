@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   packageManager?: string;
   scripts?: Record<string, string>;
+  files?: string[];
 };
 
 describe("CI workflow guardrails", () => {
@@ -50,5 +51,37 @@ describe("package.json guardrails", () => {
     expect(scripts.test).not.toContain("probe:real:");
     expect(scripts.build).not.toContain("probe:real:");
     expect(scripts.typecheck).not.toContain("probe:real:");
+  });
+
+  it("packages the Codex plugin surface", () => {
+    expect(packageJson.files).toEqual(expect.arrayContaining(["plugins/**", ".agents/plugins/**"]));
+  });
+});
+
+describe("Anchorpoint Codex plugin guardrails", () => {
+  it("declares a plugin manifest with skill and MCP surfaces", () => {
+    const manifest = JSON.parse(readFileSync("plugins/anchorpoint/.codex-plugin/plugin.json", "utf8")) as {
+      name?: string;
+      skills?: string;
+      mcpServers?: string;
+      interface?: { displayName?: string };
+    };
+
+    expect(manifest.name).toBe("anchorpoint");
+    expect(manifest.skills).toBe("./skills/");
+    expect(manifest.mcpServers).toBe("./.mcp.json");
+    expect(manifest.interface?.displayName).toBe("Anchorpoint");
+  });
+
+  it("uses plugin-level MCP server map shape", () => {
+    const mcp = JSON.parse(readFileSync("plugins/anchorpoint/.mcp.json", "utf8")) as Record<string, { env?: Record<string, string> }>;
+
+    expect(mcp).toHaveProperty("anchorpoint");
+    expect(mcp).not.toHaveProperty("mcpServers");
+    expect(mcp.anchorpoint?.env?.SUPERVISOR_DAEMON_DISCOVERY).toBeUndefined();
+  });
+
+  it("ships an agent-facing skill", () => {
+    expect(existsSync("plugins/anchorpoint/skills/anchorpoint/SKILL.md")).toBe(true);
   });
 });

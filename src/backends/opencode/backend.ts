@@ -127,7 +127,7 @@ export class OpenCodeBackend implements AgentBackend {
     }
     const messages = await this.client.messages(meta.externalSessionId);
     const jobMessages = selectMessagesForMeta(messages, meta);
-    const text = meta.externalMessageBaselineCount === undefined ? latestMessageText(messages) : latestMessageText(jobMessages);
+    const text = meta.externalMessageBaselineCount === undefined ? latestAssistantMessageText(messages) : latestAssistantMessageText(jobMessages);
     return {
       jobId: handle.jobId,
       status: meta.status,
@@ -280,10 +280,11 @@ function selectMessagesForMeta(messages: OpenCodeMessage[], meta: JobMeta): Open
   return messages.slice(Math.max(0, meta.externalMessageBaselineCount));
 }
 
-function latestMessageText(messages: OpenCodeMessage[]): string {
+function latestAssistantMessageText(messages: OpenCodeMessage[]): string {
   return (
     [...messages]
       .reverse()
+      .filter((message) => message.info?.role === "assistant")
       .map(extractMessageText)
       .find((messageText) => messageText.length > 0) ?? ""
   );
