@@ -1,15 +1,17 @@
 ---
 name: anchorpoint
-description: Use Anchorpoint when Codex needs to spawn, monitor, continue, kill, or clean up local Claude Code or OpenCode coding-agent jobs through the Anchorpoint MCP tools.
+description: Use RunLatch when Codex needs to spawn, monitor, continue, kill, or clean up local Claude Code or OpenCode coding-agent jobs through the RunLatch MCP tools. The current skill name remains anchorpoint as a transitional compatibility name.
 ---
 
-# Anchorpoint
+# RunLatch
 
-Anchorpoint is a local lifecycle plugin for coding-agent jobs. Use its MCP tools when a task should keep running outside the current Codex turn, when a job handle is needed, or when OpenCode should own provider/model/login while Codex owns job supervision.
+RunLatch is a local lifecycle plugin for coding-agent jobs. Use its MCP tools when a task should keep running outside the current Codex turn, when a job handle is needed, or when OpenCode should own provider/model/login while Codex owns job supervision.
+
+The current skill path and metadata name remain `anchorpoint` as a transitional compatibility surface. A follow-up package/runtime rename should move them to `runlatch` after `runlatch-mcp` exists as a package alias.
 
 ## Product Boundary
 
-Anchorpoint is not a provider router. OpenCode owns provider configuration, login, endpoint routing, model defaults, agents, and permission policy. Anchorpoint owns:
+RunLatch is not a provider router. OpenCode owns provider configuration, login, endpoint routing, model defaults, agents, and permission policy. RunLatch owns:
 
 - `run`
 - `status`
@@ -29,7 +31,7 @@ SUPERVISOR_OPENCODE_MODEL=litellm/pro-router
 SUPERVISOR_OPENCODE_AGENT=build
 ```
 
-If `SUPERVISOR_OPENCODE_MODEL` is unset and the MCP call does not include `model`, Anchorpoint omits the model field and lets OpenCode choose its default.
+If `SUPERVISOR_OPENCODE_MODEL` is unset and the MCP call does not include `model`, RunLatch omits the model field and lets OpenCode choose its default.
 
 ## Tool Use
 
