@@ -105,6 +105,31 @@ node dist/cli.js opencode-cleanup --older-than-ms 0
 
 PowerShell uses the same commands with `$env:SUPERVISOR_OPENCODE_BASE_URL` and `$env:SUPERVISOR_OPENCODE_MODEL`.
 
+## Retinue MCP Spawn Flow
+
+This probe validates the OpenCode-first Retinue product surface:
+
+- `retinue_spawn_agent`
+- `retinue_wait_agent`
+- `retinue_close_agent`
+
+It intentionally does not pass a backend, profile, model, agent, or permission mode through the MCP tool arguments. Retinue uses the deployment-selected OpenCode server from `SUPERVISOR_OPENCODE_BASE_URL`, and OpenCode uses its active profile.
+
+```bash
+pnpm run build
+SUPERVISOR_REAL_OPENCODE_PROBE=1 \
+SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
+pnpm run probe:real:retinue-opencode
+```
+
+On PowerShell:
+
+```powershell
+$env:SUPERVISOR_REAL_OPENCODE_PROBE = "1"
+$env:SUPERVISOR_OPENCODE_BASE_URL = "http://127.0.0.1:4096"
+pnpm run probe:real:retinue-opencode
+```
+
 ## 2026-05-05 E2E Result
 
 Environment:
@@ -127,6 +152,31 @@ providerID: litellm
 modelID: pro-router
 status: completed
 stdout: SUPERVISOR_SPAWN_OPENCODE_OK
+```
+
+## 2026-05-07 Retinue MCP E2E Result
+
+Environment:
+
+```text
+Host runner: Windows PowerShell
+OpenCode server: Windows local, http://127.0.0.1:41987
+OpenCode version: 1.14.39
+Workspace sent to OpenCode: G:\repository\supervisor
+Backend/profile selection in tool args: none
+```
+
+Run result:
+
+```text
+tool flow: retinue_spawn_agent -> retinue_wait_agent -> retinue_close_agent
+jobId: job_8f973d30-f473-4f08-a016-af7104508a1e
+sessionId: ses_201af60f0ffeYYXl3ylzNejwCm
+backend: opencode
+task_name: real-opencode-smoke
+status: completed
+stdout: RETINUE_OPENCODE_REAL_OK
+closeStatus: completed
 ```
 
 Continue result:

@@ -74,8 +74,9 @@ Claude Code 同理：先复用当前可工作的本机 profile。是否能配置
 
 范围：
 
-- 实现 `retinue_spawn_agent`、`retinue_wait_agent`、`retinue_list_agents`、`retinue_close_agent` 的最小闭环。
-- `retinue_send_message` / `retinue_followup_task` 如果后端继续会话能力足够稳定，就纳入同阶段；否则明确降级。
+- 实现 `retinue_spawn_agent`、`retinue_wait_agent`、`retinue_close_agent` 的最小闭环。
+- `retinue_wait_agent` 在终态时负责带回 result，避免为了第一版引入非 Codex 风格的结果工具。
+- `retinue_list_agents`、`retinue_send_message`、`retinue_followup_task` 留作同阶段后续增量；只有后端继续会话和状态枚举语义足够稳定时再纳入。
 - 通过 deployment policy 固定默认后端，不让 Codex 每次调用时选择后端。
 
 验收：

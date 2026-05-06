@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { createDaemonServer } from "../src/daemon/server.js";
 import { writeDaemonDiscovery } from "../src/daemon/discovery.js";
-import { CLAUDE_TOOL_NAMES, OPENCODE_TOOL_NAMES, createMcpServer, createMcpSupervisorFromEnv } from "../src/mcp.js";
+import { CLAUDE_TOOL_NAMES, OPENCODE_TOOL_NAMES, RETINUE_TOOL_NAMES, createMcpServer, createMcpSupervisorFromEnv } from "../src/mcp.js";
 import { ClaudeSupervisor } from "../src/core/supervisor.js";
 import { startFakeOpenCodeServer } from "./fixtures/fake-opencode-server.js";
 
@@ -39,6 +39,10 @@ describe("MCP tools", () => {
       "opencode_kill",
       "opencode_cleanup"
     ]);
+  });
+
+  it("declares the Retinue Codex-like spawn tools", () => {
+    expect(RETINUE_TOOL_NAMES).toEqual(["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent"]);
   });
 
   it("creates a server instance with registered tools", () => {
@@ -239,8 +243,58 @@ describe("MCP tools", () => {
       assertOptionalField(tools.tools, "opencode_run", "opencodeBaseUrl");
       assertOptionalField(tools.tools, "opencode_run", "model");
       assertOptionalField(tools.tools, "opencode_run", "agent");
+      assertRequiredFields(tools.tools, "retinue_spawn_agent", ["message"]);
+      assertOptionalField(tools.tools, "retinue_spawn_agent", "task_name");
+      assertOptionalField(tools.tools, "retinue_spawn_agent", "cwd");
+      assertRequiredFields(tools.tools, "retinue_wait_agent", ["jobId"]);
+      assertRequiredFields(tools.tools, "retinue_close_agent", ["jobId"]);
     } finally {
       await closeMcpClient(connection);
+    }
+  });
+
+  it("runs the Retinue OpenCode-first spawn/wait/result/close flow without backend arguments", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-retinue-opencode-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }));
+    try {
+      process.env.SUPERVISOR_STATE_DIR = tempDir;
+      process.env.SUPERVISOR_OPENCODE_BASE_URL = fakeOpenCode.url;
+
+      const spawn = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue mcp", task_name: "smoke" }
+        })
+      );
+      expect(spawn).toMatchObject({ task_name: "smoke", backend: "opencode", status: "running" });
+      fakeOpenCode.completeSession(spawn.externalSessionId);
+
+      const wait = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_wait_agent",
+          arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
+        })
+      );
+      expect(wait).toMatchObject({
+        task_name: "smoke",
+        jobId: spawn.jobId,
+        status: "completed",
+        result: { parsedStdout: { result: "fake result: retinue mcp" } }
+      });
+
+      const close = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_close_agent",
+          arguments: { jobId: spawn.jobId }
+        })
+      );
+      expect(close).toMatchObject({ jobId: spawn.jobId, status: "completed" });
+    } finally {
+      delete process.env.SUPERVISOR_STATE_DIR;
+      delete process.env.SUPERVISOR_OPENCODE_BASE_URL;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
 
