@@ -1,5 +1,5 @@
 {
-  "anchorpoint": {
+  "retinue": {
     "command": "node",
     "args": ["../../dist/mcp.js"],
     "startup_timeout_sec": 10
