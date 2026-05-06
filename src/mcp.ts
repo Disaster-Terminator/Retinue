@@ -34,6 +34,8 @@ export const OPENCODE_TOOL_NAMES = [
   "opencode_cleanup"
 ] as const;
 
+export const RETINUE_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent"] as const;
+
 export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorFromEnv()): McpServer {
   const server = new McpServer({
     name: "supervisor",
@@ -232,6 +234,88 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
     async ({ olderThanMs }) => jsonToolResult(await createOpenCodeBackend({}).cleanup({ olderThanMs }))
   );
 
+  server.registerTool(
+    "retinue_spawn_agent",
+    {
+      title: "Spawn Retinue Agent",
+      description: "Spawn a Retinue child agent using the deployment-selected backend and return a job handle.",
+      inputSchema: {
+        message: z.string(),
+        task_name: z.string().optional(),
+        taskName: z.string().optional(),
+        cwd: z.string().optional(),
+        title: z.string().optional()
+      }
+    },
+    async (args) => {
+      const taskName = normalizeTaskName(args);
+      const started = await createOpenCodeBackend({}).run({
+        cwd: args.cwd ?? process.cwd(),
+        prompt: args.message,
+        name: taskName,
+        title: args.title ?? taskName
+      });
+      return jsonToolResult({
+        task_name: taskName,
+        jobId: started.jobId,
+        status: started.status,
+        backend: started.backend,
+        externalSessionId: started.externalSessionId
+      });
+    }
+  );
+
+  server.registerTool(
+    "retinue_wait_agent",
+    {
+      title: "Wait For Retinue Agent",
+      description: "Wait for a Retinue child agent and include its result when it reaches a terminal state.",
+      inputSchema: {
+        jobId: z.string(),
+        timeoutMs: z.number().int().nonnegative().optional()
+      }
+    },
+    async ({ jobId, timeoutMs }) => {
+      const backend = createOpenCodeBackend({});
+      const waited = await backend.wait({ jobId }, timeoutMs);
+      const status = await backend.status({ jobId });
+      if (waited.status === "running") {
+        return jsonToolResult({
+          task_name: isJobMeta(status) ? status.name : undefined,
+          jobId,
+          status: waited.status
+        });
+      }
+      const result = await backend.result({ jobId });
+      return jsonToolResult({
+        task_name: isJobMeta(status) ? status.name : undefined,
+        jobId,
+        status: waited.status,
+        result
+      });
+    }
+  );
+
+  server.registerTool(
+    "retinue_close_agent",
+    {
+      title: "Close Retinue Agent",
+      description: "Close a Retinue child agent and its backend session.",
+      inputSchema: {
+        jobId: z.string()
+      }
+    },
+    async ({ jobId }) => {
+      const backend = createOpenCodeBackend({});
+      const status = await backend.status({ jobId });
+      if (isJobMeta(status) && status.status === "running") {
+        await backend.abort({ jobId });
+        return jsonToolResult({ jobId, status: "killed" });
+      }
+      return jsonToolResult({ jobId, status: "status" in status ? status.status : "unknown" });
+    }
+  );
+
   return server;
 }
 
@@ -271,6 +355,15 @@ function withOpenCodeDefaults<T extends { model?: string; agent?: string }>(args
     agent: args.agent ?? process.env.SUPERVISOR_OPENCODE_AGENT
   };
 }
+
+function normalizeTaskName(args: { task_name?: string; taskName?: string }): string {
+  return args.task_name?.trim() || args.taskName?.trim() || "retinue-agent";
+}
+
+function isJobMeta(value: unknown): value is { name?: string } {
+  return typeof value === "object" && value !== null && "jobId" in value;
+}
+
 
 export function createMcpSupervisorFromEnv(
   env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env
