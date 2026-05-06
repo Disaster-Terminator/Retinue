@@ -58,7 +58,7 @@ describe("package.json guardrails", () => {
   });
 });
 
-describe("Anchorpoint Codex plugin guardrails", () => {
+describe("Retinue Codex plugin guardrails", () => {
   it("declares a plugin manifest with skill and MCP surfaces", () => {
     const manifest = JSON.parse(readFileSync("plugins/anchorpoint/.codex-plugin/plugin.json", "utf8")) as {
       name?: string;
@@ -67,18 +67,18 @@ describe("Anchorpoint Codex plugin guardrails", () => {
       interface?: { displayName?: string };
     };
 
-    expect(manifest.name).toBe("anchorpoint");
+    expect(manifest.name).toBe("retinue");
     expect(manifest.skills).toBe("./skills/");
     expect(manifest.mcpServers).toBe("./.mcp.json");
-    expect(manifest.interface?.displayName).toBe("Anchorpoint");
+    expect(manifest.interface?.displayName).toBe("Retinue");
   });
 
   it("uses plugin-level MCP server map shape", () => {
     const mcp = JSON.parse(readFileSync("plugins/anchorpoint/.mcp.json", "utf8")) as Record<string, { env?: Record<string, string> }>;
 
-    expect(mcp).toHaveProperty("anchorpoint");
+    expect(mcp).toHaveProperty("retinue");
     expect(mcp).not.toHaveProperty("mcpServers");
-    expect(mcp.anchorpoint?.env?.SUPERVISOR_DAEMON_DISCOVERY).toBeUndefined();
+    expect(mcp.retinue?.env?.SUPERVISOR_DAEMON_DISCOVERY).toBeUndefined();
   });
 
   it("ships an agent-facing skill", () => {

@@ -16,7 +16,7 @@
   "interface": {
     "displayName": "Retinue",
     "shortDescription": "Run Claude Code and OpenCode as Codex subagents.",
-    "longDescription": "Retinue exposes local MCP tools for running Claude Code and OpenCode as controllable Codex subagents. Codex receives job handles for run, status, wait, result, continue, stop, and cleanup while provider and model configuration stay in the upstream agent runtime.",
+    "longDescription": "Retinue exposes local MCP tools for running Claude Code and OpenCode as controllable Codex subagents. Codex receives job handles for run, status, wait, result, continue, kill, and cleanup while provider and model configuration stay in the upstream agent runtime.",
     "developerName": "Disaster-Terminator",
     "category": "Coding",
     "capabilities": ["MCP", "Skills", "Local"],

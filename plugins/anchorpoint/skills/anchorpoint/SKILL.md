@@ -1,11 +1,11 @@
 ---
 name: retinue
-description: Use Retinue when Codex needs to run, monitor, continue, stop, or clean up local Claude Code or OpenCode coding-agent jobs through Retinue MCP tools.
+description: Use Retinue when Codex needs to run, monitor, continue, kill, or clean up local Claude Code or OpenCode coding-agent jobs through Retinue MCP tools.
 ---
 
 # Retinue
 
-Retinue is a local subagent execution plugin for Codex. Use its MCP tools when Codex should hand work to Claude Code or OpenCode, receive a job handle, and later inspect, wait, read results, continue the same external session, stop the job, or clean local artifacts.
+Retinue is a local subagent execution plugin for Codex. Use its MCP tools when Codex should hand work to Claude Code or OpenCode, receive a job handle, and later inspect, wait, read results, continue the same external session, kill the job, or clean local artifacts.
 
 ## Boundary
 
@@ -16,7 +16,7 @@ Retinue is not a provider router. OpenCode owns provider configuration, login, e
 - `wait`
 - `result`
 - `continue`
-- `stop`
+- `kill`
 - `cleanup`
 
 ## OpenCode Defaults
@@ -40,6 +40,7 @@ Use these OpenCode tools for new work:
 - `opencode_wait`
 - `opencode_result`
 - `opencode_continue`
+- `opencode_kill`
 - `opencode_cleanup`
 
 Use the Claude tools for Claude Code work:
@@ -50,6 +51,7 @@ Use the Claude tools for Claude Code work:
 - `claude_result`
 - `claude_continue`
 - `claude_peek`
+- `claude_kill`
 - `claude_cleanup`
 
 ## Production E2E Gate
@@ -64,5 +66,5 @@ Minimum OpenCode E2E:
 4. Read with `opencode_result`.
 5. Continue the same session with `opencode_continue`.
 6. Verify the continued result is not the previous assistant answer.
-7. Exercise cleanup.
+7. Exercise `opencode_kill` and `opencode_cleanup`.
 8. Record only redacted provider/model metadata, job id, session id, and result. Do not record API keys.

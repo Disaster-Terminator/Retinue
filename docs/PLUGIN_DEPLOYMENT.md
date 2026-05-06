@@ -29,6 +29,8 @@ The repo-local plugin is:
 plugins/anchorpoint
 ```
 
+The repo-local directory name remains `plugins/anchorpoint` for compatibility with the current package layout. The plugin identity inside the manifest and marketplace entry is `retinue`.
+
 The repo-local marketplace entry is:
 
 ```text
@@ -39,7 +41,7 @@ This keeps plugin assets versioned with the runtime they start.
 
 ## Home-Local Plugin Install
 
-For local Codex use, copy or sync the plugin directory into the user's plugin root:
+For local Codex use, copy or sync the repo-local plugin directory into the user's plugin root. If you rename the copied directory to `retinue`, point the marketplace entry at that renamed directory:
 
 ```text
 C:\Users\Disas\plugins\retinue
@@ -64,6 +66,8 @@ Then add or update the local marketplace entry:
 
 The plugin expects the built runtime to remain available relative to the plugin MCP config. For repo-local testing, build the repository first and use `plugins/anchorpoint/.mcp.json` directly.
 
+If you keep the copied directory name as `anchorpoint`, keep the marketplace `name` as `retinue` but set `source.path` to `./plugins/anchorpoint` instead.
+
 The plugin does not enable daemon discovery by default. Add `SUPERVISOR_DAEMON_URL` or `SUPERVISOR_DAEMON_DISCOVERY=1` only when a daemon is already running and discoverable. Without those variables, the MCP server starts in direct local mode.
 
 ## OpenCode Production E2E
@@ -77,6 +81,6 @@ Before calling the plugin production-ready, run the real OpenCode lifecycle from
 5. Use `opencode_result`.
 6. Use `opencode_continue` against the same `externalSessionId`.
 7. Verify the continued result is the new assistant answer, not an earlier assistant answer or the user prompt.
-8. Exercise cleanup.
+8. Exercise `opencode_kill` and `opencode_cleanup`.
 
 Record only redacted provider/model metadata, job id, session id, and observed result. Do not record API keys or provider secrets.
