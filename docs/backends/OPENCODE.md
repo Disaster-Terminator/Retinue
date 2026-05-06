@@ -2,6 +2,8 @@
 
 The OpenCode backend is a thin lifecycle adapter. It does not configure providers, models, endpoint routing, `/connect`, credentials, or permission policy. OpenCode owns those concerns.
 
+For local production smoke testing, OpenCode is the preferred first backend. Retinue should reuse the installed OpenCode profile/config/login/permission state instead of creating a separate child-agent profile.
+
 ## Server Target
 
 The safest first integration mode is attach-only:
@@ -20,6 +22,14 @@ SUPERVISOR_OPENCODE_AGENT=build
 ```
 
 CLI/MCP request fields win over environment variables. If neither CLI/MCP input nor environment variable is set, supervisor does not send `model` or `agent`; OpenCode keeps ownership of default model and agent selection.
+
+## Permissions
+
+OpenCode permissions are OpenCode-owned. Retinue should not expose permission mode as a normal Codex-facing tool argument.
+
+Phase 1 should make the local E2E run reliably with the effective OpenCode deployment policy. If the default OpenCode permission prompts block unattended child-agent execution, use an explicit deployment-level OpenCode permission configuration, such as OpenCode's `permission` config or `OPENCODE_PERMISSION`, and record it in the local runbook without committing secrets or machine-specific credentials.
+
+OpenCode MCP config uses the top-level `mcp` key. Do not copy Claude/Codex-style `mcpServers` into `opencode.json`; current OpenCode rejects it as an unrecognized key.
 
 When a model override is provided, supervisor accepts the OpenCode CLI-style `provider/model` string and sends the server API shape:
 
