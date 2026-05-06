@@ -1,29 +1,29 @@
 {
-  "name": "anchorpoint",
+  "name": "retinue",
   "version": "0.1.0",
-  "description": "Codex plugin for durable local coding-agent job lifecycle tools.",
+  "description": "Codex plugin for running local coding agents as controllable subagents.",
   "author": {
     "name": "Disaster-Terminator",
     "email": "2557058999@qq.com",
     "url": "https://github.com/Disaster-Terminator"
   },
-  "homepage": "https://github.com/Disaster-Terminator/supervisor",
-  "repository": "https://github.com/Disaster-Terminator/supervisor",
+  "homepage": "https://github.com/Disaster-Terminator/Retinue",
+  "repository": "https://github.com/Disaster-Terminator/Retinue",
   "license": "MIT",
-  "keywords": ["codex", "mcp", "opencode", "claude-code", "agent-lifecycle"],
+  "keywords": ["codex", "mcp", "opencode", "claude-code", "subagents"],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "Anchorpoint",
-    "shortDescription": "Spawn and supervise local coding-agent jobs from Codex.",
-    "longDescription": "Anchorpoint exposes durable local lifecycle tools for Claude Code and OpenCode jobs. It keeps provider and model configuration in the upstream agent runtime while Codex receives job handles for run, status, wait, result, continue, kill, and cleanup.",
+    "displayName": "Retinue",
+    "shortDescription": "Run Claude Code and OpenCode as Codex subagents.",
+    "longDescription": "Retinue exposes local MCP tools for running Claude Code and OpenCode as controllable Codex subagents. Codex receives job handles for run, status, wait, result, continue, stop, and cleanup while provider and model configuration stay in the upstream agent runtime.",
     "developerName": "Disaster-Terminator",
     "category": "Coding",
     "capabilities": ["MCP", "Skills", "Local"],
-    "websiteURL": "https://github.com/Disaster-Terminator/supervisor",
+    "websiteURL": "https://github.com/Disaster-Terminator/Retinue",
     "defaultPrompt": [
-      "Use Anchorpoint to run an OpenCode job.",
-      "Check an Anchorpoint job result.",
+      "Use Retinue to run an OpenCode subagent.",
+      "Check a Retinue job result.",
       "Continue an existing OpenCode session."
     ],
     "brandColor": "#2563EB"
