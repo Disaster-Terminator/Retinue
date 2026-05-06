@@ -1,11 +1,11 @@
 {
-  "name": "supervisor-local",
+  "name": "retinue-local",
   "interface": {
-    "displayName": "Supervisor Local"
+    "displayName": "Retinue Local"
   },
   "plugins": [
     {
-      "name": "anchorpoint",
+      "name": "retinue",
       "source": {
         "source": "local",
         "path": "./plugins/anchorpoint"
