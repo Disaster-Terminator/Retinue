@@ -84,6 +84,7 @@ export class ClaudeSupervisor implements SupervisorApi {
     const runtimeTimeoutMs = options.timeoutMs ?? this.defaultRuntimeTimeoutMs;
     const meta: JobMeta = {
       schemaVersion: 1,
+      backend: "claude-code",
       jobId,
       pid: child.pid ?? -1,
       status: "running",
@@ -399,7 +400,7 @@ export class ClaudeSupervisor implements SupervisorApi {
   private async readMeta(jobId: string): Promise<JobMeta | JobProblem> {
     const paths = getJobPaths(this.stateDir, jobId);
     try {
-      return JSON.parse(await fs.readFile(paths.meta, "utf8")) as JobMeta;
+      return normalizeMeta(JSON.parse(await fs.readFile(paths.meta, "utf8")) as JobMeta);
     } catch (error) {
       if (isMissingFile(error)) {
         return { jobId, status: "not_found" };
@@ -425,6 +426,13 @@ export class ClaudeSupervisor implements SupervisorApi {
     }
     return false;
   }
+}
+
+function normalizeMeta(meta: JobMeta): JobMeta {
+  return {
+    ...meta,
+    backend: meta.backend ?? "claude-code"
+  };
 }
 
 async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> {

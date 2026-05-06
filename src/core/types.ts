@@ -1,4 +1,5 @@
 export type PermissionMode = "default" | "acceptEdits" | "plan" | "auto" | "dontAsk";
+export type AgentBackendKind = "claude-code" | "opencode";
 
 export type JobTerminalStatus = "completed" | "failed" | "killed" | "timed_out";
 export type JobProblemStatus = "not_found" | "corrupted";
@@ -27,6 +28,7 @@ export interface SupervisorOptions {
 
 export interface JobMeta {
   schemaVersion?: number;
+  backend?: AgentBackendKind;
   jobId: string;
   pid: number;
   status: JobStatus;
@@ -40,6 +42,14 @@ export interface JobMeta {
   parentJobId?: string;
   parentSessionId?: string;
   sessionId?: string;
+  externalSessionId?: string;
+  externalServerUrl?: string;
+  externalMessageId?: string;
+  externalMessageBaselineCount?: number;
+  externalCompletedAssistantBaselineCount?: number;
+  model?: string;
+  agent?: string;
+  title?: string;
   runtimeTimeoutMs?: number;
   args: string[];
   createdAt: string;

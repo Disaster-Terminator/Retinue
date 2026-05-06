@@ -1,11 +1,14 @@
-# supervisor
+# Anchorpoint
 
-Local MCP and CLI supervisor for spawning external coding agents as managed background jobs.
+Local control plane for long-running coding-agent jobs via CLI, MCP, and a durable daemon path.
 
 See [Project Boundary and Long-Term Vision](docs/PROJECT_BOUNDARY.md) before changing the architecture. The current stdio MCP implementation is a hardening phase; the long-term lifecycle owner is a durable local daemon. See [Verification Notes](docs/VERIFICATION.md) for the current Windows, WSL, and real Claude Code baseline.
 See [Service Lifecycle](docs/SERVICE_LIFECYCLE.md) for the current manual daemon start, inspect, and stop workflow.
+See [Anchorpoint Codex Plugin Deployment](docs/PLUGIN_DEPLOYMENT.md) for the plugin product shape that packages the MCP server and skill together.
 
-Claude Code is the frozen compatibility backend. New agent integration work should happen behind backend adapters, starting with OpenCode. Supervisor must remain a lifecycle owner and must not become a provider/model router.
+Claude Code is the frozen compatibility backend. New agent integration work should happen behind backend adapters, starting with OpenCode. Anchorpoint must remain a lifecycle owner and must not become a provider/model router.
+
+The package and original command names still use `supervisor` for compatibility. `Anchorpoint` is the product identity for the durable local lifecycle boundary: callers submit a job, receive a handle, and can later inspect, wait, read results, continue, kill, or clean up without turning the agent runtime into this project's responsibility.
 
 The repository targets a Codex-like lifecycle:
 
@@ -16,6 +19,8 @@ The repository targets a Codex-like lifecycle:
 - `claude_continue`: start a new job from a persisted Claude Code session id
 - `claude_kill`: kill the process tree
 - `claude_cleanup`: remove terminal job directories while preserving running jobs
+
+OpenCode work is on `feature/spawn-opencode`. Its first explicit surfaces are `opencode-run` CLI commands and `opencode_*` MCP tools that attach to a loopback OpenCode server URL; provider/model routing remains owned by OpenCode.
 
 ## Quickstart
 
@@ -94,9 +99,28 @@ After `pnpm run build`, package bins point at:
 
 | Bin | Built file | Purpose |
 | --- | --- | --- |
+| `anchorpoint` | `dist/cli.js` | Alias for the local CLI |
+| `anchorpoint-mcp` | `dist/mcp.js` | Alias for the stdio MCP server |
+| `anchorpointd` | `dist/daemon.js` | Alias for the manual loopback daemon |
 | `supervisor` | `dist/cli.js` | Local CLI for run/status/wait/result/continue/peek/kill/cleanup |
 | `supervisor-mcp` | `dist/mcp.js` | Stdio MCP server exposing Claude lifecycle tools |
 | `supervisor-daemon` | `dist/daemon.js` | Manual loopback daemon for durable lifecycle ownership |
+
+## Codex Plugin
+
+The deployable product surface is the repo-local Codex plugin at:
+
+```text
+plugins/anchorpoint
+```
+
+It includes:
+
+- `.codex-plugin/plugin.json`
+- `.mcp.json`
+- `skills/anchorpoint/SKILL.md`
+
+Run `pnpm run build` before enabling the plugin because its MCP config starts `dist/mcp.js`. `pnpm run verify:package` checks that plugin files and runtime files are packaged together.
 
 ## Environment Variables
 
@@ -109,6 +133,9 @@ After `pnpm run build`, package bins point at:
 | `SUPERVISOR_DAEMON_DISCOVERY` | CLI, MCP | Set to `1` to read `<stateDir>/daemon.json` explicitly |
 | `SUPERVISOR_DEFAULT_RUNTIME_TIMEOUT_MS` | CLI, MCP, daemon | Default runtime timeout for jobs that do not pass `timeoutMs` |
 | `SUPERVISOR_MAX_CONCURRENT_JOBS` | CLI, MCP, daemon | Limit concurrent running jobs for that supervisor process |
+| `SUPERVISOR_OPENCODE_BASE_URL` | OpenCode CLI/MCP | Attach to a loopback OpenCode server |
+| `SUPERVISOR_OPENCODE_MODEL` | OpenCode CLI/MCP | Optional default model override as `provider/model`; omitted when unset |
+| `SUPERVISOR_OPENCODE_AGENT` | OpenCode CLI/MCP | Optional default OpenCode agent override; omitted when unset |
 
 ## Daemon
 
@@ -262,4 +289,5 @@ pnpm run build
 ```
 
 Manual and opt-in real Claude Code probes are documented in [Real Claude Code Probes](docs/REAL_CLAUDE_PROBES.md). They are not part of the default deterministic test suite.
+Manual and opt-in real OpenCode probes are documented in [Real OpenCode Probes](docs/REAL_OPENCODE_PROBES.md).
 

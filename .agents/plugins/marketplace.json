@@ -1,0 +1,20 @@
+{
+  "name": "supervisor-local",
+  "interface": {
+    "displayName": "Supervisor Local"
+  },
+  "plugins": [
+    {
+      "name": "anchorpoint",
+      "source": {
+        "source": "local",
+        "path": "./plugins/anchorpoint"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Coding"
+    }
+  ]
+}
