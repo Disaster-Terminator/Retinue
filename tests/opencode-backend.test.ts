@@ -93,6 +93,30 @@ describe("OpenCodeBackend", () => {
     });
   });
 
+  it("does not reuse old completed assistant messages for continued jobs", async () => {
+    const backend = createBackend();
+    const first = await backend.run({ cwd: tempDir, prompt: "first" });
+    server!.completeSessionByMessageOnly(first.externalSessionId!);
+    await expect(backend.wait({ jobId: first.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
+
+    const continued = await backend.continueJob({
+      cwd: tempDir,
+      prompt: "second",
+      externalSessionId: first.externalSessionId,
+      parentJobId: first.jobId,
+      parentSessionId: first.externalSessionId
+    });
+
+    await expect(backend.status({ jobId: continued.jobId })).resolves.toMatchObject({ status: "running" });
+    await expect(backend.result({ jobId: continued.jobId })).resolves.toMatchObject({
+      status: "running",
+      parsedStdout: { result: "fake result: second" }
+    });
+
+    server!.completeSessionByMessageOnly(first.externalSessionId!);
+    await expect(backend.wait({ jobId: continued.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
+  });
+
   it("continues an existing OpenCode session", async () => {
     const backend = createBackend();
     const first = await backend.run({ cwd: tempDir, prompt: "first" });
