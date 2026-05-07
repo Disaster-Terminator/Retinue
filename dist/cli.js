@@ -5,7 +5,7 @@ import { readDaemonDiscovery } from "./daemon/discovery.js";
 import { resolveStateDir } from "./core/paths.js";
 import { OpenCodeBackend } from "./backends/opencode/backend.js";
 import { OpenCodeClient } from "./backends/opencode/client.js";
-import { resolveOpenCodeServerFromEnv } from "./backends/opencode/serverManager.js";
+import { ensureOpenCodeServer, resolveOpenCodeServerFromEnv } from "./backends/opencode/serverManager.js";
 async function main() {
     const global = extractGlobalFlags(process.argv.slice(2));
     const [command, ...args] = global.args;
@@ -21,7 +21,7 @@ async function main() {
     switch (command) {
         case "opencode-run": {
             const flags = parseFlags(args);
-            const backend = createOpenCodeBackend(flags);
+            const backend = await createOpenCodeBackend(flags);
             writeJson(await backend.run({
                 cwd: required(flags.cwd, "--cwd"),
                 prompt: required(flags.prompt, "--prompt"),
@@ -33,24 +33,24 @@ async function main() {
             return;
         }
         case "opencode-status": {
-            writeJson(await createOpenCodeBackend(parseFlags(args)).status({ jobId: required(args[0], "jobId") }));
+            writeJson(await (await createOpenCodeBackend(parseFlags(args))).status({ jobId: required(args[0], "jobId") }));
             return;
         }
         case "opencode-wait": {
             const [jobId, ...rest] = args;
             const flags = parseFlags(rest);
-            const backend = createOpenCodeBackend(flags);
+            const backend = await createOpenCodeBackend(flags);
             const waited = await backend.wait({ jobId: required(jobId, "jobId") }, flags["timeout-ms"] ? Number(flags["timeout-ms"]) : undefined);
             writeJson(waited);
             return;
         }
         case "opencode-result": {
-            writeJson(await createOpenCodeBackend(parseFlags(args.slice(1))).result({ jobId: required(args[0], "jobId") }));
+            writeJson(await (await createOpenCodeBackend(parseFlags(args.slice(1)))).result({ jobId: required(args[0], "jobId") }));
             return;
         }
         case "opencode-continue": {
             const flags = parseFlags(args);
-            const backend = createOpenCodeBackend(flags);
+            const backend = await createOpenCodeBackend(flags);
             writeJson(await backend.continueJob({
                 cwd: required(flags.cwd, "--cwd"),
                 prompt: required(flags.prompt, "--prompt"),
@@ -66,14 +66,14 @@ async function main() {
         }
         case "opencode-kill": {
             const [jobId, ...rest] = args;
-            const backend = createOpenCodeBackend(parseFlags(rest));
+            const backend = await createOpenCodeBackend(parseFlags(rest));
             await backend.abort({ jobId: required(jobId, "jobId") });
             writeJson({ jobId, status: "killed" });
             return;
         }
         case "opencode-cleanup": {
             const flags = parseFlags(args);
-            writeJson(await createOpenCodeBackend(flags).cleanup({
+            writeJson(await (await createOpenCodeBackend(flags)).cleanup({
                 olderThanMs: flags["older-than-ms"] ? Number(flags["older-than-ms"]) : undefined
             }));
             return;
@@ -147,19 +147,18 @@ async function main() {
             throw new Error(`Unknown command: ${command ?? "(missing)"}`);
     }
 }
-function createOpenCodeBackend(flags) {
+async function createOpenCodeBackend(flags) {
     const env = {
         ...process.env,
         SUPERVISOR_OPENCODE_BASE_URL: flags["opencode-base-url"] ?? process.env.SUPERVISOR_OPENCODE_BASE_URL
     };
     const resolution = resolveOpenCodeServerFromEnv(env);
-    if (resolution.mode !== "attach") {
-        throw new Error("OpenCode auto-serve is not wired to CLI/MCP yet; provide --opencode-base-url or SUPERVISOR_OPENCODE_BASE_URL");
-    }
+    const stateDir = resolveStateDir({ explicitStateDir: process.env.SUPERVISOR_STATE_DIR, env: process.env });
+    const target = await ensureOpenCodeServer(resolution, { stateDir });
     return new OpenCodeBackend({
-        client: new OpenCodeClient(resolution.baseUrl),
-        baseUrl: resolution.baseUrl,
-        stateDir: process.env.SUPERVISOR_STATE_DIR,
+        client: new OpenCodeClient(target.baseUrl),
+        baseUrl: target.baseUrl,
+        stateDir,
         env: process.env
     });
 }

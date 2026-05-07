@@ -3225,8 +3225,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path2) {
-      let input = path2;
+    function removeDotSegments(path3) {
+      let input = path3;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3469,8 +3469,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path2, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path2 && path2 !== "/" ? path2 : void 0;
+        const [path3, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path3 && path3 !== "/" ? path3 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -6830,12 +6830,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs4, exportName) {
+    function addFormats(ajv, list, fs5, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs4[f]);
+        ajv.addFormat(f, fs5[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -6844,7 +6844,7 @@ var require_dist = __commonJS({
 });
 
 // src/mcp.ts
-import fs3 from "node:fs/promises";
+import fs4 from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/external.js
@@ -7325,8 +7325,8 @@ function getErrorMap() {
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path2, errorMaps, issueData } = params;
-  const fullPath = [...path2, ...issueData.path || []];
+  const { data, path: path3, errorMaps, issueData } = params;
+  const fullPath = [...path3, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7442,11 +7442,11 @@ var errorUtil;
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path2, key) {
+  constructor(parent, value, path3, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path2;
+    this._path = path3;
     this._key = key;
   }
   get path() {
@@ -11083,10 +11083,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path2) {
-  if (!path2)
+function getElementAtPath(obj, path3) {
+  if (!path3)
     return obj;
-  return path2.reduce((acc, key) => acc?.[key], obj);
+  return path3.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -11406,11 +11406,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path2, issues) {
+function prefixIssues(path3, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path2);
+    iss.path.unshift(path3);
     return iss;
   });
 }
@@ -21098,14 +21098,20 @@ function getJobPaths(stateDir, jobId) {
 function getDaemonDiscoveryPath(stateDir) {
   return path.join(stateDir, "daemon.json");
 }
+function getOpenCodeServerDiscoveryPath(stateDir) {
+  return path.join(stateDir, "opencode-server.json");
+}
+function getOpenCodeServerLockPath(stateDir) {
+  return path.join(stateDir, "opencode-server.lock");
+}
 
 // src/backends/opencode/client.ts
 var OpenCodeClientError = class extends Error {
-  constructor(message, code, status, path2, details) {
+  constructor(message, code, status, path3, details) {
     super(message);
     this.code = code;
     this.status = status;
-    this.path = path2;
+    this.path = path3;
     this.details = details;
     this.name = "OpenCodeClientError";
   }
@@ -21144,39 +21150,39 @@ var OpenCodeClient = class {
   abort(sessionId) {
     return this.request("POST", `/session/${encodeURIComponent(sessionId)}/abort`, {});
   }
-  async request(method, path2, body) {
-    const response = await this.fetch(method, path2, body);
+  async request(method, path3, body) {
+    const response = await this.fetch(method, path3, body);
     const text = await response.text();
     const parsed = parseJson(text);
     if (!parsed.ok) {
-      throw new OpenCodeClientError("OpenCode response was not valid JSON", "invalid_json", response.status, path2, text);
+      throw new OpenCodeClientError("OpenCode response was not valid JSON", "invalid_json", response.status, path3, text);
     }
     if (!response.ok) {
       const message = extractErrorMessage(parsed.value) ?? `OpenCode request failed with HTTP ${response.status}`;
-      throw new OpenCodeClientError(message, "http_error", response.status, path2, parsed.value);
+      throw new OpenCodeClientError(message, "http_error", response.status, path3, parsed.value);
     }
     return parsed.value;
   }
-  async requestVoid(method, path2, body) {
-    const response = await this.fetch(method, path2, body);
+  async requestVoid(method, path3, body) {
+    const response = await this.fetch(method, path3, body);
     if (!response.ok) {
       const text = await response.text();
       const parsed = parseJson(text);
       const details = parsed.ok ? parsed.value : text;
       const message = parsed.ok ? extractErrorMessage(parsed.value) : void 0;
-      throw new OpenCodeClientError(message ?? `OpenCode request failed with HTTP ${response.status}`, "http_error", response.status, path2, details);
+      throw new OpenCodeClientError(message ?? `OpenCode request failed with HTTP ${response.status}`, "http_error", response.status, path3, details);
     }
   }
-  async fetch(method, path2, body) {
+  async fetch(method, path3, body) {
     let response;
     try {
-      response = await fetch(`${this.baseUrl}${path2}`, {
+      response = await fetch(`${this.baseUrl}${path3}`, {
         method,
         headers: method === "POST" ? { "content-type": "application/json" } : void 0,
         body: method === "POST" ? JSON.stringify(body ?? {}) : void 0
       });
     } catch (error2) {
-      throw new OpenCodeClientError(error2 instanceof Error ? error2.message : String(error2), "transport_error", 0, path2);
+      throw new OpenCodeClientError(error2 instanceof Error ? error2.message : String(error2), "transport_error", 0, path3);
     }
     return response;
   }
@@ -21485,7 +21491,7 @@ function isCompletedAssistantMessage(message) {
     return false;
   }
   const time3 = typeof info.time === "object" && info.time !== null ? info.time : void 0;
-  return Boolean(time3 && "completed" in time3 && typeof time3.completed === "number");
+  return Boolean(time3 && "completed" in time3 && typeof time3.completed === "number" && extractMessageText(message).length > 0);
 }
 function extractMessageText(message) {
   if (!Array.isArray(message.parts)) {
@@ -21526,6 +21532,17 @@ async function listTempFiles(dirPath) {
 }
 
 // src/backends/opencode/serverManager.ts
+import { spawn } from "node:child_process";
+import fs2 from "node:fs/promises";
+import path2 from "node:path";
+import { randomUUID as randomUUID2 } from "node:crypto";
+var DEFAULT_OPENCODE_HOST = "127.0.0.1";
+var DEFAULT_OPENCODE_PORT = 4096;
+var DEFAULT_OPENCODE_FALLBACK_PORTS = [4097];
+var DEFAULT_HEALTH_TIMEOUT_MS = 1e4;
+var DEFAULT_HEALTH_POLL_MS = 250;
+var DEFAULT_LOCK_TIMEOUT_MS = 1e4;
+var managedServers = /* @__PURE__ */ new Map();
 function resolveOpenCodeServer(config2) {
   if (config2.baseUrl?.trim()) {
     return { mode: "attach", baseUrl: normalizeBaseUrl(config2.baseUrl) };
@@ -21533,27 +21550,257 @@ function resolveOpenCodeServer(config2) {
   if (!config2.autoServe) {
     throw new Error("OpenCode server target missing: provide SUPERVISOR_OPENCODE_BASE_URL or enable SUPERVISOR_OPENCODE_AUTO_SERVE=1");
   }
-  const host = config2.host ?? "127.0.0.1";
-  const port = config2.port ?? 0;
+  const host = config2.host ?? DEFAULT_OPENCODE_HOST;
+  const port = config2.port ?? DEFAULT_OPENCODE_PORT;
+  const fallbackPorts = config2.fallbackPorts ?? (config2.port === void 0 ? DEFAULT_OPENCODE_FALLBACK_PORTS : []);
   return {
     mode: "serve",
     command: config2.command ?? "opencode",
-    args: buildServeArgs({ host, port }),
+    args: [...config2.prefixArgs ?? [], ...buildServeArgs({ host, port })],
     host,
-    port
+    port,
+    fallbackPorts
   };
 }
 function resolveOpenCodeServerFromEnv(env) {
   return resolveOpenCodeServer({
     baseUrl: env.SUPERVISOR_OPENCODE_BASE_URL,
     command: env.SUPERVISOR_OPENCODE_COMMAND,
+    prefixArgs: parsePrefixArgs(env.SUPERVISOR_OPENCODE_PREFIX_ARGS),
     autoServe: env.SUPERVISOR_OPENCODE_AUTO_SERVE === "1",
     host: env.SUPERVISOR_OPENCODE_HOST,
-    port: parseOptionalPort(env.SUPERVISOR_OPENCODE_PORT)
+    port: parseOptionalPort(env.SUPERVISOR_OPENCODE_PORT),
+    fallbackPorts: parseOptionalPorts(env.SUPERVISOR_OPENCODE_FALLBACK_PORTS)
   });
 }
 function buildServeArgs(options) {
   return ["serve", "--hostname", options.host, "--port", String(options.port)];
+}
+async function ensureOpenCodeServer(resolution, options = {}) {
+  if (resolution.mode === "attach") {
+    return { baseUrl: resolution.baseUrl, started: false };
+  }
+  const discovered = options.stateDir ? await readReusableDiscovery(options.stateDir) : void 0;
+  if (discovered) {
+    return discovered;
+  }
+  const lock = options.stateDir ? await acquireOpenCodeServerLock(options.stateDir, options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS) : void 0;
+  try {
+    const discoveredAfterLock = options.stateDir ? await readReusableDiscovery(options.stateDir) : void 0;
+    if (discoveredAfterLock) {
+      return discoveredAfterLock;
+    }
+    return await startManagedOpenCodeServer(resolution, options);
+  } finally {
+    await lock?.release();
+  }
+}
+async function startManagedOpenCodeServer(resolution, options) {
+  const ports = [resolution.port, ...resolution.fallbackPorts];
+  const occupiedPorts = [];
+  for (const port of ports) {
+    const baseUrl = `http://${resolution.host}:${port}`;
+    const managed = managedServers.get(baseUrl);
+    if (managed?.child && managed.child.exitCode === null) {
+      return managed;
+    }
+    const initial = await readOpenCodeHealth(baseUrl);
+    if (initial.reachable) {
+      occupiedPorts.push(port);
+      continue;
+    }
+    const prefixArgs = resolution.args.slice(0, -buildServeArgs({ host: resolution.host, port: resolution.port }).length);
+    const child = spawn(resolution.command, [...prefixArgs, ...buildServeArgs({ host: resolution.host, port })], {
+      stdio: "ignore",
+      windowsHide: true
+    });
+    const cleanup = () => {
+      if (!child.killed && child.exitCode === null) {
+        child.kill();
+      }
+    };
+    process.once("exit", cleanup);
+    try {
+      await waitForOpenCodeHealth(baseUrl, {
+        timeoutMs: options.healthTimeoutMs ?? DEFAULT_HEALTH_TIMEOUT_MS,
+        pollMs: options.healthPollMs ?? DEFAULT_HEALTH_POLL_MS
+      });
+    } catch (error2) {
+      cleanup();
+      process.removeListener("exit", cleanup);
+      throw error2;
+    }
+    const target = { baseUrl, started: true, child };
+    managedServers.set(baseUrl, target);
+    if (options.stateDir && child.pid) {
+      await writeOpenCodeServerDiscovery(options.stateDir, {
+        baseUrl,
+        pid: child.pid,
+        startedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        version: "0.1.0"
+      });
+    }
+    child.once("exit", () => {
+      managedServers.delete(baseUrl);
+      process.removeListener("exit", cleanup);
+      if (options.stateDir && child.pid) {
+        void removeDiscoveryIfMatches(options.stateDir, child.pid);
+      }
+    });
+    return target;
+  }
+  throw new Error(
+    `OpenCode auto-serve could not start because candidate port${ports.length === 1 ? "" : "s"} ${ports.join(", ")} on ${resolution.host} ${occupiedPorts.length === ports.length ? "are already in use by non-OpenCode services" : "were unavailable"}`
+  );
+}
+async function readReusableDiscovery(stateDir) {
+  let discovery;
+  try {
+    discovery = normalizeOpenCodeServerDiscovery(JSON.parse(await fs2.readFile(getOpenCodeServerDiscoveryPath(stateDir), "utf8")));
+  } catch {
+    return void 0;
+  }
+  if (!isPidAlive(discovery.pid)) {
+    await removeDiscoveryIfMatches(stateDir, discovery.pid);
+    return void 0;
+  }
+  const health = await readOpenCodeHealth(discovery.baseUrl);
+  if (!health.ok) {
+    await removeDiscoveryIfMatches(stateDir, discovery.pid);
+    return void 0;
+  }
+  return { baseUrl: discovery.baseUrl, started: false };
+}
+async function writeOpenCodeServerDiscovery(stateDir, value) {
+  const filePath = getOpenCodeServerDiscoveryPath(stateDir);
+  await fs2.mkdir(path2.dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID2()}.tmp`;
+  await fs2.writeFile(tempPath, `${JSON.stringify(value, null, 2)}
+`, "utf8");
+  await fs2.rename(tempPath, filePath);
+}
+async function removeDiscoveryIfMatches(stateDir, pid) {
+  try {
+    const filePath = getOpenCodeServerDiscoveryPath(stateDir);
+    const parsed = JSON.parse(await fs2.readFile(filePath, "utf8"));
+    if (parsed.pid === pid) {
+      await fs2.rm(filePath, { force: true });
+    }
+  } catch {
+  }
+}
+async function acquireOpenCodeServerLock(stateDir, timeoutMs) {
+  const lockPath = getOpenCodeServerLockPath(stateDir);
+  const deadline = Date.now() + timeoutMs;
+  await fs2.mkdir(path2.dirname(lockPath), { recursive: true });
+  for (; ; ) {
+    try {
+      const handle = await fs2.open(lockPath, "wx");
+      await handle.writeFile(`${JSON.stringify({ pid: process.pid, createdAt: (/* @__PURE__ */ new Date()).toISOString() })}
+`, "utf8");
+      await handle.close();
+      return {
+        release: async () => {
+          await fs2.rm(lockPath, { force: true });
+        }
+      };
+    } catch (error2) {
+      if (!isFileExistsError(error2)) {
+        throw error2;
+      }
+      await removeStaleLock(lockPath);
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting for OpenCode server startup lock at ${lockPath}`);
+      }
+      await sleep2(DEFAULT_HEALTH_POLL_MS);
+    }
+  }
+}
+async function removeStaleLock(lockPath) {
+  try {
+    const parsed = JSON.parse(await fs2.readFile(lockPath, "utf8"));
+    if (typeof parsed.pid === "number" && Number.isInteger(parsed.pid) && !isPidAlive(parsed.pid)) {
+      await fs2.rm(lockPath, { force: true });
+    }
+  } catch {
+    await fs2.rm(lockPath, { force: true });
+  }
+}
+function normalizeOpenCodeServerDiscovery(value) {
+  if (typeof value.baseUrl !== "string" || !value.baseUrl) {
+    throw new Error("Invalid OpenCode server discovery: missing baseUrl");
+  }
+  const baseUrl = normalizeBaseUrl(value.baseUrl);
+  if (typeof value.pid !== "number" || !Number.isInteger(value.pid)) {
+    throw new Error("Invalid OpenCode server discovery: missing pid");
+  }
+  if (typeof value.startedAt !== "string" || !value.startedAt) {
+    throw new Error("Invalid OpenCode server discovery: missing startedAt");
+  }
+  if (typeof value.version !== "string" || !value.version) {
+    throw new Error("Invalid OpenCode server discovery: missing version");
+  }
+  return { baseUrl, pid: value.pid, startedAt: value.startedAt, version: value.version };
+}
+async function waitForOpenCodeHealth(baseUrl, options) {
+  const deadline = Date.now() + options.timeoutMs;
+  for (; ; ) {
+    const health = await readOpenCodeHealth(baseUrl);
+    if (health.ok) {
+      return;
+    }
+    if (health.reachable) {
+      throw new Error(`Port ${new URL(baseUrl).port} on ${new URL(baseUrl).hostname} is already in use by a non-OpenCode service`);
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for OpenCode server at ${baseUrl}`);
+    }
+    await sleep2(options.pollMs);
+  }
+}
+async function readOpenCodeHealth(baseUrl) {
+  let response;
+  try {
+    response = await fetch(`${baseUrl}/global/health`);
+  } catch {
+    return { ok: false, reachable: false };
+  }
+  const text = await response.text();
+  const parsed = parseJson2(text);
+  if (!response.ok || typeof parsed !== "object" || parsed === null) {
+    return { ok: false, reachable: true };
+  }
+  if ("healthy" in parsed && parsed.healthy === true) {
+    return { ok: true, reachable: true };
+  }
+  if ("status" in parsed && parsed.status === "ok") {
+    return { ok: true, reachable: true };
+  }
+  return { ok: false, reachable: true };
+}
+function parseJson2(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return void 0;
+  }
+}
+function sleep2(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+function isPidAlive(pid) {
+  if (pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function isFileExistsError(error2) {
+  return typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === "EEXIST";
 }
 function normalizeBaseUrl(value) {
   let parsed;
@@ -21577,6 +21824,29 @@ function parseOptionalPort(value) {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
     throw new Error("SUPERVISOR_OPENCODE_PORT must be a port between 0 and 65535");
+  }
+  return parsed;
+}
+function parseOptionalPorts(value) {
+  if (!value?.trim()) {
+    return void 0;
+  }
+  return value.split(",").map((entry) => parseRequiredPort(entry.trim()));
+}
+function parsePrefixArgs(value) {
+  if (!value?.trim()) {
+    return void 0;
+  }
+  const trimmed = value.trim();
+  if (trimmed.startsWith("[")) {
+    return JSON.parse(trimmed);
+  }
+  return [trimmed];
+}
+function parseRequiredPort(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
+    throw new Error("SUPERVISOR_OPENCODE_FALLBACK_PORTS must contain ports between 0 and 65535");
   }
   return parsed;
 }
@@ -21623,24 +21893,24 @@ var DaemonClient = class {
   cleanup(options = {}) {
     return this.post("/v1/jobs/cleanup", options);
   }
-  async post(path2, body) {
+  async post(path3, body) {
     let response;
     try {
-      response = await fetch(`${this.baseUrl}${path2}`, {
+      response = await fetch(`${this.baseUrl}${path3}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body)
       });
     } catch (error2) {
       const transport = classifyTransportError(error2);
-      throw new DaemonClientError(transport.message, { code: transport.code, status: 0, path: path2 });
+      throw new DaemonClientError(transport.message, { code: transport.code, status: 0, path: path3 });
     }
     const text = await response.text();
-    const parsed = parseJson2(text);
+    const parsed = parseJson3(text);
     if (!response.ok) {
       const error2 = extractDaemonError(parsed);
       const message = error2?.message ?? `Daemon request failed with HTTP ${response.status}`;
-      throw new DaemonClientError(message, { code: error2?.code, status: response.status, path: path2 });
+      throw new DaemonClientError(message, { code: error2?.code, status: response.status, path: path3 });
     }
     return parsed;
   }
@@ -21653,7 +21923,7 @@ function classifyTransportError(error2) {
   }
   return { message: "Unable to reach daemon", code: "transport_unreachable" };
 }
-function parseJson2(text) {
+function parseJson3(text) {
   if (!text.trim()) {
     return void 0;
   }
@@ -21688,7 +21958,7 @@ function readDaemonDiscoverySync(stateDir) {
 }
 function normalizeDiscovery(parsed) {
   const discovery = validateDiscovery(parsed);
-  if (!isPidAlive(discovery.pid)) {
+  if (!isPidAlive2(discovery.pid)) {
     throw new Error(`Stale daemon discovery: pid ${discovery.pid} is not alive`);
   }
   return discovery;
@@ -21739,7 +22009,7 @@ function validateCanonicalStartedAt(value) {
     throw new Error("Invalid daemon discovery: invalid startedAt");
   }
 }
-function isPidAlive(pid) {
+function isPidAlive2(pid) {
   if (pid <= 0) {
     return false;
   }
@@ -21752,10 +22022,10 @@ function isPidAlive(pid) {
 }
 
 // src/core/supervisor.ts
-import { spawn } from "node:child_process";
+import { spawn as spawn2 } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import fs2 from "node:fs/promises";
-import { createHash as createHash2, randomUUID as randomUUID2 } from "node:crypto";
+import fs3 from "node:fs/promises";
+import { createHash as createHash2, randomUUID as randomUUID3 } from "node:crypto";
 import { finished } from "node:stream/promises";
 
 // src/core/claudeArgs.ts
@@ -21835,15 +22105,15 @@ var ClaudeSupervisor = class {
     if (await this.countActiveJobs() >= this.maxConcurrentJobs) {
       throw new Error(`Claude job concurrency limit reached: ${this.maxConcurrentJobs}`);
     }
-    const jobId = `job_${randomUUID2()}`;
+    const jobId = `job_${randomUUID3()}`;
     const paths = getJobPaths(this.stateDir, jobId);
-    await fs2.mkdir(paths.dir, { recursive: true });
-    await fs2.writeFile(paths.prompt, options.prompt, "utf8");
+    await fs3.mkdir(paths.dir, { recursive: true });
+    await fs3.writeFile(paths.prompt, options.prompt, "utf8");
     const claudeArgs = buildClaudeArgs(options);
     const args = [...this.claudePrefixArgs, ...claudeArgs];
     const stdout = createWriteStream(paths.stdout, { flags: "a" });
     const stderr = createWriteStream(paths.stderr, { flags: "a" });
-    const child = spawn(this.claudeCommand, args, {
+    const child = spawn2(this.claudeCommand, args, {
       cwd: options.cwd,
       env: this.env,
       stdio: ["pipe", "pipe", "pipe"],
@@ -21938,7 +22208,7 @@ var ClaudeSupervisor = class {
         return meta;
       }
       const updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-      if (!isPidAlive2(meta.pid)) {
+      if (!isPidAlive3(meta.pid)) {
         const orphaned = { ...meta, status: "orphaned", updatedAt };
         await this.writeMeta(orphaned);
         return orphaned;
@@ -21967,7 +22237,7 @@ var ClaudeSupervisor = class {
           signal: exitStatus?.signal
         };
       }
-      await sleep2(pollIntervalMs);
+      await sleep3(pollIntervalMs);
     }
     return { jobId, status: "running" };
   }
@@ -22106,7 +22376,7 @@ var ClaudeSupervisor = class {
       }
       const paths = getJobPaths(this.stateDir, jobId);
       removedTempFiles.push(...await listTempFiles2(paths.dir));
-      await fs2.rm(paths.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      await fs3.rm(paths.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
       removedJobIds.push(jobId);
     }
     return { removedJobIds, removedTempFiles };
@@ -22135,7 +22405,7 @@ var ClaudeSupervisor = class {
   async readMeta(jobId) {
     const paths = getJobPaths(this.stateDir, jobId);
     try {
-      return normalizeMeta(JSON.parse(await fs2.readFile(paths.meta, "utf8")));
+      return normalizeMeta(JSON.parse(await fs3.readFile(paths.meta, "utf8")));
     } catch (error2) {
       if (isMissingFile(error2)) {
         return { jobId, status: "not_found" };
@@ -22167,15 +22437,15 @@ function normalizeMeta(meta) {
   };
 }
 async function writeJsonAtomic2(filePath, value) {
-  await fs2.mkdir(filePath.replace(/[\\/][^\\/]+$/, ""), { recursive: true });
-  const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID2()}.tmp`;
-  await fs2.writeFile(tempPath, `${JSON.stringify(value, null, 2)}
+  await fs3.mkdir(filePath.replace(/[\\/][^\\/]+$/, ""), { recursive: true });
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID3()}.tmp`;
+  await fs3.writeFile(tempPath, `${JSON.stringify(value, null, 2)}
 `, "utf8");
-  await fs2.rename(tempPath, filePath);
+  await fs3.rename(tempPath, filePath);
 }
 async function readTextIfExists(filePath) {
   try {
-    return await fs2.readFile(filePath, "utf8");
+    return await fs3.readFile(filePath, "utf8");
   } catch (error2) {
     if (isMissingFile(error2)) {
       return "";
@@ -22227,7 +22497,7 @@ function limitText(text, maxBytes) {
   const suffix = text.slice(-maxBytes);
   return { text: suffix, truncated: true };
 }
-function isPidAlive2(pid) {
+function isPidAlive3(pid) {
   if (pid <= 0) {
     return false;
   }
@@ -22244,7 +22514,7 @@ function isProblem2(value) {
 function isMissingFile(error2) {
   return typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === "ENOENT";
 }
-function sleep2(ms) {
+function sleep3(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 function getJobsDir2(stateDir) {
@@ -22252,7 +22522,7 @@ function getJobsDir2(stateDir) {
 }
 async function readDirIfExists2(dirPath) {
   try {
-    return await fs2.readdir(dirPath, { withFileTypes: true });
+    return await fs3.readdir(dirPath, { withFileTypes: true });
   } catch (error2) {
     if (isMissingFile(error2)) {
       return [];
@@ -22268,7 +22538,7 @@ function waitWithTimeout(promise, timeoutMs) {
   if (!promise) {
     return Promise.resolve();
   }
-  return Promise.race([promise, sleep2(timeoutMs)]);
+  return Promise.race([promise, sleep3(timeoutMs)]);
 }
 
 // src/mcp.ts
@@ -22400,7 +22670,7 @@ function createMcpServer(supervisor = createMcpSupervisorFromEnv()) {
       description: "Start an OpenCode background job through an attached OpenCode server.",
       inputSchema: opencodeRunSchema()
     },
-    async (args) => jsonToolResult(await createOpenCodeBackend(args).run(withOpenCodeDefaults(args)))
+    async (args) => jsonToolResult(await (await createOpenCodeBackend(args)).run(withOpenCodeDefaults(args)))
   );
   server.registerTool(
     "opencode_status",
@@ -22409,7 +22679,7 @@ function createMcpServer(supervisor = createMcpSupervisorFromEnv()) {
       description: "Read current status metadata for an OpenCode job.",
       inputSchema: { jobId: external_exports.string(), opencodeBaseUrl: external_exports.string().optional() }
     },
-    async ({ jobId, opencodeBaseUrl }) => jsonToolResult(await createOpenCodeBackend({ opencodeBaseUrl }).status({ jobId }))
+    async ({ jobId, opencodeBaseUrl }) => jsonToolResult(await (await createOpenCodeBackend({ opencodeBaseUrl })).status({ jobId }))
   );
   server.registerTool(
     "opencode_wait",
@@ -22419,7 +22689,7 @@ function createMcpServer(supervisor = createMcpSupervisorFromEnv()) {
       inputSchema: { jobId: external_exports.string(), timeoutMs: external_exports.number().int().nonnegative().optional(), opencodeBaseUrl: external_exports.string().optional() }
     },
     async ({ jobId, timeoutMs, opencodeBaseUrl }) => {
-      const result = await createOpenCodeBackend({ opencodeBaseUrl }).wait({ jobId }, timeoutMs);
+      const result = await (await createOpenCodeBackend({ opencodeBaseUrl })).wait({ jobId }, timeoutMs);
       return jsonToolResult(result);
     }
   );
@@ -22430,7 +22700,7 @@ function createMcpServer(supervisor = createMcpSupervisorFromEnv()) {
       description: "Read the latest OpenCode message result for a supervisor job.",
       inputSchema: { jobId: external_exports.string(), opencodeBaseUrl: external_exports.string().optional() }
     },
-    async ({ jobId, opencodeBaseUrl }) => jsonToolResult(await createOpenCodeBackend({ opencodeBaseUrl }).result({ jobId }))
+    async ({ jobId, opencodeBaseUrl }) => jsonToolResult(await (await createOpenCodeBackend({ opencodeBaseUrl })).result({ jobId }))
   );
   server.registerTool(
     "opencode_continue",
@@ -22444,7 +22714,7 @@ function createMcpServer(supervisor = createMcpSupervisorFromEnv()) {
       }
     },
     async (args) => jsonToolResult(
-      await createOpenCodeBackend(args).continueJob({
+      await (await createOpenCodeBackend(args)).continueJob({
         ...withOpenCodeDefaults(args),
         parentJobId: args.jobId,
         parentSessionId: args.externalSessionId
@@ -22459,7 +22729,7 @@ function createMcpServer(supervisor = createMcpSupervisorFromEnv()) {
       inputSchema: { jobId: external_exports.string(), opencodeBaseUrl: external_exports.string().optional() }
     },
     async ({ jobId, opencodeBaseUrl }) => {
-      await createOpenCodeBackend({ opencodeBaseUrl }).abort({ jobId });
+      await (await createOpenCodeBackend({ opencodeBaseUrl })).abort({ jobId });
       return jsonToolResult({ jobId, status: "killed" });
     }
   );
@@ -22470,7 +22740,7 @@ function createMcpServer(supervisor = createMcpSupervisorFromEnv()) {
       description: "Placeholder cleanup surface for OpenCode job artifacts.",
       inputSchema: { olderThanMs: external_exports.number().int().nonnegative().optional() }
     },
-    async ({ olderThanMs }) => jsonToolResult(await createOpenCodeBackend({}).cleanup({ olderThanMs }))
+    async ({ olderThanMs }) => jsonToolResult(await (await createOpenCodeBackend({})).cleanup({ olderThanMs }))
   );
   server.registerTool(
     "retinue_spawn_agent",
@@ -22487,7 +22757,7 @@ function createMcpServer(supervisor = createMcpSupervisorFromEnv()) {
     },
     async (args) => {
       const taskName = normalizeTaskName(args);
-      const started = await createRetinueBackend(supervisor).run({
+      const started = await (await createRetinueBackend(supervisor)).run({
         cwd: args.cwd ?? process.cwd(),
         prompt: args.message,
         name: taskName,
@@ -22565,19 +22835,18 @@ function opencodeRunSchema() {
     opencodeBaseUrl: external_exports.string().optional()
   };
 }
-function createOpenCodeBackend(args) {
+async function createOpenCodeBackend(args) {
   const env = {
     ...process.env,
     SUPERVISOR_OPENCODE_BASE_URL: args.opencodeBaseUrl ?? process.env.SUPERVISOR_OPENCODE_BASE_URL
   };
   const resolution = resolveOpenCodeServerFromEnv(env);
-  if (resolution.mode !== "attach") {
-    throw new Error("OpenCode auto-serve is not wired to MCP yet; provide opencodeBaseUrl or SUPERVISOR_OPENCODE_BASE_URL");
-  }
+  const stateDir = resolveStateDir({ explicitStateDir: process.env.SUPERVISOR_STATE_DIR, env: process.env });
+  const target = await ensureOpenCodeServer(resolution, { stateDir });
   return new OpenCodeBackend({
-    client: new OpenCodeClient(resolution.baseUrl),
-    baseUrl: resolution.baseUrl,
-    stateDir: process.env.SUPERVISOR_STATE_DIR,
+    client: new OpenCodeClient(target.baseUrl),
+    baseUrl: target.baseUrl,
+    stateDir,
     env: process.env
   });
 }
@@ -22588,7 +22857,7 @@ function withOpenCodeDefaults(args) {
     agent: args.agent ?? process.env.SUPERVISOR_OPENCODE_AGENT
   };
 }
-function createRetinueBackend(supervisor) {
+async function createRetinueBackend(supervisor) {
   return createRetinueBackendByKind(readRetinueBackendKindFromEnv(), supervisor);
 }
 async function createRetinueBackendForJob(supervisor, jobId) {
@@ -22598,7 +22867,7 @@ async function createRetinueBackendForJob(supervisor, jobId) {
   }
   return createRetinueBackend(supervisor);
 }
-function createRetinueBackendByKind(kind, supervisor) {
+async function createRetinueBackendByKind(kind, supervisor) {
   if (kind === "opencode") {
     return createOpenCodeBackend({});
   }
@@ -22623,7 +22892,7 @@ async function readRetinueJobBackendKind(jobId) {
     env: process.env
   });
   try {
-    const meta = JSON.parse(await fs3.readFile(getJobPaths(stateDir, jobId).meta, "utf8"));
+    const meta = JSON.parse(await fs4.readFile(getJobPaths(stateDir, jobId).meta, "utf8"));
     return meta.backend === "opencode" || meta.backend === "claude-code" ? meta.backend : void 0;
   } catch {
     return void 0;
@@ -22675,13 +22944,13 @@ function createMcpSupervisorFromEnv(env = process.env) {
   return new ClaudeSupervisor({
     stateDir: env.SUPERVISOR_STATE_DIR,
     claudeCommand: env.SUPERVISOR_CLAUDE_COMMAND,
-    claudePrefixArgs: parsePrefixArgs(env.SUPERVISOR_CLAUDE_PREFIX_ARGS),
+    claudePrefixArgs: parsePrefixArgs2(env.SUPERVISOR_CLAUDE_PREFIX_ARGS),
     env,
     defaultRuntimeTimeoutMs: parseOptionalNumber(env.SUPERVISOR_DEFAULT_RUNTIME_TIMEOUT_MS),
     maxConcurrentJobs: parseOptionalNumber(env.SUPERVISOR_MAX_CONCURRENT_JOBS)
   });
 }
-function parsePrefixArgs(value) {
+function parsePrefixArgs2(value) {
   if (!value) {
     return [];
   }

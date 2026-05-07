@@ -5,7 +5,8 @@
     "startup_timeout_sec": 30,
     "env": {
       "SUPERVISOR_RETINUE_BACKEND": "opencode",
-      "SUPERVISOR_OPENCODE_BASE_URL": "http://127.0.0.1:4096",
+      "SUPERVISOR_OPENCODE_AUTO_SERVE": "1",
+      "SUPERVISOR_OPENCODE_HOST": "127.0.0.1",
       "SUPERVISOR_OPENCODE_AGENT": "plan"
     }
   }

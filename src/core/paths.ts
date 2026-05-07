@@ -57,3 +57,11 @@ export function getJobPaths(stateDir: string, jobId: string): JobPaths {
 export function getDaemonDiscoveryPath(stateDir: string): string {
   return path.join(stateDir, "daemon.json");
 }
+
+export function getOpenCodeServerDiscoveryPath(stateDir: string): string {
+  return path.join(stateDir, "opencode-server.json");
+}
+
+export function getOpenCodeServerLockPath(stateDir: string): string {
+  return path.join(stateDir, "opencode-server.lock");
+}

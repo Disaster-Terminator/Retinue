@@ -1,3 +1,15 @@
+import { spawn } from "node:child_process";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { getOpenCodeServerDiscoveryPath, getOpenCodeServerLockPath } from "../../core/paths.js";
+const DEFAULT_OPENCODE_HOST = "127.0.0.1";
+const DEFAULT_OPENCODE_PORT = 4096;
+const DEFAULT_OPENCODE_FALLBACK_PORTS = [4097];
+const DEFAULT_HEALTH_TIMEOUT_MS = 10_000;
+const DEFAULT_HEALTH_POLL_MS = 250;
+const DEFAULT_LOCK_TIMEOUT_MS = 10_000;
+const managedServers = new Map();
 export function resolveOpenCodeServer(config) {
     if (config.baseUrl?.trim()) {
         return { mode: "attach", baseUrl: normalizeBaseUrl(config.baseUrl) };
@@ -5,27 +17,263 @@ export function resolveOpenCodeServer(config) {
     if (!config.autoServe) {
         throw new Error("OpenCode server target missing: provide SUPERVISOR_OPENCODE_BASE_URL or enable SUPERVISOR_OPENCODE_AUTO_SERVE=1");
     }
-    const host = config.host ?? "127.0.0.1";
-    const port = config.port ?? 0;
+    const host = config.host ?? DEFAULT_OPENCODE_HOST;
+    const port = config.port ?? DEFAULT_OPENCODE_PORT;
+    const fallbackPorts = config.fallbackPorts ?? (config.port === undefined ? DEFAULT_OPENCODE_FALLBACK_PORTS : []);
     return {
         mode: "serve",
         command: config.command ?? "opencode",
-        args: buildServeArgs({ host, port }),
+        args: [...(config.prefixArgs ?? []), ...buildServeArgs({ host, port })],
         host,
-        port
+        port,
+        fallbackPorts
     };
 }
 export function resolveOpenCodeServerFromEnv(env) {
     return resolveOpenCodeServer({
         baseUrl: env.SUPERVISOR_OPENCODE_BASE_URL,
         command: env.SUPERVISOR_OPENCODE_COMMAND,
+        prefixArgs: parsePrefixArgs(env.SUPERVISOR_OPENCODE_PREFIX_ARGS),
         autoServe: env.SUPERVISOR_OPENCODE_AUTO_SERVE === "1",
         host: env.SUPERVISOR_OPENCODE_HOST,
-        port: parseOptionalPort(env.SUPERVISOR_OPENCODE_PORT)
+        port: parseOptionalPort(env.SUPERVISOR_OPENCODE_PORT),
+        fallbackPorts: parseOptionalPorts(env.SUPERVISOR_OPENCODE_FALLBACK_PORTS)
     });
 }
 export function buildServeArgs(options) {
     return ["serve", "--hostname", options.host, "--port", String(options.port)];
+}
+export async function ensureOpenCodeServer(resolution, options = {}) {
+    if (resolution.mode === "attach") {
+        return { baseUrl: resolution.baseUrl, started: false };
+    }
+    const discovered = options.stateDir ? await readReusableDiscovery(options.stateDir) : undefined;
+    if (discovered) {
+        return discovered;
+    }
+    const lock = options.stateDir ? await acquireOpenCodeServerLock(options.stateDir, options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS) : undefined;
+    try {
+        const discoveredAfterLock = options.stateDir ? await readReusableDiscovery(options.stateDir) : undefined;
+        if (discoveredAfterLock) {
+            return discoveredAfterLock;
+        }
+        return await startManagedOpenCodeServer(resolution, options);
+    }
+    finally {
+        await lock?.release();
+    }
+}
+async function startManagedOpenCodeServer(resolution, options) {
+    const ports = [resolution.port, ...resolution.fallbackPorts];
+    const occupiedPorts = [];
+    for (const port of ports) {
+        const baseUrl = `http://${resolution.host}:${port}`;
+        const managed = managedServers.get(baseUrl);
+        if (managed?.child && managed.child.exitCode === null) {
+            return managed;
+        }
+        const initial = await readOpenCodeHealth(baseUrl);
+        if (initial.reachable) {
+            occupiedPorts.push(port);
+            continue;
+        }
+        const prefixArgs = resolution.args.slice(0, -buildServeArgs({ host: resolution.host, port: resolution.port }).length);
+        const child = spawn(resolution.command, [...prefixArgs, ...buildServeArgs({ host: resolution.host, port })], {
+            stdio: "ignore",
+            windowsHide: true
+        });
+        const cleanup = () => {
+            if (!child.killed && child.exitCode === null) {
+                child.kill();
+            }
+        };
+        process.once("exit", cleanup);
+        try {
+            await waitForOpenCodeHealth(baseUrl, {
+                timeoutMs: options.healthTimeoutMs ?? DEFAULT_HEALTH_TIMEOUT_MS,
+                pollMs: options.healthPollMs ?? DEFAULT_HEALTH_POLL_MS
+            });
+        }
+        catch (error) {
+            cleanup();
+            process.removeListener("exit", cleanup);
+            throw error;
+        }
+        const target = { baseUrl, started: true, child };
+        managedServers.set(baseUrl, target);
+        if (options.stateDir && child.pid) {
+            await writeOpenCodeServerDiscovery(options.stateDir, {
+                baseUrl,
+                pid: child.pid,
+                startedAt: new Date().toISOString(),
+                version: "0.1.0"
+            });
+        }
+        child.once("exit", () => {
+            managedServers.delete(baseUrl);
+            process.removeListener("exit", cleanup);
+            if (options.stateDir && child.pid) {
+                void removeDiscoveryIfMatches(options.stateDir, child.pid);
+            }
+        });
+        return target;
+    }
+    throw new Error(`OpenCode auto-serve could not start because candidate port${ports.length === 1 ? "" : "s"} ${ports.join(", ")} on ${resolution.host} ${occupiedPorts.length === ports.length ? "are already in use by non-OpenCode services" : "were unavailable"}`);
+}
+async function readReusableDiscovery(stateDir) {
+    let discovery;
+    try {
+        discovery = normalizeOpenCodeServerDiscovery(JSON.parse(await fs.readFile(getOpenCodeServerDiscoveryPath(stateDir), "utf8")));
+    }
+    catch {
+        return undefined;
+    }
+    if (!isPidAlive(discovery.pid)) {
+        await removeDiscoveryIfMatches(stateDir, discovery.pid);
+        return undefined;
+    }
+    const health = await readOpenCodeHealth(discovery.baseUrl);
+    if (!health.ok) {
+        await removeDiscoveryIfMatches(stateDir, discovery.pid);
+        return undefined;
+    }
+    return { baseUrl: discovery.baseUrl, started: false };
+}
+async function writeOpenCodeServerDiscovery(stateDir, value) {
+    const filePath = getOpenCodeServerDiscoveryPath(stateDir);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
+    await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+    await fs.rename(tempPath, filePath);
+}
+async function removeDiscoveryIfMatches(stateDir, pid) {
+    try {
+        const filePath = getOpenCodeServerDiscoveryPath(stateDir);
+        const parsed = JSON.parse(await fs.readFile(filePath, "utf8"));
+        if (parsed.pid === pid) {
+            await fs.rm(filePath, { force: true });
+        }
+    }
+    catch {
+        // Best-effort cleanup only.
+    }
+}
+async function acquireOpenCodeServerLock(stateDir, timeoutMs) {
+    const lockPath = getOpenCodeServerLockPath(stateDir);
+    const deadline = Date.now() + timeoutMs;
+    await fs.mkdir(path.dirname(lockPath), { recursive: true });
+    for (;;) {
+        try {
+            const handle = await fs.open(lockPath, "wx");
+            await handle.writeFile(`${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`, "utf8");
+            await handle.close();
+            return {
+                release: async () => {
+                    await fs.rm(lockPath, { force: true });
+                }
+            };
+        }
+        catch (error) {
+            if (!isFileExistsError(error)) {
+                throw error;
+            }
+            await removeStaleLock(lockPath);
+            if (Date.now() >= deadline) {
+                throw new Error(`Timed out waiting for OpenCode server startup lock at ${lockPath}`);
+            }
+            await sleep(DEFAULT_HEALTH_POLL_MS);
+        }
+    }
+}
+async function removeStaleLock(lockPath) {
+    try {
+        const parsed = JSON.parse(await fs.readFile(lockPath, "utf8"));
+        if (typeof parsed.pid === "number" && Number.isInteger(parsed.pid) && !isPidAlive(parsed.pid)) {
+            await fs.rm(lockPath, { force: true });
+        }
+    }
+    catch {
+        await fs.rm(lockPath, { force: true });
+    }
+}
+function normalizeOpenCodeServerDiscovery(value) {
+    if (typeof value.baseUrl !== "string" || !value.baseUrl) {
+        throw new Error("Invalid OpenCode server discovery: missing baseUrl");
+    }
+    const baseUrl = normalizeBaseUrl(value.baseUrl);
+    if (typeof value.pid !== "number" || !Number.isInteger(value.pid)) {
+        throw new Error("Invalid OpenCode server discovery: missing pid");
+    }
+    if (typeof value.startedAt !== "string" || !value.startedAt) {
+        throw new Error("Invalid OpenCode server discovery: missing startedAt");
+    }
+    if (typeof value.version !== "string" || !value.version) {
+        throw new Error("Invalid OpenCode server discovery: missing version");
+    }
+    return { baseUrl, pid: value.pid, startedAt: value.startedAt, version: value.version };
+}
+async function waitForOpenCodeHealth(baseUrl, options) {
+    const deadline = Date.now() + options.timeoutMs;
+    for (;;) {
+        const health = await readOpenCodeHealth(baseUrl);
+        if (health.ok) {
+            return;
+        }
+        if (health.reachable) {
+            throw new Error(`Port ${new URL(baseUrl).port} on ${new URL(baseUrl).hostname} is already in use by a non-OpenCode service`);
+        }
+        if (Date.now() >= deadline) {
+            throw new Error(`Timed out waiting for OpenCode server at ${baseUrl}`);
+        }
+        await sleep(options.pollMs);
+    }
+}
+async function readOpenCodeHealth(baseUrl) {
+    let response;
+    try {
+        response = await fetch(`${baseUrl}/global/health`);
+    }
+    catch {
+        return { ok: false, reachable: false };
+    }
+    const text = await response.text();
+    const parsed = parseJson(text);
+    if (!response.ok || typeof parsed !== "object" || parsed === null) {
+        return { ok: false, reachable: true };
+    }
+    if ("healthy" in parsed && parsed.healthy === true) {
+        return { ok: true, reachable: true };
+    }
+    if ("status" in parsed && parsed.status === "ok") {
+        return { ok: true, reachable: true };
+    }
+    return { ok: false, reachable: true };
+}
+function parseJson(text) {
+    try {
+        return JSON.parse(text);
+    }
+    catch {
+        return undefined;
+    }
+}
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+function isPidAlive(pid) {
+    if (pid <= 0) {
+        return false;
+    }
+    try {
+        process.kill(pid, 0);
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+function isFileExistsError(error) {
+    return typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST";
 }
 function normalizeBaseUrl(value) {
     let parsed;
@@ -50,6 +298,29 @@ function parseOptionalPort(value) {
     const parsed = Number(value);
     if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
         throw new Error("SUPERVISOR_OPENCODE_PORT must be a port between 0 and 65535");
+    }
+    return parsed;
+}
+function parseOptionalPorts(value) {
+    if (!value?.trim()) {
+        return undefined;
+    }
+    return value.split(",").map((entry) => parseRequiredPort(entry.trim()));
+}
+function parsePrefixArgs(value) {
+    if (!value?.trim()) {
+        return undefined;
+    }
+    const trimmed = value.trim();
+    if (trimmed.startsWith("[")) {
+        return JSON.parse(trimmed);
+    }
+    return [trimmed];
+}
+function parseRequiredPort(value) {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
+        throw new Error("SUPERVISOR_OPENCODE_FALLBACK_PORTS must contain ports between 0 and 65535");
     }
     return parsed;
 }
