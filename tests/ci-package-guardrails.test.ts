@@ -34,6 +34,8 @@ function resolvePluginMcpServer(pluginRoot: string, server: RetinueMcpServerConf
 }
 
 const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
+const readmeZh = readFileSync("README.md", "utf8");
+const readmeEn = readFileSync("README.en.md", "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   name?: string;
   private?: boolean;
@@ -105,6 +107,20 @@ describe("package.json guardrails", () => {
 });
 
 describe("Retinue Codex plugin guardrails", () => {
+  it("documents the real Codex 0.128 plugin install path", () => {
+    const quickStartZh = readmeZh.match(/## 快速开始[\s\S]*?预期结果：/)?.[0] ?? "";
+    const quickStartEn = readmeEn.match(/## Quick Start[\s\S]*?Expected result:/)?.[0] ?? "";
+
+    expect(quickStartZh).toContain("`/plugins`");
+    expect(quickStartZh).toContain("右方向键");
+    expect(quickStartZh).toContain("`Install plugin`");
+    expect(quickStartZh).not.toContain("codex plugin marketplace upgrade retinue-local");
+    expect(quickStartEn).toContain("`/plugins`");
+    expect(quickStartEn).toContain("Right Arrow");
+    expect(quickStartEn).toContain("`Install plugin`");
+    expect(quickStartEn).not.toContain("codex plugin marketplace upgrade retinue-local");
+  });
+
   it("declares a plugin manifest with skill and MCP surfaces", () => {
     const manifest = JSON.parse(readFileSync("plugins/anchorpoint/.codex-plugin/plugin.json", "utf8")) as {
       name?: string;
@@ -139,12 +155,12 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(mcp.retinue?.env?.SUPERVISOR_DAEMON_DISCOVERY).toBeUndefined();
   });
 
-  it("makes the Retinue plugin installed by default from its marketplace", () => {
+  it("makes the Retinue plugin available from its marketplace", () => {
     const marketplace = JSON.parse(readFileSync(".agents/plugins/marketplace.json", "utf8")) as {
       plugins?: Array<{ name?: string; policy?: { installation?: string } }>;
     };
     const retinue = marketplace.plugins?.find((plugin) => plugin.name === "retinue");
-    expect(retinue?.policy?.installation).toBe("INSTALLED_BY_DEFAULT");
+    expect(retinue?.policy?.installation).toBe("AVAILABLE");
   });
 
   it("ships an agent-facing skill", () => {

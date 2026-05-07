@@ -10,8 +10,9 @@ Users install it through the Codex plugin marketplace:
 
 ```bash
 codex plugin marketplace add Disaster-Terminator/Retinue
-codex plugin marketplace upgrade retinue-local
 ```
+
+Then open Codex, run `/plugins`, press the keyboard Right Arrow key until `[Retinue Local]` is selected, press Enter to open the `Retinue` details page, then choose `Install plugin`.
 
 Contributors should build and verify before tagging a release:
 

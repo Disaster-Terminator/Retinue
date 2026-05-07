@@ -58,10 +58,9 @@ Add the Retinue plugin marketplace to Codex:
 
 ```bash
 codex plugin marketplace add Disaster-Terminator/Retinue
-codex plugin marketplace upgrade retinue-local
 ```
 
-Restart Codex, then ask:
+Open Codex, run `/plugins`, press the keyboard Right Arrow key until `[Retinue Local]` is selected, press Enter to open the `Retinue` details page, then choose `Install plugin`. After installation, restart Codex, then ask:
 
 ```text
 Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE_OK. Wait for the result and close the child agent.
@@ -73,6 +72,8 @@ Expected result:
 - Codex can call `retinue_spawn_agent`.
 - `retinue_wait_agent` returns a result containing `RETINUE_OK`.
 - `retinue_close_agent` returns a terminal status.
+
+Note: Codex CLI 0.128 `codex plugin marketplace add/upgrade/remove` manages marketplaces only. Plugin installation happens in the Codex TUI `/plugins` screen. `codex plugin marketplace upgrade retinue-local` updates an existing marketplace; it is not an install command.
 
 ## Platform Notes
 
