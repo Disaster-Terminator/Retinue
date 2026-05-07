@@ -15,10 +15,11 @@ The primary 0.1.0 install path is the Codex plugin marketplace:
 
 ```bash
 codex plugin marketplace add Disaster-Terminator/Retinue
-codex plugin marketplace upgrade retinue-local
 ```
 
-The marketplace metadata sets Retinue to `INSTALLED_BY_DEFAULT`. Codex CLI 0.128 exposes marketplace add/upgrade/remove, not a separate `codex plugin install` command.
+Then open Codex, run `/plugins`, press the keyboard Right Arrow key until `[Retinue Local]` is selected, press Enter to open the `Retinue` details page, then choose `Install plugin`.
+
+Codex CLI 0.128 exposes marketplace add/upgrade/remove, not a separate `codex plugin install` command. `codex plugin marketplace upgrade retinue-local` updates a marketplace that has already been added; it is not an install command and can fail if another installed local plugin has a broken cache or restrictive file permissions.
 
 The plugin MCP config starts the runtime shipped inside the plugin directory:
 

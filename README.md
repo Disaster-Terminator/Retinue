@@ -58,10 +58,9 @@ Retinue 是本地子代理执行面，不是模型网关，也不是 provider ro
 
 ```bash
 codex plugin marketplace add Disaster-Terminator/Retinue
-codex plugin marketplace upgrade retinue-local
 ```
 
-重新打开 Codex，然后让 Codex 使用 Retinue：
+打开 Codex，运行 `/plugins`，按键盘右方向键切到 `[Retinue Local]` 插件市场，按 Enter 打开 `Retinue` 详情页，然后选择 `Install plugin`。安装后重新打开 Codex，然后让 Codex 使用 Retinue：
 
 ```text
 Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE_OK. Wait for the result and close the child agent.
@@ -73,6 +72,8 @@ Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE
 - Codex 能调用 `retinue_spawn_agent`。
 - `retinue_wait_agent` 返回包含 `RETINUE_OK` 的结果。
 - `retinue_close_agent` 返回 terminal 状态。
+
+说明：Codex CLI 0.128 的 `codex plugin marketplace add/upgrade/remove` 只管理插件市场；插件安装在 Codex TUI 的 `/plugins` 里完成。`codex plugin marketplace upgrade retinue-local` 只用于更新已有市场，不是安装命令。
 
 ## 平台说明
 
