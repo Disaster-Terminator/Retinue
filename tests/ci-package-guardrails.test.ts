@@ -23,8 +23,8 @@ describe("CI workflow guardrails", () => {
 
   it("runs required quality gates", () => {
     expect(ciWorkflow).toContain("run: pnpm run typecheck");
+    expect(ciWorkflow).toContain("run: pnpm run check:generated");
     expect(ciWorkflow).toContain("run: pnpm test");
-    expect(ciWorkflow).toContain("run: pnpm run build");
     expect(ciWorkflow).toContain("run: pnpm run verify:package");
   });
 
@@ -55,6 +55,7 @@ describe("package.json guardrails", () => {
     const scripts = packageJson.scripts ?? {};
 
     expect(scripts["verify:package"]).toBeTypeOf("string");
+    expect(scripts["check:generated"]).toBe("pnpm run build && git diff --exit-code -- dist plugins/anchorpoint/dist");
 
     const realProbeScriptNames = Object.keys(scripts).filter((name) => name.startsWith("probe:real:"));
     expect(realProbeScriptNames.length).toBeGreaterThan(0);

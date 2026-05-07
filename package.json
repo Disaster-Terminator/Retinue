@@ -52,6 +52,7 @@
     "probe:real:retinue-opencode": "node scripts/probe-retinue-opencode-mcp.mjs",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json",
+    "check:generated": "pnpm run build && git diff --exit-code -- dist plugins/anchorpoint/dist",
     "verify:package": "pnpm pack --dry-run --json | node scripts/verify-package.mjs"
   },
   "dependencies": {
