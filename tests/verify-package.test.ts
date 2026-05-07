@@ -11,10 +11,13 @@ function validPackJson() {
     {
       files: [
         { path: "README.md" },
+        { path: "README.en.md" },
         { path: "docs/README.md" },
         { path: "docs/LONG_TERM_VISION.md" },
         { path: "docs/backends/OPENCODE.md" },
+        { path: "docs/development/SOURCE_INSTALL.md" },
         { path: "docs/deployment/PLUGIN_DEPLOYMENT.md" },
+        { path: "docs/release/0.1.0_RELEASE_PLAN.md" },
         { path: "docs/VERIFICATION.md" },
         { path: "docs/architecture/PROJECT_BOUNDARY.md" },
         { path: ".agents/plugins/marketplace.json" },

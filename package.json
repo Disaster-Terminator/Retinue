@@ -1,14 +1,28 @@
 {
-  "name": "@disaster-terminator/supervisor",
+  "name": "@disaster-terminator/retinue",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "packageManager": "pnpm@10.33.2",
   "type": "module",
-  "description": "Local control plane for long-running coding-agent jobs.",
+  "description": "Codex plugin runtime for running local coding agents as controllable Retinue subagents.",
+  "homepage": "https://github.com/Disaster-Terminator/Retinue",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Disaster-Terminator/Retinue.git"
+  },
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "mcp",
+    "opencode",
+    "claude-code",
+    "subagents",
+    "retinue"
+  ],
   "bin": {
-    "anchorpoint": "./dist/cli.js",
-    "anchorpoint-mcp": "./dist/mcp.js",
-    "anchorpointd": "./dist/daemon.js",
+    "retinue": "./dist/cli.js",
+    "retinue-mcp": "./dist/mcp.js",
+    "retinued": "./dist/daemon.js",
     "supervisor": "./dist/cli.js",
     "supervisor-mcp": "./dist/mcp.js",
     "supervisor-daemon": "./dist/daemon.js"

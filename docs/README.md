@@ -5,6 +5,7 @@ directory stays readable.
 
 ## Current Product
 
+- [0.1.0 Release Plan](release/0.1.0_RELEASE_PLAN.md) - release gate, completed work, and deferred issues.
 - [Long-Term Vision](LONG_TERM_VISION.md) - Codex-compatible spawn direction, backend policy, and phased roadmap.
 - [Project Boundary](architecture/PROJECT_BOUNDARY.md) - what Retinue is and is not.
 - [OpenCode Backend](backends/OPENCODE.md) - OpenCode adapter behavior and constraints.
@@ -12,6 +13,7 @@ directory stays readable.
 ## Deployment
 
 - [Plugin Deployment](deployment/PLUGIN_DEPLOYMENT.md) - Codex plugin packaging and install shape.
+- [Source Install And Development](development/SOURCE_INSTALL.md) - contributor setup and source-tree verification.
 - [Service Lifecycle](deployment/SERVICE_LIFECYCLE.md) - daemon start, inspect, and stop workflow.
 - [Verification](VERIFICATION.md) - short test and packaging gates.
 

@@ -44,167 +44,112 @@ Retinue is a local subagent execution surface. It is not a model gateway or prov
 - It does not return full prompts from default `status` responses.
 - It does not try to become a general process manager or cloud queue.
 
-## Quickstart
+## WSL Quick Start
+
+Retinue 0.1.0 defaults to OpenCode and asks OpenCode to use its `plan` agent. Users do not need to clone, install dependencies, or compile Retinue.
+
+Requirements:
+
+- Node.js 20+
+- Codex CLI 0.128+
+- OpenCode 1.14+
+
+Start OpenCode:
 
 ```bash
-pnpm install
-pnpm run build
-pnpm run typecheck
-pnpm test
+opencode serve --hostname 127.0.0.1 --port 4096
 ```
 
-Run a deterministic fake-Claude job before spending real Claude Code quota:
+In another WSL shell, add the Retinue plugin marketplace to Codex:
 
 ```bash
-SUPERVISOR_CLAUDE_COMMAND=node \
-SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs \
-node dist/cli.js run --cwd . --prompt "hello"
-
-node dist/cli.js wait <jobId> --timeout-ms 30000
-node dist/cli.js result <jobId>
+codex plugin marketplace add Disaster-Terminator/Retinue
+codex plugin marketplace upgrade retinue-local
 ```
 
-PowerShell:
+Restart Codex, then ask:
 
-```powershell
-$env:SUPERVISOR_CLAUDE_COMMAND = "node"
-$env:SUPERVISOR_CLAUDE_PREFIX_ARGS = "tests/fixtures/fake-claude.mjs"
-node dist/cli.js run --cwd . --prompt "hello"
-node dist/cli.js wait <jobId> --timeout-ms 30000
-node dist/cli.js result <jobId>
+```text
+Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE_OK. Wait for the result and close the child agent.
 ```
 
-## CLI
+Expected result:
 
-```bash
-pnpm run build
+- Codex sees the Retinue skill.
+- Codex can call `retinue_spawn_agent`.
+- `retinue_wait_agent` returns a result containing `RETINUE_OK`.
+- `retinue_close_agent` returns a terminal status.
 
-node dist/cli.js run --cwd . --prompt "Reply exactly: OK"
-node dist/cli.js status <jobId>
-node dist/cli.js wait <jobId> --timeout-ms 30000
-node dist/cli.js result <jobId>
-node dist/cli.js continue --cwd . --job-id <jobId> --prompt "Follow up"
-node dist/cli.js kill <jobId>
-node dist/cli.js cleanup --older-than-ms 86400000
+## Default Plugin Config
+
+The plugin MCP config lives at `plugins/anchorpoint/.mcp.json`. Retinue 0.1.0 defaults to:
+
+```json
+{
+  "SUPERVISOR_RETINUE_BACKEND": "opencode",
+  "SUPERVISOR_OPENCODE_BASE_URL": "http://127.0.0.1:4096",
+  "SUPERVISOR_OPENCODE_AGENT": "plan"
+}
 ```
 
-Connect the OpenCode backend to a local loopback server:
+This means:
 
-```bash
-SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
-node dist/cli.js opencode-run \
-  --cwd . \
-  --prompt "Reply exactly: RETINUE_OPENCODE_OK"
+- Codex calls Retinue and does not choose the concrete backend.
+- OpenCode uses the active local profile for provider, model, login, permissions, plugins, and skills.
+- `plan` is the 0.1.0 safety default. A future Retinue config file will allow deployments to choose `build` without exposing that choice as a per-call tool argument.
 
-node dist/cli.js opencode-wait <jobId> --timeout-ms 180000
-node dist/cli.js opencode-result <jobId>
-node dist/cli.js opencode-kill <jobId>
-```
+## Claude Code Backend
 
-Optional model and agent defaults are passed to OpenCode through environment variables. When unset, Retinue omits those fields and lets OpenCode use its own configuration:
-
-```bash
-SUPERVISOR_OPENCODE_MODEL=litellm/pro-router
-SUPERVISOR_OPENCODE_AGENT=build
-```
-
-## MCP tools
-
-After building, configure an MCP client to run:
-
-```bash
-node /path/to/Retinue/dist/mcp.js
-```
-
-Codex product entrypoint: `retinue_spawn_agent`, `retinue_wait_agent`, `retinue_close_agent`.
-
-`retinue_*` chooses its backend from deployment environment and defaults to OpenCode. Do not pass backend, profile, model, agent, or permission choices in tool arguments.
-
-```bash
-SUPERVISOR_RETINUE_BACKEND=opencode
-SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096
-```
-
-Claude Code deployments can use:
+The Claude Code backend has fake E2E and best-effort real E2E coverage. It is not enabled by default in 0.1.0. To switch a deployment:
 
 ```bash
 SUPERVISOR_RETINUE_BACKEND=claude-code
 ```
 
-Debug tools remain available:
+Claude Code still owns its model, endpoint, permission, and profile behavior.
 
-- Claude Code: `claude_run`, `claude_status`, `claude_wait`, `claude_result`, `claude_continue`, `claude_peek`, `claude_kill`, `claude_cleanup`
-- OpenCode: `opencode_run`, `opencode_status`, `opencode_wait`, `opencode_result`, `opencode_continue`, `opencode_kill`, `opencode_cleanup`
+## npm Install
 
-## State directory
-
-Windows:
-
-```text
-%LOCALAPPDATA%\supervisor
-```
-
-Linux / WSL:
-
-```text
-$XDG_STATE_HOME/supervisor
-~/.local/state/supervisor
-```
-
-Set `SUPERVISOR_STATE_DIR` to override the state directory.
-
-## Environment variables
-
-| Variable | Purpose |
-| --- | --- |
-| `SUPERVISOR_STATE_DIR` | Override the state directory for job metadata and artifacts |
-| `SUPERVISOR_CLAUDE_COMMAND` | Override the Claude Code executable, usually for fake runtime tests |
-| `SUPERVISOR_CLAUDE_PREFIX_ARGS` | Add fixed arguments before Retinue-generated Claude Code arguments |
-| `SUPERVISOR_DEFAULT_RUNTIME_TIMEOUT_MS` | Default runtime timeout when `timeoutMs` is not provided |
-| `SUPERVISOR_MAX_CONCURRENT_JOBS` | Limit concurrently running jobs in the current process |
-| `SUPERVISOR_OPENCODE_BASE_URL` | Attach to a local OpenCode loopback server |
-| `SUPERVISOR_OPENCODE_MODEL` | Optional OpenCode default model in `provider/model` form |
-| `SUPERVISOR_OPENCODE_AGENT` | Optional OpenCode default agent |
-| `SUPERVISOR_RETINUE_BACKEND` | Deployment backend for `retinue_*`; supports `opencode` or `claude-code` |
-| `SUPERVISOR_DAEMON_URL` | Make CLI/MCP explicitly connect to a local loopback daemon |
-| `SUPERVISOR_DAEMON_DISCOVERY` | Set to `1` to discover a daemon from `<stateDir>/daemon.json` |
-
-## Safety and reliability defaults
-
-- Prompts are written to job-local `prompt.md` and sent to the backend agent over stdin.
-- `status` exposes only `promptPath`, `promptPreview`, and `promptSha256` by default.
-- `result` and `peek` return bounded stdout/stderr by default, plus `stdoutPath`, `stderrPath`, byte counts, and truncation flags.
-- Missing PIDs, stale state files, or corrupted metadata are reported as explicit states instead of success.
-- Windows and WSL should not share one `node_modules` directory; run `pnpm install --frozen-lockfile` separately in each environment.
-
-## Optional daemon mode
-
-Retinue can run directly inside the CLI/MCP process, or explicitly connect to a local loopback daemon:
+The npm package installs the Retinue runtime directly. Use it for custom MCP configuration or development setups:
 
 ```bash
-pnpm run build
-node dist/daemon.js --host 127.0.0.1 --port 27777
+npm install -g @disaster-terminator/retinue@0.1.0
+codex mcp add retinue \
+  --env SUPERVISOR_RETINUE_BACKEND=opencode \
+  --env SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
+  --env SUPERVISOR_OPENCODE_AGENT=plan \
+  -- retinue-mcp
 ```
 
-Without `SUPERVISOR_DAEMON_URL`, `--daemon-url`, `SUPERVISOR_DAEMON_DISCOVERY=1`, or `--discover-daemon`, CLI/MCP uses the direct local path.
+Normal Codex users should prefer the plugin marketplace path. The npm path does not install the Retinue skill.
 
 ## Verification
 
+Before the 0.1.0 release, Retinue passed:
+
+- Retinue OpenCode fake E2E
+- Retinue OpenCode real E2E
+- Retinue Claude Code fake E2E
+- Retinue Claude Code best-effort real E2E
+- `pnpm test`
+- `pnpm run typecheck`
+- `pnpm run build`
+- `pnpm run verify:package`
+
+Real OpenCode probe:
+
 ```bash
-pnpm run typecheck
-pnpm test
-pnpm run build
+SUPERVISOR_REAL_OPENCODE_PROBE=1 \
+SUPERVISOR_RETINUE_BACKEND=opencode \
+SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
+pnpm run probe:real:retinue-opencode
 ```
 
-Real backend probes are manual and opt-in; they are not part of CI or the deterministic test suite:
+## Developer Docs
 
-- [Real Claude Code Probes](docs/runbooks/REAL_CLAUDE_PROBES.md)
-- [Real OpenCode Probes](docs/runbooks/REAL_OPENCODE_PROBES.md)
-- [Production OpenCode E2E](docs/runbooks/PRODUCTION_OPENCODE_E2E.md)
-
-More details:
-
-- [Docs Index](docs/README.md)
+- [Source install and development](docs/development/SOURCE_INSTALL.md)
+- [0.1.0 release plan](docs/release/0.1.0_RELEASE_PLAN.md)
+- [Docs index](docs/README.md)
 - [Long-Term Vision](docs/LONG_TERM_VISION.md)
 - [Project Boundary](docs/architecture/PROJECT_BOUNDARY.md)
 - [Service Lifecycle](docs/deployment/SERVICE_LIFECYCLE.md)
