@@ -20,13 +20,13 @@ codex plugin marketplace upgrade retinue-local
 
 The marketplace metadata sets Retinue to `INSTALLED_BY_DEFAULT`. Codex CLI 0.128 exposes marketplace add/upgrade/remove, not a separate `codex plugin install` command.
 
-The plugin MCP config starts the repo-shipped runtime:
+The plugin MCP config starts the runtime shipped inside the plugin directory:
 
 ```json
 {
   "retinue": {
     "command": "node",
-    "args": ["../../dist/mcp.js"],
+    "args": ["./dist/mcp.js"],
     "startup_timeout_sec": 30,
     "env": {
       "SUPERVISOR_RETINUE_BACKEND": "opencode",
@@ -37,7 +37,7 @@ The plugin MCP config starts the repo-shipped runtime:
 }
 ```
 
-This is intentional for 0.1.0: users should not need to compile the repository before Codex can start Retinue.
+This is intentional for 0.1.0: marketplace installs copy the plugin directory into Codex's plugin cache, so the MCP runtime must be self-contained under that directory.
 
 ## npm Runtime Path
 
@@ -74,7 +74,7 @@ pnpm run build
 pnpm run verify:package
 ```
 
-`verify:package` checks that package contents include the plugin manifest, MCP config, skill, required docs, and runtime files.
+`verify:package` checks that package contents include the plugin manifest, MCP config, skill, required docs, npm runtime files, and plugin-local runtime files.
 
 ## OpenCode Production E2E
 

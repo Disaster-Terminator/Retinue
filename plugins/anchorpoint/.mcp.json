@@ -1,7 +1,7 @@
 {
   "retinue": {
     "command": "node",
-    "args": ["../../dist/mcp.js"],
+    "args": ["./dist/mcp.js"],
     "startup_timeout_sec": 30,
     "env": {
       "SUPERVISOR_RETINUE_BACKEND": "opencode",

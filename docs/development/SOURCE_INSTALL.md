@@ -20,7 +20,7 @@ From a source checkout, the MCP runtime is:
 node dist/mcp.js
 ```
 
-The repo-local plugin config points to the built runtime at `../../dist/mcp.js` relative to `plugins/anchorpoint/.mcp.json`. That is why release commits include `dist/`: the plugin marketplace install must not require users to compile TypeScript.
+The repo-local plugin config points to the plugin-local runtime at `./dist/mcp.js` relative to `plugins/anchorpoint/.mcp.json`. `pnpm run build` compiles the npm runtime under the repository root `dist/` and then syncs a copy into `plugins/anchorpoint/dist/`, so the plugin marketplace install can start Retinue after copying only the plugin directory.
 
 ## Development Verification
 

@@ -18,10 +18,17 @@ const requiredPluginFiles = [
   ".agents/plugins/marketplace.json",
   "plugins/anchorpoint/.codex-plugin/plugin.json",
   "plugins/anchorpoint/.mcp.json",
-  "plugins/anchorpoint/skills/anchorpoint/SKILL.md"
+  "plugins/anchorpoint/skills/anchorpoint/SKILL.md",
+  "plugins/anchorpoint/dist/mcp.js"
 ];
 
 const requiredRuntimePatterns = ["dist/backends/", "dist/cli.", "dist/mcp.", "dist/daemon."];
+const requiredPluginRuntimePatterns = [
+  "plugins/anchorpoint/dist/backends/",
+  "plugins/anchorpoint/dist/core/",
+  "plugins/anchorpoint/dist/daemon/",
+  "plugins/anchorpoint/dist/mcp."
+];
 
 function fail(message) {
   console.error(message);
@@ -53,6 +60,13 @@ for (const requiredRuntimePattern of requiredRuntimePatterns) {
   const hasPattern = [...packagedPaths].some((item) => item.includes(requiredRuntimePattern));
   if (!hasPattern) {
     fail(`missing required runtime pattern: ${requiredRuntimePattern}`);
+  }
+}
+
+for (const requiredPluginRuntimePattern of requiredPluginRuntimePatterns) {
+  const hasPattern = [...packagedPaths].some((item) => item.includes(requiredPluginRuntimePattern));
+  if (!hasPattern) {
+    fail(`missing required plugin runtime pattern: ${requiredPluginRuntimePattern}`);
   }
 }
 

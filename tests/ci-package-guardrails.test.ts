@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import path from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 
 const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
@@ -95,7 +98,8 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(mcp).toHaveProperty("retinue");
     expect(mcp).not.toHaveProperty("mcpServers");
     expect(mcp.retinue?.command).toBe("node");
-    expect(mcp.retinue?.args).toEqual(["../../dist/mcp.js"]);
+    expect(mcp.retinue?.args).toEqual(["./dist/mcp.js"]);
+    expect(existsSync(path.join("plugins/anchorpoint", mcp.retinue?.args?.[0] ?? ""))).toBe(true);
     expect(mcp.retinue?.startup_timeout_sec).toBe(30);
     expect(mcp.retinue?.env?.SUPERVISOR_RETINUE_BACKEND).toBe("opencode");
     expect(mcp.retinue?.env?.SUPERVISOR_OPENCODE_BASE_URL).toBe("http://127.0.0.1:4096");
@@ -113,5 +117,31 @@ describe("Retinue Codex plugin guardrails", () => {
 
   it("ships an agent-facing skill", () => {
     expect(existsSync("plugins/anchorpoint/skills/anchorpoint/SKILL.md")).toBe(true);
+  });
+
+  it("starts the plugin-local MCP server over stdio", async () => {
+    const mcp = JSON.parse(readFileSync("plugins/anchorpoint/.mcp.json", "utf8")) as Record<
+      string,
+      { command: string; args: string[]; env?: Record<string, string> }
+    >;
+    const transport = new StdioClientTransport({
+      command: mcp.retinue.command,
+      args: mcp.retinue.args,
+      cwd: path.resolve("plugins/anchorpoint"),
+      env: mcp.retinue.env,
+      stderr: "pipe"
+    });
+    const client = new Client({ name: "retinue-plugin-stdio-test", version: "0.1.0" });
+    const stderrChunks: Buffer[] = [];
+    transport.stderr?.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
+
+    try {
+      await client.connect(transport);
+      const tools = await client.listTools();
+      expect(tools.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent"]));
+      expect(Buffer.concat(stderrChunks).toString("utf8")).toBe("");
+    } finally {
+      await Promise.allSettled([client.close(), transport.close()]);
+    }
   });
 });

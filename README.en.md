@@ -44,9 +44,9 @@ Retinue is a local subagent execution surface. It is not a model gateway or prov
 - It does not return full prompts from default `status` responses.
 - It does not try to become a general process manager or cloud queue.
 
-## WSL Quick Start
+## Quick Start
 
-Retinue 0.1.0 defaults to OpenCode and asks OpenCode to use its `plan` agent. Users do not need to clone, install dependencies, or compile Retinue.
+Retinue 0.1.0 defaults to OpenCode and asks OpenCode to use its `plan` agent. Users do not need to clone, install dependencies, or compile Retinue. Retinue targets Windows, WSL/Linux, and macOS; this round's acceptance path uses WSL.
 
 Requirements:
 
@@ -60,7 +60,7 @@ Start OpenCode:
 opencode serve --hostname 127.0.0.1 --port 4096
 ```
 
-In another WSL shell, add the Retinue plugin marketplace to Codex:
+In another shell, add the Retinue plugin marketplace to Codex:
 
 ```bash
 codex plugin marketplace add Disaster-Terminator/Retinue
@@ -79,6 +79,12 @@ Expected result:
 - Codex can call `retinue_spawn_agent`.
 - `retinue_wait_agent` returns a result containing `RETINUE_OK`.
 - `retinue_close_agent` returns a terminal status.
+
+## Platform Notes
+
+- Windows: requires local Node.js, Codex CLI, and OpenCode; configure the OpenCode server URL for the deployment.
+- WSL / Linux: current 0.1.0 acceptance path. The default config connects to `http://127.0.0.1:4096`.
+- macOS: uses the same Node.js, Codex CLI, and OpenCode prerequisites; it is not the primary validation path for this round.
 
 ## Default Plugin Config
 
