@@ -3,10 +3,13 @@ import { existsSync, readFileSync } from "node:fs";
 
 const requiredDocs = [
   "README.md",
+  "README.en.md",
   "docs/README.md",
   "docs/LONG_TERM_VISION.md",
   "docs/backends/OPENCODE.md",
+  "docs/development/SOURCE_INSTALL.md",
   "docs/deployment/PLUGIN_DEPLOYMENT.md",
+  "docs/release/0.1.0_RELEASE_PLAN.md",
   "docs/VERIFICATION.md",
   "docs/architecture/PROJECT_BOUNDARY.md"
 ];

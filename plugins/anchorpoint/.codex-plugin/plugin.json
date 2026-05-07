@@ -15,16 +15,16 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Retinue",
-    "shortDescription": "Run Claude Code and OpenCode as Codex subagents.",
-    "longDescription": "Retinue exposes local MCP tools for running Claude Code and OpenCode as controllable Codex subagents. Codex receives job handles for run, status, wait, result, continue, kill, and cleanup while provider and model configuration stay in the upstream agent runtime.",
+    "shortDescription": "Run OpenCode and Claude Code as Codex subagents.",
+    "longDescription": "Retinue exposes local MCP tools for spawning, waiting for, and closing controllable Codex subagents. The default 0.1.0 plugin route uses OpenCode on localhost with its plan agent; provider, model, login, and permission policy stay in the selected backend runtime.",
     "developerName": "Disaster-Terminator",
     "category": "Coding",
     "capabilities": ["MCP", "Skills", "Local"],
     "websiteURL": "https://github.com/Disaster-Terminator/Retinue",
     "defaultPrompt": [
-      "Use Retinue to run an OpenCode subagent.",
-      "Check a Retinue job result.",
-      "Continue an existing OpenCode session."
+      "Use Retinue to spawn an OpenCode plan subagent.",
+      "Wait for a Retinue subagent result.",
+      "Close a Retinue subagent."
     ],
     "brandColor": "#2563EB"
   }

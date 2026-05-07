@@ -1,15 +1,70 @@
 # Retinue Codex Plugin Deployment
 
-Retinue ships as a repo-local Codex plugin. The plugin contains:
+Retinue ships as a Codex plugin. The plugin contains:
 
 - `.codex-plugin/plugin.json` for discovery and product metadata
 - `.mcp.json` for MCP tool exposure
 - `skills/anchorpoint/SKILL.md` for agent-facing operating guidance
-- the repository runtime built under `dist/`
+- the built Retinue runtime under `dist/`
+
+The plugin identity is `retinue`. User-facing docs should call the product Retinue.
+
+## User Install Path
+
+The primary 0.1.0 install path is the Codex plugin marketplace:
+
+```bash
+codex plugin marketplace add Disaster-Terminator/Retinue
+codex plugin marketplace upgrade retinue-local
+```
+
+The marketplace metadata sets Retinue to `INSTALLED_BY_DEFAULT`. Codex CLI 0.128 exposes marketplace add/upgrade/remove, not a separate `codex plugin install` command.
+
+The plugin MCP config starts the repo-shipped runtime:
+
+```json
+{
+  "retinue": {
+    "command": "node",
+    "args": ["../../dist/mcp.js"],
+    "startup_timeout_sec": 30,
+    "env": {
+      "SUPERVISOR_RETINUE_BACKEND": "opencode",
+      "SUPERVISOR_OPENCODE_BASE_URL": "http://127.0.0.1:4096",
+      "SUPERVISOR_OPENCODE_AGENT": "plan"
+    }
+  }
+}
+```
+
+This is intentional for 0.1.0: users should not need to compile the repository before Codex can start Retinue.
+
+## npm Runtime Path
+
+The npm package is `@disaster-terminator/retinue`. It exposes:
+
+```text
+retinue
+retinue-mcp
+retinued
+```
+
+Use this path for custom MCP configuration:
+
+```bash
+npm install -g @disaster-terminator/retinue@0.1.0
+codex mcp add retinue \
+  --env SUPERVISOR_RETINUE_BACKEND=opencode \
+  --env SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
+  --env SUPERVISOR_OPENCODE_AGENT=plan \
+  -- retinue-mcp
+```
+
+The npm path installs runtime only. It does not install the Retinue skill; the plugin marketplace remains the preferred user path.
 
 ## Build Gate
 
-Build and verify the package before enabling the plugin:
+Before tagging a release, build and verify:
 
 ```bash
 pnpm install
@@ -19,77 +74,27 @@ pnpm run build
 pnpm run verify:package
 ```
 
-`verify:package` checks that the package includes the plugin manifest, MCP config, skill, required docs, and runtime files.
-
-## Repo-Local Plugin
-
-The repo-local plugin is:
-
-```text
-plugins/anchorpoint
-```
-
-The repo-local directory name remains `plugins/anchorpoint` for compatibility with the current package layout. The plugin identity inside the manifest and marketplace entry is `retinue`.
-
-The repo-local marketplace entry is:
-
-```text
-.agents/plugins/marketplace.json
-```
-
-This keeps plugin assets versioned with the runtime they start.
-
-## Home-Local Plugin Install
-
-For local Codex use, copy or sync the repo-local plugin directory into the user's plugin root. If you rename the copied directory to `retinue`, point the marketplace entry at that renamed directory:
-
-```text
-C:\Users\Disas\plugins\retinue
-```
-
-Then add or update the local marketplace entry:
-
-```json
-{
-  "name": "retinue",
-  "source": {
-    "source": "local",
-    "path": "./plugins/retinue"
-  },
-  "policy": {
-    "installation": "INSTALLED_BY_DEFAULT",
-    "authentication": "ON_USE"
-  },
-  "category": "Coding"
-}
-```
-
-The plugin expects the built runtime to remain available relative to the plugin MCP config. For repo-local testing, build the repository first and use `plugins/anchorpoint/.mcp.json` directly.
-
-If you keep the copied directory name as `anchorpoint`, keep the marketplace `name` as `retinue` but set `source.path` to `./plugins/anchorpoint` instead.
-
-The plugin does not enable daemon discovery by default. Add `SUPERVISOR_DAEMON_URL` or `SUPERVISOR_DAEMON_DISCOVERY=1` only when a daemon is already running and discoverable. Without those variables, the MCP server starts in direct local mode.
+`verify:package` checks that package contents include the plugin manifest, MCP config, skill, required docs, and runtime files.
 
 ## OpenCode Production E2E
 
 Before calling the plugin production-ready, run the real OpenCode lifecycle through the product `retinue_*` MCP tools:
 
-1. Set `SUPERVISOR_OPENCODE_BASE_URL` to the loopback OpenCode server.
+1. Start OpenCode at `http://127.0.0.1:4096`.
 2. Set `SUPERVISOR_RETINUE_BACKEND=opencode`.
 3. Use `retinue_spawn_agent` with a deterministic prompt.
 4. Use `retinue_wait_agent` and verify the terminal result.
 5. Use `retinue_close_agent`.
 6. Confirm tool arguments did not include backend, profile, model, agent, or permission selection.
 7. Run the fake Claude parity path with `SUPERVISOR_RETINUE_BACKEND=claude-code`.
-8. When Claude Code is locally usable, run the best-effort real Retinue Claude probe:
-
-```powershell
-pnpm run build
-pnpm run probe:real:retinue-claude
-```
+8. When Claude Code is locally usable, run the best-effort real Retinue Claude probe.
 
 The Claude real probe is allowed to fail on upstream model, quota, proxy, or Claude Code runtime instability. Treat a failure there as a local backend readiness signal, not as permission to skip fake Claude parity or the OpenCode production E2E.
 
 Backend-specific `opencode_*` and `claude_*` tools remain available for adapter debugging and older runbooks, but they are not the primary Codex delegation surface.
 
 Record only redacted backend/profile metadata, job id, session id, and observed result. Do not record API keys or provider secrets.
+
+## User Acceptance Boundary
+
+The final WSL Codex plugin smoke should be run by the user in their own WSL Codex environment. It may modify the user's Codex plugin state, so it is not an agent-side automated test.

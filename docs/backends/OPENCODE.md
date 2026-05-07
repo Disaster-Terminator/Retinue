@@ -18,10 +18,12 @@ Model and agent overrides are optional:
 
 ```text
 SUPERVISOR_OPENCODE_MODEL=litellm/pro-router
-SUPERVISOR_OPENCODE_AGENT=build
+SUPERVISOR_OPENCODE_AGENT=plan
 ```
 
 CLI/MCP request fields win over environment variables. If neither CLI/MCP input nor environment variable is set, supervisor does not send `model` or `agent`; OpenCode keeps ownership of default model and agent selection.
+
+Retinue 0.1.0 plugin deployments set `SUPERVISOR_OPENCODE_AGENT=plan` by default. This is a deployment default, not a `retinue_spawn_agent` argument. Use `build` only when the deployment intentionally allows OpenCode child agents to edit.
 
 ## Profile
 

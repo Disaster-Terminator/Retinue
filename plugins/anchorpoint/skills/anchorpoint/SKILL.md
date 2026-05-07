@@ -23,9 +23,10 @@ Backend selection is deployment state, not a Codex tool argument:
 ```text
 SUPERVISOR_RETINUE_BACKEND=opencode
 SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096
+SUPERVISOR_OPENCODE_AGENT=plan
 ```
 
-Use `SUPERVISOR_RETINUE_BACKEND=claude-code` only when the deployment should route the same `retinue_*` tools to Claude Code. Do not pass backend, profile, model, agent, or permission choices in `retinue_*` tool arguments.
+The 0.1.0 default OpenCode agent is `plan`. Use `SUPERVISOR_RETINUE_BACKEND=claude-code` only when the deployment should route the same `retinue_*` tools to Claude Code. Do not pass backend, profile, model, agent, or permission choices in `retinue_*` tool arguments.
 
 ## Tool Use
 

@@ -1,15 +1,21 @@
 # Retinue Plugin
 
-This repo-local Codex plugin exposes Retinue as an agent-facing product surface:
+This Codex plugin exposes Retinue as an agent-facing product surface:
 
 - skill instructions under `skills/`
 - MCP server configuration in `.mcp.json`
-- runtime entrypoint from the repository build output at `dist/mcp.js`
+- runtime entrypoint from the release-shipped `dist/mcp.js`
 
-Build the repository before installing or enabling the plugin:
+Users install it through the Codex plugin marketplace:
 
 ```bash
-pnpm install
+codex plugin marketplace add Disaster-Terminator/Retinue
+codex plugin marketplace upgrade retinue-local
+```
+
+Contributors should build and verify before tagging a release:
+
+```bash
 pnpm run build
 pnpm run verify:package
 ```

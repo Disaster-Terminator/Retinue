@@ -3,6 +3,9 @@ import { existsSync, readFileSync } from "node:fs";
 
 const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
+  name?: string;
+  private?: boolean;
+  bin?: Record<string, string>;
   packageManager?: string;
   scripts?: Record<string, string>;
   files?: string[];
@@ -29,6 +32,16 @@ describe("CI workflow guardrails", () => {
 });
 
 describe("package.json guardrails", () => {
+  it("ships as the Retinue npm runtime package", () => {
+    expect(packageJson.name).toBe("@disaster-terminator/retinue");
+    expect(packageJson.private).toBe(false);
+    expect(packageJson.bin).toMatchObject({
+      retinue: "./dist/cli.js",
+      "retinue-mcp": "./dist/mcp.js",
+      retinued: "./dist/daemon.js"
+    });
+  });
+
   it("pins pnpm as package manager", () => {
     expect(packageJson.packageManager).toBeTypeOf("string");
     expect(packageJson.packageManager?.startsWith("pnpm@")).toBe(true);
@@ -74,11 +87,28 @@ describe("Retinue Codex plugin guardrails", () => {
   });
 
   it("uses plugin-level MCP server map shape", () => {
-    const mcp = JSON.parse(readFileSync("plugins/anchorpoint/.mcp.json", "utf8")) as Record<string, { env?: Record<string, string> }>;
+    const mcp = JSON.parse(readFileSync("plugins/anchorpoint/.mcp.json", "utf8")) as Record<
+      string,
+      { command?: string; args?: string[]; env?: Record<string, string> }
+    >;
 
     expect(mcp).toHaveProperty("retinue");
     expect(mcp).not.toHaveProperty("mcpServers");
+    expect(mcp.retinue?.command).toBe("node");
+    expect(mcp.retinue?.args).toEqual(["../../dist/mcp.js"]);
+    expect(mcp.retinue?.startup_timeout_sec).toBe(30);
+    expect(mcp.retinue?.env?.SUPERVISOR_RETINUE_BACKEND).toBe("opencode");
+    expect(mcp.retinue?.env?.SUPERVISOR_OPENCODE_BASE_URL).toBe("http://127.0.0.1:4096");
+    expect(mcp.retinue?.env?.SUPERVISOR_OPENCODE_AGENT).toBe("plan");
     expect(mcp.retinue?.env?.SUPERVISOR_DAEMON_DISCOVERY).toBeUndefined();
+  });
+
+  it("makes the Retinue plugin installed by default from its marketplace", () => {
+    const marketplace = JSON.parse(readFileSync(".agents/plugins/marketplace.json", "utf8")) as {
+      plugins?: Array<{ name?: string; policy?: { installation?: string } }>;
+    };
+    const retinue = marketplace.plugins?.find((plugin) => plugin.name === "retinue");
+    expect(retinue?.policy?.installation).toBe("INSTALLED_BY_DEFAULT");
   });
 
   it("ships an agent-facing skill", () => {

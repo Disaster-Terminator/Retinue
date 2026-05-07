@@ -41,8 +41,10 @@ Use the production model only when explicitly configured:
 
 ```bash
 SUPERVISOR_OPENCODE_MODEL=litellm/pro-router
-SUPERVISOR_OPENCODE_AGENT=build
+SUPERVISOR_OPENCODE_AGENT=plan
 ```
+
+Retinue 0.1.0 uses `plan` as the default OpenCode plugin agent. Use `build` only when the deployment intentionally allows the child agent to edit.
 
 Precedence is:
 
@@ -120,6 +122,7 @@ pnpm run build
 SUPERVISOR_REAL_OPENCODE_PROBE=1 \
 SUPERVISOR_RETINUE_BACKEND=opencode \
 SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
+SUPERVISOR_OPENCODE_AGENT=plan \
 pnpm run probe:real:retinue-opencode
 ```
 
@@ -129,6 +132,7 @@ On PowerShell:
 $env:SUPERVISOR_REAL_OPENCODE_PROBE = "1"
 $env:SUPERVISOR_RETINUE_BACKEND = "opencode"
 $env:SUPERVISOR_OPENCODE_BASE_URL = "http://127.0.0.1:4096"
+$env:SUPERVISOR_OPENCODE_AGENT = "plan"
 pnpm run probe:real:retinue-opencode
 ```
 
@@ -258,6 +262,45 @@ cleanup removed killed job on second sequential cleanup: job_1c0bf160-afc6-4e33-
 ```
 
 The continued job returned the new assistant answer, not the previous assistant answer and not the user prompt.
+
+## 2026-05-07 Retinue 0.1.0 Plan-Agent E2E Result
+
+Environment:
+
+```text
+Host runner: Windows PowerShell
+OpenCode server: Windows local, http://127.0.0.1:41987
+OpenCode version: 1.14.39
+Workspace sent to OpenCode: G:\repository\supervisor
+Retinue backend: opencode
+OpenCode agent: plan
+```
+
+Command:
+
+```powershell
+$env:SUPERVISOR_REAL_OPENCODE_PROBE = "1"
+$env:SUPERVISOR_RETINUE_BACKEND = "opencode"
+$env:SUPERVISOR_OPENCODE_BASE_URL = "http://127.0.0.1:41987"
+$env:SUPERVISOR_OPENCODE_AGENT = "plan"
+pnpm run probe:real:retinue-opencode
+```
+
+Observed result:
+
+```json
+{
+  "ok": true,
+  "retinueBackend": "opencode",
+  "backend": "opencode",
+  "task_name": "real-opencode-smoke",
+  "status": "completed",
+  "result": "RETINUE_OPENCODE_REAL_OK",
+  "closeStatus": "completed"
+}
+```
+
+This validates the Retinue 0.1.0 default OpenCode `plan` agent path without touching the user's WSL Codex plugin state.
 
 ## Known Environment Note
 

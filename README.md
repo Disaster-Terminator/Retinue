@@ -44,166 +44,111 @@ Retinue 是本地子代理执行面，不是模型网关，也不是 provider ro
 - 不在默认 `status` 响应里返回完整 prompt。
 - 不把自己扩展成通用进程管理器或云端队列。
 
-## 快速开始
+## WSL 快速开始
+
+0.1.0 默认使用 OpenCode 后端，并让 OpenCode 使用 `plan` agent。用户不需要 clone、安装依赖或编译 Retinue。
+
+前置条件：
+
+- Node.js 20+
+- Codex CLI 0.128+
+- OpenCode 1.14+
+
+先启动 OpenCode server：
 
 ```bash
-pnpm install
-pnpm run build
-pnpm run typecheck
-pnpm test
+opencode serve --hostname 127.0.0.1 --port 4096
 ```
 
-先用 fake Claude 跑一条确定性本地 job，避免消耗真实 Claude Code quota：
+另开一个 WSL 终端，把 Retinue 插件市场加入 Codex：
 
 ```bash
-SUPERVISOR_CLAUDE_COMMAND=node \
-SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs \
-node dist/cli.js run --cwd . --prompt "hello"
-
-node dist/cli.js wait <jobId> --timeout-ms 30000
-node dist/cli.js result <jobId>
+codex plugin marketplace add Disaster-Terminator/Retinue
+codex plugin marketplace upgrade retinue-local
 ```
 
-PowerShell：
+重新打开 Codex，然后让 Codex 使用 Retinue：
 
-```powershell
-$env:SUPERVISOR_CLAUDE_COMMAND = "node"
-$env:SUPERVISOR_CLAUDE_PREFIX_ARGS = "tests/fixtures/fake-claude.mjs"
-node dist/cli.js run --cwd . --prompt "hello"
-node dist/cli.js wait <jobId> --timeout-ms 30000
-node dist/cli.js result <jobId>
+```text
+Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE_OK. Wait for the result and close the child agent.
 ```
 
-## CLI
+预期结果：
 
-```bash
-pnpm run build
+- Codex 能看到 Retinue skill。
+- Codex 能调用 `retinue_spawn_agent`。
+- `retinue_wait_agent` 返回包含 `RETINUE_OK` 的结果。
+- `retinue_close_agent` 返回 terminal 状态。
 
-node dist/cli.js run --cwd . --prompt "Reply exactly: OK"
-node dist/cli.js status <jobId>
-node dist/cli.js wait <jobId> --timeout-ms 30000
-node dist/cli.js result <jobId>
-node dist/cli.js continue --cwd . --job-id <jobId> --prompt "Follow up"
-node dist/cli.js kill <jobId>
-node dist/cli.js cleanup --older-than-ms 86400000
+## 默认插件配置
+
+插件默认 MCP 配置位于 `plugins/anchorpoint/.mcp.json`。0.1.0 固定为：
+
+```json
+{
+  "SUPERVISOR_RETINUE_BACKEND": "opencode",
+  "SUPERVISOR_OPENCODE_BASE_URL": "http://127.0.0.1:4096",
+  "SUPERVISOR_OPENCODE_AGENT": "plan"
+}
 ```
 
-OpenCode 后端连接本地 loopback server：
+这意味着：
 
-```bash
-SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
-node dist/cli.js opencode-run \
-  --cwd . \
-  --prompt "Reply exactly: RETINUE_OPENCODE_OK"
+- Codex 只调用 Retinue，不选择具体后端。
+- OpenCode 使用当前本机 profile，包括 provider、model、login、permission、plugin 和 skill。
+- `plan` 是 0.1.0 的安全默认；后续会通过 Retinue 配置支持切到 `build`，不把这个选择暴露成每次 tool call 的参数。
 
-node dist/cli.js opencode-wait <jobId> --timeout-ms 180000
-node dist/cli.js opencode-result <jobId>
-node dist/cli.js opencode-kill <jobId>
-```
+## Claude Code 后端
 
-可选模型和 agent 默认值由环境变量传给 OpenCode；未设置时，Retinue 省略这些字段，让 OpenCode 使用自己的配置：
-
-```bash
-SUPERVISOR_OPENCODE_MODEL=litellm/pro-router
-SUPERVISOR_OPENCODE_AGENT=build
-```
-
-## MCP 工具
-
-构建后，把 MCP client 配到：
-
-```bash
-node /path/to/Retinue/dist/mcp.js
-```
-
-Codex 产品入口：`retinue_spawn_agent`、`retinue_wait_agent`、`retinue_close_agent`。
-
-`retinue_*` 通过部署环境选择后端，默认走 OpenCode；不要在工具参数里传 backend、profile、model、agent 或权限模式。
-
-```bash
-SUPERVISOR_RETINUE_BACKEND=opencode
-SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096
-```
-
-Claude Code 部署可以改为：
+Claude Code 后端已经通过 fake E2E 和真实 best-effort E2E。0.1.0 默认不启用它。需要切换时，修改部署配置：
 
 ```bash
 SUPERVISOR_RETINUE_BACKEND=claude-code
 ```
 
-调试工具仍然保留：
+Claude Code 的模型、endpoint、权限和 profile 仍由 Claude Code 自己管理。
 
-- Claude Code：`claude_run`、`claude_status`、`claude_wait`、`claude_result`、`claude_continue`、`claude_peek`、`claude_kill`、`claude_cleanup`
-- OpenCode：`opencode_run`、`opencode_status`、`opencode_wait`、`opencode_result`、`opencode_continue`、`opencode_kill`、`opencode_cleanup`
+## npm 安装
 
-## 状态目录
-
-Windows：
-
-```text
-%LOCALAPPDATA%\supervisor
-```
-
-Linux / WSL：
-
-```text
-$XDG_STATE_HOME/supervisor
-~/.local/state/supervisor
-```
-
-用 `SUPERVISOR_STATE_DIR` 可以覆盖状态目录。
-
-## 环境变量
-
-| 变量 | 用途 |
-| --- | --- |
-| `SUPERVISOR_STATE_DIR` | 覆盖 job metadata 和 artifact 的状态目录 |
-| `SUPERVISOR_CLAUDE_COMMAND` | 覆盖 Claude Code 可执行文件，常用于 fake runtime 测试 |
-| `SUPERVISOR_CLAUDE_PREFIX_ARGS` | 在 Retinue 生成的 Claude Code 参数前追加固定参数 |
-| `SUPERVISOR_DEFAULT_RUNTIME_TIMEOUT_MS` | 设置未显式传入 `timeoutMs` 时的默认 runtime timeout |
-| `SUPERVISOR_MAX_CONCURRENT_JOBS` | 限制当前进程内并发运行 job 数 |
-| `SUPERVISOR_OPENCODE_BASE_URL` | 指向本地 OpenCode loopback server |
-| `SUPERVISOR_OPENCODE_MODEL` | 可选 OpenCode 默认模型，格式为 `provider/model` |
-| `SUPERVISOR_OPENCODE_AGENT` | 可选 OpenCode 默认 agent |
-| `SUPERVISOR_RETINUE_BACKEND` | `retinue_*` 产品入口使用的部署后端，支持 `opencode` 或 `claude-code` |
-| `SUPERVISOR_DAEMON_URL` | 让 CLI/MCP 显式连接本地 loopback daemon |
-| `SUPERVISOR_DAEMON_DISCOVERY` | 设为 `1` 时从 `<stateDir>/daemon.json` 发现 daemon |
-
-## 安全和可靠性默认值
-
-- Prompt 写入 job-local `prompt.md`，再通过 stdin 传给后端 agent。
-- `status` 默认只暴露 `promptPath`、`promptPreview` 和 `promptSha256`。
-- `result` 和 `peek` 默认返回 bounded stdout/stderr，并给出 `stdoutPath`、`stderrPath`、字节数和截断标记。
-- 缺失 PID、旧状态文件或损坏 metadata 会被标成明确状态，不伪装成成功。
-- Windows 和 WSL 不应共用同一个 `node_modules`；两个环境分别执行 `pnpm install --frozen-lockfile`。
-
-## 可选 daemon 模式
-
-Retinue 可以直接在 CLI/MCP 进程内运行，也可以显式连接本地 loopback daemon：
+npm 包用于直接安装 Retinue runtime，适合自定义 MCP 配置或开发者环境：
 
 ```bash
-pnpm run build
-node dist/daemon.js --host 127.0.0.1 --port 27777
+npm install -g @disaster-terminator/retinue@0.1.0
+codex mcp add retinue \
+  --env SUPERVISOR_RETINUE_BACKEND=opencode \
+  --env SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
+  --env SUPERVISOR_OPENCODE_AGENT=plan \
+  -- retinue-mcp
 ```
 
-未设置 `SUPERVISOR_DAEMON_URL`、`--daemon-url`、`SUPERVISOR_DAEMON_DISCOVERY=1` 或 `--discover-daemon` 时，CLI/MCP 使用直接本地路径。
+普通 Codex 用户优先使用插件市场安装；npm 路径不安装 Retinue skill。
 
 ## 验证
 
+发布前已通过：
+
+- Retinue OpenCode fake E2E
+- Retinue OpenCode real E2E
+- Retinue Claude Code fake E2E
+- Retinue Claude Code real best-effort E2E
+- `pnpm test`
+- `pnpm run typecheck`
+- `pnpm run build`
+- `pnpm run verify:package`
+
+真实 OpenCode probe：
+
 ```bash
-pnpm run typecheck
-pnpm test
-pnpm run build
+SUPERVISOR_REAL_OPENCODE_PROBE=1 \
+SUPERVISOR_RETINUE_BACKEND=opencode \
+SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
+pnpm run probe:real:retinue-opencode
 ```
 
-真实后端探针默认不进 CI，也不属于确定性测试套件：
+## 开发者文档
 
-- [Real Claude Code Probes](docs/runbooks/REAL_CLAUDE_PROBES.md)
-- [Real OpenCode Probes](docs/runbooks/REAL_OPENCODE_PROBES.md)
-- [Production OpenCode E2E](docs/runbooks/PRODUCTION_OPENCODE_E2E.md)
-
-更多边界和运行方式见：
-
+- [源码安装和开发](docs/development/SOURCE_INSTALL.md)
+- [0.1.0 发布计划](docs/release/0.1.0_RELEASE_PLAN.md)
 - [Docs Index](docs/README.md)
 - [Long-Term Vision](docs/LONG_TERM_VISION.md)
 - [Project Boundary](docs/architecture/PROJECT_BOUNDARY.md)
