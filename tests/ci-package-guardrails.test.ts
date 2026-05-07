@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import os from "node:os";
 import path from "node:path";
-import { existsSync, readFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 
 const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
@@ -119,15 +120,17 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(existsSync("plugins/anchorpoint/skills/anchorpoint/SKILL.md")).toBe(true);
   });
 
-  it("starts the plugin-local MCP server over stdio", async () => {
-    const mcp = JSON.parse(readFileSync("plugins/anchorpoint/.mcp.json", "utf8")) as Record<
+  it("starts the plugin-local MCP server over stdio from an isolated plugin cache", async () => {
+    const pluginCacheDir = mkdtempSync(path.join(os.tmpdir(), "retinue-plugin-cache-"));
+    cpSync("plugins/anchorpoint", pluginCacheDir, { recursive: true });
+    const mcp = JSON.parse(readFileSync(path.join(pluginCacheDir, ".mcp.json"), "utf8")) as Record<
       string,
       { command: string; args: string[]; env?: Record<string, string> }
     >;
     const transport = new StdioClientTransport({
       command: mcp.retinue.command,
       args: mcp.retinue.args,
-      cwd: path.resolve("plugins/anchorpoint"),
+      cwd: pluginCacheDir,
       env: mcp.retinue.env,
       stderr: "pipe"
     });
@@ -142,6 +145,7 @@ describe("Retinue Codex plugin guardrails", () => {
       expect(Buffer.concat(stderrChunks).toString("utf8")).toBe("");
     } finally {
       await Promise.allSettled([client.close(), transport.close()]);
+      rmSync(pluginCacheDir, { recursive: true, force: true });
     }
   });
 });
