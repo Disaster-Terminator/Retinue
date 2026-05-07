@@ -28,6 +28,7 @@ The plugin MCP config starts the runtime shipped inside the plugin directory:
     "retinue": {
       "command": "node",
       "args": ["./dist/mcp.js"],
+      "cwd": ".",
       "startup_timeout_sec": 30,
       "env": {
         "SUPERVISOR_RETINUE_BACKEND": "opencode",
@@ -41,7 +42,7 @@ The plugin MCP config starts the runtime shipped inside the plugin directory:
 ```
 
 This is intentional for 0.1.0: marketplace installs copy the plugin directory into Codex's plugin cache, so the MCP runtime must be self-contained under that directory.
-The `mcpServers` wrapper is required so Codex resolves plugin-relative MCP paths from the plugin cache rather than from the current conversation working directory.
+The `mcpServers` wrapper is required for Codex plugin MCP discovery. The explicit `cwd: "."` is required so Codex starts `node ./dist/mcp.js` from the installed plugin cache instead of from the current conversation working directory.
 
 The default plugin path manages the local OpenCode server lifecycle. It prefers `127.0.0.1:4096` and tries `4097` when the preferred port is occupied by an external service. Set `SUPERVISOR_OPENCODE_BASE_URL` only for deployments that intentionally attach to an externally managed OpenCode server.
 

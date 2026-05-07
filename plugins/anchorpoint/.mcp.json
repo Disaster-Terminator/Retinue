@@ -3,6 +3,7 @@
     "retinue": {
       "command": "node",
       "args": ["./dist/mcp.js"],
+      "cwd": ".",
       "startup_timeout_sec": 30,
       "env": {
         "SUPERVISOR_RETINUE_BACKEND": "opencode",
