@@ -5,6 +5,28 @@ import os from "node:os";
 import path from "node:path";
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 
+type RetinueMcpServerConfig = {
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+  startup_timeout_sec?: number;
+};
+type RetinueMcpConfig = {
+  mcpServers?: Record<string, RetinueMcpServerConfig>;
+};
+
+function loadPluginMcpConfig(pluginRoot: string): Record<string, RetinueMcpServerConfig> {
+  const raw = JSON.parse(readFileSync(path.join(pluginRoot, ".mcp.json"), "utf8")) as RetinueMcpConfig;
+  return raw.mcpServers ?? {};
+}
+
+function resolvePluginMcpServer(pluginRoot: string, server: RetinueMcpServerConfig): RetinueMcpServerConfig {
+  return {
+    ...server,
+    args: server.args.map((arg) => (arg.startsWith("./") || arg.startsWith("../") ? path.resolve(pluginRoot, arg) : arg))
+  };
+}
+
 const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   name?: string;
@@ -91,14 +113,12 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(manifest.interface?.displayName).toBe("Retinue");
   });
 
-  it("uses plugin-level MCP server map shape", () => {
-    const mcp = JSON.parse(readFileSync("plugins/anchorpoint/.mcp.json", "utf8")) as Record<
-      string,
-      { command?: string; args?: string[]; env?: Record<string, string> }
-    >;
+  it("uses Codex plugin MCP server map shape", () => {
+    const raw = JSON.parse(readFileSync("plugins/anchorpoint/.mcp.json", "utf8")) as RetinueMcpConfig;
+    const mcp = raw.mcpServers ?? {};
 
+    expect(raw).toHaveProperty("mcpServers");
     expect(mcp).toHaveProperty("retinue");
-    expect(mcp).not.toHaveProperty("mcpServers");
     expect(mcp.retinue?.command).toBe("node");
     expect(mcp.retinue?.args).toEqual(["./dist/mcp.js"]);
     expect(existsSync(path.join("plugins/anchorpoint", mcp.retinue?.args?.[0] ?? ""))).toBe(true);
@@ -127,15 +147,13 @@ describe("Retinue Codex plugin guardrails", () => {
   it("starts the plugin-local MCP server over stdio from an isolated plugin cache", async () => {
     const pluginCacheDir = mkdtempSync(path.join(os.tmpdir(), "retinue-plugin-cache-"));
     cpSync("plugins/anchorpoint", pluginCacheDir, { recursive: true });
-    const mcp = JSON.parse(readFileSync(path.join(pluginCacheDir, ".mcp.json"), "utf8")) as Record<
-      string,
-      { command: string; args: string[]; env?: Record<string, string> }
-    >;
+    const mcp = loadPluginMcpConfig(pluginCacheDir);
+    const retinue = resolvePluginMcpServer(pluginCacheDir, mcp.retinue);
     const transport = new StdioClientTransport({
-      command: mcp.retinue.command,
-      args: mcp.retinue.args,
+      command: retinue.command,
+      args: retinue.args,
       cwd: pluginCacheDir,
-      env: mcp.retinue.env,
+      env: retinue.env,
       stderr: "pipe"
     });
     const client = new Client({ name: "retinue-plugin-stdio-test", version: "0.1.0" });
@@ -150,6 +168,32 @@ describe("Retinue Codex plugin guardrails", () => {
     } finally {
       await Promise.allSettled([client.close(), transport.close()]);
       rmSync(pluginCacheDir, { recursive: true, force: true });
+    }
+  });
+
+  it("starts from an isolated plugin cache even when the Codex conversation cwd is elsewhere", async () => {
+    const pluginCacheDir = mkdtempSync(path.join(os.tmpdir(), "retinue-plugin-cache-"));
+    const conversationCwd = mkdtempSync(path.join(os.tmpdir(), "retinue-conversation-cwd-"));
+    cpSync("plugins/anchorpoint", pluginCacheDir, { recursive: true });
+    const mcp = loadPluginMcpConfig(pluginCacheDir);
+    const retinue = resolvePluginMcpServer(pluginCacheDir, mcp.retinue);
+    const transport = new StdioClientTransport({
+      command: retinue.command,
+      args: retinue.args,
+      cwd: conversationCwd,
+      env: retinue.env,
+      stderr: "pipe"
+    });
+    const client = new Client({ name: "retinue-plugin-cross-cwd-test", version: "0.1.0" });
+
+    try {
+      await client.connect(transport);
+      const tools = await client.listTools();
+      expect(tools.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent"]));
+    } finally {
+      await Promise.allSettled([client.close(), transport.close()]);
+      rmSync(pluginCacheDir, { recursive: true, force: true });
+      rmSync(conversationCwd, { recursive: true, force: true });
     }
   });
 });
