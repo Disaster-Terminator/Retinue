@@ -24,6 +24,10 @@ function validPackJson() {
         { path: "plugins/anchorpoint/.codex-plugin/plugin.json" },
         { path: "plugins/anchorpoint/.mcp.json" },
         { path: "plugins/anchorpoint/skills/anchorpoint/SKILL.md" },
+        { path: "plugins/anchorpoint/dist/backends/opencode/backend.js" },
+        { path: "plugins/anchorpoint/dist/core/supervisor.js" },
+        { path: "plugins/anchorpoint/dist/daemon/client.js" },
+        { path: "plugins/anchorpoint/dist/mcp.js" },
         { path: "dist/backends/opencode/backend.js" },
         { path: "dist/cli.js" },
         { path: "dist/mcp.js" },
@@ -63,5 +67,17 @@ describe("verify-package script", () => {
     const result = spawnSync(process.execPath, [scriptPath, packJsonPath], { cwd: dir, encoding: "utf8" });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("missing required runtime pattern");
+  });
+
+  it("fails when plugin-local runtime files are missing", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "verify-package-missing-plugin-runtime-"));
+    const packJsonPath = path.join(dir, "pack.json");
+    const parsed = JSON.parse(validPackJson()) as Array<{ files: Array<{ path: string }> }>;
+    parsed[0].files = parsed[0].files.filter((entry) => !entry.path.startsWith("plugins/anchorpoint/dist/"));
+    writeFileSync(packJsonPath, JSON.stringify(parsed));
+
+    const result = spawnSync(process.execPath, [scriptPath, packJsonPath], { cwd: dir, encoding: "utf8" });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("missing required plugin runtime pattern");
   });
 });

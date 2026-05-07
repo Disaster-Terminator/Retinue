@@ -42,7 +42,7 @@
     "tests/fixtures/**"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/sync-plugin-runtime.mjs",
     "dev:mcp": "tsx src/mcp.ts",
     "probe:real:daemon": "node scripts/probe-real-claude.mjs daemon",
     "probe:real:direct": "node scripts/probe-real-claude.mjs direct",

@@ -44,9 +44,9 @@ Retinue 是本地子代理执行面，不是模型网关，也不是 provider ro
 - 不在默认 `status` 响应里返回完整 prompt。
 - 不把自己扩展成通用进程管理器或云端队列。
 
-## WSL 快速开始
+## 快速开始
 
-0.1.0 默认使用 OpenCode 后端，并让 OpenCode 使用 `plan` agent。用户不需要 clone、安装依赖或编译 Retinue。
+0.1.0 默认使用 OpenCode 后端，并让 OpenCode 使用 `plan` agent。用户不需要 clone、安装依赖或编译 Retinue。Retinue 面向 Windows、WSL/Linux 和 macOS；本轮验收路径使用 WSL。
 
 前置条件：
 
@@ -60,7 +60,7 @@ Retinue 是本地子代理执行面，不是模型网关，也不是 provider ro
 opencode serve --hostname 127.0.0.1 --port 4096
 ```
 
-另开一个 WSL 终端，把 Retinue 插件市场加入 Codex：
+另开一个终端，把 Retinue 插件市场加入 Codex：
 
 ```bash
 codex plugin marketplace add Disaster-Terminator/Retinue
@@ -79,6 +79,12 @@ Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE
 - Codex 能调用 `retinue_spawn_agent`。
 - `retinue_wait_agent` 返回包含 `RETINUE_OK` 的结果。
 - `retinue_close_agent` 返回 terminal 状态。
+
+## 平台说明
+
+- Windows：需要本机 Node.js、Codex CLI 和 OpenCode 可用；OpenCode server 地址仍按部署环境配置。
+- WSL / Linux：本轮 0.1.0 验收路径。默认配置连接 `http://127.0.0.1:4096`。
+- macOS：按同样的 Node.js、Codex CLI、OpenCode 前置条件运行；尚未作为本轮验收主路径。
 
 ## 默认插件配置
 
