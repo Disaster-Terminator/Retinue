@@ -6,6 +6,7 @@ directory stays readable.
 ## Current Product
 
 - [0.1.0 Release Plan](release/0.1.0_RELEASE_PLAN.md) - release gate, completed work, and deferred issues.
+- [0.1.0 Hardening Issues](release/0.1.0_HARDENING_ISSUES.md) - active smoke/E2E issues and acceptance boundaries.
 - [Long-Term Vision](LONG_TERM_VISION.md) - Codex-compatible spawn direction, backend policy, and phased roadmap.
 - [Project Boundary](architecture/PROJECT_BOUNDARY.md) - what Retinue is and is not.
 - [OpenCode Backend](backends/OPENCODE.md) - OpenCode adapter behavior and constraints.

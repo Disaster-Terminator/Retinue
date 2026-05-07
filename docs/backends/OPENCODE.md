@@ -6,13 +6,22 @@ For local production smoke testing, OpenCode is the preferred first backend. Ret
 
 ## Server Target
 
-The safest first integration mode is attach-only:
+The default plugin integration mode is Retinue-managed auto-serve:
+
+```text
+SUPERVISOR_OPENCODE_AUTO_SERVE=1
+SUPERVISOR_OPENCODE_HOST=127.0.0.1
+```
+
+Retinue prefers `127.0.0.1:4096` and tries `4097` when the preferred port is occupied by an external service. A running OpenCode server from another environment is treated as external unless the deployment sets `SUPERVISOR_OPENCODE_BASE_URL`.
+
+Explicit attach remains available:
 
 ```text
 SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096
 ```
 
-The URL must be loopback HTTP. Paths are ignored and normalized to the origin.
+The explicit URL must be loopback HTTP. Paths are ignored and normalized to the origin.
 
 Model and agent overrides are optional:
 
@@ -44,10 +53,10 @@ When a model override is provided, supervisor accepts the OpenCode CLI-style `pr
 }
 ```
 
-Opt-in local server start is a later runtime path. Its command shape is:
+Local server start command shape:
 
 ```bash
-opencode serve --hostname 127.0.0.1 --port 0
+opencode serve --hostname 127.0.0.1 --port 4096
 ```
 
 The corresponding environment knobs are:
@@ -56,10 +65,10 @@ The corresponding environment knobs are:
 SUPERVISOR_OPENCODE_AUTO_SERVE=1
 SUPERVISOR_OPENCODE_COMMAND=opencode
 SUPERVISOR_OPENCODE_HOST=127.0.0.1
-SUPERVISOR_OPENCODE_PORT=0
+SUPERVISOR_OPENCODE_PORT=4096
 ```
 
-Supervisor must not auto-start OpenCode unless `SUPERVISOR_OPENCODE_AUTO_SERVE=1` is explicit.
+When `SUPERVISOR_OPENCODE_PORT` is explicit, Retinue does not silently fall back to another port.
 
 ## Current Status
 

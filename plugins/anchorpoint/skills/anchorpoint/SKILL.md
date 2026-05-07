@@ -22,11 +22,12 @@ Backend selection is deployment state, not a Codex tool argument:
 
 ```text
 SUPERVISOR_RETINUE_BACKEND=opencode
-SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096
+SUPERVISOR_OPENCODE_AUTO_SERVE=1
+SUPERVISOR_OPENCODE_HOST=127.0.0.1
 SUPERVISOR_OPENCODE_AGENT=plan
 ```
 
-The 0.1.0 default OpenCode agent is `plan`. Use `SUPERVISOR_RETINUE_BACKEND=claude-code` only when the deployment should route the same `retinue_*` tools to Claude Code. Do not pass backend, profile, model, agent, or permission choices in `retinue_*` tool arguments.
+The 0.1.0 default OpenCode agent is `plan`. Retinue manages the default OpenCode server lifecycle and falls back from port `4096` to `4097` when the preferred port is occupied by an external service. Use `SUPERVISOR_RETINUE_BACKEND=claude-code` only when the deployment should route the same `retinue_*` tools to Claude Code. Do not pass backend, profile, model, agent, or permission choices in `retinue_*` tool arguments.
 
 ## Tool Use
 
@@ -44,7 +45,7 @@ Before saying the plugin is production-ready, verify the real environment. Stati
 
 Minimum product E2E:
 
-1. Confirm the OpenCode server is reachable at `SUPERVISOR_OPENCODE_BASE_URL`.
+1. Confirm the Retinue MCP server starts from the installed plugin cache.
 2. Set `SUPERVISOR_RETINUE_BACKEND=opencode`.
 3. Run `retinue_spawn_agent` with a deterministic prompt.
 4. Wait with `retinue_wait_agent` and verify the result.

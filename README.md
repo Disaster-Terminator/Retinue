@@ -54,13 +54,7 @@ Retinue 是本地子代理执行面，不是模型网关，也不是 provider ro
 - Codex CLI 0.128+
 - OpenCode 1.14+
 
-先启动 OpenCode server：
-
-```bash
-opencode serve --hostname 127.0.0.1 --port 4096
-```
-
-另开一个终端，把 Retinue 插件市场加入 Codex：
+把 Retinue 插件市场加入 Codex：
 
 ```bash
 codex plugin marketplace add Disaster-Terminator/Retinue
@@ -93,7 +87,8 @@ Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE
 ```json
 {
   "SUPERVISOR_RETINUE_BACKEND": "opencode",
-  "SUPERVISOR_OPENCODE_BASE_URL": "http://127.0.0.1:4096",
+  "SUPERVISOR_OPENCODE_AUTO_SERVE": "1",
+  "SUPERVISOR_OPENCODE_HOST": "127.0.0.1",
   "SUPERVISOR_OPENCODE_AGENT": "plan"
 }
 ```
@@ -101,6 +96,7 @@ Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE
 这意味着：
 
 - Codex 只调用 Retinue，不选择具体后端。
+- Retinue 默认管理 OpenCode server 生命周期，优先使用 `127.0.0.1:4096`，端口被外部服务占用时尝试 `4097`。
 - OpenCode 使用当前本机 profile，包括 provider、model、login、permission、plugin 和 skill。
 - `plan` 是 0.1.0 的安全默认；后续会通过 Retinue 配置支持切到 `build`，不把这个选择暴露成每次 tool call 的参数。
 

@@ -273,7 +273,7 @@ function isCompletedAssistantMessage(message) {
         return false;
     }
     const time = typeof info.time === "object" && info.time !== null ? info.time : undefined;
-    return Boolean(time && "completed" in time && typeof time.completed === "number");
+    return Boolean(time && "completed" in time && typeof time.completed === "number" && extractMessageText(message).length > 0);
 }
 function extractMessageText(message) {
     if (!Array.isArray(message.parts)) {

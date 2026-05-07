@@ -103,7 +103,10 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(existsSync(path.join("plugins/anchorpoint", mcp.retinue?.args?.[0] ?? ""))).toBe(true);
     expect(mcp.retinue?.startup_timeout_sec).toBe(30);
     expect(mcp.retinue?.env?.SUPERVISOR_RETINUE_BACKEND).toBe("opencode");
-    expect(mcp.retinue?.env?.SUPERVISOR_OPENCODE_BASE_URL).toBe("http://127.0.0.1:4096");
+    expect(mcp.retinue?.env?.SUPERVISOR_OPENCODE_AUTO_SERVE).toBe("1");
+    expect(mcp.retinue?.env?.SUPERVISOR_OPENCODE_HOST).toBe("127.0.0.1");
+    expect(mcp.retinue?.env?.SUPERVISOR_OPENCODE_PORT).toBeUndefined();
+    expect(mcp.retinue?.env?.SUPERVISOR_OPENCODE_BASE_URL).toBeUndefined();
     expect(mcp.retinue?.env?.SUPERVISOR_OPENCODE_AGENT).toBe("plan");
     expect(mcp.retinue?.env?.SUPERVISOR_DAEMON_DISCOVERY).toBeUndefined();
   });

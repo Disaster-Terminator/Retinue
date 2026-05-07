@@ -6,7 +6,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { OpenCodeBackend } from "./backends/opencode/backend.js";
 import { OpenCodeClient } from "./backends/opencode/client.js";
-import { resolveOpenCodeServerFromEnv } from "./backends/opencode/serverManager.js";
+import { ensureOpenCodeServer, resolveOpenCodeServerFromEnv } from "./backends/opencode/serverManager.js";
 import { DaemonClient } from "./daemon/client.js";
 import { readDaemonDiscoverySync } from "./daemon/discovery.js";
 import { getJobPaths, resolveStateDir } from "./core/paths.js";
@@ -104,25 +104,25 @@ export function createMcpServer(supervisor = createMcpSupervisorFromEnv()) {
         title: "Run OpenCode Job",
         description: "Start an OpenCode background job through an attached OpenCode server.",
         inputSchema: opencodeRunSchema()
-    }, async (args) => jsonToolResult(await createOpenCodeBackend(args).run(withOpenCodeDefaults(args))));
+    }, async (args) => jsonToolResult(await (await createOpenCodeBackend(args)).run(withOpenCodeDefaults(args))));
     server.registerTool("opencode_status", {
         title: "Get OpenCode Job Status",
         description: "Read current status metadata for an OpenCode job.",
         inputSchema: { jobId: z.string(), opencodeBaseUrl: z.string().optional() }
-    }, async ({ jobId, opencodeBaseUrl }) => jsonToolResult(await createOpenCodeBackend({ opencodeBaseUrl }).status({ jobId })));
+    }, async ({ jobId, opencodeBaseUrl }) => jsonToolResult(await (await createOpenCodeBackend({ opencodeBaseUrl })).status({ jobId })));
     server.registerTool("opencode_wait", {
         title: "Wait For OpenCode Job",
         description: "Wait for an OpenCode job result through the attached OpenCode server.",
         inputSchema: { jobId: z.string(), timeoutMs: z.number().int().nonnegative().optional(), opencodeBaseUrl: z.string().optional() }
     }, async ({ jobId, timeoutMs, opencodeBaseUrl }) => {
-        const result = await createOpenCodeBackend({ opencodeBaseUrl }).wait({ jobId }, timeoutMs);
+        const result = await (await createOpenCodeBackend({ opencodeBaseUrl })).wait({ jobId }, timeoutMs);
         return jsonToolResult(result);
     });
     server.registerTool("opencode_result", {
         title: "Read OpenCode Job Result",
         description: "Read the latest OpenCode message result for a supervisor job.",
         inputSchema: { jobId: z.string(), opencodeBaseUrl: z.string().optional() }
-    }, async ({ jobId, opencodeBaseUrl }) => jsonToolResult(await createOpenCodeBackend({ opencodeBaseUrl }).result({ jobId })));
+    }, async ({ jobId, opencodeBaseUrl }) => jsonToolResult(await (await createOpenCodeBackend({ opencodeBaseUrl })).result({ jobId })));
     server.registerTool("opencode_continue", {
         title: "Continue OpenCode Session",
         description: "Send a prompt to an existing OpenCode session.",
@@ -131,7 +131,7 @@ export function createMcpServer(supervisor = createMcpSupervisorFromEnv()) {
             externalSessionId: z.string(),
             jobId: z.string().optional()
         }
-    }, async (args) => jsonToolResult(await createOpenCodeBackend(args).continueJob({
+    }, async (args) => jsonToolResult(await (await createOpenCodeBackend(args)).continueJob({
         ...withOpenCodeDefaults(args),
         parentJobId: args.jobId,
         parentSessionId: args.externalSessionId
@@ -141,14 +141,14 @@ export function createMcpServer(supervisor = createMcpSupervisorFromEnv()) {
         description: "Abort the OpenCode session associated with a supervisor job.",
         inputSchema: { jobId: z.string(), opencodeBaseUrl: z.string().optional() }
     }, async ({ jobId, opencodeBaseUrl }) => {
-        await createOpenCodeBackend({ opencodeBaseUrl }).abort({ jobId });
+        await (await createOpenCodeBackend({ opencodeBaseUrl })).abort({ jobId });
         return jsonToolResult({ jobId, status: "killed" });
     });
     server.registerTool("opencode_cleanup", {
         title: "Cleanup OpenCode Jobs",
         description: "Placeholder cleanup surface for OpenCode job artifacts.",
         inputSchema: { olderThanMs: z.number().int().nonnegative().optional() }
-    }, async ({ olderThanMs }) => jsonToolResult(await createOpenCodeBackend({}).cleanup({ olderThanMs })));
+    }, async ({ olderThanMs }) => jsonToolResult(await (await createOpenCodeBackend({})).cleanup({ olderThanMs })));
     server.registerTool("retinue_spawn_agent", {
         title: "Spawn Retinue Agent",
         description: "Spawn a Retinue child agent using the deployment-selected backend and return a job handle.",
@@ -161,7 +161,7 @@ export function createMcpServer(supervisor = createMcpSupervisorFromEnv()) {
         }
     }, async (args) => {
         const taskName = normalizeTaskName(args);
-        const started = await createRetinueBackend(supervisor).run({
+        const started = await (await createRetinueBackend(supervisor)).run({
             cwd: args.cwd ?? process.cwd(),
             prompt: args.message,
             name: taskName,
@@ -230,19 +230,18 @@ function opencodeRunSchema() {
         opencodeBaseUrl: z.string().optional()
     };
 }
-function createOpenCodeBackend(args) {
+async function createOpenCodeBackend(args) {
     const env = {
         ...process.env,
         SUPERVISOR_OPENCODE_BASE_URL: args.opencodeBaseUrl ?? process.env.SUPERVISOR_OPENCODE_BASE_URL
     };
     const resolution = resolveOpenCodeServerFromEnv(env);
-    if (resolution.mode !== "attach") {
-        throw new Error("OpenCode auto-serve is not wired to MCP yet; provide opencodeBaseUrl or SUPERVISOR_OPENCODE_BASE_URL");
-    }
+    const stateDir = resolveStateDir({ explicitStateDir: process.env.SUPERVISOR_STATE_DIR, env: process.env });
+    const target = await ensureOpenCodeServer(resolution, { stateDir });
     return new OpenCodeBackend({
-        client: new OpenCodeClient(resolution.baseUrl),
-        baseUrl: resolution.baseUrl,
-        stateDir: process.env.SUPERVISOR_STATE_DIR,
+        client: new OpenCodeClient(target.baseUrl),
+        baseUrl: target.baseUrl,
+        stateDir,
         env: process.env
     });
 }
@@ -253,7 +252,7 @@ function withOpenCodeDefaults(args) {
         agent: args.agent ?? process.env.SUPERVISOR_OPENCODE_AGENT
     };
 }
-function createRetinueBackend(supervisor) {
+async function createRetinueBackend(supervisor) {
     return createRetinueBackendByKind(readRetinueBackendKindFromEnv(), supervisor);
 }
 async function createRetinueBackendForJob(supervisor, jobId) {
@@ -263,7 +262,7 @@ async function createRetinueBackendForJob(supervisor, jobId) {
     }
     return createRetinueBackend(supervisor);
 }
-function createRetinueBackendByKind(kind, supervisor) {
+async function createRetinueBackendByKind(kind, supervisor) {
     if (kind === "opencode") {
         return createOpenCodeBackend({});
     }

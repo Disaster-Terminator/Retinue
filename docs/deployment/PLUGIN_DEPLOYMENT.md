@@ -28,16 +28,19 @@ The plugin MCP config starts the runtime shipped inside the plugin directory:
     "command": "node",
     "args": ["./dist/mcp.js"],
     "startup_timeout_sec": 30,
-    "env": {
-      "SUPERVISOR_RETINUE_BACKEND": "opencode",
-      "SUPERVISOR_OPENCODE_BASE_URL": "http://127.0.0.1:4096",
-      "SUPERVISOR_OPENCODE_AGENT": "plan"
-    }
+      "env": {
+        "SUPERVISOR_RETINUE_BACKEND": "opencode",
+        "SUPERVISOR_OPENCODE_AUTO_SERVE": "1",
+        "SUPERVISOR_OPENCODE_HOST": "127.0.0.1",
+        "SUPERVISOR_OPENCODE_AGENT": "plan"
+      }
   }
 }
 ```
 
 This is intentional for 0.1.0: marketplace installs copy the plugin directory into Codex's plugin cache, so the MCP runtime must be self-contained under that directory.
+
+The default plugin path manages the local OpenCode server lifecycle. It prefers `127.0.0.1:4096` and tries `4097` when the preferred port is occupied by an external service. Set `SUPERVISOR_OPENCODE_BASE_URL` only for deployments that intentionally attach to an externally managed OpenCode server.
 
 ## npm Runtime Path
 
@@ -80,7 +83,7 @@ pnpm run verify:package
 
 Before calling the plugin production-ready, run the real OpenCode lifecycle through the product `retinue_*` MCP tools:
 
-1. Start OpenCode at `http://127.0.0.1:4096`.
+1. Confirm the installed plugin cache starts the bundled MCP server.
 2. Set `SUPERVISOR_RETINUE_BACKEND=opencode`.
 3. Use `retinue_spawn_agent` with a deterministic prompt.
 4. Use `retinue_wait_agent` and verify the terminal result.

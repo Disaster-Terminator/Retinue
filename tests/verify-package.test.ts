@@ -17,6 +17,7 @@ function validPackJson() {
         { path: "docs/backends/OPENCODE.md" },
         { path: "docs/development/SOURCE_INSTALL.md" },
         { path: "docs/deployment/PLUGIN_DEPLOYMENT.md" },
+        { path: "docs/release/0.1.0_HARDENING_ISSUES.md" },
         { path: "docs/release/0.1.0_RELEASE_PLAN.md" },
         { path: "docs/VERIFICATION.md" },
         { path: "docs/architecture/PROJECT_BOUNDARY.md" },

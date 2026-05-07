@@ -11,7 +11,7 @@ interface FakeSession {
   failureReason?: string;
   messages: Array<{
     info: { id: string; sessionID: string; role: string; time?: { completed?: number }; finish?: string };
-    parts: Array<{ type: "text"; text: string }>;
+    parts: Array<{ type: string; text?: string }>;
   }>;
 }
 
@@ -21,6 +21,7 @@ export interface FakeOpenCodeServer {
   setAutoAssistantResponses(enabled: boolean): void;
   completeSession(sessionId: string): void;
   completeSessionByMessageOnly(sessionId: string): void;
+  completeSessionWithReasoningOnly(sessionId: string): void;
   failSession(sessionId: string, reason?: string): void;
   close(): Promise<void>;
 }
@@ -151,6 +152,16 @@ export async function startFakeOpenCodeServer(): Promise<FakeOpenCodeServer> {
           last.info.time = { completed: Date.now() };
           last.info.finish = "stop";
         }
+      }
+    },
+    completeSessionWithReasoningOnly: (sessionId: string) => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.omitState = true;
+        session.messages.push({
+          info: { id: `msg_${nextMessage++}`, sessionID: session.id, role: "assistant", time: { completed: Date.now() }, finish: "stop" },
+          parts: [{ type: "reasoning", text: "internal reasoning only" }]
+        });
       }
     },
     failSession: (sessionId: string, reason?: string) => {
