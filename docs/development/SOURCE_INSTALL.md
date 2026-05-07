@@ -20,7 +20,7 @@ From a source checkout, the MCP runtime is:
 node dist/mcp.js
 ```
 
-The repo-local plugin config points to the plugin-local runtime at `./dist/mcp.js` inside `plugins/anchorpoint/.mcp.json`. Keep the config under the top-level `mcpServers` key so Codex resolves the relative runtime path from the plugin cache instead of the current conversation working directory. `pnpm run build` compiles the npm runtime under the repository root `dist/` and then syncs a copy into `plugins/anchorpoint/dist/`, so the plugin marketplace install can start Retinue after copying only the plugin directory.
+The repo-local plugin config points to the plugin-local runtime at `./dist/mcp.js` inside `plugins/anchorpoint/.mcp.json`. Keep the config under the top-level `mcpServers` key for Codex plugin MCP discovery, and keep `cwd: "."` so Codex starts the MCP process from the installed plugin cache instead of the current conversation working directory. `pnpm run build` compiles the npm runtime under the repository root `dist/` and then syncs a copy into `plugins/anchorpoint/dist/`, so the plugin marketplace install can start Retinue after copying only the plugin directory.
 
 ## Development Verification
 

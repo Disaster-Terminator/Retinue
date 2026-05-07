@@ -8,6 +8,7 @@ import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 type RetinueMcpServerConfig = {
   command: string;
   args: string[];
+  cwd?: string;
   env?: Record<string, string>;
   startup_timeout_sec?: number;
 };
@@ -21,9 +22,14 @@ function loadPluginMcpConfig(pluginRoot: string): Record<string, RetinueMcpServe
 }
 
 function resolvePluginMcpServer(pluginRoot: string, server: RetinueMcpServerConfig): RetinueMcpServerConfig {
+  const cwd =
+    typeof server.cwd === "string" && (server.cwd.startsWith("./") || server.cwd.startsWith("../") || server.cwd === ".")
+      ? path.resolve(pluginRoot, server.cwd)
+      : server.cwd;
+
   return {
     ...server,
-    args: server.args.map((arg) => (arg.startsWith("./") || arg.startsWith("../") ? path.resolve(pluginRoot, arg) : arg))
+    cwd
   };
 }
 
@@ -121,6 +127,7 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(mcp).toHaveProperty("retinue");
     expect(mcp.retinue?.command).toBe("node");
     expect(mcp.retinue?.args).toEqual(["./dist/mcp.js"]);
+    expect(mcp.retinue?.cwd).toBe(".");
     expect(existsSync(path.join("plugins/anchorpoint", mcp.retinue?.args?.[0] ?? ""))).toBe(true);
     expect(mcp.retinue?.startup_timeout_sec).toBe(30);
     expect(mcp.retinue?.env?.SUPERVISOR_RETINUE_BACKEND).toBe("opencode");
@@ -152,7 +159,7 @@ describe("Retinue Codex plugin guardrails", () => {
     const transport = new StdioClientTransport({
       command: retinue.command,
       args: retinue.args,
-      cwd: pluginCacheDir,
+      cwd: retinue.cwd,
       env: retinue.env,
       stderr: "pipe"
     });
@@ -177,10 +184,11 @@ describe("Retinue Codex plugin guardrails", () => {
     cpSync("plugins/anchorpoint", pluginCacheDir, { recursive: true });
     const mcp = loadPluginMcpConfig(pluginCacheDir);
     const retinue = resolvePluginMcpServer(pluginCacheDir, mcp.retinue);
+    expect(retinue.cwd).toBe(pluginCacheDir);
     const transport = new StdioClientTransport({
       command: retinue.command,
       args: retinue.args,
-      cwd: conversationCwd,
+      cwd: retinue.cwd,
       env: retinue.env,
       stderr: "pipe"
     });
