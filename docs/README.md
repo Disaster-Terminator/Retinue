@@ -1,9 +1,22 @@
 # Retinue Docs
 
-Start here. Current product guidance is separated from historical notes so the root `docs/`
-directory stays readable.
+Start here when the root README is not enough. The current product docs are separated from historical notes so `docs/` stays readable.
 
-## Current Product
+## Read by task
+
+| I want to... | Read |
+| --- | --- |
+| Understand what Retinue is allowed to do | [Project Boundary](architecture/PROJECT_BOUNDARY.md) |
+| Install the Codex plugin or inspect packaged plugin shape | [Plugin Deployment](deployment/PLUGIN_DEPLOYMENT.md) |
+| Develop from source or run deterministic checks | [Source Install and Development](development/SOURCE_INSTALL.md) |
+| Understand the default OpenCode backend | [OpenCode Backend](backends/OPENCODE.md) |
+| Check service / daemon lifecycle behavior | [Service Lifecycle](deployment/SERVICE_LIFECYCLE.md) |
+| Run the short verification gates | [Verification](VERIFICATION.md) |
+| Track 0.1.0 release readiness | [0.1.0 Release Plan](release/0.1.0_RELEASE_PLAN.md) |
+| Review active hardening issues | [0.1.0 Hardening Issues](release/0.1.0_HARDENING_ISSUES.md) |
+| Understand the longer-term product direction | [Long-Term Vision](LONG_TERM_VISION.md) |
+
+## Current product
 
 - [0.1.0 Release Plan](release/0.1.0_RELEASE_PLAN.md) - release gate, completed work, and deferred issues.
 - [0.1.0 Hardening Issues](release/0.1.0_HARDENING_ISSUES.md) - active smoke/E2E issues and acceptance boundaries.
@@ -11,14 +24,14 @@ directory stays readable.
 - [Project Boundary](architecture/PROJECT_BOUNDARY.md) - what Retinue is and is not.
 - [OpenCode Backend](backends/OPENCODE.md) - OpenCode adapter behavior and constraints.
 
-## Deployment
+## Deployment and development
 
-- [Plugin Deployment](deployment/PLUGIN_DEPLOYMENT.md) - Codex plugin packaging and install shape.
-- [Source Install And Development](development/SOURCE_INSTALL.md) - contributor setup and source-tree verification.
+- [Plugin Deployment](deployment/PLUGIN_DEPLOYMENT.md) - Codex plugin packaging, marketplace install shape, and plugin cache behavior.
+- [Source Install and Development](development/SOURCE_INSTALL.md) - contributor setup and source-tree verification.
 - [Service Lifecycle](deployment/SERVICE_LIFECYCLE.md) - daemon start, inspect, and stop workflow.
 - [Verification](VERIFICATION.md) - short test and packaging gates.
 
-## Real Runtime Runbooks
+## Real runtime runbooks
 
 - [Production OpenCode E2E](runbooks/PRODUCTION_OPENCODE_E2E.md)
 - [Real Claude Code Probes](runbooks/REAL_CLAUDE_PROBES.md)
