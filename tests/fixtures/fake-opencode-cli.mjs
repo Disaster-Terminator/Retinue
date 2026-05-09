@@ -4,6 +4,7 @@ import http from "node:http";
 const host = readArg("--hostname") ?? "127.0.0.1";
 const port = Number(readArg("--port") ?? "0");
 const sessions = new Map();
+const serverCwd = process.cwd();
 let nextSession = 1;
 let nextMessage = 1;
 
@@ -21,12 +22,12 @@ const server = http.createServer(async (request, response) => {
     const session = {
       id: `ses_${nextSession++}`,
       title: typeof body.title === "string" ? body.title : undefined,
-      cwd: typeof body.cwd === "string" ? body.cwd : undefined,
+      directory: serverCwd,
       state: "running",
       messages: []
     };
     sessions.set(session.id, session);
-    writeJson(response, 200, { id: session.id, title: session.title, cwd: session.cwd });
+    writeJson(response, 200, { id: session.id, title: session.title, directory: session.directory, cwd: session.cwd });
     return;
   }
 
@@ -44,7 +45,7 @@ const server = http.createServer(async (request, response) => {
 
   const action = sessionMatch[2];
   if (request.method === "GET" && !action) {
-    writeJson(response, 200, { id: session.id, title: session.title, cwd: session.cwd, state: session.state });
+    writeJson(response, 200, { id: session.id, title: session.title, directory: session.directory, cwd: session.cwd, state: session.state });
     return;
   }
 

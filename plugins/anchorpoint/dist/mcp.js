@@ -21132,7 +21132,10 @@ var OpenCodeClient = class {
     return this.request("GET", "/global/health");
   }
   createSession(options = {}) {
-    return this.request("POST", "/session", options);
+    return this.request("POST", "/session", {
+      title: options.title,
+      directory: options.cwd
+    });
   }
   listSessions() {
     return this.request("GET", "/session");
@@ -21239,10 +21242,17 @@ var OpenCodeBackend = class {
   kind = "opencode";
   client;
   baseUrl;
+  resolveTarget;
   stateDir;
   constructor(options) {
     this.client = options.client;
-    this.baseUrl = options.baseUrl.replace(/\/+$/, "");
+    this.baseUrl = options.baseUrl?.replace(/\/+$/, "");
+    this.resolveTarget = options.target ?? (async () => {
+      if (!this.client || !this.baseUrl) {
+        throw new Error("OpenCode backend target is not configured");
+      }
+      return { client: this.client, baseUrl: this.baseUrl };
+    });
     this.stateDir = resolveStateDir({ explicitStateDir: options.stateDir, env: options.env });
   }
   async run(options) {
@@ -21250,9 +21260,10 @@ var OpenCodeBackend = class {
     const paths = getJobPaths(this.stateDir, jobId);
     await fs.mkdir(paths.dir, { recursive: true });
     await fs.writeFile(paths.prompt, options.prompt, "utf8");
-    const session = await this.client.createSession({ cwd: options.cwd, title: options.title ?? options.name });
-    const baseline = await this.captureMessageBaseline(session.id);
-    await this.client.promptAsync(session.id, {
+    const target = await this.resolveTarget(options.cwd);
+    const session = await target.client.createSession({ cwd: options.cwd, title: options.title ?? options.name });
+    const baseline = await this.captureMessageBaseline(target.client, session.id);
+    await target.client.promptAsync(session.id, {
       prompt: options.prompt,
       model: options.model,
       agent: options.agent
@@ -21273,7 +21284,7 @@ var OpenCodeBackend = class {
       model: options.model,
       agent: options.agent,
       externalSessionId: session.id,
-      externalServerUrl: this.baseUrl,
+      externalServerUrl: target.baseUrl,
       externalMessageBaselineCount: baseline.messageCount,
       externalCompletedAssistantBaselineCount: baseline.completedAssistantCount,
       args: [],
@@ -21292,8 +21303,9 @@ var OpenCodeBackend = class {
     const paths = getJobPaths(this.stateDir, jobId);
     await fs.mkdir(paths.dir, { recursive: true });
     await fs.writeFile(paths.prompt, options.prompt, "utf8");
-    const baseline = await this.captureMessageBaseline(options.externalSessionId);
-    await this.client.promptAsync(options.externalSessionId, {
+    const target = await this.targetForContinue(options);
+    const baseline = await this.captureMessageBaseline(target.client, options.externalSessionId);
+    await target.client.promptAsync(options.externalSessionId, {
       prompt: options.prompt,
       model: options.model,
       agent: options.agent
@@ -21314,7 +21326,7 @@ var OpenCodeBackend = class {
       model: options.model,
       agent: options.agent,
       externalSessionId: options.externalSessionId,
-      externalServerUrl: this.baseUrl,
+      externalServerUrl: target.baseUrl,
       externalMessageBaselineCount: baseline.messageCount,
       externalCompletedAssistantBaselineCount: baseline.completedAssistantCount,
       parentJobId: options.parentJobId,
@@ -21342,7 +21354,8 @@ var OpenCodeBackend = class {
     if (!meta.externalSessionId) {
       return { jobId: handle.jobId, status: "corrupted", error: "Missing OpenCode session id" };
     }
-    const messages = await this.client.messages(meta.externalSessionId);
+    const client = this.clientForMeta(meta);
+    const messages = await client.messages(meta.externalSessionId);
     const jobMessages = selectMessagesForMeta(messages, meta);
     const text = meta.externalMessageBaselineCount === void 0 ? latestAssistantMessageText(messages) : latestAssistantMessageText(jobMessages);
     return {
@@ -21365,7 +21378,7 @@ var OpenCodeBackend = class {
     if (isProblem(meta) || !meta.externalSessionId) {
       return;
     }
-    await this.client.abort(meta.externalSessionId);
+    await this.clientForMeta(meta).abort(meta.externalSessionId);
     await writeJsonAtomic(getJobPaths(this.stateDir, handle.jobId).meta, {
       ...meta,
       status: "killed",
@@ -21430,7 +21443,8 @@ var OpenCodeBackend = class {
       return meta;
     }
     try {
-      const session = await this.client.getSession(meta.externalSessionId);
+      const client = this.clientForMeta(meta);
+      const session = await client.getSession(meta.externalSessionId);
       let status = meta.status;
       if (session.aborted === true) {
         status = "killed";
@@ -21438,7 +21452,7 @@ var OpenCodeBackend = class {
         status = "completed";
       } else if (session.state === "failed") {
         status = "failed";
-      } else if (session.state === void 0 && await this.hasNewCompletedAssistantMessage(meta.externalSessionId, meta)) {
+      } else if (session.state === void 0 && await this.hasNewCompletedAssistantMessage(client, meta.externalSessionId, meta)) {
         status = "completed";
       } else {
         status = "running";
@@ -21456,15 +21470,15 @@ var OpenCodeBackend = class {
       return { jobId: meta.jobId, status: "corrupted", error: error2 instanceof Error ? error2.message : String(error2) };
     }
   }
-  async captureMessageBaseline(sessionId) {
-    const messages = await this.client.messages(sessionId);
+  async captureMessageBaseline(client, sessionId) {
+    const messages = await client.messages(sessionId);
     return {
       messageCount: messages.length,
       completedAssistantCount: countCompletedAssistantMessages(messages)
     };
   }
-  async hasNewCompletedAssistantMessage(sessionId, meta) {
-    const messages = await this.client.messages(sessionId);
+  async hasNewCompletedAssistantMessage(client, sessionId, meta) {
+    const messages = await client.messages(sessionId);
     const jobMessages = selectMessagesForMeta(messages, meta);
     if (jobMessages.some(isCompletedAssistantMessage)) {
       return true;
@@ -21476,17 +21490,20 @@ var OpenCodeBackend = class {
   }
   async inspectJob(meta) {
     const diagnostic = {
-      baseUrl: this.baseUrl,
+      baseUrl: meta.externalServerUrl ?? this.baseUrl ?? "",
       sessionId: meta.externalSessionId
     };
     if (!meta.externalSessionId) {
       return diagnostic;
     }
     try {
-      const [session, messages] = await Promise.all([this.client.getSession(meta.externalSessionId), this.client.messages(meta.externalSessionId)]);
+      const client = this.clientForMeta(meta);
+      const [session, messages] = await Promise.all([client.getSession(meta.externalSessionId), client.messages(meta.externalSessionId)]);
       const jobMessages = selectMessagesForMeta(messages, meta);
       const lastMessage = jobMessages.at(-1) ?? messages.at(-1);
       const lastAssistant = [...jobMessages].reverse().find((message) => message.info?.role === "assistant");
+      diagnostic.sessionDirectory = typeof session.directory === "string" ? session.directory : void 0;
+      diagnostic.sessionPath = typeof session.path === "string" ? session.path : void 0;
       diagnostic.sessionState = session.state;
       diagnostic.sessionAborted = session.aborted === true;
       diagnostic.baselineMessageCount = meta.externalMessageBaselineCount;
@@ -21516,6 +21533,26 @@ var OpenCodeBackend = class {
       promptSha256: meta.promptSha256,
       diagnostic
     });
+  }
+  clientForMeta(meta) {
+    const baseUrl = meta.externalServerUrl?.replace(/\/+$/, "");
+    if (baseUrl && baseUrl !== this.baseUrl) {
+      return new OpenCodeClient(baseUrl);
+    }
+    if (!this.client) {
+      throw new Error("OpenCode backend client is not configured");
+    }
+    return this.client;
+  }
+  async targetForContinue(options) {
+    if (options.parentJobId) {
+      const parent = await this.readMeta(options.parentJobId);
+      if (!isProblem(parent) && parent.externalServerUrl) {
+        const baseUrl = parent.externalServerUrl.replace(/\/+$/, "");
+        return { client: new OpenCodeClient(baseUrl), baseUrl };
+      }
+    }
+    return this.resolveTarget(options.cwd);
   }
 };
 async function appendJobDiagnostic(stateDir, jobId, value) {
@@ -21610,7 +21647,7 @@ async function listTempFiles(dirPath) {
 import { spawn } from "node:child_process";
 import fs2 from "node:fs/promises";
 import path2 from "node:path";
-import { randomUUID as randomUUID2 } from "node:crypto";
+import { createHash as createHash2, randomUUID as randomUUID2 } from "node:crypto";
 var DEFAULT_OPENCODE_HOST = "127.0.0.1";
 var DEFAULT_OPENCODE_PORT = 4096;
 var DEFAULT_OPENCODE_FALLBACK_PORTS = buildPortRange(4097, 4127);
@@ -21670,19 +21707,20 @@ async function ensureOpenCodeServer(resolution, options = {}) {
   if (resolution.mode === "attach") {
     return { baseUrl: resolution.baseUrl, started: false };
   }
-  const discovered = options.stateDir ? await readReusableDiscovery(options.stateDir) : void 0;
+  const cwd = normalizeServerCwd(options.cwd);
+  const discovered = options.stateDir ? await readReusableDiscovery(options.stateDir, cwd) : void 0;
   if (discovered) {
-    await writeRetinueTrace2(options.stateDir, { event: "opencode_server_reused", baseUrl: discovered.baseUrl, source: "discovery" });
+    await writeRetinueTrace2(options.stateDir, { event: "opencode_server_reused", baseUrl: discovered.baseUrl, source: "discovery", cwd });
     return discovered;
   }
-  const lock = options.stateDir ? await acquireOpenCodeServerLock(options.stateDir, options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS) : void 0;
+  const lock = options.stateDir ? await acquireOpenCodeServerLock(options.stateDir, options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS, cwd) : void 0;
   try {
-    const discoveredAfterLock = options.stateDir ? await readReusableDiscovery(options.stateDir) : void 0;
+    const discoveredAfterLock = options.stateDir ? await readReusableDiscovery(options.stateDir, cwd) : void 0;
     if (discoveredAfterLock) {
-      await writeRetinueTrace2(options.stateDir, { event: "opencode_server_reused", baseUrl: discoveredAfterLock.baseUrl, source: "discovery" });
+      await writeRetinueTrace2(options.stateDir, { event: "opencode_server_reused", baseUrl: discoveredAfterLock.baseUrl, source: "discovery", cwd });
       return discoveredAfterLock;
     }
-    return await startManagedOpenCodeServer(resolution, options);
+    return await startManagedOpenCodeServer(resolution, { ...options, cwd });
   } finally {
     await lock?.release();
   }
@@ -21693,8 +21731,8 @@ async function startManagedOpenCodeServer(resolution, options) {
   for (const port of ports) {
     const baseUrl = `http://${resolution.host}:${port}`;
     const managed = managedServers.get(baseUrl);
-    if (managed?.child && managed.child.exitCode === null) {
-      await writeRetinueTrace2(options.stateDir, { event: "opencode_server_reused", baseUrl, source: "memory" });
+    if (managed?.child && managed.child.exitCode === null && managed.cwd === options.cwd) {
+      await writeRetinueTrace2(options.stateDir, { event: "opencode_server_reused", baseUrl, source: "memory", cwd: options.cwd });
       return managed;
     }
     const initial = await readOpenCodeHealth(baseUrl);
@@ -21714,12 +21752,14 @@ async function startManagedOpenCodeServer(resolution, options) {
       host: resolution.host,
       port,
       baseUrl,
-      args
+      args,
+      cwd: options.cwd
     });
     const child = spawn(spawnCommand.command, args, {
       stdio: "ignore",
       shell: spawnCommand.shell,
-      windowsHide: true
+      windowsHide: true,
+      cwd: options.cwd
     });
     const startupFailure = waitForStartupFailure(child, resolution.command);
     const cleanup = () => {
@@ -21747,17 +21787,19 @@ async function startManagedOpenCodeServer(resolution, options) {
         requestedCommand: resolution.command,
         resolvedCommand: spawnCommand.command,
         baseUrl,
-        error: error2 instanceof Error ? error2.message : String(error2)
+        error: error2 instanceof Error ? error2.message : String(error2),
+        cwd: options.cwd
       });
       throw error2;
     }
-    const target = { baseUrl, started: true, child };
+    const target = { baseUrl, started: true, child, cwd: options.cwd };
     await writeRetinueTrace2(options.stateDir, {
       event: "opencode_server_ready",
       requestedCommand: resolution.command,
       resolvedCommand: spawnCommand.command,
       pid: child.pid,
-      baseUrl
+      baseUrl,
+      cwd: options.cwd
     });
     managedServers.set(baseUrl, target);
     if (options.stateDir && child.pid) {
@@ -21765,14 +21807,15 @@ async function startManagedOpenCodeServer(resolution, options) {
         baseUrl,
         pid: child.pid,
         startedAt: (/* @__PURE__ */ new Date()).toISOString(),
-        version: "0.1.0"
+        version: "0.1.0",
+        cwd: options.cwd
       });
     }
     child.once("exit", () => {
       managedServers.delete(baseUrl);
       process.removeListener("exit", cleanup);
       if (options.stateDir && child.pid) {
-        void removeDiscoveryIfMatches(options.stateDir, child.pid);
+        void removeDiscoveryIfMatches(options.stateDir, child.pid, options.cwd);
       }
     });
     return target;
@@ -21868,35 +21911,38 @@ function formatExit(code, signal) {
   }
   return "unknown exit";
 }
-async function readReusableDiscovery(stateDir) {
+async function readReusableDiscovery(stateDir, cwd) {
   let discovery;
   try {
-    discovery = normalizeOpenCodeServerDiscovery(JSON.parse(await fs2.readFile(getOpenCodeServerDiscoveryPath(stateDir), "utf8")));
+    discovery = normalizeOpenCodeServerDiscovery(JSON.parse(await fs2.readFile(getScopedOpenCodeServerDiscoveryPath(stateDir, cwd), "utf8")));
   } catch {
     return void 0;
   }
+  if (normalizeServerCwd(discovery.cwd) !== cwd) {
+    return void 0;
+  }
   if (!isPidAlive(discovery.pid)) {
-    await removeDiscoveryIfMatches(stateDir, discovery.pid);
+    await removeDiscoveryIfMatches(stateDir, discovery.pid, cwd);
     return void 0;
   }
   const health = await readOpenCodeHealth(discovery.baseUrl);
   if (!health.ok) {
-    await removeDiscoveryIfMatches(stateDir, discovery.pid);
+    await removeDiscoveryIfMatches(stateDir, discovery.pid, cwd);
     return void 0;
   }
-  return { baseUrl: discovery.baseUrl, started: false };
+  return { baseUrl: discovery.baseUrl, started: false, cwd };
 }
 async function writeOpenCodeServerDiscovery(stateDir, value) {
-  const filePath = getOpenCodeServerDiscoveryPath(stateDir);
+  const filePath = getScopedOpenCodeServerDiscoveryPath(stateDir, normalizeServerCwd(value.cwd));
   await fs2.mkdir(path2.dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID2()}.tmp`;
   await fs2.writeFile(tempPath, `${JSON.stringify(value, null, 2)}
 `, "utf8");
   await fs2.rename(tempPath, filePath);
 }
-async function removeDiscoveryIfMatches(stateDir, pid) {
+async function removeDiscoveryIfMatches(stateDir, pid, cwd) {
   try {
-    const filePath = getOpenCodeServerDiscoveryPath(stateDir);
+    const filePath = getScopedOpenCodeServerDiscoveryPath(stateDir, cwd);
     const parsed = JSON.parse(await fs2.readFile(filePath, "utf8"));
     if (parsed.pid === pid) {
       await fs2.rm(filePath, { force: true });
@@ -21904,8 +21950,8 @@ async function removeDiscoveryIfMatches(stateDir, pid) {
   } catch {
   }
 }
-async function acquireOpenCodeServerLock(stateDir, timeoutMs) {
-  const lockPath = getOpenCodeServerLockPath(stateDir);
+async function acquireOpenCodeServerLock(stateDir, timeoutMs, cwd) {
+  const lockPath = getScopedOpenCodeServerLockPath(stateDir, cwd);
   const deadline = Date.now() + timeoutMs;
   await fs2.mkdir(path2.dirname(lockPath), { recursive: true });
   for (; ; ) {
@@ -21955,7 +22001,34 @@ function normalizeOpenCodeServerDiscovery(value) {
   if (typeof value.version !== "string" || !value.version) {
     throw new Error("Invalid OpenCode server discovery: missing version");
   }
-  return { baseUrl, pid: value.pid, startedAt: value.startedAt, version: value.version };
+  return {
+    baseUrl,
+    pid: value.pid,
+    startedAt: value.startedAt,
+    version: value.version,
+    cwd: typeof value.cwd === "string" && value.cwd ? value.cwd : void 0
+  };
+}
+function getScopedOpenCodeServerDiscoveryPath(stateDir, cwd) {
+  if (!cwd) {
+    return getOpenCodeServerDiscoveryPath(stateDir);
+  }
+  return path2.join(path2.dirname(getOpenCodeServerDiscoveryPath(stateDir)), `opencode-server-${hashCwd(cwd)}.json`);
+}
+function getScopedOpenCodeServerLockPath(stateDir, cwd) {
+  if (!cwd) {
+    return getOpenCodeServerLockPath(stateDir);
+  }
+  return path2.join(path2.dirname(getOpenCodeServerLockPath(stateDir)), `opencode-server-${hashCwd(cwd)}.lock`);
+}
+function hashCwd(cwd) {
+  return createHash2("sha256").update(cwd).digest("hex").slice(0, 16);
+}
+function normalizeServerCwd(cwd) {
+  if (!cwd?.trim()) {
+    return void 0;
+  }
+  return path2.resolve(cwd);
 }
 async function waitForOpenCodeHealth(baseUrl, options) {
   const deadline = Date.now() + options.timeoutMs;
@@ -22247,7 +22320,7 @@ function isPidAlive2(pid) {
 import { spawn as spawn2 } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import fs3 from "node:fs/promises";
-import { createHash as createHash2, randomUUID as randomUUID3 } from "node:crypto";
+import { createHash as createHash3, randomUUID as randomUUID3 } from "node:crypto";
 import { finished } from "node:stream/promises";
 
 // src/core/claudeArgs.ts
@@ -22709,7 +22782,7 @@ function createPromptPreview2(prompt) {
   return normalized.length > 120 ? `${normalized.slice(0, 117)}...` : normalized;
 }
 function sha2562(value) {
-  return createHash2("sha256").update(value).digest("hex");
+  return createHash3("sha256").update(value).digest("hex");
 }
 function limitText(text, maxBytes) {
   const bytes = Buffer.byteLength(text, "utf8");
@@ -23078,10 +23151,11 @@ async function createOpenCodeBackend(args) {
   };
   const resolution = resolveOpenCodeServerFromEnv(env);
   const stateDir = resolveStateDir({ explicitStateDir: process.env.SUPERVISOR_STATE_DIR, env: process.env });
-  const target = await ensureOpenCodeServer(resolution, { stateDir });
   return new OpenCodeBackend({
-    client: new OpenCodeClient(target.baseUrl),
-    baseUrl: target.baseUrl,
+    target: async (cwd) => {
+      const target = await ensureOpenCodeServer(resolution, { stateDir, cwd });
+      return { client: new OpenCodeClient(target.baseUrl), baseUrl: target.baseUrl };
+    },
     stateDir,
     env: process.env
   });

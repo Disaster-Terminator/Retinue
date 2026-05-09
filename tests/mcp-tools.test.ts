@@ -539,8 +539,8 @@ describe("MCP tools", () => {
       process.env.SUPERVISOR_OPENCODE_PORT = String(port);
 
       const result = (await connection.client.callTool({
-        name: "opencode_status",
-        arguments: { jobId: "nonexistent" }
+        name: "opencode_run",
+        arguments: { cwd: tempDir, prompt: "trigger autoserve failure" }
       })) as { isError?: boolean; content?: Array<{ type: string; text?: string }> };
       const text = result.content?.find((item) => item.type === "text")?.text;
 

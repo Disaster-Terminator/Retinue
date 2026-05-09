@@ -2,15 +2,21 @@ import type { CleanupOptions, CleanupResult, JobMeta, JobResult, JobStatusResult
 import type { AgentBackend, AgentContinueOptions, AgentHandle, AgentRunOptions } from "../types.js";
 import { OpenCodeClient } from "./client.js";
 export interface OpenCodeBackendOptions {
-    client: OpenCodeClient;
-    baseUrl: string;
+    client?: OpenCodeClient;
+    baseUrl?: string;
+    target?: (cwd: string | undefined) => Promise<OpenCodeBackendTarget>;
     stateDir?: string;
     env?: SupervisorOptions["env"];
 }
+export interface OpenCodeBackendTarget {
+    client: OpenCodeClient;
+    baseUrl: string;
+}
 export declare class OpenCodeBackend implements AgentBackend {
     readonly kind: "opencode";
-    private readonly client;
-    private readonly baseUrl;
+    private readonly client?;
+    private readonly baseUrl?;
+    private readonly resolveTarget;
     private readonly stateDir;
     constructor(options: OpenCodeBackendOptions);
     run(options: AgentRunOptions): Promise<JobMeta>;
@@ -29,4 +35,6 @@ export declare class OpenCodeBackend implements AgentBackend {
     private hasNewCompletedAssistantMessage;
     private inspectJob;
     private writeJobTrace;
+    private clientForMeta;
+    private targetForContinue;
 }

@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { getOpenCodeServerDiscoveryPath, getOpenCodeServerLockPath, getRetinueTracePath } from "../../core/paths.js";
 
 const DEFAULT_OPENCODE_HOST = "127.0.0.1";
@@ -31,14 +31,25 @@ export interface OpenCodeServerTarget {
   baseUrl: string;
   started: boolean;
   child?: ChildProcess;
+  cwd?: string;
 }
 
 type RetinueTraceEvent =
-  | { event: "opencode_server_reused"; baseUrl: string; source: "memory" | "discovery" }
+  | { event: "opencode_server_reused"; baseUrl: string; source: "memory" | "discovery"; cwd?: string }
   | { event: "opencode_server_port_occupied"; host: string; port: number; baseUrl: string }
-  | { event: "opencode_server_spawn"; requestedCommand: string; resolvedCommand: string; shell: boolean; host: string; port: number; baseUrl: string; args: string[] }
-  | { event: "opencode_server_ready"; requestedCommand: string; resolvedCommand: string; pid?: number; baseUrl: string }
-  | { event: "opencode_server_start_failed"; requestedCommand: string; resolvedCommand?: string; baseUrl: string; error: string };
+  | {
+      event: "opencode_server_spawn";
+      requestedCommand: string;
+      resolvedCommand: string;
+      shell: boolean;
+      host: string;
+      port: number;
+      baseUrl: string;
+      args: string[];
+      cwd?: string;
+    }
+  | { event: "opencode_server_ready"; requestedCommand: string; resolvedCommand: string; pid?: number; baseUrl: string; cwd?: string }
+  | { event: "opencode_server_start_failed"; requestedCommand: string; resolvedCommand?: string; baseUrl: string; error: string; cwd?: string };
 
 export interface OpenCodeSpawnCommand {
   command: string;
@@ -50,6 +61,7 @@ interface ManagedOpenCodeDiscovery {
   pid: number;
   startedAt: string;
   version: string;
+  cwd?: string;
 }
 
 export function resolveOpenCodeServer(config: OpenCodeServerConfig): OpenCodeServerResolution {
@@ -115,26 +127,27 @@ export async function resolveOpenCodeCommandForSpawn(
 
 export async function ensureOpenCodeServer(
   resolution: OpenCodeServerResolution,
-  options: { stateDir?: string; healthTimeoutMs?: number; healthPollMs?: number; lockTimeoutMs?: number } = {}
+  options: { stateDir?: string; healthTimeoutMs?: number; healthPollMs?: number; lockTimeoutMs?: number; cwd?: string } = {}
 ): Promise<OpenCodeServerTarget> {
   if (resolution.mode === "attach") {
     return { baseUrl: resolution.baseUrl, started: false };
   }
+  const cwd = normalizeServerCwd(options.cwd);
 
-  const discovered = options.stateDir ? await readReusableDiscovery(options.stateDir) : undefined;
+  const discovered = options.stateDir ? await readReusableDiscovery(options.stateDir, cwd) : undefined;
   if (discovered) {
-    await writeRetinueTrace(options.stateDir, { event: "opencode_server_reused", baseUrl: discovered.baseUrl, source: "discovery" });
+    await writeRetinueTrace(options.stateDir, { event: "opencode_server_reused", baseUrl: discovered.baseUrl, source: "discovery", cwd });
     return discovered;
   }
 
-  const lock = options.stateDir ? await acquireOpenCodeServerLock(options.stateDir, options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS) : undefined;
+  const lock = options.stateDir ? await acquireOpenCodeServerLock(options.stateDir, options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS, cwd) : undefined;
   try {
-    const discoveredAfterLock = options.stateDir ? await readReusableDiscovery(options.stateDir) : undefined;
+    const discoveredAfterLock = options.stateDir ? await readReusableDiscovery(options.stateDir, cwd) : undefined;
     if (discoveredAfterLock) {
-      await writeRetinueTrace(options.stateDir, { event: "opencode_server_reused", baseUrl: discoveredAfterLock.baseUrl, source: "discovery" });
+      await writeRetinueTrace(options.stateDir, { event: "opencode_server_reused", baseUrl: discoveredAfterLock.baseUrl, source: "discovery", cwd });
       return discoveredAfterLock;
     }
-    return await startManagedOpenCodeServer(resolution, options);
+    return await startManagedOpenCodeServer(resolution, { ...options, cwd });
   } finally {
     await lock?.release();
   }
@@ -142,7 +155,7 @@ export async function ensureOpenCodeServer(
 
 async function startManagedOpenCodeServer(
   resolution: Extract<OpenCodeServerResolution, { mode: "serve" }>,
-  options: { stateDir?: string; healthTimeoutMs?: number; healthPollMs?: number }
+  options: { stateDir?: string; healthTimeoutMs?: number; healthPollMs?: number; cwd?: string }
 ): Promise<OpenCodeServerTarget> {
   const ports = [resolution.port, ...resolution.fallbackPorts];
   const occupiedPorts: number[] = [];
@@ -150,8 +163,8 @@ async function startManagedOpenCodeServer(
   for (const port of ports) {
     const baseUrl = `http://${resolution.host}:${port}`;
     const managed = managedServers.get(baseUrl);
-    if (managed?.child && managed.child.exitCode === null) {
-      await writeRetinueTrace(options.stateDir, { event: "opencode_server_reused", baseUrl, source: "memory" });
+    if (managed?.child && managed.child.exitCode === null && managed.cwd === options.cwd) {
+      await writeRetinueTrace(options.stateDir, { event: "opencode_server_reused", baseUrl, source: "memory", cwd: options.cwd });
       return managed;
     }
     const initial = await readOpenCodeHealth(baseUrl);
@@ -172,12 +185,14 @@ async function startManagedOpenCodeServer(
       host: resolution.host,
       port,
       baseUrl,
-      args
+      args,
+      cwd: options.cwd
     });
     const child = spawn(spawnCommand.command, args, {
       stdio: "ignore",
       shell: spawnCommand.shell,
-      windowsHide: true
+      windowsHide: true,
+      cwd: options.cwd
     });
     const startupFailure = waitForStartupFailure(child, resolution.command);
     const cleanup = () => {
@@ -207,18 +222,20 @@ async function startManagedOpenCodeServer(
         requestedCommand: resolution.command,
         resolvedCommand: spawnCommand.command,
         baseUrl,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
+        cwd: options.cwd
       });
       throw error;
     }
 
-    const target = { baseUrl, started: true, child };
+    const target = { baseUrl, started: true, child, cwd: options.cwd };
     await writeRetinueTrace(options.stateDir, {
       event: "opencode_server_ready",
       requestedCommand: resolution.command,
       resolvedCommand: spawnCommand.command,
       pid: child.pid,
-      baseUrl
+      baseUrl,
+      cwd: options.cwd
     });
     managedServers.set(baseUrl, target);
     if (options.stateDir && child.pid) {
@@ -226,14 +243,15 @@ async function startManagedOpenCodeServer(
         baseUrl,
         pid: child.pid,
         startedAt: new Date().toISOString(),
-        version: "0.1.0"
+        version: "0.1.0",
+        cwd: options.cwd
       });
     }
     child.once("exit", () => {
       managedServers.delete(baseUrl);
       process.removeListener("exit", cleanup);
       if (options.stateDir && child.pid) {
-        void removeDiscoveryIfMatches(options.stateDir, child.pid);
+        void removeDiscoveryIfMatches(options.stateDir, child.pid, options.cwd);
       }
     });
     return target;
@@ -346,36 +364,39 @@ function formatExit(code: number | null, signal: NodeJS.Signals | null): string 
   return "unknown exit";
 }
 
-async function readReusableDiscovery(stateDir: string): Promise<OpenCodeServerTarget | undefined> {
+async function readReusableDiscovery(stateDir: string, cwd: string | undefined): Promise<OpenCodeServerTarget | undefined> {
   let discovery: ManagedOpenCodeDiscovery;
   try {
-    discovery = normalizeOpenCodeServerDiscovery(JSON.parse(await fs.readFile(getOpenCodeServerDiscoveryPath(stateDir), "utf8")) as Partial<ManagedOpenCodeDiscovery>);
+    discovery = normalizeOpenCodeServerDiscovery(JSON.parse(await fs.readFile(getScopedOpenCodeServerDiscoveryPath(stateDir, cwd), "utf8")) as Partial<ManagedOpenCodeDiscovery>);
   } catch {
     return undefined;
   }
+  if (normalizeServerCwd(discovery.cwd) !== cwd) {
+    return undefined;
+  }
   if (!isPidAlive(discovery.pid)) {
-    await removeDiscoveryIfMatches(stateDir, discovery.pid);
+    await removeDiscoveryIfMatches(stateDir, discovery.pid, cwd);
     return undefined;
   }
   const health = await readOpenCodeHealth(discovery.baseUrl);
   if (!health.ok) {
-    await removeDiscoveryIfMatches(stateDir, discovery.pid);
+    await removeDiscoveryIfMatches(stateDir, discovery.pid, cwd);
     return undefined;
   }
-  return { baseUrl: discovery.baseUrl, started: false };
+  return { baseUrl: discovery.baseUrl, started: false, cwd };
 }
 
 async function writeOpenCodeServerDiscovery(stateDir: string, value: ManagedOpenCodeDiscovery): Promise<void> {
-  const filePath = getOpenCodeServerDiscoveryPath(stateDir);
+  const filePath = getScopedOpenCodeServerDiscoveryPath(stateDir, normalizeServerCwd(value.cwd));
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
   await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
   await fs.rename(tempPath, filePath);
 }
 
-async function removeDiscoveryIfMatches(stateDir: string, pid: number): Promise<void> {
+async function removeDiscoveryIfMatches(stateDir: string, pid: number, cwd: string | undefined): Promise<void> {
   try {
-    const filePath = getOpenCodeServerDiscoveryPath(stateDir);
+    const filePath = getScopedOpenCodeServerDiscoveryPath(stateDir, cwd);
     const parsed = JSON.parse(await fs.readFile(filePath, "utf8")) as Partial<ManagedOpenCodeDiscovery>;
     if (parsed.pid === pid) {
       await fs.rm(filePath, { force: true });
@@ -385,8 +406,8 @@ async function removeDiscoveryIfMatches(stateDir: string, pid: number): Promise<
   }
 }
 
-async function acquireOpenCodeServerLock(stateDir: string, timeoutMs: number): Promise<{ release(): Promise<void> }> {
-  const lockPath = getOpenCodeServerLockPath(stateDir);
+async function acquireOpenCodeServerLock(stateDir: string, timeoutMs: number, cwd: string | undefined): Promise<{ release(): Promise<void> }> {
+  const lockPath = getScopedOpenCodeServerLockPath(stateDir, cwd);
   const deadline = Date.now() + timeoutMs;
   await fs.mkdir(path.dirname(lockPath), { recursive: true });
   for (;;) {
@@ -437,7 +458,38 @@ function normalizeOpenCodeServerDiscovery(value: Partial<ManagedOpenCodeDiscover
   if (typeof value.version !== "string" || !value.version) {
     throw new Error("Invalid OpenCode server discovery: missing version");
   }
-  return { baseUrl, pid: value.pid, startedAt: value.startedAt, version: value.version };
+  return {
+    baseUrl,
+    pid: value.pid,
+    startedAt: value.startedAt,
+    version: value.version,
+    cwd: typeof value.cwd === "string" && value.cwd ? value.cwd : undefined
+  };
+}
+
+function getScopedOpenCodeServerDiscoveryPath(stateDir: string, cwd: string | undefined): string {
+  if (!cwd) {
+    return getOpenCodeServerDiscoveryPath(stateDir);
+  }
+  return path.join(path.dirname(getOpenCodeServerDiscoveryPath(stateDir)), `opencode-server-${hashCwd(cwd)}.json`);
+}
+
+function getScopedOpenCodeServerLockPath(stateDir: string, cwd: string | undefined): string {
+  if (!cwd) {
+    return getOpenCodeServerLockPath(stateDir);
+  }
+  return path.join(path.dirname(getOpenCodeServerLockPath(stateDir)), `opencode-server-${hashCwd(cwd)}.lock`);
+}
+
+function hashCwd(cwd: string): string {
+  return createHash("sha256").update(cwd).digest("hex").slice(0, 16);
+}
+
+function normalizeServerCwd(cwd: string | undefined): string | undefined {
+  if (!cwd?.trim()) {
+    return undefined;
+  }
+  return path.resolve(cwd);
 }
 
 async function waitForOpenCodeHealth(baseUrl: string, options: { timeoutMs: number; pollMs: number }): Promise<void> {

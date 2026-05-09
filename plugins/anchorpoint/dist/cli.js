@@ -154,10 +154,11 @@ async function createOpenCodeBackend(flags) {
     };
     const resolution = resolveOpenCodeServerFromEnv(env);
     const stateDir = resolveStateDir({ explicitStateDir: process.env.SUPERVISOR_STATE_DIR, env: process.env });
-    const target = await ensureOpenCodeServer(resolution, { stateDir });
     return new OpenCodeBackend({
-        client: new OpenCodeClient(target.baseUrl),
-        baseUrl: target.baseUrl,
+        target: async (cwd) => {
+            const target = await ensureOpenCodeServer(resolution, { stateDir, cwd });
+            return { client: new OpenCodeClient(target.baseUrl), baseUrl: target.baseUrl };
+        },
         stateDir,
         env: process.env
     });
