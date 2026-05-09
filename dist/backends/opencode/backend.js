@@ -261,15 +261,20 @@ export class OpenCodeBackend {
             const [session, messages] = await Promise.all([this.client.getSession(meta.externalSessionId), this.client.messages(meta.externalSessionId)]);
             const jobMessages = selectMessagesForMeta(messages, meta);
             const lastMessage = jobMessages.at(-1) ?? messages.at(-1);
+            const lastAssistant = [...jobMessages].reverse().find((message) => message.info?.role === "assistant");
             diagnostic.sessionState = session.state;
             diagnostic.sessionAborted = session.aborted === true;
+            diagnostic.baselineMessageCount = meta.externalMessageBaselineCount;
+            diagnostic.baselineCompletedAssistantCount = meta.externalCompletedAssistantBaselineCount;
             diagnostic.messageCount = messages.length;
             diagnostic.jobMessageCount = jobMessages.length;
             diagnostic.completedAssistantCount = countCompletedAssistantMessages(messages);
             diagnostic.jobCompletedAssistantCount = countCompletedAssistantMessages(jobMessages);
             diagnostic.lastMessageRole = lastMessage?.info?.role;
+            diagnostic.lastMessageInfoKeys = Object.keys(lastMessage?.info ?? {}).sort();
             diagnostic.lastMessagePartTypes = lastMessage?.parts?.map((part) => part.type ?? "unknown");
             diagnostic.lastMessageTextBytes = Buffer.byteLength(extractMessageText(lastMessage ?? {}), "utf8");
+            diagnostic.lastAssistantPartTypes = lastAssistant?.parts?.map((part) => part.type ?? "unknown");
             diagnostic.lastAssistantTextBytes = Buffer.byteLength(latestAssistantMessageText(jobMessages), "utf8");
         }
         catch (error) {

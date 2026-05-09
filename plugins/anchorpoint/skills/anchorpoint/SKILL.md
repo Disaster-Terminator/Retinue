@@ -27,7 +27,7 @@ SUPERVISOR_OPENCODE_HOST=127.0.0.1
 SUPERVISOR_OPENCODE_AGENT=plan
 ```
 
-The 0.1.0 default OpenCode agent is `plan`. Retinue manages the default OpenCode server lifecycle and falls back from port `4096` to `4097` when the preferred port is occupied by an external service. Use `SUPERVISOR_RETINUE_BACKEND=claude-code` only when the deployment should route the same `retinue_*` tools to Claude Code. Do not pass backend, profile, model, agent, or permission choices in `retinue_*` tool arguments.
+The 0.1.0 default OpenCode agent is `plan`. Retinue manages the default OpenCode server lifecycle and falls back across local ports `4097` through `4127` when the preferred port `4096` is occupied by an external service. Use `SUPERVISOR_RETINUE_BACKEND=claude-code` only when the deployment should route the same `retinue_*` tools to Claude Code. Do not pass backend, profile, model, agent, or permission choices in `retinue_*` tool arguments.
 
 ## Tool Use
 
@@ -37,7 +37,7 @@ Use these Retinue tools for normal Codex subagent work:
 - `retinue_wait_agent`
 - `retinue_close_agent`
 
-Backend-specific `opencode_*` and `claude_*` tools are adapter/debug surfaces. Do not prefer them for product-level Codex subagent delegation unless debugging a backend-specific issue.
+Backend-specific `opencode_*` and `claude_*` tools are adapter/debug surfaces and are hidden by default in plugin deployments. If a developer explicitly enables `SUPERVISOR_EXPOSE_BACKEND_TOOLS=1`, do not prefer those tools for product-level Codex subagent delegation unless debugging a backend-specific issue.
 
 ## Production E2E Gate
 

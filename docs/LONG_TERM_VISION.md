@@ -40,7 +40,7 @@ retinue_close_agent
 
 当前不假定 Retinue 可以在 spawn 时创建或选择一个全新的后端 profile；最小链路先复用后端现成 profile。这里的“profile”是后端运行身份和运行环境的整体，包括配置、登录状态、模型/provider、默认 agent/mode、插件/skill、权限策略等。Retinue 第一阶段不拆开管理这些细项，也不另起一套子代理专用配置。
 
-后端专属能力，例如现有 `opencode_*` / `claude_*` 生命周期工具，可以作为内部 adapter、CLI、测试或迁移入口存在，但不应该成为 Codex 的主要产品入口。
+后端专属能力，例如现有 `opencode_*` / `claude_*` 生命周期工具，可以作为内部 adapter、CLI、测试或迁移入口存在，但不应该成为 Codex 的主要产品入口。插件默认不暴露这些 backend-specific MCP tools；开发者需要显式启用调试开关。
 
 ## Profile Policy
 

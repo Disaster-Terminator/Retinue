@@ -100,7 +100,11 @@ describe("OpenCodeBackend", () => {
     server!.completeSessionWithReasoningOnly(started.externalSessionId!);
 
     await expect(backend.wait({ jobId: started.jobId }, 1)).resolves.toMatchObject({ status: "running" });
-    await expect(fs.readFile(getRetinueTracePath(tempDir), "utf8")).resolves.toContain('"event":"opencode_job_wait_timeout"');
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_job_wait_timeout"');
+    expect(trace).toContain('"baselineMessageCount":0');
+    expect(trace).toContain('"lastMessageInfoKeys":["finish","id","role","sessionID","time"]');
+    expect(trace).toContain('"lastAssistantPartTypes":["reasoning"]');
     await expect(fs.readFile(getJobPaths(tempDir, started.jobId).stderr, "utf8")).resolves.toContain('"event":"opencode_job_wait_timeout"');
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
       status: "running",

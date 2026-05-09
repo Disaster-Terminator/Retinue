@@ -26,14 +26,16 @@ describe("OpenCode server manager", () => {
   });
 
   it("defaults auto-serve to the stable local OpenCode port", () => {
-    expect(resolveOpenCodeServer({ autoServe: true })).toEqual({
+    const resolution = resolveOpenCodeServer({ autoServe: true });
+    expect(resolution).toEqual({
       mode: "serve",
       command: "opencode",
       args: ["serve", "--hostname", "127.0.0.1", "--port", "4096"],
       host: "127.0.0.1",
       port: 4096,
-      fallbackPorts: [4097]
+      fallbackPorts: expect.arrayContaining([4097, 4098, 4127])
     });
+    expect(resolution.mode === "serve" ? resolution.fallbackPorts : []).toHaveLength(31);
   });
 
   it("builds explicit opencode serve args", () => {

@@ -6,7 +6,7 @@ import { getOpenCodeServerDiscoveryPath, getOpenCodeServerLockPath, getRetinueTr
 
 const DEFAULT_OPENCODE_HOST = "127.0.0.1";
 const DEFAULT_OPENCODE_PORT = 4096;
-const DEFAULT_OPENCODE_FALLBACK_PORTS = [4097];
+const DEFAULT_OPENCODE_FALLBACK_PORTS = buildPortRange(4097, 4127);
 const DEFAULT_HEALTH_TIMEOUT_MS = 10_000;
 const DEFAULT_HEALTH_POLL_MS = 250;
 const DEFAULT_LOCK_TIMEOUT_MS = 10_000;
@@ -538,6 +538,14 @@ function parseOptionalPorts(value: string | undefined): number[] | undefined {
     return undefined;
   }
   return value.split(",").map((entry) => parseRequiredPort(entry.trim()));
+}
+
+function buildPortRange(start: number, endInclusive: number): number[] {
+  const ports: number[] = [];
+  for (let port = start; port <= endInclusive; port += 1) {
+    ports.push(port);
+  }
+  return ports;
 }
 
 function parsePrefixArgs(value: string | undefined): string[] | undefined {
