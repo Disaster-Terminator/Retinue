@@ -144,6 +144,24 @@ describe("OpenCode server manager", () => {
     }
   });
 
+  it("reports a missing OpenCode command without crashing the MCP process", async () => {
+    const port = await freePort();
+
+    await expect(
+      ensureOpenCodeServer(
+        {
+          mode: "serve",
+          command: "retinue-missing-opencode-command",
+          args: buildServeArgs({ host: "127.0.0.1", port }),
+          host: "127.0.0.1",
+          port,
+          fallbackPorts: []
+        },
+        { healthTimeoutMs: 500, healthPollMs: 50 }
+      )
+    ).rejects.toThrow(/Failed to start OpenCode server command "retinue-missing-opencode-command"/);
+  });
+
   it("rejects non-loopback and non-http base URLs", () => {
     expect(() => resolveOpenCodeServer({ baseUrl: "https://127.0.0.1:4096" })).toThrow("must use http");
     expect(() => resolveOpenCodeServer({ baseUrl: "http://example.com:4096" })).toThrow("must be loopback");
