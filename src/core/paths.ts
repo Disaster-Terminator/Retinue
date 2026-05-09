@@ -17,6 +17,10 @@ export interface JobPaths {
   prompt: string;
 }
 
+export function getRetinueTracePath(stateDir: string): string {
+  return path.join(stateDir, "logs", "retinue.jsonl");
+}
+
 export function resolveStateDir(options: ResolveStateDirOptions = {}): string {
   const env = options.env ?? process.env;
   const platform = options.platform ?? process.platform;

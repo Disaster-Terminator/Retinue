@@ -4,7 +4,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
-import { getOpenCodeServerDiscoveryPath } from "../src/core/paths.js";
+import { getOpenCodeServerDiscoveryPath, getRetinueTracePath } from "../src/core/paths.js";
 import {
   buildServeArgs,
   ensureOpenCodeServer,
@@ -152,20 +152,30 @@ describe("OpenCode server manager", () => {
 
   it("reports a missing OpenCode command without crashing the MCP process", async () => {
     const port = await freePort();
+    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-trace-"));
 
-    await expect(
-      ensureOpenCodeServer(
-        {
-          mode: "serve",
-          command: "retinue-missing-opencode-command",
-          args: buildServeArgs({ host: "127.0.0.1", port }),
-          host: "127.0.0.1",
-          port,
-          fallbackPorts: []
-        },
-        { healthTimeoutMs: 500, healthPollMs: 50 }
-      )
-    ).rejects.toThrow(/Failed to start OpenCode server command "retinue-missing-opencode-command"/);
+    try {
+      await expect(
+        ensureOpenCodeServer(
+          {
+            mode: "serve",
+            command: "retinue-missing-opencode-command",
+            args: buildServeArgs({ host: "127.0.0.1", port }),
+            host: "127.0.0.1",
+            port,
+            fallbackPorts: []
+          },
+          { stateDir, healthTimeoutMs: 500, healthPollMs: 50 }
+        )
+      ).rejects.toThrow(/Failed to start OpenCode server command "retinue-missing-opencode-command"/);
+
+      const trace = await fs.readFile(getRetinueTracePath(stateDir), "utf8");
+      expect(trace).toContain('"event":"opencode_server_spawn"');
+      expect(trace).toContain('"event":"opencode_server_start_failed"');
+      expect(trace).toContain("retinue-missing-opencode-command");
+    } finally {
+      await fs.rm(stateDir, { recursive: true, force: true });
+    }
   });
 
   it("finds the default official Windows OpenCode install outside the inherited PATH", async () => {

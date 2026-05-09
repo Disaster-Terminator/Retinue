@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { getOpenCodeServerDiscoveryPath, getOpenCodeServerLockPath } from "../../core/paths.js";
+import { getOpenCodeServerDiscoveryPath, getOpenCodeServerLockPath, getRetinueTracePath } from "../../core/paths.js";
 const DEFAULT_OPENCODE_HOST = "127.0.0.1";
 const DEFAULT_OPENCODE_PORT = 4096;
 const DEFAULT_OPENCODE_FALLBACK_PORTS = [4097];
@@ -64,12 +64,14 @@ export async function ensureOpenCodeServer(resolution, options = {}) {
     }
     const discovered = options.stateDir ? await readReusableDiscovery(options.stateDir) : undefined;
     if (discovered) {
+        await writeRetinueTrace(options.stateDir, { event: "opencode_server_reused", baseUrl: discovered.baseUrl, source: "discovery" });
         return discovered;
     }
     const lock = options.stateDir ? await acquireOpenCodeServerLock(options.stateDir, options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS) : undefined;
     try {
         const discoveredAfterLock = options.stateDir ? await readReusableDiscovery(options.stateDir) : undefined;
         if (discoveredAfterLock) {
+            await writeRetinueTrace(options.stateDir, { event: "opencode_server_reused", baseUrl: discoveredAfterLock.baseUrl, source: "discovery" });
             return discoveredAfterLock;
         }
         return await startManagedOpenCodeServer(resolution, options);
@@ -85,16 +87,29 @@ async function startManagedOpenCodeServer(resolution, options) {
         const baseUrl = `http://${resolution.host}:${port}`;
         const managed = managedServers.get(baseUrl);
         if (managed?.child && managed.child.exitCode === null) {
+            await writeRetinueTrace(options.stateDir, { event: "opencode_server_reused", baseUrl, source: "memory" });
             return managed;
         }
         const initial = await readOpenCodeHealth(baseUrl);
         if (initial.reachable) {
             occupiedPorts.push(port);
+            await writeRetinueTrace(options.stateDir, { event: "opencode_server_port_occupied", host: resolution.host, port, baseUrl });
             continue;
         }
         const prefixArgs = resolution.args.slice(0, -buildServeArgs({ host: resolution.host, port: resolution.port }).length);
         const spawnCommand = await resolveOpenCodeCommandForSpawn(resolution.command);
-        const child = spawn(spawnCommand.command, [...prefixArgs, ...buildServeArgs({ host: resolution.host, port })], {
+        const args = [...prefixArgs, ...buildServeArgs({ host: resolution.host, port })];
+        await writeRetinueTrace(options.stateDir, {
+            event: "opencode_server_spawn",
+            requestedCommand: resolution.command,
+            resolvedCommand: spawnCommand.command,
+            shell: spawnCommand.shell,
+            host: resolution.host,
+            port,
+            baseUrl,
+            args
+        });
+        const child = spawn(spawnCommand.command, args, {
             stdio: "ignore",
             shell: spawnCommand.shell,
             windowsHide: true
@@ -123,9 +138,23 @@ async function startManagedOpenCodeServer(resolution, options) {
         catch (error) {
             cleanup();
             process.removeListener("exit", cleanup);
+            await writeRetinueTrace(options.stateDir, {
+                event: "opencode_server_start_failed",
+                requestedCommand: resolution.command,
+                resolvedCommand: spawnCommand.command,
+                baseUrl,
+                error: error instanceof Error ? error.message : String(error)
+            });
             throw error;
         }
         const target = { baseUrl, started: true, child };
+        await writeRetinueTrace(options.stateDir, {
+            event: "opencode_server_ready",
+            requestedCommand: resolution.command,
+            resolvedCommand: spawnCommand.command,
+            pid: child.pid,
+            baseUrl
+        });
         managedServers.set(baseUrl, target);
         if (options.stateDir && child.pid) {
             await writeOpenCodeServerDiscovery(options.stateDir, {
@@ -145,6 +174,19 @@ async function startManagedOpenCodeServer(resolution, options) {
         return target;
     }
     throw new Error(`OpenCode auto-serve could not start because candidate port${ports.length === 1 ? "" : "s"} ${ports.join(", ")} on ${resolution.host} ${occupiedPorts.length === ports.length ? "are already in use by non-OpenCode services" : "were unavailable"}`);
+}
+async function writeRetinueTrace(stateDir, event) {
+    if (!stateDir) {
+        return;
+    }
+    const tracePath = getRetinueTracePath(stateDir);
+    try {
+        await fs.mkdir(path.dirname(tracePath), { recursive: true });
+        await fs.appendFile(tracePath, `${JSON.stringify({ time: new Date().toISOString(), pid: process.pid, ...event })}\n`, "utf8");
+    }
+    catch {
+        // Diagnostics must never make Retinue tool calls fail.
+    }
 }
 function waitForStartupFailure(child, command) {
     return new Promise((_, reject) => {

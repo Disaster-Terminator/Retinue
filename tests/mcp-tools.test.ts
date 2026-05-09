@@ -478,11 +478,13 @@ describe("MCP tools", () => {
 
   it("keeps the MCP connection alive when OpenCode auto-serve cannot start", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-opencode-spawn-error-"));
+    const port = await freePort();
     const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }));
     try {
       process.env.SUPERVISOR_STATE_DIR = tempDir;
       process.env.SUPERVISOR_OPENCODE_AUTO_SERVE = "1";
       process.env.SUPERVISOR_OPENCODE_COMMAND = "retinue-missing-opencode-command";
+      process.env.SUPERVISOR_OPENCODE_PORT = String(port);
 
       const result = (await connection.client.callTool({
         name: "opencode_status",
@@ -499,6 +501,7 @@ describe("MCP tools", () => {
       delete process.env.SUPERVISOR_STATE_DIR;
       delete process.env.SUPERVISOR_OPENCODE_AUTO_SERVE;
       delete process.env.SUPERVISOR_OPENCODE_COMMAND;
+      delete process.env.SUPERVISOR_OPENCODE_PORT;
       await closeMcpClient(connection);
       await fs.rm(tempDir, { recursive: true, force: true });
     }
@@ -646,4 +649,12 @@ function getToolSchema(
   expect(tool, `Tool ${toolName} should be registered`).toBeTruthy();
   expect(tool?.inputSchema, `Tool ${toolName} should expose an input schema`).toBeTruthy();
   return tool!.inputSchema!;
+}
+
+async function freePort(): Promise<number> {
+  const server = http.createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address() as AddressInfo;
+  await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+  return address.port;
 }

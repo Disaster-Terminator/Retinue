@@ -29,6 +29,18 @@ curl -fsSL https://opencode.ai/install | bash
 
 Retinue auto-serve looks for the installed `opencode` command through the inherited `PATH` and common default locations. On Windows, `%USERPROFILE%\.opencode\bin\opencode` is treated as the primary fallback, followed by package-manager shims.
 
+## Local Diagnostics
+
+Retinue writes local diagnostic events to:
+
+```text
+<stateDir>/logs/retinue.jsonl
+```
+
+The default state directory is `%LOCALAPPDATA%\supervisor` on Windows, `$XDG_STATE_HOME/supervisor` when set, or `$HOME/.local/state/supervisor` on Unix-like systems. Set `SUPERVISOR_STATE_DIR` for E2E runs when you want artifacts in a known directory.
+
+The trace records OpenCode auto-serve events such as command resolution, port fallback, server readiness, and startup failures. Job-level artifacts remain under `<stateDir>/jobs/<jobId>/`.
+
 The plugin MCP config starts the runtime shipped inside the plugin directory:
 
 ```json
