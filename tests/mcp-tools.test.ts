@@ -476,6 +476,34 @@ describe("MCP tools", () => {
     }
   });
 
+  it("keeps the MCP connection alive when OpenCode auto-serve cannot start", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-opencode-spawn-error-"));
+    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }));
+    try {
+      process.env.SUPERVISOR_STATE_DIR = tempDir;
+      process.env.SUPERVISOR_OPENCODE_AUTO_SERVE = "1";
+      process.env.SUPERVISOR_OPENCODE_COMMAND = "retinue-missing-opencode-command";
+
+      const result = (await connection.client.callTool({
+        name: "opencode_status",
+        arguments: { jobId: "nonexistent" }
+      })) as { isError?: boolean; content?: Array<{ type: string; text?: string }> };
+      const text = result.content?.find((item) => item.type === "text")?.text;
+
+      expect(result.isError).toBe(true);
+      expect(text).toContain('Failed to start OpenCode server command "retinue-missing-opencode-command"');
+      await expect(connection.client.listTools()).resolves.toMatchObject({
+        tools: expect.arrayContaining([expect.objectContaining({ name: "opencode_status" })])
+      });
+    } finally {
+      delete process.env.SUPERVISOR_STATE_DIR;
+      delete process.env.SUPERVISOR_OPENCODE_AUTO_SERVE;
+      delete process.env.SUPERVISOR_OPENCODE_COMMAND;
+      await closeMcpClient(connection);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("uses OpenCode model and agent defaults from environment for MCP runs", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-opencode-defaults-"));
     const fakeOpenCode = await startFakeOpenCodeServer();
