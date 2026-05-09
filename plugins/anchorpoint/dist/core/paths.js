@@ -1,5 +1,8 @@
 import path from "node:path";
 import os from "node:os";
+export function getRetinueTracePath(stateDir) {
+    return path.join(stateDir, "logs", "retinue.jsonl");
+}
 export function resolveStateDir(options = {}) {
     const env = options.env ?? process.env;
     const platform = options.platform ?? process.platform;

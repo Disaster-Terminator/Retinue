@@ -117,6 +117,8 @@ This probe validates the OpenCode-first Retinue product surface:
 
 It intentionally does not pass a backend, profile, model, agent, or permission mode through the MCP tool arguments. Retinue uses the deployment-selected OpenCode server from `SUPERVISOR_OPENCODE_BASE_URL`, and OpenCode uses its active profile.
 
+For local E2E, set `SUPERVISOR_STATE_DIR` to a known directory. Retinue writes job artifacts under `<stateDir>/jobs/<jobId>/` and startup diagnostics under `<stateDir>/logs/retinue.jsonl`. The real MCP probe prints both `stateDir` and `tracePath` on success or failure.
+
 ```bash
 pnpm run build
 SUPERVISOR_REAL_OPENCODE_PROBE=1 \

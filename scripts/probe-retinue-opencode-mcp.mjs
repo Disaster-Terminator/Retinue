@@ -2,6 +2,9 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { mkdtemp, mkdir } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { createMcpServer } from "../dist/mcp.js";
 
 const OPT_IN_ENV = "SUPERVISOR_REAL_OPENCODE_PROBE";
@@ -13,7 +16,9 @@ async function main() {
   if (!process.env.SUPERVISOR_OPENCODE_BASE_URL) {
     throw new Error("Missing SUPERVISOR_OPENCODE_BASE_URL.");
   }
+  const stateDir = await ensureStateDir(process.env.SUPERVISOR_STATE_DIR);
   process.env.SUPERVISOR_RETINUE_BACKEND = "opencode";
+  process.env.SUPERVISOR_STATE_DIR = stateDir;
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "retinue-opencode-real-probe", version: "0.1.0" });
@@ -63,7 +68,9 @@ async function main() {
           externalSessionId: spawn.externalSessionId,
           status: wait.status,
           result: actual,
-          closeStatus: close.status
+          closeStatus: close.status,
+          stateDir,
+          tracePath: path.join(stateDir, "logs", "retinue.jsonl")
         },
         null,
         2
@@ -72,6 +79,14 @@ async function main() {
   } finally {
     await Promise.allSettled([client.close(), clientTransport.close(), serverTransport.close()]);
   }
+}
+
+async function ensureStateDir(stateDir) {
+  if (stateDir) {
+    await mkdir(stateDir, { recursive: true });
+    return stateDir;
+  }
+  return mkdtemp(path.join(os.tmpdir(), "retinue-opencode-real-state-"));
 }
 
 function parseToolJson(result) {
@@ -83,6 +98,14 @@ function parseToolJson(result) {
 }
 
 main().catch((error) => {
-  process.stderr.write(`${JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) })}\n`);
+  const stateDir = process.env.SUPERVISOR_STATE_DIR;
+  process.stderr.write(
+    `${JSON.stringify({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+      stateDir,
+      tracePath: stateDir ? path.join(stateDir, "logs", "retinue.jsonl") : undefined
+    })}\n`
+  );
   process.exitCode = 1;
 });

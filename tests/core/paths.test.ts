@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import path from "node:path";
-import { resolveStateDir, getJobPaths } from "../../src/core/paths.js";
+import { resolveStateDir, getJobPaths, getRetinueTracePath } from "../../src/core/paths.js";
 
 describe("state paths", () => {
   it("uses an explicit state directory before environment defaults", () => {
@@ -32,5 +32,9 @@ describe("state paths", () => {
     expect(paths.stdout).toBe(path.normalize("/tmp/supervisor-state/jobs/job_123/stdout.log"));
     expect(paths.stderr).toBe(path.normalize("/tmp/supervisor-state/jobs/job_123/stderr.log"));
     expect(paths.exitStatus).toBe(path.normalize("/tmp/supervisor-state/jobs/job_123/exit-status.json"));
+  });
+
+  it("builds a stable Retinue trace path", () => {
+    expect(getRetinueTracePath("/tmp/supervisor-state")).toBe(path.normalize("/tmp/supervisor-state/logs/retinue.jsonl"));
   });
 });
