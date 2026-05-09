@@ -77,8 +77,8 @@ Note: Codex CLI 0.128 `codex plugin marketplace add/upgrade/remove` manages mark
 
 ## Platform Notes
 
-- Windows: requires local Node.js, Codex CLI, and OpenCode; configure the OpenCode server URL for the deployment.
-- WSL / Linux: current 0.1.0 acceptance path. The default config connects to `http://127.0.0.1:4096`.
+- Windows: requires local Node.js, Codex CLI, and OpenCode. Retinue first looks for the official script install at `%USERPROFILE%\.opencode\bin\opencode`, then falls back to common pnpm/npm/bun shims. The default plugin config manages the local OpenCode server lifecycle.
+- WSL / Linux: current 0.1.0 acceptance path. The default plugin config prefers `127.0.0.1:4096` and tries `4097` through `4127` when earlier ports are occupied by external services.
 - macOS: uses the same Node.js, Codex CLI, and OpenCode prerequisites; it is not the primary validation path for this round.
 
 ## Default Plugin Config
@@ -97,7 +97,7 @@ The plugin MCP config lives at `plugins/anchorpoint/.mcp.json`. Retinue 0.1.0 de
 This means:
 
 - Codex calls Retinue and does not choose the concrete backend.
-- Retinue manages the OpenCode server lifecycle by default. It prefers `127.0.0.1:4096` and tries `4097` when that port is occupied by an external service.
+- Retinue manages the OpenCode server lifecycle by default. It prefers `127.0.0.1:4096` and tries `4097` through `4127` when earlier ports are occupied by external services.
 - OpenCode uses the active local profile for provider, model, login, permissions, plugins, and skills.
 - `plan` is the 0.1.0 safety default. A future Retinue config file will allow deployments to choose `build` without exposing that choice as a per-call tool argument.
 

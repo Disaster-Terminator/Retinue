@@ -83,8 +83,8 @@ Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE
 
 ## 平台说明
 
-- Windows：需要本机 Node.js、Codex CLI 和 OpenCode 可用；Retinue 会优先查找官方脚本安装的 `%USERPROFILE%\.opencode\bin\opencode`，再回退到常见 pnpm/npm/bun shim。
-- WSL / Linux：本轮 0.1.0 验收路径。默认配置连接 `http://127.0.0.1:4096`。
+- Windows：需要本机 Node.js、Codex CLI 和 OpenCode 可用；Retinue 会优先查找官方脚本安装的 `%USERPROFILE%\.opencode\bin\opencode`，再回退到常见 pnpm/npm/bun shim。默认插件配置会管理本机 OpenCode server 生命周期。
+- WSL / Linux：本轮 0.1.0 验收路径。默认插件配置会优先使用 `127.0.0.1:4096`，并在端口被外部服务占用时尝试 `4097` 到 `4127`。
 - macOS：按同样的 Node.js、Codex CLI、OpenCode 前置条件运行；尚未作为本轮验收主路径。
 
 ## 默认插件配置
@@ -103,7 +103,7 @@ Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE
 这意味着：
 
 - Codex 只调用 Retinue，不选择具体后端。
-- Retinue 默认管理 OpenCode server 生命周期，优先使用 `127.0.0.1:4096`，端口被外部服务占用时尝试 `4097`。
+- Retinue 默认管理 OpenCode server 生命周期，优先使用 `127.0.0.1:4096`，端口被外部服务占用时尝试 `4097` 到 `4127`。
 - OpenCode 使用当前本机 profile，包括 provider、model、login、permission、plugin 和 skill。
 - `plan` 是 0.1.0 的安全默认；后续会通过 Retinue 配置支持切到 `build`，不把这个选择暴露成每次 tool call 的参数。
 

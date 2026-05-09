@@ -121,6 +121,17 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(quickStartEn).not.toContain("codex plugin marketplace upgrade retinue-local");
   });
 
+  it("documents the default OpenCode lifecycle and fallback-port behavior", () => {
+    expect(readmeZh).toContain("%USERPROFILE%\\.opencode\\bin\\opencode");
+    expect(readmeZh).toContain("默认插件配置会管理本机 OpenCode server 生命周期");
+    expect(readmeZh).toContain("`4097` 到 `4127`");
+    expect(readmeEn).toContain("%USERPROFILE%\\.opencode\\bin\\opencode");
+    expect(readmeEn).toContain("The default plugin config manages the local OpenCode server lifecycle");
+    expect(readmeEn).toContain("`4097` through `4127`");
+    expect(readmeZh).not.toContain("端口被外部服务占用时尝试 `4097`。");
+    expect(readmeEn).not.toContain("tries `4097` when that port is occupied");
+  });
+
   it("declares a plugin manifest with skill and MCP surfaces", () => {
     const manifest = JSON.parse(readFileSync("plugins/anchorpoint/.codex-plugin/plugin.json", "utf8")) as {
       name?: string;
