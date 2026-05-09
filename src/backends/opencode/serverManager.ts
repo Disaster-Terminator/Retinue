@@ -11,6 +11,7 @@ const DEFAULT_HEALTH_TIMEOUT_MS = 10_000;
 const DEFAULT_HEALTH_POLL_MS = 250;
 const DEFAULT_LOCK_TIMEOUT_MS = 10_000;
 const managedServers = new Map<string, OpenCodeServerTarget>();
+const WINDOWS_EXECUTABLE_EXTENSIONS = [".EXE", ".CMD", ".BAT", ""];
 
 export interface OpenCodeServerConfig {
   baseUrl?: string;
@@ -30,6 +31,11 @@ export interface OpenCodeServerTarget {
   baseUrl: string;
   started: boolean;
   child?: ChildProcess;
+}
+
+export interface OpenCodeSpawnCommand {
+  command: string;
+  shell: boolean;
 }
 
 interface ManagedOpenCodeDiscovery {
@@ -73,6 +79,31 @@ export function resolveOpenCodeServerFromEnv(env: NodeJS.ProcessEnv | Record<str
 
 export function buildServeArgs(options: { host: string; port: number }): string[] {
   return ["serve", "--hostname", options.host, "--port", String(options.port)];
+}
+
+export async function resolveOpenCodeCommandForSpawn(
+  command: string,
+  options: {
+    platform?: NodeJS.Platform;
+    env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+    exists?: (candidate: string) => Promise<boolean>;
+  } = {}
+): Promise<OpenCodeSpawnCommand> {
+  const platform = options.platform ?? process.platform;
+  const env = options.env ?? process.env;
+  const exists = options.exists ?? fileExists;
+
+  if (command !== "opencode") {
+    return { command, shell: shouldUseShellForCommand(platform, command) };
+  }
+
+  for (const candidate of buildOpenCodeCommandCandidates(platform, env)) {
+    if (await exists(candidate)) {
+      return { command: candidate, shell: shouldUseShellForCommand(platform, candidate) };
+    }
+  }
+
+  return { command, shell: shouldUseShellForCommand(platform, command) };
 }
 
 export async function ensureOpenCodeServer(
@@ -120,8 +151,10 @@ async function startManagedOpenCodeServer(
     }
 
     const prefixArgs = resolution.args.slice(0, -buildServeArgs({ host: resolution.host, port: resolution.port }).length);
-    const child = spawn(resolution.command, [...prefixArgs, ...buildServeArgs({ host: resolution.host, port })], {
+    const spawnCommand = await resolveOpenCodeCommandForSpawn(resolution.command);
+    const child = spawn(spawnCommand.command, [...prefixArgs, ...buildServeArgs({ host: resolution.host, port })], {
       stdio: "ignore",
+      shell: spawnCommand.shell,
       windowsHide: true
     });
     const startupFailure = waitForStartupFailure(child, resolution.command);
@@ -186,6 +219,72 @@ function waitForStartupFailure(child: ChildProcess, command: string): Promise<ne
       reject(new Error(`OpenCode server command "${command}" exited before becoming healthy: ${formatExit(code, signal)}`));
     });
   });
+}
+
+function shouldUseShellForCommand(platform: NodeJS.Platform, command: string): boolean {
+  return platform === "win32" && /\.(?:cmd|bat)$/i.test(command);
+}
+
+async function fileExists(candidate: string): Promise<boolean> {
+  try {
+    await fs.access(candidate);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function buildOpenCodeCommandCandidates(platform: NodeJS.Platform, env: NodeJS.ProcessEnv | Record<string, string | undefined>): string[] {
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  const add = (candidate: string | undefined) => {
+    if (!candidate || seen.has(candidate)) {
+      return;
+    }
+    seen.add(candidate);
+    candidates.push(candidate);
+  };
+
+  if (platform === "win32") {
+    for (const directory of getPathEntries(env, ";")) {
+      for (const extension of WINDOWS_EXECUTABLE_EXTENSIONS) {
+        add(path.win32.join(directory, `opencode${extension}`));
+      }
+    }
+    for (const directory of getWindowsOpenCodeFallbackDirectories(env)) {
+      for (const extension of WINDOWS_EXECUTABLE_EXTENSIONS) {
+        add(path.win32.join(directory, `opencode${extension}`));
+      }
+    }
+    return candidates;
+  }
+
+  for (const directory of getPathEntries(env, ":")) {
+    add(path.join(directory, "opencode"));
+  }
+  return candidates;
+}
+
+function getPathEntries(env: NodeJS.ProcessEnv | Record<string, string | undefined>, delimiter: string): string[] {
+  const value = env.PATH ?? env.Path ?? env.path ?? "";
+  return value
+    .split(delimiter)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function getWindowsOpenCodeFallbackDirectories(env: NodeJS.ProcessEnv | Record<string, string | undefined>): string[] {
+  const userProfile = env.USERPROFILE;
+  const localAppData = env.LOCALAPPDATA;
+  const appData = env.APPDATA;
+  return [
+    userProfile ? path.win32.join(userProfile, ".opencode", "bin") : undefined,
+    userProfile ? path.win32.join(userProfile, ".local", "pnpm-global") : undefined,
+    localAppData ? path.win32.join(localAppData, "pnpm") : undefined,
+    appData ? path.win32.join(appData, "npm") : undefined,
+    userProfile ? path.win32.join(userProfile, "AppData", "Local", "pnpm") : undefined,
+    userProfile ? path.win32.join(userProfile, ".bun", "bin") : undefined
+  ].filter((entry): entry is string => Boolean(entry));
 }
 
 function formatExit(code: number | null, signal: NodeJS.Signals | null): string {

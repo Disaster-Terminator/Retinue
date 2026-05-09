@@ -21,6 +21,14 @@ Then open Codex, run `/plugins`, press the keyboard Right Arrow key until `[Reti
 
 Codex CLI 0.128 exposes marketplace add/upgrade/remove, not a separate `codex plugin install` command. `codex plugin marketplace upgrade retinue-local` updates a marketplace that has already been added; it is not an install command and can fail if another installed local plugin has a broken cache or restrictive file permissions.
 
+The default OpenCode prerequisite is the official OpenCode install script:
+
+```bash
+curl -fsSL https://opencode.ai/install | bash
+```
+
+Retinue auto-serve looks for the installed `opencode` command through the inherited `PATH` and common default locations. On Windows, `%USERPROFILE%\.opencode\bin\opencode` is treated as the primary fallback, followed by package-manager shims.
+
 The plugin MCP config starts the runtime shipped inside the plugin directory:
 
 ```json

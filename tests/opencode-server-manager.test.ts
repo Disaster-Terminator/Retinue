@@ -5,7 +5,13 @@ import os from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
 import { getOpenCodeServerDiscoveryPath } from "../src/core/paths.js";
-import { buildServeArgs, ensureOpenCodeServer, resolveOpenCodeServer, resolveOpenCodeServerFromEnv } from "../src/backends/opencode/serverManager.js";
+import {
+  buildServeArgs,
+  ensureOpenCodeServer,
+  resolveOpenCodeCommandForSpawn,
+  resolveOpenCodeServer,
+  resolveOpenCodeServerFromEnv
+} from "../src/backends/opencode/serverManager.js";
 
 describe("OpenCode server manager", () => {
   it("attaches to an explicit loopback base URL", () => {
@@ -160,6 +166,64 @@ describe("OpenCode server manager", () => {
         { healthTimeoutMs: 500, healthPollMs: 50 }
       )
     ).rejects.toThrow(/Failed to start OpenCode server command "retinue-missing-opencode-command"/);
+  });
+
+  it("finds the default official Windows OpenCode install outside the inherited PATH", async () => {
+    const existing = new Set(["C:\\Users\\Disas\\.opencode\\bin\\opencode"]);
+
+    await expect(
+      resolveOpenCodeCommandForSpawn("opencode", {
+        platform: "win32",
+        env: {
+          USERPROFILE: "C:\\Users\\Disas",
+          LOCALAPPDATA: "C:\\Users\\Disas\\AppData\\Local",
+          APPDATA: "C:\\Users\\Disas\\AppData\\Roaming",
+          Path: "C:\\Windows\\System32"
+        },
+        exists: async (candidate) => existing.has(candidate)
+      })
+    ).resolves.toEqual({
+      command: "C:\\Users\\Disas\\.opencode\\bin\\opencode",
+      shell: false
+    });
+  });
+
+  it("falls back to package-manager Windows OpenCode shims when the official install is absent", async () => {
+    const existing = new Set(["C:\\Users\\Disas\\.local\\pnpm-global\\opencode.CMD"]);
+
+    await expect(
+      resolveOpenCodeCommandForSpawn("opencode", {
+        platform: "win32",
+        env: {
+          USERPROFILE: "C:\\Users\\Disas",
+          LOCALAPPDATA: "C:\\Users\\Disas\\AppData\\Local",
+          APPDATA: "C:\\Users\\Disas\\AppData\\Roaming",
+          Path: "C:\\Windows\\System32"
+        },
+        exists: async (candidate) => existing.has(candidate)
+      })
+    ).resolves.toEqual({
+      command: "C:\\Users\\Disas\\.local\\pnpm-global\\opencode.CMD",
+      shell: true
+    });
+  });
+
+  it("prefers an inherited PATH OpenCode command before Windows fallback locations", async () => {
+    const existing = new Set(["C:\\Tools\\opencode.EXE", "C:\\Users\\Disas\\.local\\pnpm-global\\opencode.CMD"]);
+
+    await expect(
+      resolveOpenCodeCommandForSpawn("opencode", {
+        platform: "win32",
+        env: {
+          USERPROFILE: "C:\\Users\\Disas",
+          Path: "C:\\Tools;C:\\Windows\\System32"
+        },
+        exists: async (candidate) => existing.has(candidate)
+      })
+    ).resolves.toEqual({
+      command: "C:\\Tools\\opencode.EXE",
+      shell: false
+    });
   });
 
   it("rejects non-loopback and non-http base URLs", () => {
