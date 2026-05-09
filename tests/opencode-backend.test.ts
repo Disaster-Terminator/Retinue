@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { OpenCodeBackend } from "../src/backends/opencode/backend.js";
 import { OpenCodeClient } from "../src/backends/opencode/client.js";
-import { getJobPaths } from "../src/core/paths.js";
+import { getJobPaths, getRetinueTracePath } from "../src/core/paths.js";
 import { startFakeOpenCodeServer, type FakeOpenCodeServer } from "./fixtures/fake-opencode-server.js";
 
 describe("OpenCodeBackend", () => {
@@ -100,6 +100,8 @@ describe("OpenCodeBackend", () => {
     server!.completeSessionWithReasoningOnly(started.externalSessionId!);
 
     await expect(backend.wait({ jobId: started.jobId }, 1)).resolves.toMatchObject({ status: "running" });
+    await expect(fs.readFile(getRetinueTracePath(tempDir), "utf8")).resolves.toContain('"event":"opencode_job_wait_timeout"');
+    await expect(fs.readFile(getJobPaths(tempDir, started.jobId).stderr, "utf8")).resolves.toContain('"event":"opencode_job_wait_timeout"');
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
       status: "running",
       parsedStdout: { result: "" }

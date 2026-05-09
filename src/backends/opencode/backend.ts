@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
-import { getJobPaths, resolveStateDir } from "../../core/paths.js";
+import { getJobPaths, getRetinueTracePath, resolveStateDir } from "../../core/paths.js";
 import type { CleanupOptions, CleanupResult, JobMeta, JobProblem, JobResult, JobStatusResult, SupervisorOptions } from "../../core/types.js";
 import type { AgentBackend, AgentContinueOptions, AgentHandle, AgentRunOptions } from "../types.js";
 import { OpenCodeClient, OpenCodeClientError, type OpenCodeMessage } from "./client.js";
@@ -13,6 +13,22 @@ export interface OpenCodeBackendOptions {
 }
 const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
 const DEFAULT_WAIT_POLL_MS = 250;
+
+interface OpenCodeJobDiagnostic {
+  baseUrl: string;
+  sessionId?: string;
+  sessionState?: unknown;
+  sessionAborted?: boolean;
+  messageCount?: number;
+  jobMessageCount?: number;
+  completedAssistantCount?: number;
+  jobCompletedAssistantCount?: number;
+  lastMessageRole?: string;
+  lastMessagePartTypes?: string[];
+  lastMessageTextBytes?: number;
+  lastAssistantTextBytes?: number;
+  error?: string;
+}
 
 export class OpenCodeBackend implements AgentBackend {
   readonly kind = "opencode" as const;
@@ -63,6 +79,7 @@ export class OpenCodeBackend implements AgentBackend {
       updatedAt: now
     };
     await writeJsonAtomic(paths.meta, meta);
+    await this.writeJobTrace("opencode_job_prompt_submitted", meta, await this.inspectJob(meta));
     return meta;
   }
 
@@ -106,6 +123,7 @@ export class OpenCodeBackend implements AgentBackend {
       updatedAt: now
     };
     await writeJsonAtomic(paths.meta, meta);
+    await this.writeJobTrace("opencode_job_prompt_submitted", meta, await this.inspectJob(meta));
     return meta;
   }
 
@@ -165,6 +183,12 @@ export class OpenCodeBackend implements AgentBackend {
         return { jobId: handle.jobId, status: status.status };
       }
       if (Date.now() >= deadline) {
+        const meta = await this.readMeta(handle.jobId);
+        if (!isProblem(meta)) {
+          const diagnostic = await this.inspectJob(meta);
+          await this.writeJobTrace("opencode_job_wait_timeout", meta, diagnostic);
+          await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_wait_timeout", diagnostic });
+        }
         return { jobId: handle.jobId, status: "running" };
       }
       await sleep(DEFAULT_WAIT_POLL_MS);
@@ -260,6 +284,70 @@ export class OpenCodeBackend implements AgentBackend {
     }
     return countCompletedAssistantMessages(messages) > (meta.externalCompletedAssistantBaselineCount ?? 0);
   }
+
+  private async inspectJob(meta: JobMeta): Promise<OpenCodeJobDiagnostic> {
+    const diagnostic: OpenCodeJobDiagnostic = {
+      baseUrl: this.baseUrl,
+      sessionId: meta.externalSessionId
+    };
+    if (!meta.externalSessionId) {
+      return diagnostic;
+    }
+    try {
+      const [session, messages] = await Promise.all([this.client.getSession(meta.externalSessionId), this.client.messages(meta.externalSessionId)]);
+      const jobMessages = selectMessagesForMeta(messages, meta);
+      const lastMessage = jobMessages.at(-1) ?? messages.at(-1);
+      diagnostic.sessionState = session.state;
+      diagnostic.sessionAborted = session.aborted === true;
+      diagnostic.messageCount = messages.length;
+      diagnostic.jobMessageCount = jobMessages.length;
+      diagnostic.completedAssistantCount = countCompletedAssistantMessages(messages);
+      diagnostic.jobCompletedAssistantCount = countCompletedAssistantMessages(jobMessages);
+      diagnostic.lastMessageRole = lastMessage?.info?.role;
+      diagnostic.lastMessagePartTypes = lastMessage?.parts?.map((part) => part.type ?? "unknown");
+      diagnostic.lastMessageTextBytes = Buffer.byteLength(extractMessageText(lastMessage ?? {}), "utf8");
+      diagnostic.lastAssistantTextBytes = Buffer.byteLength(latestAssistantMessageText(jobMessages), "utf8");
+    } catch (error) {
+      diagnostic.error = error instanceof Error ? error.message : String(error);
+    }
+    return diagnostic;
+  }
+
+  private async writeJobTrace(event: string, meta: JobMeta, diagnostic: OpenCodeJobDiagnostic): Promise<void> {
+    await writeRetinueTrace(this.stateDir, {
+      event,
+      backend: "opencode",
+      jobId: meta.jobId,
+      status: meta.status,
+      cwd: meta.cwd,
+      promptSha256: meta.promptSha256,
+      diagnostic
+    });
+  }
+}
+
+async function appendJobDiagnostic(stateDir: string, jobId: string, value: unknown): Promise<void> {
+  const paths = getJobPaths(stateDir, jobId);
+  try {
+    await fs.mkdir(paths.dir, { recursive: true });
+    await fs.appendFile(paths.stderr, `${JSON.stringify({ time: new Date().toISOString(), ...asRecord(value) })}\n`, "utf8");
+  } catch {
+    // Diagnostics must never make Retinue tool calls fail.
+  }
+}
+
+async function writeRetinueTrace(stateDir: string, value: unknown): Promise<void> {
+  const tracePath = getRetinueTracePath(stateDir);
+  try {
+    await fs.mkdir(tracePath.replace(/[\\/][^\\/]+$/, ""), { recursive: true });
+    await fs.appendFile(tracePath, `${JSON.stringify({ time: new Date().toISOString(), pid: process.pid, ...asRecord(value) })}\n`, "utf8");
+  } catch {
+    // Diagnostics must never make Retinue tool calls fail.
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : { value };
 }
 
 function isTerminal(status: JobStatusResult["status"]): boolean {
