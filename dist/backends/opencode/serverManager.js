@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { getOpenCodeServerDiscoveryPath, getOpenCodeServerLockPath, getRetinueTracePath } from "../../core/paths.js";
 const DEFAULT_OPENCODE_HOST = "127.0.0.1";
 const DEFAULT_OPENCODE_PORT = 4096;
-const DEFAULT_OPENCODE_FALLBACK_PORTS = [4097];
+const DEFAULT_OPENCODE_FALLBACK_PORTS = buildPortRange(4097, 4127);
 const DEFAULT_HEALTH_TIMEOUT_MS = 10_000;
 const DEFAULT_HEALTH_POLL_MS = 250;
 const DEFAULT_LOCK_TIMEOUT_MS = 10_000;
@@ -453,6 +453,13 @@ function parseOptionalPorts(value) {
         return undefined;
     }
     return value.split(",").map((entry) => parseRequiredPort(entry.trim()));
+}
+function buildPortRange(start, endInclusive) {
+    const ports = [];
+    for (let port = start; port <= endInclusive; port += 1) {
+        ports.push(port);
+    }
+    return ports;
 }
 function parsePrefixArgs(value) {
     if (!value?.trim()) {

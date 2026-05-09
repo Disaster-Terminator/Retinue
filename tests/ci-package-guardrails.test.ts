@@ -153,6 +153,7 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(mcp.retinue?.env?.SUPERVISOR_OPENCODE_BASE_URL).toBeUndefined();
     expect(mcp.retinue?.env?.SUPERVISOR_OPENCODE_AGENT).toBe("plan");
     expect(mcp.retinue?.env?.SUPERVISOR_DAEMON_DISCOVERY).toBeUndefined();
+    expect(mcp.retinue?.env?.SUPERVISOR_EXPOSE_BACKEND_TOOLS).toBeUndefined();
   });
 
   it("makes the Retinue plugin available from its marketplace", () => {
@@ -186,7 +187,7 @@ describe("Retinue Codex plugin guardrails", () => {
     try {
       await client.connect(transport);
       const tools = await client.listTools();
-      expect(tools.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent"]));
+      expect(tools.tools.map((tool) => tool.name)).toEqual(["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent"]);
       expect(Buffer.concat(stderrChunks).toString("utf8")).toBe("");
     } finally {
       await Promise.allSettled([client.close(), transport.close()]);
@@ -213,7 +214,7 @@ describe("Retinue Codex plugin guardrails", () => {
     try {
       await client.connect(transport);
       const tools = await client.listTools();
-      expect(tools.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent"]));
+      expect(tools.tools.map((tool) => tool.name)).toEqual(["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent"]);
     } finally {
       await Promise.allSettled([client.close(), transport.close()]);
       rmSync(pluginCacheDir, { recursive: true, force: true });

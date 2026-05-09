@@ -39,7 +39,7 @@ Retinue writes local diagnostic events to:
 
 The default state directory is `%LOCALAPPDATA%\supervisor` on Windows, `$XDG_STATE_HOME/supervisor` when set, or `$HOME/.local/state/supervisor` on Unix-like systems. Set `SUPERVISOR_STATE_DIR` for E2E runs when you want artifacts in a known directory.
 
-The trace records OpenCode auto-serve events such as command resolution, port fallback, server readiness, and startup failures. It also records OpenCode job diagnostics when a wait times out while the child agent is still running: session state, abort flag, message counts, completed assistant counts, last message role, part types, and text byte counts. It does not write full prompt or model output text to the global trace.
+The trace records OpenCode auto-serve events such as command resolution, port fallback, server readiness, and startup failures. It also records OpenCode job diagnostics when a wait times out while the child agent is still running: session state, abort flag, baseline and current message counts, completed assistant counts, last message role, message info keys, part types, and text byte counts. It does not write full prompt or model output text to the global trace.
 
 Job-level artifacts remain under `<stateDir>/jobs/<jobId>/`. When an OpenCode wait times out, Retinue also appends the same diagnostic snapshot to that job's `stderr.log` so E2E failures can be inspected from the job directory alone.
 
@@ -67,7 +67,7 @@ The plugin MCP config starts the runtime shipped inside the plugin directory:
 This is intentional for 0.1.0: marketplace installs copy the plugin directory into Codex's plugin cache, so the MCP runtime must be self-contained under that directory.
 The `mcpServers` wrapper is required for Codex plugin MCP discovery. The explicit `cwd: "."` is required so Codex starts `node ./dist/mcp.js` from the installed plugin cache instead of from the current conversation working directory.
 
-The default plugin path manages the local OpenCode server lifecycle. It prefers `127.0.0.1:4096` and tries `4097` when the preferred port is occupied by an external service. Set `SUPERVISOR_OPENCODE_BASE_URL` only for deployments that intentionally attach to an externally managed OpenCode server.
+The default plugin path manages the local OpenCode server lifecycle. It prefers `127.0.0.1:4096` and tries fallback ports `4097` through `4127` when earlier ports are occupied by external services. Set `SUPERVISOR_OPENCODE_BASE_URL` only for deployments that intentionally attach to an externally managed OpenCode server.
 
 ## npm Runtime Path
 
@@ -121,7 +121,7 @@ Before calling the plugin production-ready, run the real OpenCode lifecycle thro
 
 The Claude real probe is allowed to fail on upstream model, quota, proxy, or Claude Code runtime instability. Treat a failure there as a local backend readiness signal, not as permission to skip fake Claude parity or the OpenCode production E2E.
 
-Backend-specific `opencode_*` and `claude_*` tools remain available for adapter debugging and older runbooks, but they are not the primary Codex delegation surface.
+Backend-specific `opencode_*` and `claude_*` MCP tools are hidden by default in plugin deployments. Developers can opt into them with `SUPERVISOR_EXPOSE_BACKEND_TOOLS=1` for adapter debugging and older runbooks, but they are not the primary Codex delegation surface.
 
 Record only redacted backend/profile metadata, job id, session id, and observed result. Do not record API keys or provider secrets.
 

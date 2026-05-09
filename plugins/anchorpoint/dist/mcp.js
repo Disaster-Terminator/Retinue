@@ -21486,15 +21486,20 @@ var OpenCodeBackend = class {
       const [session, messages] = await Promise.all([this.client.getSession(meta.externalSessionId), this.client.messages(meta.externalSessionId)]);
       const jobMessages = selectMessagesForMeta(messages, meta);
       const lastMessage = jobMessages.at(-1) ?? messages.at(-1);
+      const lastAssistant = [...jobMessages].reverse().find((message) => message.info?.role === "assistant");
       diagnostic.sessionState = session.state;
       diagnostic.sessionAborted = session.aborted === true;
+      diagnostic.baselineMessageCount = meta.externalMessageBaselineCount;
+      diagnostic.baselineCompletedAssistantCount = meta.externalCompletedAssistantBaselineCount;
       diagnostic.messageCount = messages.length;
       diagnostic.jobMessageCount = jobMessages.length;
       diagnostic.completedAssistantCount = countCompletedAssistantMessages(messages);
       diagnostic.jobCompletedAssistantCount = countCompletedAssistantMessages(jobMessages);
       diagnostic.lastMessageRole = lastMessage?.info?.role;
+      diagnostic.lastMessageInfoKeys = Object.keys(lastMessage?.info ?? {}).sort();
       diagnostic.lastMessagePartTypes = lastMessage?.parts?.map((part) => part.type ?? "unknown");
       diagnostic.lastMessageTextBytes = Buffer.byteLength(extractMessageText(lastMessage ?? {}), "utf8");
+      diagnostic.lastAssistantPartTypes = lastAssistant?.parts?.map((part) => part.type ?? "unknown");
       diagnostic.lastAssistantTextBytes = Buffer.byteLength(latestAssistantMessageText(jobMessages), "utf8");
     } catch (error2) {
       diagnostic.error = error2 instanceof Error ? error2.message : String(error2);
@@ -21608,7 +21613,7 @@ import path2 from "node:path";
 import { randomUUID as randomUUID2 } from "node:crypto";
 var DEFAULT_OPENCODE_HOST = "127.0.0.1";
 var DEFAULT_OPENCODE_PORT = 4096;
-var DEFAULT_OPENCODE_FALLBACK_PORTS = [4097];
+var DEFAULT_OPENCODE_FALLBACK_PORTS = buildPortRange(4097, 4127);
 var DEFAULT_HEALTH_TIMEOUT_MS = 1e4;
 var DEFAULT_HEALTH_POLL_MS = 250;
 var DEFAULT_LOCK_TIMEOUT_MS = 1e4;
@@ -22042,6 +22047,13 @@ function parseOptionalPorts(value) {
     return void 0;
   }
   return value.split(",").map((entry) => parseRequiredPort(entry.trim()));
+}
+function buildPortRange(start, endInclusive) {
+  const ports = [];
+  for (let port = start; port <= endInclusive; port += 1) {
+    ports.push(port);
+  }
+  return ports;
 }
 function parsePrefixArgs(value) {
   if (!value?.trim()) {
@@ -22772,11 +22784,106 @@ var OPENCODE_TOOL_NAMES = [
   "opencode_cleanup"
 ];
 var RETINUE_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent"];
-function createMcpServer(supervisor = createMcpSupervisorFromEnv()) {
+function createMcpServer(supervisor = createMcpSupervisorFromEnv(), options = {}) {
   const server = new McpServer({
     name: "supervisor",
     version: "0.1.0"
   });
+  if (options.exposeBackendTools ?? process.env.SUPERVISOR_EXPOSE_BACKEND_TOOLS === "1") {
+    registerBackendTools(server, supervisor);
+  }
+  server.registerTool(
+    "retinue_spawn_agent",
+    {
+      title: "Spawn Retinue Agent",
+      description: "Spawn a Retinue child agent using the deployment-selected backend and return a job handle.",
+      inputSchema: {
+        message: external_exports.string(),
+        task_name: external_exports.string().optional(),
+        taskName: external_exports.string().optional(),
+        cwd: external_exports.string().optional(),
+        title: external_exports.string().optional()
+      }
+    },
+    async (args) => {
+      const taskName = normalizeTaskName(args);
+      const started = await (await createRetinueBackend(supervisor)).run({
+        cwd: args.cwd ?? process.cwd(),
+        prompt: args.message,
+        name: taskName,
+        title: args.title ?? taskName
+      });
+      return jsonToolResult({
+        task_name: taskName,
+        jobId: started.jobId,
+        status: started.status,
+        backend: started.backend,
+        sessionId: started.sessionId,
+        externalSessionId: started.externalSessionId
+      });
+    }
+  );
+  server.registerTool(
+    "retinue_wait_agent",
+    {
+      title: "Wait For Retinue Agent",
+      description: "Wait for a Retinue child agent and include its result when it reaches a terminal state.",
+      inputSchema: {
+        jobId: external_exports.string(),
+        timeoutMs: external_exports.number().int().nonnegative().optional()
+      }
+    },
+    async ({ jobId, timeoutMs }) => {
+      const backend = await createRetinueBackendForJob(supervisor, jobId);
+      const waited = await backend.wait({ jobId }, timeoutMs);
+      const status = await backend.status({ jobId });
+      if (waited.status === "running") {
+        const stateDir = resolveStateDir({
+          explicitStateDir: process.env.SUPERVISOR_STATE_DIR,
+          env: process.env
+        });
+        return jsonToolResult({
+          task_name: isJobMeta(status) ? status.name : void 0,
+          jobId,
+          status: waited.status,
+          backend: isJobMeta(status) ? status.backend : void 0,
+          externalSessionId: isJobMeta(status) ? status.externalSessionId : void 0,
+          externalServerUrl: isJobMeta(status) ? status.externalServerUrl : void 0,
+          stateDir,
+          tracePath: getRetinueTracePath(stateDir)
+        });
+      }
+      const result = await backend.result({ jobId });
+      return jsonToolResult({
+        task_name: isJobMeta(status) ? status.name : void 0,
+        jobId,
+        status: waited.status,
+        result
+      });
+    }
+  );
+  server.registerTool(
+    "retinue_close_agent",
+    {
+      title: "Close Retinue Agent",
+      description: "Close a Retinue child agent and its backend session.",
+      inputSchema: {
+        jobId: external_exports.string()
+      }
+    },
+    async ({ jobId }) => {
+      const backend = await createRetinueBackendForJob(supervisor, jobId);
+      const status = await backend.status({ jobId });
+      if (isJobMeta(status) && status.status === "running") {
+        await backend.abort({ jobId });
+        return jsonToolResult({ jobId, status: "killed" });
+      }
+      return jsonToolResult({ jobId, status: "status" in status ? status.status : "unknown" });
+    }
+  );
+  return server;
+}
+function registerBackendTools(server, supervisor) {
   server.registerTool(
     "claude_run",
     {
@@ -22952,96 +23059,6 @@ function createMcpServer(supervisor = createMcpSupervisorFromEnv()) {
     },
     async ({ olderThanMs }) => jsonToolResult(await (await createOpenCodeBackend({})).cleanup({ olderThanMs }))
   );
-  server.registerTool(
-    "retinue_spawn_agent",
-    {
-      title: "Spawn Retinue Agent",
-      description: "Spawn a Retinue child agent using the deployment-selected backend and return a job handle.",
-      inputSchema: {
-        message: external_exports.string(),
-        task_name: external_exports.string().optional(),
-        taskName: external_exports.string().optional(),
-        cwd: external_exports.string().optional(),
-        title: external_exports.string().optional()
-      }
-    },
-    async (args) => {
-      const taskName = normalizeTaskName(args);
-      const started = await (await createRetinueBackend(supervisor)).run({
-        cwd: args.cwd ?? process.cwd(),
-        prompt: args.message,
-        name: taskName,
-        title: args.title ?? taskName
-      });
-      return jsonToolResult({
-        task_name: taskName,
-        jobId: started.jobId,
-        status: started.status,
-        backend: started.backend,
-        sessionId: started.sessionId,
-        externalSessionId: started.externalSessionId
-      });
-    }
-  );
-  server.registerTool(
-    "retinue_wait_agent",
-    {
-      title: "Wait For Retinue Agent",
-      description: "Wait for a Retinue child agent and include its result when it reaches a terminal state.",
-      inputSchema: {
-        jobId: external_exports.string(),
-        timeoutMs: external_exports.number().int().nonnegative().optional()
-      }
-    },
-    async ({ jobId, timeoutMs }) => {
-      const backend = await createRetinueBackendForJob(supervisor, jobId);
-      const waited = await backend.wait({ jobId }, timeoutMs);
-      const status = await backend.status({ jobId });
-      if (waited.status === "running") {
-        const stateDir = resolveStateDir({
-          explicitStateDir: process.env.SUPERVISOR_STATE_DIR,
-          env: process.env
-        });
-        return jsonToolResult({
-          task_name: isJobMeta(status) ? status.name : void 0,
-          jobId,
-          status: waited.status,
-          backend: isJobMeta(status) ? status.backend : void 0,
-          externalSessionId: isJobMeta(status) ? status.externalSessionId : void 0,
-          externalServerUrl: isJobMeta(status) ? status.externalServerUrl : void 0,
-          stateDir,
-          tracePath: getRetinueTracePath(stateDir)
-        });
-      }
-      const result = await backend.result({ jobId });
-      return jsonToolResult({
-        task_name: isJobMeta(status) ? status.name : void 0,
-        jobId,
-        status: waited.status,
-        result
-      });
-    }
-  );
-  server.registerTool(
-    "retinue_close_agent",
-    {
-      title: "Close Retinue Agent",
-      description: "Close a Retinue child agent and its backend session.",
-      inputSchema: {
-        jobId: external_exports.string()
-      }
-    },
-    async ({ jobId }) => {
-      const backend = await createRetinueBackendForJob(supervisor, jobId);
-      const status = await backend.status({ jobId });
-      if (isJobMeta(status) && status.status === "running") {
-        await backend.abort({ jobId });
-        return jsonToolResult({ jobId, status: "killed" });
-      }
-      return jsonToolResult({ jobId, status: "status" in status ? status.status : "unknown" });
-    }
-  );
-  return server;
 }
 function opencodeRunSchema() {
   return {

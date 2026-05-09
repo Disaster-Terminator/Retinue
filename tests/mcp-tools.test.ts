@@ -52,6 +52,16 @@ describe("MCP tools", () => {
     expect(server.server).toBeTruthy();
   });
 
+  it("publishes only Retinue product tools by default", async () => {
+    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }), false);
+    try {
+      const toolNames = (await connection.client.listTools()).tools.map((tool) => tool.name);
+      expect(toolNames).toEqual([...RETINUE_TOOL_NAMES]);
+    } finally {
+      await closeMcpClient(connection);
+    }
+  });
+
   it("creates a daemon-backed supervisor when SUPERVISOR_DAEMON_URL is set", () => {
     const supervisor = createMcpSupervisorFromEnv({
       SUPERVISOR_DAEMON_URL: "http://127.0.0.1:27777"
@@ -99,7 +109,8 @@ describe("MCP tools", () => {
       const mcpServer = createMcpServer(
         createMcpSupervisorFromEnv({
           SUPERVISOR_DAEMON_URL: `http://127.0.0.1:${address.port}`
-        })
+        }),
+        { exposeBackendTools: true }
       );
       await Promise.all([mcpServer.connect(serverTransport), client.connect(clientTransport)]);
 
@@ -624,16 +635,17 @@ async function connectMcpClient(daemonUrl: string) {
   const mcpServer = createMcpServer(
     createMcpSupervisorFromEnv({
       SUPERVISOR_DAEMON_URL: daemonUrl
-    })
+    }),
+    { exposeBackendTools: true }
   );
   await Promise.all([mcpServer.connect(serverTransport), client.connect(clientTransport)]);
   return { client, clientTransport, serverTransport };
 }
 
-async function connectMcpClientWithSupervisor(supervisor: ClaudeSupervisor) {
+async function connectMcpClientWithSupervisor(supervisor: ClaudeSupervisor, exposeBackendTools = true) {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "supervisor-test-client", version: "0.1.0" });
-  const mcpServer = createMcpServer(supervisor);
+  const mcpServer = createMcpServer(supervisor, { exposeBackendTools });
   await Promise.all([mcpServer.connect(serverTransport), client.connect(clientTransport)]);
   return { client, clientTransport, serverTransport };
 }

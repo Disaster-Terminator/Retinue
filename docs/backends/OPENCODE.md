@@ -23,7 +23,7 @@ SUPERVISOR_OPENCODE_AUTO_SERVE=1
 SUPERVISOR_OPENCODE_HOST=127.0.0.1
 ```
 
-Retinue prefers `127.0.0.1:4096` and tries `4097` when the preferred port is occupied by an external service. A running OpenCode server from another environment is treated as external unless the deployment sets `SUPERVISOR_OPENCODE_BASE_URL`.
+Retinue prefers `127.0.0.1:4096` and tries local fallback ports `4097` through `4127` when the preferred port is occupied by an external service. A running OpenCode server from another environment is treated as external unless the deployment sets `SUPERVISOR_OPENCODE_BASE_URL`.
 
 Explicit attach remains available:
 
@@ -92,7 +92,7 @@ Implemented:
 - backend metadata fields on job records
 - attach/serve policy helpers
 - CLI `opencode-run`, `opencode-status`, `opencode-wait`, `opencode-result`, `opencode-continue`, `opencode-kill`, and `opencode-cleanup`
-- MCP `opencode_*` lifecycle tools
+- opt-in MCP `opencode_*` lifecycle tools for adapter debugging when `SUPERVISOR_EXPOSE_BACKEND_TOOLS=1`
 - deterministic CLI/MCP tests using a fake OpenCode server
 - manual real OpenCode probe script
 
