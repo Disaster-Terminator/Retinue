@@ -21614,17 +21614,24 @@ async function startManagedOpenCodeServer(resolution, options) {
       stdio: "ignore",
       windowsHide: true
     });
+    const startupFailure = waitForStartupFailure(child, resolution.command);
     const cleanup = () => {
-      if (!child.killed && child.exitCode === null) {
-        child.kill();
+      try {
+        if (!child.killed && child.exitCode === null) {
+          child.kill();
+        }
+      } catch {
       }
     };
     process.once("exit", cleanup);
     try {
-      await waitForOpenCodeHealth(baseUrl, {
-        timeoutMs: options.healthTimeoutMs ?? DEFAULT_HEALTH_TIMEOUT_MS,
-        pollMs: options.healthPollMs ?? DEFAULT_HEALTH_POLL_MS
-      });
+      await Promise.race([
+        waitForOpenCodeHealth(baseUrl, {
+          timeoutMs: options.healthTimeoutMs ?? DEFAULT_HEALTH_TIMEOUT_MS,
+          pollMs: options.healthPollMs ?? DEFAULT_HEALTH_POLL_MS
+        }),
+        startupFailure
+      ]);
     } catch (error2) {
       cleanup();
       process.removeListener("exit", cleanup);
@@ -21652,6 +21659,25 @@ async function startManagedOpenCodeServer(resolution, options) {
   throw new Error(
     `OpenCode auto-serve could not start because candidate port${ports.length === 1 ? "" : "s"} ${ports.join(", ")} on ${resolution.host} ${occupiedPorts.length === ports.length ? "are already in use by non-OpenCode services" : "were unavailable"}`
   );
+}
+function waitForStartupFailure(child, command) {
+  return new Promise((_, reject) => {
+    child.once("error", (error2) => {
+      reject(new Error(`Failed to start OpenCode server command "${command}": ${error2.message}`));
+    });
+    child.once("exit", (code, signal) => {
+      reject(new Error(`OpenCode server command "${command}" exited before becoming healthy: ${formatExit(code, signal)}`));
+    });
+  });
+}
+function formatExit(code, signal) {
+  if (code !== null) {
+    return `exit code ${code}`;
+  }
+  if (signal !== null) {
+    return `signal ${signal}`;
+  }
+  return "unknown exit";
 }
 async function readReusableDiscovery(stateDir) {
   let discovery;
