@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 interface FakeSession {
   id: string;
   title?: string;
+  directory?: string;
   cwd?: string;
   aborted?: boolean;
   state: "running" | "completed" | "failed";
@@ -17,6 +18,7 @@ interface FakeSession {
 
 export interface FakeOpenCodeServer {
   url: string;
+  sessionRequests: Array<Record<string, unknown>>;
   promptRequests: Array<Record<string, unknown>>;
   setAutoAssistantResponses(enabled: boolean): void;
   completeSession(sessionId: string): void;
@@ -26,9 +28,11 @@ export interface FakeOpenCodeServer {
   close(): Promise<void>;
 }
 
-export async function startFakeOpenCodeServer(): Promise<FakeOpenCodeServer> {
+export async function startFakeOpenCodeServer(options: { serverCwd?: string } = {}): Promise<FakeOpenCodeServer> {
   const sessions = new Map<string, FakeSession>();
+  const sessionRequests: Array<Record<string, unknown>> = [];
   const promptRequests: Array<Record<string, unknown>> = [];
+  const serverCwd = options.serverCwd ?? process.cwd();
   let autoAssistantResponses = true;
   let nextSession = 1;
   let nextMessage = 1;
@@ -44,15 +48,16 @@ export async function startFakeOpenCodeServer(): Promise<FakeOpenCodeServer> {
 
     if (request.method === "POST" && url.pathname === "/session") {
       const body = await readJson(request);
+      sessionRequests.push(body);
       const session: FakeSession = {
         id: `ses_${nextSession++}`,
         title: typeof body.title === "string" ? body.title : undefined,
-        cwd: typeof body.cwd === "string" ? body.cwd : undefined,
+        directory: serverCwd,
         state: "running",
         messages: []
       };
       sessions.set(session.id, session);
-      writeJson(response, 200, { id: session.id, title: session.title, cwd: session.cwd });
+      writeJson(response, 200, { id: session.id, title: session.title, directory: session.directory, cwd: session.cwd });
       return;
     }
 
@@ -60,7 +65,7 @@ export async function startFakeOpenCodeServer(): Promise<FakeOpenCodeServer> {
       writeJson(
         response,
         200,
-        [...sessions.values()].map((session) => ({ id: session.id, title: session.title, cwd: session.cwd }))
+        [...sessions.values()].map((session) => ({ id: session.id, title: session.title, directory: session.directory, cwd: session.cwd }))
       );
       return;
     }
@@ -82,6 +87,7 @@ export async function startFakeOpenCodeServer(): Promise<FakeOpenCodeServer> {
       writeJson(response, 200, {
         id: session.id,
         title: session.title,
+        directory: session.directory,
         cwd: session.cwd,
         aborted: session.aborted === true,
         state: session.omitState ? undefined : session.state,
@@ -133,6 +139,7 @@ export async function startFakeOpenCodeServer(): Promise<FakeOpenCodeServer> {
   const address = server.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${address.port}`,
+    sessionRequests,
     promptRequests,
     setAutoAssistantResponses: (enabled: boolean) => {
       autoAssistantResponses = enabled;

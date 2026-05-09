@@ -113,6 +113,33 @@ describe("OpenCode server manager", () => {
     }
   });
 
+  it("starts managed OpenCode servers in the requested project cwd", async () => {
+    const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-project-"));
+    const port = await freePort();
+    const command = await writeFakeOpenCodeCommandWithSessions();
+    let target: Awaited<ReturnType<typeof ensureOpenCodeServer>> | undefined;
+    try {
+      target = await ensureOpenCodeServer(
+        {
+          mode: "serve",
+          command,
+          args: buildServeArgs({ host: "127.0.0.1", port }),
+          host: "127.0.0.1",
+          port,
+          fallbackPorts: []
+        },
+        { cwd: projectDir, healthTimeoutMs: 5000, healthPollMs: 50 }
+      );
+
+      const created = (await (await fetch(`${target.baseUrl}/session`, { method: "POST", body: "{}" })).json()) as { id: string };
+      const session = (await (await fetch(`${target.baseUrl}/session/${created.id}`)).json()) as { directory?: string };
+      expect(session.directory).toBe(projectDir);
+    } finally {
+      target?.child?.kill();
+      await fs.rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("reuses a Retinue-managed OpenCode server recorded in state discovery", async () => {
     const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-discovery-"));
     const managed = await startHealthServer(JSON.stringify({ healthy: true, version: "managed" }));
@@ -278,6 +305,47 @@ const server = http.createServer((request, response) => {
   if (request.url === "/global/health") {
     response.setHeader("content-type", "application/json");
     response.end(JSON.stringify({ healthy: true, version: "fake" }));
+    return;
+  }
+  response.statusCode = 404;
+  response.end("{}");
+});
+server.listen(port, host);
+`,
+    { mode: 0o755 }
+  );
+  return file;
+}
+
+async function writeFakeOpenCodeCommandWithSessions(): Promise<string> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-fake-opencode-command-"));
+  const file = path.join(dir, "opencode-fake.mjs");
+  await fs.writeFile(
+    file,
+    `#!/usr/bin/env node
+import http from "node:http";
+const port = Number(process.argv[process.argv.indexOf("--port") + 1]);
+const host = process.argv[process.argv.indexOf("--hostname") + 1];
+const serverCwd = process.cwd();
+const sessions = new Map();
+let nextSession = 1;
+const server = http.createServer((request, response) => {
+  response.setHeader("content-type", "application/json");
+  if (request.url === "/global/health") {
+    response.end(JSON.stringify({ healthy: true, version: "fake" }));
+    return;
+  }
+  if (request.method === "POST" && request.url === "/session") {
+    const session = { id: \`ses_\${nextSession++}\`, directory: serverCwd, state: "running" };
+    sessions.set(session.id, session);
+    response.end(JSON.stringify(session));
+    return;
+  }
+  const match = /^\\/session\\/([^/]+)$/.exec(request.url ?? "");
+  if (request.method === "GET" && match) {
+    const session = sessions.get(decodeURIComponent(match[1]));
+    response.statusCode = session ? 200 : 404;
+    response.end(JSON.stringify(session ?? { error: { message: "Missing session" } }));
     return;
   }
   response.statusCode = 404;

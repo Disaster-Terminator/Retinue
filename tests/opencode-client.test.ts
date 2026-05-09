@@ -13,13 +13,15 @@ describe("OpenCodeClient", () => {
   });
 
   it("checks health, creates sessions, sends prompts, and reads messages", async () => {
-    server = await startFakeOpenCodeServer();
+    server = await startFakeOpenCodeServer({ serverCwd: "C:/server-cwd" });
     const client = new OpenCodeClient(server.url);
 
     await expect(client.health()).resolves.toMatchObject({ status: "ok" });
 
     const session = await client.createSession({ cwd: "G:/repository/supervisor", title: "test session" });
-    expect(session).toMatchObject({ id: expect.any(String), cwd: "G:/repository/supervisor", title: "test session" });
+    expect(server.sessionRequests.at(-1)).toMatchObject({ directory: "G:/repository/supervisor", title: "test session" });
+    expect(session).toMatchObject({ id: expect.any(String), directory: "C:/server-cwd", title: "test session" });
+    expect(session).not.toHaveProperty("cwd");
 
     await expect(client.listSessions()).resolves.toContainEqual(expect.objectContaining({ id: session.id }));
     await expect(client.getSession(session.id)).resolves.toMatchObject({ id: session.id });

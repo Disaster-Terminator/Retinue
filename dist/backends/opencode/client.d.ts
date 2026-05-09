@@ -1,6 +1,7 @@
 export interface OpenCodeSession {
     id: string;
     title?: string;
+    directory?: string;
     cwd?: string;
     [key: string]: unknown;
 }

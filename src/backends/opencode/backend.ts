@@ -6,10 +6,15 @@ import type { AgentBackend, AgentContinueOptions, AgentHandle, AgentRunOptions }
 import { OpenCodeClient, OpenCodeClientError, type OpenCodeMessage } from "./client.js";
 
 export interface OpenCodeBackendOptions {
-  client: OpenCodeClient;
-  baseUrl: string;
+  client?: OpenCodeClient;
+  baseUrl?: string;
+  target?: (cwd: string | undefined) => Promise<OpenCodeBackendTarget>;
   stateDir?: string;
   env?: SupervisorOptions["env"];
+}
+export interface OpenCodeBackendTarget {
+  client: OpenCodeClient;
+  baseUrl: string;
 }
 const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
 const DEFAULT_WAIT_POLL_MS = 250;
@@ -17,6 +22,8 @@ const DEFAULT_WAIT_POLL_MS = 250;
 interface OpenCodeJobDiagnostic {
   baseUrl: string;
   sessionId?: string;
+  sessionDirectory?: string;
+  sessionPath?: string;
   sessionState?: unknown;
   sessionAborted?: boolean;
   baselineMessageCount?: number;
@@ -36,13 +43,22 @@ interface OpenCodeJobDiagnostic {
 
 export class OpenCodeBackend implements AgentBackend {
   readonly kind = "opencode" as const;
-  private readonly client: OpenCodeClient;
-  private readonly baseUrl: string;
+  private readonly client?: OpenCodeClient;
+  private readonly baseUrl?: string;
+  private readonly resolveTarget: (cwd: string | undefined) => Promise<OpenCodeBackendTarget>;
   private readonly stateDir: string;
 
   constructor(options: OpenCodeBackendOptions) {
     this.client = options.client;
-    this.baseUrl = options.baseUrl.replace(/\/+$/, "");
+    this.baseUrl = options.baseUrl?.replace(/\/+$/, "");
+    this.resolveTarget =
+      options.target ??
+      (async () => {
+        if (!this.client || !this.baseUrl) {
+          throw new Error("OpenCode backend target is not configured");
+        }
+        return { client: this.client, baseUrl: this.baseUrl };
+      });
     this.stateDir = resolveStateDir({ explicitStateDir: options.stateDir, env: options.env });
   }
 
@@ -52,9 +68,10 @@ export class OpenCodeBackend implements AgentBackend {
     await fs.mkdir(paths.dir, { recursive: true });
     await fs.writeFile(paths.prompt, options.prompt, "utf8");
 
-    const session = await this.client.createSession({ cwd: options.cwd, title: options.title ?? options.name });
-    const baseline = await this.captureMessageBaseline(session.id);
-    await this.client.promptAsync(session.id, {
+    const target = await this.resolveTarget(options.cwd);
+    const session = await target.client.createSession({ cwd: options.cwd, title: options.title ?? options.name });
+    const baseline = await this.captureMessageBaseline(target.client, session.id);
+    await target.client.promptAsync(session.id, {
       prompt: options.prompt,
       model: options.model,
       agent: options.agent
@@ -75,7 +92,7 @@ export class OpenCodeBackend implements AgentBackend {
       model: options.model,
       agent: options.agent,
       externalSessionId: session.id,
-      externalServerUrl: this.baseUrl,
+      externalServerUrl: target.baseUrl,
       externalMessageBaselineCount: baseline.messageCount,
       externalCompletedAssistantBaselineCount: baseline.completedAssistantCount,
       args: [],
@@ -95,8 +112,9 @@ export class OpenCodeBackend implements AgentBackend {
     const paths = getJobPaths(this.stateDir, jobId);
     await fs.mkdir(paths.dir, { recursive: true });
     await fs.writeFile(paths.prompt, options.prompt, "utf8");
-    const baseline = await this.captureMessageBaseline(options.externalSessionId);
-    await this.client.promptAsync(options.externalSessionId, {
+    const target = await this.targetForContinue(options);
+    const baseline = await this.captureMessageBaseline(target.client, options.externalSessionId);
+    await target.client.promptAsync(options.externalSessionId, {
       prompt: options.prompt,
       model: options.model,
       agent: options.agent
@@ -117,7 +135,7 @@ export class OpenCodeBackend implements AgentBackend {
       model: options.model,
       agent: options.agent,
       externalSessionId: options.externalSessionId,
-      externalServerUrl: this.baseUrl,
+      externalServerUrl: target.baseUrl,
       externalMessageBaselineCount: baseline.messageCount,
       externalCompletedAssistantBaselineCount: baseline.completedAssistantCount,
       parentJobId: options.parentJobId,
@@ -147,7 +165,8 @@ export class OpenCodeBackend implements AgentBackend {
     if (!meta.externalSessionId) {
       return { jobId: handle.jobId, status: "corrupted", error: "Missing OpenCode session id" };
     }
-    const messages = await this.client.messages(meta.externalSessionId);
+    const client = this.clientForMeta(meta);
+    const messages = await client.messages(meta.externalSessionId);
     const jobMessages = selectMessagesForMeta(messages, meta);
     const text = meta.externalMessageBaselineCount === undefined ? latestAssistantMessageText(messages) : latestAssistantMessageText(jobMessages);
     return {
@@ -171,7 +190,7 @@ export class OpenCodeBackend implements AgentBackend {
     if (isProblem(meta) || !meta.externalSessionId) {
       return;
     }
-    await this.client.abort(meta.externalSessionId);
+    await this.clientForMeta(meta).abort(meta.externalSessionId);
     await writeJsonAtomic(getJobPaths(this.stateDir, handle.jobId).meta, {
       ...meta,
       status: "killed",
@@ -242,7 +261,8 @@ export class OpenCodeBackend implements AgentBackend {
       return meta;
     }
     try {
-      const session = await this.client.getSession(meta.externalSessionId);
+      const client = this.clientForMeta(meta);
+      const session = await client.getSession(meta.externalSessionId);
       let status = meta.status;
       if (session.aborted === true) {
         status = "killed";
@@ -250,7 +270,7 @@ export class OpenCodeBackend implements AgentBackend {
         status = "completed";
       } else if (session.state === "failed") {
         status = "failed";
-      } else if (session.state === undefined && (await this.hasNewCompletedAssistantMessage(meta.externalSessionId, meta))) {
+      } else if (session.state === undefined && (await this.hasNewCompletedAssistantMessage(client, meta.externalSessionId, meta))) {
         status = "completed";
       } else {
         status = "running";
@@ -269,16 +289,16 @@ export class OpenCodeBackend implements AgentBackend {
     }
   }
 
-  private async captureMessageBaseline(sessionId: string): Promise<{ messageCount: number; completedAssistantCount: number }> {
-    const messages = await this.client.messages(sessionId);
+  private async captureMessageBaseline(client: OpenCodeClient, sessionId: string): Promise<{ messageCount: number; completedAssistantCount: number }> {
+    const messages = await client.messages(sessionId);
     return {
       messageCount: messages.length,
       completedAssistantCount: countCompletedAssistantMessages(messages)
     };
   }
 
-  private async hasNewCompletedAssistantMessage(sessionId: string, meta: JobMeta): Promise<boolean> {
-    const messages = await this.client.messages(sessionId);
+  private async hasNewCompletedAssistantMessage(client: OpenCodeClient, sessionId: string, meta: JobMeta): Promise<boolean> {
+    const messages = await client.messages(sessionId);
     const jobMessages = selectMessagesForMeta(messages, meta);
     if (jobMessages.some(isCompletedAssistantMessage)) {
       return true;
@@ -291,17 +311,20 @@ export class OpenCodeBackend implements AgentBackend {
 
   private async inspectJob(meta: JobMeta): Promise<OpenCodeJobDiagnostic> {
     const diagnostic: OpenCodeJobDiagnostic = {
-      baseUrl: this.baseUrl,
+      baseUrl: meta.externalServerUrl ?? this.baseUrl ?? "",
       sessionId: meta.externalSessionId
     };
     if (!meta.externalSessionId) {
       return diagnostic;
     }
     try {
-      const [session, messages] = await Promise.all([this.client.getSession(meta.externalSessionId), this.client.messages(meta.externalSessionId)]);
+      const client = this.clientForMeta(meta);
+      const [session, messages] = await Promise.all([client.getSession(meta.externalSessionId), client.messages(meta.externalSessionId)]);
       const jobMessages = selectMessagesForMeta(messages, meta);
       const lastMessage = jobMessages.at(-1) ?? messages.at(-1);
       const lastAssistant = [...jobMessages].reverse().find((message) => message.info?.role === "assistant");
+      diagnostic.sessionDirectory = typeof session.directory === "string" ? session.directory : undefined;
+      diagnostic.sessionPath = typeof session.path === "string" ? session.path : undefined;
       diagnostic.sessionState = session.state;
       diagnostic.sessionAborted = session.aborted === true;
       diagnostic.baselineMessageCount = meta.externalMessageBaselineCount;
@@ -332,6 +355,28 @@ export class OpenCodeBackend implements AgentBackend {
       promptSha256: meta.promptSha256,
       diagnostic
     });
+  }
+
+  private clientForMeta(meta: JobMeta): OpenCodeClient {
+    const baseUrl = meta.externalServerUrl?.replace(/\/+$/, "");
+    if (baseUrl && baseUrl !== this.baseUrl) {
+      return new OpenCodeClient(baseUrl);
+    }
+    if (!this.client) {
+      throw new Error("OpenCode backend client is not configured");
+    }
+    return this.client;
+  }
+
+  private async targetForContinue(options: AgentContinueOptions): Promise<OpenCodeBackendTarget> {
+    if (options.parentJobId) {
+      const parent = await this.readMeta(options.parentJobId);
+      if (!isProblem(parent) && parent.externalServerUrl) {
+        const baseUrl = parent.externalServerUrl.replace(/\/+$/, "");
+        return { client: new OpenCodeClient(baseUrl), baseUrl };
+      }
+    }
+    return this.resolveTarget(options.cwd);
   }
 }
 

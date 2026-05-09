@@ -165,6 +165,28 @@ describe("OpenCodeBackend", () => {
     });
   });
 
+  it("continues an existing OpenCode session through the parent job server", async () => {
+    const requestedCwds: Array<string | undefined> = [];
+    const backend = new OpenCodeBackend({
+      target: async (cwd) => {
+        requestedCwds.push(cwd);
+        return { client: new OpenCodeClient(server!.url), baseUrl: server!.url };
+      },
+      stateDir: tempDir
+    });
+    const first = await backend.run({ cwd: tempDir, prompt: "first" });
+
+    const continued = await backend.continueJob({
+      cwd: tempDir,
+      prompt: "second",
+      externalSessionId: first.externalSessionId,
+      parentJobId: first.jobId
+    });
+
+    expect(continued.externalServerUrl).toBe(first.externalServerUrl);
+    expect(requestedCwds).toEqual([tempDir]);
+  });
+
   it("aborts OpenCode sessions", async () => {
     const backend = createBackend();
     const started = await backend.run({ cwd: tempDir, prompt: "stop" });
@@ -182,6 +204,21 @@ describe("OpenCodeBackend", () => {
     await expect(backend.wait({ jobId: started.jobId }, 1)).resolves.toMatchObject({ status: "running" });
     server!.completeSession(started.externalSessionId!);
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
+  });
+
+  it("resolves the OpenCode target from the requested run cwd", async () => {
+    const requestedCwds: Array<string | undefined> = [];
+    const backend = new OpenCodeBackend({
+      target: async (cwd) => {
+        requestedCwds.push(cwd);
+        return { client: new OpenCodeClient(server!.url), baseUrl: server!.url };
+      },
+      stateDir: tempDir
+    });
+
+    await backend.run({ cwd: tempDir, prompt: "target-cwd" });
+
+    expect(requestedCwds).toEqual([tempDir]);
   });
 
   it("reconciles failed state from fake server", async () => {

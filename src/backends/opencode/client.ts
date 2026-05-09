@@ -1,6 +1,7 @@
 export interface OpenCodeSession {
   id: string;
   title?: string;
+  directory?: string;
   cwd?: string;
   [key: string]: unknown;
 }
@@ -45,7 +46,10 @@ export class OpenCodeClient {
   }
 
   createSession(options: { cwd?: string; title?: string } = {}): Promise<OpenCodeSession> {
-    return this.request("POST", "/session", options);
+    return this.request("POST", "/session", {
+      title: options.title,
+      directory: options.cwd
+    });
   }
 
   listSessions(): Promise<OpenCodeSession[]> {

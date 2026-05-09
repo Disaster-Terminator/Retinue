@@ -23,6 +23,7 @@ export interface OpenCodeServerTarget {
     baseUrl: string;
     started: boolean;
     child?: ChildProcess;
+    cwd?: string;
 }
 export interface OpenCodeSpawnCommand {
     command: string;
@@ -44,4 +45,5 @@ export declare function ensureOpenCodeServer(resolution: OpenCodeServerResolutio
     healthTimeoutMs?: number;
     healthPollMs?: number;
     lockTimeoutMs?: number;
+    cwd?: string;
 }): Promise<OpenCodeServerTarget>;

@@ -21,7 +21,10 @@ export class OpenCodeClient {
         return this.request("GET", "/global/health");
     }
     createSession(options = {}) {
-        return this.request("POST", "/session", options);
+        return this.request("POST", "/session", {
+            title: options.title,
+            directory: options.cwd
+        });
     }
     listSessions() {
         return this.request("GET", "/session");

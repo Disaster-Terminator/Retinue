@@ -5,6 +5,7 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { getOpenCodeServerDiscoveryPath } from "../src/core/paths.js";
@@ -70,8 +71,9 @@ describe("Retinue OpenCode auto-serve MCP E2E", () => {
     expect(firstWait).toMatchObject({ status: "completed", result: { parsedStdout: { result: "fake cli result: Reply exactly: FIRST_OK" } } });
     expect(secondWait).toMatchObject({ status: "completed", result: { parsedStdout: { result: "fake cli result: Reply exactly: SECOND_OK" } } });
 
-    const discovery = JSON.parse(await fs.readFile(getOpenCodeServerDiscoveryPath(tempDir), "utf8")) as { baseUrl?: string };
+    const discovery = JSON.parse(await fs.readFile(getScopedDiscoveryPath(tempDir, tempDir), "utf8")) as { baseUrl?: string; cwd?: string };
     expect(discovery.baseUrl).toBe(`http://127.0.0.1:${fallbackPort}`);
+    expect(discovery.cwd).toBe(tempDir);
   });
 });
 
@@ -120,4 +122,9 @@ async function freePort(): Promise<number> {
   const address = server.address() as AddressInfo;
   await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   return address.port;
+}
+
+function getScopedDiscoveryPath(stateDir: string, cwd: string): string {
+  const hash = createHash("sha256").update(path.resolve(cwd)).digest("hex").slice(0, 16);
+  return path.join(path.dirname(getOpenCodeServerDiscoveryPath(stateDir)), `opencode-server-${hash}.json`);
 }
