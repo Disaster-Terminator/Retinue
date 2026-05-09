@@ -10,7 +10,7 @@ import { OpenCodeClient } from "./backends/opencode/client.js";
 import { ensureOpenCodeServer, resolveOpenCodeServerFromEnv } from "./backends/opencode/serverManager.js";
 import { DaemonClient } from "./daemon/client.js";
 import { readDaemonDiscoverySync } from "./daemon/discovery.js";
-import { getJobPaths, resolveStateDir } from "./core/paths.js";
+import { getJobPaths, getRetinueTracePath, resolveStateDir } from "./core/paths.js";
 import { ClaudeSupervisor } from "./core/supervisor.js";
 import type { AgentBackendKind, JobMeta, JobStatusResult, SupervisorApi, WaitResult } from "./core/types.js";
 import type { AgentBackend, AgentContinueOptions, AgentHandle, AgentRunOptions } from "./backends/types.js";
@@ -283,10 +283,19 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
       const waited = await backend.wait({ jobId }, timeoutMs);
       const status = await backend.status({ jobId });
       if (waited.status === "running") {
+        const stateDir = resolveStateDir({
+          explicitStateDir: process.env.SUPERVISOR_STATE_DIR,
+          env: process.env
+        });
         return jsonToolResult({
           task_name: isJobMeta(status) ? status.name : undefined,
           jobId,
-          status: waited.status
+          status: waited.status,
+          backend: isJobMeta(status) ? status.backend : undefined,
+          externalSessionId: isJobMeta(status) ? status.externalSessionId : undefined,
+          externalServerUrl: isJobMeta(status) ? status.externalServerUrl : undefined,
+          stateDir,
+          tracePath: getRetinueTracePath(stateDir)
         });
       }
       const result = await backend.result({ jobId });

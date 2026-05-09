@@ -301,6 +301,47 @@ describe("MCP tools", () => {
     }
   });
 
+  it("returns OpenCode diagnostics when Retinue wait times out while still running", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-retinue-opencode-running-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    fakeOpenCode.setAutoAssistantResponses(false);
+    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }));
+    try {
+      process.env.SUPERVISOR_STATE_DIR = tempDir;
+      process.env.SUPERVISOR_OPENCODE_BASE_URL = fakeOpenCode.url;
+
+      const spawn = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue still running", task_name: "running-opencode" }
+        })
+      );
+
+      const wait = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_wait_agent",
+          arguments: { jobId: spawn.jobId, timeoutMs: 1 }
+        })
+      );
+
+      expect(wait).toMatchObject({
+        task_name: "running-opencode",
+        jobId: spawn.jobId,
+        status: "running",
+        backend: "opencode",
+        externalSessionId: spawn.externalSessionId,
+        externalServerUrl: fakeOpenCode.url,
+        stateDir: tempDir,
+        tracePath: path.join(tempDir, "logs", "retinue.jsonl")
+      });
+    } finally {
+      delete process.env.SUPERVISOR_STATE_DIR;
+      delete process.env.SUPERVISOR_OPENCODE_BASE_URL;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("keeps Retinue wait/close bound to the spawned OpenCode backend even if deployment env changes", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-retinue-opencode-bound-"));
     const fakeOpenCode = await startFakeOpenCodeServer();

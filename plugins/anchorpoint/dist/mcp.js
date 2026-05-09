@@ -21281,6 +21281,7 @@ var OpenCodeBackend = class {
       updatedAt: now
     };
     await writeJsonAtomic(paths.meta, meta);
+    await this.writeJobTrace("opencode_job_prompt_submitted", meta, await this.inspectJob(meta));
     return meta;
   }
   async continueJob(options) {
@@ -21323,6 +21324,7 @@ var OpenCodeBackend = class {
       updatedAt: now
     };
     await writeJsonAtomic(paths.meta, meta);
+    await this.writeJobTrace("opencode_job_prompt_submitted", meta, await this.inspectJob(meta));
     return meta;
   }
   async status(handle) {
@@ -21378,6 +21380,12 @@ var OpenCodeBackend = class {
         return { jobId: handle.jobId, status: status.status };
       }
       if (Date.now() >= deadline) {
+        const meta = await this.readMeta(handle.jobId);
+        if (!isProblem(meta)) {
+          const diagnostic = await this.inspectJob(meta);
+          await this.writeJobTrace("opencode_job_wait_timeout", meta, diagnostic);
+          await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_wait_timeout", diagnostic });
+        }
         return { jobId: handle.jobId, status: "running" };
       }
       await sleep(DEFAULT_WAIT_POLL_MS);
@@ -21466,7 +21474,66 @@ var OpenCodeBackend = class {
     }
     return countCompletedAssistantMessages(messages) > (meta.externalCompletedAssistantBaselineCount ?? 0);
   }
+  async inspectJob(meta) {
+    const diagnostic = {
+      baseUrl: this.baseUrl,
+      sessionId: meta.externalSessionId
+    };
+    if (!meta.externalSessionId) {
+      return diagnostic;
+    }
+    try {
+      const [session, messages] = await Promise.all([this.client.getSession(meta.externalSessionId), this.client.messages(meta.externalSessionId)]);
+      const jobMessages = selectMessagesForMeta(messages, meta);
+      const lastMessage = jobMessages.at(-1) ?? messages.at(-1);
+      diagnostic.sessionState = session.state;
+      diagnostic.sessionAborted = session.aborted === true;
+      diagnostic.messageCount = messages.length;
+      diagnostic.jobMessageCount = jobMessages.length;
+      diagnostic.completedAssistantCount = countCompletedAssistantMessages(messages);
+      diagnostic.jobCompletedAssistantCount = countCompletedAssistantMessages(jobMessages);
+      diagnostic.lastMessageRole = lastMessage?.info?.role;
+      diagnostic.lastMessagePartTypes = lastMessage?.parts?.map((part) => part.type ?? "unknown");
+      diagnostic.lastMessageTextBytes = Buffer.byteLength(extractMessageText(lastMessage ?? {}), "utf8");
+      diagnostic.lastAssistantTextBytes = Buffer.byteLength(latestAssistantMessageText(jobMessages), "utf8");
+    } catch (error2) {
+      diagnostic.error = error2 instanceof Error ? error2.message : String(error2);
+    }
+    return diagnostic;
+  }
+  async writeJobTrace(event, meta, diagnostic) {
+    await writeRetinueTrace(this.stateDir, {
+      event,
+      backend: "opencode",
+      jobId: meta.jobId,
+      status: meta.status,
+      cwd: meta.cwd,
+      promptSha256: meta.promptSha256,
+      diagnostic
+    });
+  }
 };
+async function appendJobDiagnostic(stateDir, jobId, value) {
+  const paths = getJobPaths(stateDir, jobId);
+  try {
+    await fs.mkdir(paths.dir, { recursive: true });
+    await fs.appendFile(paths.stderr, `${JSON.stringify({ time: (/* @__PURE__ */ new Date()).toISOString(), ...asRecord(value) })}
+`, "utf8");
+  } catch {
+  }
+}
+async function writeRetinueTrace(stateDir, value) {
+  const tracePath = getRetinueTracePath(stateDir);
+  try {
+    await fs.mkdir(tracePath.replace(/[\\/][^\\/]+$/, ""), { recursive: true });
+    await fs.appendFile(tracePath, `${JSON.stringify({ time: (/* @__PURE__ */ new Date()).toISOString(), pid: process.pid, ...asRecord(value) })}
+`, "utf8");
+  } catch {
+  }
+}
+function asRecord(value) {
+  return typeof value === "object" && value !== null ? value : { value };
+}
 function isTerminal2(status) {
   return status === "completed" || status === "failed" || status === "killed" || status === "timed_out";
 }
@@ -21600,14 +21667,14 @@ async function ensureOpenCodeServer(resolution, options = {}) {
   }
   const discovered = options.stateDir ? await readReusableDiscovery(options.stateDir) : void 0;
   if (discovered) {
-    await writeRetinueTrace(options.stateDir, { event: "opencode_server_reused", baseUrl: discovered.baseUrl, source: "discovery" });
+    await writeRetinueTrace2(options.stateDir, { event: "opencode_server_reused", baseUrl: discovered.baseUrl, source: "discovery" });
     return discovered;
   }
   const lock = options.stateDir ? await acquireOpenCodeServerLock(options.stateDir, options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS) : void 0;
   try {
     const discoveredAfterLock = options.stateDir ? await readReusableDiscovery(options.stateDir) : void 0;
     if (discoveredAfterLock) {
-      await writeRetinueTrace(options.stateDir, { event: "opencode_server_reused", baseUrl: discoveredAfterLock.baseUrl, source: "discovery" });
+      await writeRetinueTrace2(options.stateDir, { event: "opencode_server_reused", baseUrl: discoveredAfterLock.baseUrl, source: "discovery" });
       return discoveredAfterLock;
     }
     return await startManagedOpenCodeServer(resolution, options);
@@ -21622,19 +21689,19 @@ async function startManagedOpenCodeServer(resolution, options) {
     const baseUrl = `http://${resolution.host}:${port}`;
     const managed = managedServers.get(baseUrl);
     if (managed?.child && managed.child.exitCode === null) {
-      await writeRetinueTrace(options.stateDir, { event: "opencode_server_reused", baseUrl, source: "memory" });
+      await writeRetinueTrace2(options.stateDir, { event: "opencode_server_reused", baseUrl, source: "memory" });
       return managed;
     }
     const initial = await readOpenCodeHealth(baseUrl);
     if (initial.reachable) {
       occupiedPorts.push(port);
-      await writeRetinueTrace(options.stateDir, { event: "opencode_server_port_occupied", host: resolution.host, port, baseUrl });
+      await writeRetinueTrace2(options.stateDir, { event: "opencode_server_port_occupied", host: resolution.host, port, baseUrl });
       continue;
     }
     const prefixArgs = resolution.args.slice(0, -buildServeArgs({ host: resolution.host, port: resolution.port }).length);
     const spawnCommand = await resolveOpenCodeCommandForSpawn(resolution.command);
     const args = [...prefixArgs, ...buildServeArgs({ host: resolution.host, port })];
-    await writeRetinueTrace(options.stateDir, {
+    await writeRetinueTrace2(options.stateDir, {
       event: "opencode_server_spawn",
       requestedCommand: resolution.command,
       resolvedCommand: spawnCommand.command,
@@ -21670,7 +21737,7 @@ async function startManagedOpenCodeServer(resolution, options) {
     } catch (error2) {
       cleanup();
       process.removeListener("exit", cleanup);
-      await writeRetinueTrace(options.stateDir, {
+      await writeRetinueTrace2(options.stateDir, {
         event: "opencode_server_start_failed",
         requestedCommand: resolution.command,
         resolvedCommand: spawnCommand.command,
@@ -21680,7 +21747,7 @@ async function startManagedOpenCodeServer(resolution, options) {
       throw error2;
     }
     const target = { baseUrl, started: true, child };
-    await writeRetinueTrace(options.stateDir, {
+    await writeRetinueTrace2(options.stateDir, {
       event: "opencode_server_ready",
       requestedCommand: resolution.command,
       resolvedCommand: spawnCommand.command,
@@ -21709,7 +21776,7 @@ async function startManagedOpenCodeServer(resolution, options) {
     `OpenCode auto-serve could not start because candidate port${ports.length === 1 ? "" : "s"} ${ports.join(", ")} on ${resolution.host} ${occupiedPorts.length === ports.length ? "are already in use by non-OpenCode services" : "were unavailable"}`
   );
 }
-async function writeRetinueTrace(stateDir, event) {
+async function writeRetinueTrace2(stateDir, event) {
   if (!stateDir) {
     return;
   }
@@ -22931,10 +22998,19 @@ function createMcpServer(supervisor = createMcpSupervisorFromEnv()) {
       const waited = await backend.wait({ jobId }, timeoutMs);
       const status = await backend.status({ jobId });
       if (waited.status === "running") {
+        const stateDir = resolveStateDir({
+          explicitStateDir: process.env.SUPERVISOR_STATE_DIR,
+          env: process.env
+        });
         return jsonToolResult({
           task_name: isJobMeta(status) ? status.name : void 0,
           jobId,
-          status: waited.status
+          status: waited.status,
+          backend: isJobMeta(status) ? status.backend : void 0,
+          externalSessionId: isJobMeta(status) ? status.externalSessionId : void 0,
+          externalServerUrl: isJobMeta(status) ? status.externalServerUrl : void 0,
+          stateDir,
+          tracePath: getRetinueTracePath(stateDir)
         });
       }
       const result = await backend.result({ jobId });

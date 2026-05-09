@@ -39,7 +39,9 @@ Retinue writes local diagnostic events to:
 
 The default state directory is `%LOCALAPPDATA%\supervisor` on Windows, `$XDG_STATE_HOME/supervisor` when set, or `$HOME/.local/state/supervisor` on Unix-like systems. Set `SUPERVISOR_STATE_DIR` for E2E runs when you want artifacts in a known directory.
 
-The trace records OpenCode auto-serve events such as command resolution, port fallback, server readiness, and startup failures. Job-level artifacts remain under `<stateDir>/jobs/<jobId>/`.
+The trace records OpenCode auto-serve events such as command resolution, port fallback, server readiness, and startup failures. It also records OpenCode job diagnostics when a wait times out while the child agent is still running: session state, abort flag, message counts, completed assistant counts, last message role, part types, and text byte counts. It does not write full prompt or model output text to the global trace.
+
+Job-level artifacts remain under `<stateDir>/jobs/<jobId>/`. When an OpenCode wait times out, Retinue also appends the same diagnostic snapshot to that job's `stderr.log` so E2E failures can be inspected from the job directory alone.
 
 The plugin MCP config starts the runtime shipped inside the plugin directory:
 

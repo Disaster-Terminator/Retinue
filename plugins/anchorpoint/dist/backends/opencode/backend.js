@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
-import { getJobPaths, resolveStateDir } from "../../core/paths.js";
+import { getJobPaths, getRetinueTracePath, resolveStateDir } from "../../core/paths.js";
 import { OpenCodeClientError } from "./client.js";
 const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
 const DEFAULT_WAIT_POLL_MS = 250;
@@ -50,6 +50,7 @@ export class OpenCodeBackend {
             updatedAt: now
         };
         await writeJsonAtomic(paths.meta, meta);
+        await this.writeJobTrace("opencode_job_prompt_submitted", meta, await this.inspectJob(meta));
         return meta;
     }
     async continueJob(options) {
@@ -92,6 +93,7 @@ export class OpenCodeBackend {
             updatedAt: now
         };
         await writeJsonAtomic(paths.meta, meta);
+        await this.writeJobTrace("opencode_job_prompt_submitted", meta, await this.inspectJob(meta));
         return meta;
     }
     async status(handle) {
@@ -147,6 +149,12 @@ export class OpenCodeBackend {
                 return { jobId: handle.jobId, status: status.status };
             }
             if (Date.now() >= deadline) {
+                const meta = await this.readMeta(handle.jobId);
+                if (!isProblem(meta)) {
+                    const diagnostic = await this.inspectJob(meta);
+                    await this.writeJobTrace("opencode_job_wait_timeout", meta, diagnostic);
+                    await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_wait_timeout", diagnostic });
+                }
                 return { jobId: handle.jobId, status: "running" };
             }
             await sleep(DEFAULT_WAIT_POLL_MS);
@@ -241,6 +249,68 @@ export class OpenCodeBackend {
         }
         return countCompletedAssistantMessages(messages) > (meta.externalCompletedAssistantBaselineCount ?? 0);
     }
+    async inspectJob(meta) {
+        const diagnostic = {
+            baseUrl: this.baseUrl,
+            sessionId: meta.externalSessionId
+        };
+        if (!meta.externalSessionId) {
+            return diagnostic;
+        }
+        try {
+            const [session, messages] = await Promise.all([this.client.getSession(meta.externalSessionId), this.client.messages(meta.externalSessionId)]);
+            const jobMessages = selectMessagesForMeta(messages, meta);
+            const lastMessage = jobMessages.at(-1) ?? messages.at(-1);
+            diagnostic.sessionState = session.state;
+            diagnostic.sessionAborted = session.aborted === true;
+            diagnostic.messageCount = messages.length;
+            diagnostic.jobMessageCount = jobMessages.length;
+            diagnostic.completedAssistantCount = countCompletedAssistantMessages(messages);
+            diagnostic.jobCompletedAssistantCount = countCompletedAssistantMessages(jobMessages);
+            diagnostic.lastMessageRole = lastMessage?.info?.role;
+            diagnostic.lastMessagePartTypes = lastMessage?.parts?.map((part) => part.type ?? "unknown");
+            diagnostic.lastMessageTextBytes = Buffer.byteLength(extractMessageText(lastMessage ?? {}), "utf8");
+            diagnostic.lastAssistantTextBytes = Buffer.byteLength(latestAssistantMessageText(jobMessages), "utf8");
+        }
+        catch (error) {
+            diagnostic.error = error instanceof Error ? error.message : String(error);
+        }
+        return diagnostic;
+    }
+    async writeJobTrace(event, meta, diagnostic) {
+        await writeRetinueTrace(this.stateDir, {
+            event,
+            backend: "opencode",
+            jobId: meta.jobId,
+            status: meta.status,
+            cwd: meta.cwd,
+            promptSha256: meta.promptSha256,
+            diagnostic
+        });
+    }
+}
+async function appendJobDiagnostic(stateDir, jobId, value) {
+    const paths = getJobPaths(stateDir, jobId);
+    try {
+        await fs.mkdir(paths.dir, { recursive: true });
+        await fs.appendFile(paths.stderr, `${JSON.stringify({ time: new Date().toISOString(), ...asRecord(value) })}\n`, "utf8");
+    }
+    catch {
+        // Diagnostics must never make Retinue tool calls fail.
+    }
+}
+async function writeRetinueTrace(stateDir, value) {
+    const tracePath = getRetinueTracePath(stateDir);
+    try {
+        await fs.mkdir(tracePath.replace(/[\\/][^\\/]+$/, ""), { recursive: true });
+        await fs.appendFile(tracePath, `${JSON.stringify({ time: new Date().toISOString(), pid: process.pid, ...asRecord(value) })}\n`, "utf8");
+    }
+    catch {
+        // Diagnostics must never make Retinue tool calls fail.
+    }
+}
+function asRecord(value) {
+    return typeof value === "object" && value !== null ? value : { value };
 }
 function isTerminal(status) {
     return status === "completed" || status === "failed" || status === "killed" || status === "timed_out";
