@@ -24,12 +24,21 @@ export interface OpenCodeServerTarget {
     started: boolean;
     child?: ChildProcess;
 }
+export interface OpenCodeSpawnCommand {
+    command: string;
+    shell: boolean;
+}
 export declare function resolveOpenCodeServer(config: OpenCodeServerConfig): OpenCodeServerResolution;
 export declare function resolveOpenCodeServerFromEnv(env: NodeJS.ProcessEnv | Record<string, string | undefined>): OpenCodeServerResolution;
 export declare function buildServeArgs(options: {
     host: string;
     port: number;
 }): string[];
+export declare function resolveOpenCodeCommandForSpawn(command: string, options?: {
+    platform?: NodeJS.Platform;
+    env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+    exists?: (candidate: string) => Promise<boolean>;
+}): Promise<OpenCodeSpawnCommand>;
 export declare function ensureOpenCodeServer(resolution: OpenCodeServerResolution, options?: {
     stateDir?: string;
     healthTimeoutMs?: number;

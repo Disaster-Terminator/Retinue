@@ -52,7 +52,13 @@ Retinue 是本地子代理执行面，不是模型网关，也不是 provider ro
 
 - Node.js 20+
 - Codex CLI 0.128+
-- OpenCode 1.14+
+- OpenCode 1.14+，优先使用官方安装脚本：
+
+```bash
+curl -fsSL https://opencode.ai/install | bash
+```
+
+官方脚本默认把 OpenCode 安装到 `$HOME/.opencode/bin/opencode`。Retinue 也兼容常见 npm/pnpm/bun 全局安装路径，但 0.1.0 的默认文档和冒烟验收以官方脚本安装为准。
 
 把 Retinue 插件市场加入 Codex：
 
@@ -77,7 +83,7 @@ Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE
 
 ## 平台说明
 
-- Windows：需要本机 Node.js、Codex CLI 和 OpenCode 可用；OpenCode server 地址仍按部署环境配置。
+- Windows：需要本机 Node.js、Codex CLI 和 OpenCode 可用；Retinue 会优先查找官方脚本安装的 `%USERPROFILE%\.opencode\bin\opencode`，再回退到常见 pnpm/npm/bun shim。
 - WSL / Linux：本轮 0.1.0 验收路径。默认配置连接 `http://127.0.0.1:4096`。
 - macOS：按同样的 Node.js、Codex CLI、OpenCode 前置条件运行；尚未作为本轮验收主路径。
 

@@ -10,6 +10,7 @@ const DEFAULT_HEALTH_TIMEOUT_MS = 10_000;
 const DEFAULT_HEALTH_POLL_MS = 250;
 const DEFAULT_LOCK_TIMEOUT_MS = 10_000;
 const managedServers = new Map();
+const WINDOWS_EXECUTABLE_EXTENSIONS = [".EXE", ".CMD", ".BAT", ""];
 export function resolveOpenCodeServer(config) {
     if (config.baseUrl?.trim()) {
         return { mode: "attach", baseUrl: normalizeBaseUrl(config.baseUrl) };
@@ -42,6 +43,20 @@ export function resolveOpenCodeServerFromEnv(env) {
 }
 export function buildServeArgs(options) {
     return ["serve", "--hostname", options.host, "--port", String(options.port)];
+}
+export async function resolveOpenCodeCommandForSpawn(command, options = {}) {
+    const platform = options.platform ?? process.platform;
+    const env = options.env ?? process.env;
+    const exists = options.exists ?? fileExists;
+    if (command !== "opencode") {
+        return { command, shell: shouldUseShellForCommand(platform, command) };
+    }
+    for (const candidate of buildOpenCodeCommandCandidates(platform, env)) {
+        if (await exists(candidate)) {
+            return { command: candidate, shell: shouldUseShellForCommand(platform, candidate) };
+        }
+    }
+    return { command, shell: shouldUseShellForCommand(platform, command) };
 }
 export async function ensureOpenCodeServer(resolution, options = {}) {
     if (resolution.mode === "attach") {
@@ -78,8 +93,10 @@ async function startManagedOpenCodeServer(resolution, options) {
             continue;
         }
         const prefixArgs = resolution.args.slice(0, -buildServeArgs({ host: resolution.host, port: resolution.port }).length);
-        const child = spawn(resolution.command, [...prefixArgs, ...buildServeArgs({ host: resolution.host, port })], {
+        const spawnCommand = await resolveOpenCodeCommandForSpawn(resolution.command);
+        const child = spawn(spawnCommand.command, [...prefixArgs, ...buildServeArgs({ host: resolution.host, port })], {
             stdio: "ignore",
+            shell: spawnCommand.shell,
             windowsHide: true
         });
         const startupFailure = waitForStartupFailure(child, resolution.command);
@@ -138,6 +155,66 @@ function waitForStartupFailure(child, command) {
             reject(new Error(`OpenCode server command "${command}" exited before becoming healthy: ${formatExit(code, signal)}`));
         });
     });
+}
+function shouldUseShellForCommand(platform, command) {
+    return platform === "win32" && /\.(?:cmd|bat)$/i.test(command);
+}
+async function fileExists(candidate) {
+    try {
+        await fs.access(candidate);
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+function buildOpenCodeCommandCandidates(platform, env) {
+    const candidates = [];
+    const seen = new Set();
+    const add = (candidate) => {
+        if (!candidate || seen.has(candidate)) {
+            return;
+        }
+        seen.add(candidate);
+        candidates.push(candidate);
+    };
+    if (platform === "win32") {
+        for (const directory of getPathEntries(env, ";")) {
+            for (const extension of WINDOWS_EXECUTABLE_EXTENSIONS) {
+                add(path.win32.join(directory, `opencode${extension}`));
+            }
+        }
+        for (const directory of getWindowsOpenCodeFallbackDirectories(env)) {
+            for (const extension of WINDOWS_EXECUTABLE_EXTENSIONS) {
+                add(path.win32.join(directory, `opencode${extension}`));
+            }
+        }
+        return candidates;
+    }
+    for (const directory of getPathEntries(env, ":")) {
+        add(path.join(directory, "opencode"));
+    }
+    return candidates;
+}
+function getPathEntries(env, delimiter) {
+    const value = env.PATH ?? env.Path ?? env.path ?? "";
+    return value
+        .split(delimiter)
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+}
+function getWindowsOpenCodeFallbackDirectories(env) {
+    const userProfile = env.USERPROFILE;
+    const localAppData = env.LOCALAPPDATA;
+    const appData = env.APPDATA;
+    return [
+        userProfile ? path.win32.join(userProfile, ".opencode", "bin") : undefined,
+        userProfile ? path.win32.join(userProfile, ".local", "pnpm-global") : undefined,
+        localAppData ? path.win32.join(localAppData, "pnpm") : undefined,
+        appData ? path.win32.join(appData, "npm") : undefined,
+        userProfile ? path.win32.join(userProfile, "AppData", "Local", "pnpm") : undefined,
+        userProfile ? path.win32.join(userProfile, ".bun", "bin") : undefined
+    ].filter((entry) => Boolean(entry));
 }
 function formatExit(code, signal) {
     if (code !== null) {

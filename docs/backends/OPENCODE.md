@@ -4,6 +4,16 @@ The OpenCode backend is a thin lifecycle adapter. It does not configure provider
 
 For local production smoke testing, OpenCode is the preferred first backend. Retinue should reuse the installed OpenCode profile instead of creating a separate child-agent profile.
 
+## Install Assumption
+
+The default 0.1.0 user path assumes the official OpenCode install script:
+
+```bash
+curl -fsSL https://opencode.ai/install | bash
+```
+
+The script installs the CLI under `$HOME/.opencode/bin/opencode`. Retinue first honors an explicit `SUPERVISOR_OPENCODE_COMMAND`, then the inherited `PATH`, then common default install locations. On Windows that fallback includes `%USERPROFILE%\.opencode\bin\opencode` before package-manager shims such as pnpm/npm/bun.
+
 ## Server Target
 
 The default plugin integration mode is Retinue-managed auto-serve:
