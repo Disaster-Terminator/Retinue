@@ -1,0 +1,10 @@
+mcp_servers:
+  retinue:
+    command: "retinue-mcp"
+    env:
+      SUPERVISOR_RETINUE_BACKEND: "opencode"
+      SUPERVISOR_OPENCODE_AUTO_SERVE: "1"
+      SUPERVISOR_OPENCODE_HOST: "127.0.0.1"
+      SUPERVISOR_OPENCODE_AGENT: "plan"
+    timeout: 180
+    connect_timeout: 30

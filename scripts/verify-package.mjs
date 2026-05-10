@@ -9,6 +9,7 @@ const requiredDocs = [
   "docs/backends/OPENCODE.md",
   "docs/development/SOURCE_INSTALL.md",
   "docs/deployment/PLUGIN_DEPLOYMENT.md",
+  "docs/integrations/HERMES.md",
   "docs/release/0.1.0_HARDENING_ISSUES.md",
   "docs/release/0.1.0_RELEASE_PLAN.md",
   "docs/VERIFICATION.md",
@@ -20,6 +21,8 @@ const requiredPluginFiles = [
   "plugins/anchorpoint/.codex-plugin/plugin.json",
   "plugins/anchorpoint/.mcp.json",
   "plugins/anchorpoint/skills/anchorpoint/SKILL.md",
+  "integrations/hermes/mcp-retinue.yaml",
+  "integrations/hermes/skills/retinue/SKILL.md",
   "plugins/anchorpoint/dist/mcp.js"
 ];
 

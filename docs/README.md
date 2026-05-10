@@ -10,6 +10,7 @@ directory stays readable.
 - [Long-Term Vision](LONG_TERM_VISION.md) - Codex-compatible spawn direction, backend policy, and phased roadmap.
 - [Project Boundary](architecture/PROJECT_BOUNDARY.md) - what Retinue is and is not.
 - [OpenCode Backend](backends/OPENCODE.md) - OpenCode adapter behavior and constraints.
+- [Hermes Agent Integration](integrations/HERMES.md) - Hermes native MCP setup for calling Retinue/OpenCode.
 
 ## Deployment
 

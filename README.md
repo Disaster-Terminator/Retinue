@@ -132,6 +132,12 @@ codex mcp add retinue \
 
 普通 Codex 用户优先使用插件市场安装；npm 路径不安装 Retinue skill。
 
+## Hermes Agent
+
+Hermes Agent 可以把 Retinue 当作 master-agent MCP 集成来用。Hermes 不是 Retinue 后端；Hermes 通过 `mcp_servers` 加载 Retinue，然后调用带前缀的工具：`mcp_retinue_retinue_spawn_agent`、`mcp_retinue_retinue_wait_agent`、`mcp_retinue_retinue_close_agent`。
+
+安装 npm runtime，并把 `integrations/hermes/mcp-retinue.yaml` 合并进 `~/.hermes/config.yaml`；完整说明见 [Hermes Agent Integration](docs/integrations/HERMES.md)。默认仍然是 OpenCode `plan`，并由 Retinue 管理 OpenCode server 生命周期。
+
 ## 验证
 
 发布前已通过：
@@ -154,6 +160,12 @@ SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
 pnpm run probe:real:retinue-opencode
 ```
 
+Hermes MCP 形态 probe：
+
+```bash
+pnpm run probe:hermes-retinue
+```
+
 ## 开发者文档
 
 - [源码安装和开发](docs/development/SOURCE_INSTALL.md)
@@ -163,3 +175,4 @@ pnpm run probe:real:retinue-opencode
 - [Project Boundary](docs/architecture/PROJECT_BOUNDARY.md)
 - [Service Lifecycle](docs/deployment/SERVICE_LIFECYCLE.md)
 - [Plugin Deployment](docs/deployment/PLUGIN_DEPLOYMENT.md)
+- [Hermes Agent Integration](docs/integrations/HERMES.md)
