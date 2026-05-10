@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { getJobPaths, getRetinueTracePath, resolveStateDir } from "../../core/paths.js";
-import type { CleanupOptions, CleanupResult, JobMeta, JobProblem, JobResult, JobStatusResult, SupervisorOptions } from "../../core/types.js";
+import type { CleanupOptions, CleanupResult, JobMeta, JobProblem, JobResult, JobStatusResult, RetinueOptions } from "../../core/types.js";
 import type { AgentBackend, AgentContinueOptions, AgentHandle, AgentRunOptions } from "../types.js";
 import { OpenCodeClient, OpenCodeClientError, type OpenCodeMessage } from "./client.js";
 
@@ -10,7 +10,7 @@ export interface OpenCodeBackendOptions {
   baseUrl?: string;
   target?: (cwd: string | undefined) => Promise<OpenCodeBackendTarget>;
   stateDir?: string;
-  env?: SupervisorOptions["env"];
+  env?: RetinueOptions["env"];
 }
 export interface OpenCodeBackendTarget {
   client: OpenCodeClient;
@@ -192,7 +192,7 @@ export class OpenCodeBackend implements AgentBackend {
     const diagnostic = await this.inspectJob(meta);
     diagnostic.selectedAssistantTextBytes = Buffer.byteLength(text, "utf8");
     diagnostic.selectedAssistantSha256 = sha256(text);
-    if (process.env.SUPERVISOR_TRACE_TEXT_PREVIEW === "1") {
+    if (process.env.RETINUE_TRACE_TEXT_PREVIEW === "1") {
       diagnostic.selectedAssistantPreview = createPromptPreview(text);
     }
     await this.writeJobTrace("opencode_job_result_read", meta, diagnostic);

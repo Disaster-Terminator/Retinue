@@ -18,8 +18,8 @@ Current baseline:
 - Windows: `pnpm run typecheck`, `pnpm test`, and `pnpm run build` pass.
 - WSL/Linux: fresh clone, `pnpm install --frozen-lockfile`, `pnpm run typecheck`, `pnpm test`, and `pnpm run build` pass.
 - Fake Claude suite covers spawn/close/error ordering, permission mode validation, atomic state writes, structured `not_found` and `corrupted` states, disk-backed concurrency, durable kill status, and running-job peek/tail.
-- Daemon suite covers `GET /health`, HTTP `run` -> `wait` -> `result`, structured route errors, package `supervisor-daemon` bin exposure, and CLI delegation through `SUPERVISOR_DAEMON_URL`.
-- MCP suite covers stable Claude tool names, direct server construction, explicit daemon-backed supervisor construction, MCP client tool calls through daemon RPC, and daemon job truth after MCP adapter reconnect.
+- Daemon suite covers `GET /health`, HTTP `run` -> `wait` -> `result`, structured route errors, package `retinue-daemon` bin exposure, and CLI delegation through `RETINUE_DAEMON_URL`.
+- MCP suite covers stable Claude tool names, direct server construction, explicit daemon-backed retinue construction, MCP client tool calls through daemon RPC, and daemon job truth after MCP adapter reconnect.
 
 ## CI Guardrails Baseline
 
@@ -34,7 +34,7 @@ Milestone:
 - `verify:package` fails if `package-lock.json` exists.
 - `verify:package` enforces packaged runtime artifacts for `dist/backends/**`, `dist/cli.*`, `dist/mcp.*`, and `dist/daemon.*`.
 - `verify:package` enforces required docs: `README.md`, `docs/OPENCODE_BACKEND.md`, `docs/VERIFICATION.md`, and `docs/PROJECT_BOUNDARY.md`.
-- `verify:package` enforces the Codex plugin surface: `.agents/plugins/marketplace.json`, `plugins/anchorpoint/.codex-plugin/plugin.json`, `plugins/anchorpoint/.mcp.json`, and `plugins/anchorpoint/skills/anchorpoint/SKILL.md`.
+- `verify:package` enforces the Codex plugin surface: `.agents/plugins/marketplace.json`, `plugins/retinue/.codex-plugin/plugin.json`, `plugins/retinue/.mcp.json`, and `plugins/retinue/skills/retinue/SKILL.md`.
 - Default CI does not run any `probe:real:*` script.
 
 Verified commands:
@@ -85,7 +85,7 @@ Observed WSL/Linux result from a fresh clone:
 - `pnpm run typecheck` passed.
 - `pnpm test` passed with 15 test files and 85 tests.
 - `pnpm run build` passed.
-- Fresh clone path: `/tmp/supervisor-main-pnpm-wsl-test-L4utS4`.
+- Fresh clone path: `/tmp/retinue-main-pnpm-wsl-test-L4utS4`.
 
 ## OpenCode Backend Branch Baseline
 
@@ -126,7 +126,7 @@ Observed WSL/Linux result from a fresh clone:
 - `pnpm run typecheck` passed.
 - `pnpm test` passed with 18 test files and 102 tests.
 - `pnpm run build` passed.
-- Fresh clone path: `/tmp/supervisor-opencode-wsl-test-C7hVR1`.
+- Fresh clone path: `/tmp/retinue-opencode-wsl-test-C7hVR1`.
 
 ## OpenCode Production E2E Milestone
 
@@ -136,7 +136,7 @@ Branch: `feature/spawn-opencode`
 
 Milestone:
 
-- Added CLI/MCP model and agent defaults through `SUPERVISOR_OPENCODE_MODEL` and `SUPERVISOR_OPENCODE_AGENT`.
+- Added CLI/MCP model and agent defaults through `RETINUE_OPENCODE_MODEL` and `RETINUE_OPENCODE_AGENT`.
 - Kept defaults thin: unset model/agent fields are omitted so OpenCode owns default selection.
 - Fixed OpenCode 1.14.35 compatibility for object-shaped model overrides, 204 `prompt_async` responses, HTML `/session/:id/status` fallback, and sessions without a `state` field.
 - Recorded WSL OpenCode baseline and production E2E steps in `docs/PRODUCTION_OPENCODE_E2E.md`.
@@ -243,7 +243,7 @@ Milestone:
 - `pnpm run probe:real:direct`, `pnpm run probe:real:daemon`, and `pnpm run probe:real:mcp-daemon` are explicit scripts only.
 - Default deterministic gates do not run real Claude Code probes.
 - `docs/REAL_CLAUDE_PROBES.md` documents Windows real CLI, WSL fresh clone, daemon mode, MCP-to-daemon, fake dry-run, and cc-switch boundary probes.
-- The probe runner validates `parsedStdout.result` and supports fake-Claude dry runs through `SUPERVISOR_CLAUDE_COMMAND` and `SUPERVISOR_CLAUDE_PREFIX_ARGS`.
+- The probe runner validates `parsedStdout.result` and supports fake-Claude dry runs through `RETINUE_CLAUDE_COMMAND` and `RETINUE_CLAUDE_PREFIX_ARGS`.
 
 Verified commands:
 
@@ -314,8 +314,8 @@ Milestone:
 - New `meta.json` writes include `schemaVersion: 1`.
 - Old job metadata without `schemaVersion` remains readable.
 - Running metadata with a missing PID is reconciled to `orphaned`.
-- Running metadata with a live PID not owned by the current supervisor instance is reconciled to `abandoned`.
-- `abandoned` jobs do not count against current supervisor concurrency limits.
+- Running metadata with a live PID not owned by the current retinue instance is reconciled to `abandoned`.
+- `abandoned` jobs do not count against current retinue concurrency limits.
 - Cleanup reports temp JSON files removed as part of terminal job directory removal.
 - Cleanup preserves temp JSON files under running job directories.
 
@@ -349,9 +349,9 @@ Milestone:
 - Daemon discovery metadata is stored at `<stateDir>/daemon.json`.
 - Discovery metadata includes `url`, `pid`, `startedAt`, and `version`.
 - Discovery reads reject stale PID metadata.
-- `supervisor-daemon` writes discovery metadata after binding.
-- CLI uses discovery only with `--discover-daemon` or `SUPERVISOR_DAEMON_DISCOVERY=1`.
-- MCP uses discovery only with `SUPERVISOR_DAEMON_DISCOVERY=1`.
+- `retinue-daemon` writes discovery metadata after binding.
+- CLI uses discovery only with `--discover-daemon` or `RETINUE_DAEMON_DISCOVERY=1`.
+- MCP uses discovery only with `RETINUE_DAEMON_DISCOVERY=1`.
 - Direct fallback remains available when URL/discovery is not configured.
 
 Verified commands:
@@ -416,9 +416,9 @@ Date: 2026-05-04
 
 Milestone:
 
-- `SupervisorApi` is the shared boundary implemented by `ClaudeSupervisor` and `DaemonClient`.
-- MCP constructs a daemon-backed supervisor when `SUPERVISOR_DAEMON_URL` is set.
-- MCP keeps direct in-process supervisor fallback when `SUPERVISOR_DAEMON_URL` is not set.
+- `RetinueApi` is the shared boundary implemented by `ClaudeRetinue` and `DaemonClient`.
+- MCP constructs a daemon-backed retinue when `RETINUE_DAEMON_URL` is set.
+- MCP keeps direct in-process retinue fallback when `RETINUE_DAEMON_URL` is not set.
 - MCP tool names and JSON text response shape remain unchanged.
 - An in-memory MCP client/server test calls `claude_run`, `claude_wait`, and `claude_result` through daemon RPC with fake Claude.
 
@@ -449,12 +449,12 @@ Date: 2026-05-04
 
 Milestone:
 
-- `supervisor-daemon` is exposed as `./dist/daemon.js`.
+- `retinue-daemon` is exposed as `./dist/daemon.js`.
 - The daemon binds to `127.0.0.1` by default.
 - The daemon prints one JSON readiness line after binding.
 - The daemon exposes JSON endpoints for the existing job operations.
 - CLI direct mode remains the default.
-- CLI delegates to daemon RPC only when `SUPERVISOR_DAEMON_URL` or `--daemon-url` is set.
+- CLI delegates to daemon RPC only when `RETINUE_DAEMON_URL` or `--daemon-url` is set.
 
 Verified commands:
 
@@ -482,7 +482,7 @@ Remaining daemon limitations:
 - No auto-start.
 - No Windows service or systemd unit.
 - No auth token or socket discovery.
-- MCP still constructs an in-process `ClaudeSupervisor`; MCP-to-daemon migration is a later milestone.
+- MCP still constructs an in-process `ClaudeRetinue`; MCP-to-daemon migration is a later milestone.
 
 ## Manual And Opt-In Real Probes
 
@@ -496,9 +496,9 @@ pnpm run probe:real:daemon
 pnpm run probe:real:mcp-daemon
 ```
 
-The probe runner also supports fake-Claude dry runs through `SUPERVISOR_CLAUDE_COMMAND=node` and `SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs`.
+The probe runner also supports fake-Claude dry runs through `RETINUE_CLAUDE_COMMAND=node` and `RETINUE_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs`.
 
-Real probes validate supervisor's boundary only: supervisor calls the system `claude` command and lets local Claude Code configuration, including any cc-switch setup, decide provider, model, quota, and proxy behavior.
+Real probes validate retinue's boundary only: retinue calls the system `claude` command and lets local Claude Code configuration, including any cc-switch setup, decide provider, model, quota, and proxy behavior.
 
 ## Real Windows Claude Code Probe
 
@@ -514,7 +514,7 @@ Environment:
 Probe:
 
 ```bash
-node dist/cli.js run --cwd . --prompt "Reply exactly: SUPERVISOR_REAL_OK"
+node dist/cli.js run --cwd . --prompt "Reply exactly: RETINUE_REAL_OK"
 node dist/cli.js wait <jobId> --timeout-ms 90000
 node dist/cli.js result <jobId>
 ```
@@ -523,12 +523,12 @@ Observed result:
 
 - Job reached `completed`.
 - Exit code was `0`.
-- Parsed Claude result was `SUPERVISOR_REAL_OK`.
+- Parsed Claude result was `RETINUE_REAL_OK`.
 - `sessionId` was persisted from Claude JSON output.
 - stdout and stderr artifact paths were returned.
 
-This verifies the supervisor boundary: it calls the system `claude` command and lets the existing Claude Code configuration decide provider/routing behavior. The project does not call or configure cc-switch directly.
+This verifies the retinue boundary: it calls the system `claude` command and lets the existing Claude Code configuration decide provider/routing behavior. The project does not call or configure cc-switch directly.
 
 ## Remaining Integration Boundary
 
-There is no separate `cc-switch` executable on PATH in the current Windows session. The tested integration point is the Claude Code configuration managed by the local setup. If a future setup adds a distinct cc-switch CLI or daemon contract, add a separate probe here instead of teaching supervisor to route providers.
+There is no separate `cc-switch` executable on PATH in the current Windows session. The tested integration point is the Claude Code configuration managed by the local setup. If a future setup adds a distinct cc-switch CLI or daemon contract, add a separate probe here instead of teaching retinue to route providers.

@@ -20,7 +20,7 @@ From a source checkout, the MCP runtime is:
 node dist/mcp.js
 ```
 
-The repo-local plugin config points to the plugin-local runtime at `./dist/mcp.js` inside `plugins/anchorpoint/.mcp.json`. Keep the config under the top-level `mcpServers` key for Codex plugin MCP discovery, and keep `cwd: "."` so Codex starts the MCP process from the installed plugin cache instead of the current conversation working directory. `pnpm run build` compiles the npm runtime under the repository root `dist/` and then syncs a copy into `plugins/anchorpoint/dist/`, so the plugin marketplace install can start Retinue after copying only the plugin directory.
+The repo-local plugin config points to the plugin-local runtime at `./dist/mcp.js` inside `plugins/retinue/.mcp.json`. Keep the config under the top-level `mcpServers` key for Codex plugin MCP discovery, and keep `cwd: "."` so Codex starts the MCP process from the installed plugin cache instead of the current conversation working directory. `pnpm run build` compiles the npm runtime under the repository root `dist/` and then syncs a copy into `plugins/retinue/dist/`, so the plugin marketplace install can start Retinue after copying only the plugin directory.
 
 ## Development Verification
 
@@ -38,9 +38,9 @@ Run the real OpenCode product probe only when a local OpenCode server is running
 ```bash
 opencode serve --hostname 127.0.0.1 --port 4096
 
-SUPERVISOR_REAL_OPENCODE_PROBE=1 \
-SUPERVISOR_RETINUE_BACKEND=opencode \
-SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
+RETINUE_REAL_OPENCODE_PROBE=1 \
+RETINUE_BACKEND=opencode \
+RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
 pnpm run probe:real:retinue-opencode
 ```
 
@@ -66,4 +66,4 @@ retinue-mcp
 retinued
 ```
 
-Legacy `supervisor*` bin aliases remain for compatibility but should not be used in user-facing Retinue docs.
+Legacy `retinue*` bin aliases remain for compatibility but should not be used in user-facing Retinue docs.

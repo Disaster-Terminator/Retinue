@@ -4,7 +4,7 @@
 
 **Goal:** Add the first daemon lifecycle milestone: a manually started local HTTP daemon and an opt-in CLI daemon adapter.
 
-**Architecture:** `supervisor-daemon` owns one `ClaudeSupervisor` instance behind a loopback HTTP JSON API. `supervisor-cli` keeps direct mode by default and delegates to daemon RPC only when a daemon URL is explicitly configured.
+**Architecture:** `retinue-daemon` owns one `ClaudeRetinue` instance behind a loopback HTTP JSON API. `retinue-cli` keeps direct mode by default and delegates to daemon RPC only when a daemon URL is explicitly configured.
 
 **Tech Stack:** Node.js built-in `http`, TypeScript NodeNext, Vitest, existing fake Claude fixture.
 
@@ -29,7 +29,7 @@ Expected: FAIL because `src/daemon/server.ts` does not exist.
 
 - [ ] **Step 3: Implement minimal server**
 
-Create `src/daemon/server.ts` exporting `createDaemonServer(supervisor, options?)`. Route the listed endpoints to existing `ClaudeSupervisor` methods. Return JSON and structured `{ "error": string }` responses.
+Create `src/daemon/server.ts` exporting `createDaemonServer(retinue, options?)`. Route the listed endpoints to existing `ClaudeRetinue` methods. Return JSON and structured `{ "error": string }` responses.
 
 - [ ] **Step 4: Verify GREEN**
 
@@ -41,7 +41,7 @@ Expected: PASS.
 
 ```bash
 git add tests/daemon.test.ts src/daemon/server.ts src/core/types.ts
-git commit -m "feat: add supervisor daemon http contract"
+git commit -m "feat: add retinue daemon http contract"
 ```
 
 ### Task 2: Daemon Entrypoint
@@ -53,7 +53,7 @@ git commit -m "feat: add supervisor daemon http contract"
 
 - [ ] **Step 1: Write failing bin/build expectation**
 
-Extend daemon tests or package checks so the package exposes `supervisor-daemon` and TypeScript builds `src/daemon.ts`.
+Extend daemon tests or package checks so the package exposes `retinue-daemon` and TypeScript builds `src/daemon.ts`.
 
 - [ ] **Step 2: Verify RED**
 
@@ -63,7 +63,7 @@ Expected: FAIL until `src/daemon.ts` exists or package bin points to a missing b
 
 - [ ] **Step 3: Implement entrypoint**
 
-Create `src/daemon.ts` that parses `--host` and `--port`, constructs `ClaudeSupervisor` from the same environment variables as CLI/MCP, starts the daemon, and prints one JSON readiness line.
+Create `src/daemon.ts` that parses `--host` and `--port`, constructs `ClaudeRetinue` from the same environment variables as CLI/MCP, starts the daemon, and prints one JSON readiness line.
 
 - [ ] **Step 4: Verify GREEN**
 
@@ -75,7 +75,7 @@ Expected: PASS.
 
 ```bash
 git add src/daemon.ts package.json README.md
-git commit -m "feat: add supervisor daemon entrypoint"
+git commit -m "feat: add retinue daemon entrypoint"
 ```
 
 ### Task 3: CLI Daemon Adapter
@@ -87,21 +87,21 @@ git commit -m "feat: add supervisor daemon entrypoint"
 
 - [ ] **Step 1: Write failing CLI daemon adapter test**
 
-Add a CLI test that starts `createDaemonServer`, sets `SUPERVISOR_DAEMON_URL`, runs CLI `run`, `wait`, and `result`, and verifies fake Claude output.
+Add a CLI test that starts `createDaemonServer`, sets `RETINUE_DAEMON_URL`, runs CLI `run`, `wait`, and `result`, and verifies fake Claude output.
 
 - [ ] **Step 2: Verify RED**
 
 Run: `npm test -- tests/cli.test.ts`
 
-Expected: FAIL because CLI ignores `SUPERVISOR_DAEMON_URL`.
+Expected: FAIL because CLI ignores `RETINUE_DAEMON_URL`.
 
 - [ ] **Step 3: Implement daemon client**
 
-Create `src/daemon/client.ts` with methods matching the supervisor interface used by CLI. Use `fetch`, JSON bodies, and throw on non-2xx responses.
+Create `src/daemon/client.ts` with methods matching the retinue interface used by CLI. Use `fetch`, JSON bodies, and throw on non-2xx responses.
 
 - [ ] **Step 4: Wire CLI**
 
-Update `src/cli.ts` so `--daemon-url` or `SUPERVISOR_DAEMON_URL` creates a daemon client instead of a local `ClaudeSupervisor`.
+Update `src/cli.ts` so `--daemon-url` or `RETINUE_DAEMON_URL` creates a daemon client instead of a local `ClaudeRetinue`.
 
 - [ ] **Step 5: Verify GREEN**
 
@@ -113,7 +113,7 @@ Expected: PASS.
 
 ```bash
 git add src/daemon/client.ts src/cli.ts tests/cli.test.ts
-git commit -m "feat: let cli use supervisor daemon"
+git commit -m "feat: let cli use retinue daemon"
 ```
 
 ### Task 4: Final Verification

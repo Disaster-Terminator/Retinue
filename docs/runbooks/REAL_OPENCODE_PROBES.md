@@ -12,11 +12,11 @@ Script path:
 
 The script is blocked unless you explicitly opt in with:
 
-- `SUPERVISOR_REAL_OPENCODE_PROBE=1`
+- `RETINUE_REAL_OPENCODE_PROBE=1`
 
 It accepts a loopback OpenCode server URL from either:
 
-- `SUPERVISOR_OPENCODE_BASE_URL`, or
+- `RETINUE_OPENCODE_BASE_URL`, or
 - CLI flag: `--base-url`
 
 Non-loopback URLs are rejected.
@@ -42,15 +42,15 @@ Output is concise JSON intended for copying into docs or issue comments.
 Bash using environment URL:
 
 ```bash
-SUPERVISOR_REAL_OPENCODE_PROBE=1 \
-SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
+RETINUE_REAL_OPENCODE_PROBE=1 \
+RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
 node scripts/probe-real-opencode.mjs
 ```
 
 Bash using CLI URL flag:
 
 ```bash
-SUPERVISOR_REAL_OPENCODE_PROBE=1 \
+RETINUE_REAL_OPENCODE_PROBE=1 \
 node scripts/probe-real-opencode.mjs --base-url http://localhost:4096
 ```
 
@@ -61,4 +61,4 @@ node scripts/probe-real-opencode.mjs --base-url http://localhost:4096
 - No provider/model routing changes are introduced by this probe.
 - No permission-bypass behavior is introduced by this probe.
 
-For the production-style CLI/MCP lifecycle flow, including optional `SUPERVISOR_OPENCODE_MODEL=litellm/pro-router`, see [Production OpenCode E2E](PRODUCTION_OPENCODE_E2E.md).
+For the production-style CLI/MCP lifecycle flow, including optional `RETINUE_OPENCODE_MODEL=litellm/pro-router`, see [Production OpenCode E2E](PRODUCTION_OPENCODE_E2E.md).

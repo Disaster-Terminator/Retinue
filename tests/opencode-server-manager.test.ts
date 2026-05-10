@@ -45,11 +45,11 @@ describe("OpenCode server manager", () => {
   it("resolves opt-in serve from env", () => {
     expect(
       resolveOpenCodeServerFromEnv({
-        SUPERVISOR_OPENCODE_AUTO_SERVE: "1",
-        SUPERVISOR_OPENCODE_COMMAND: "opencode-test",
-        SUPERVISOR_OPENCODE_HOST: "127.0.0.1",
-        SUPERVISOR_OPENCODE_PORT: "4096",
-        SUPERVISOR_OPENCODE_FALLBACK_PORTS: "4097,4098"
+        RETINUE_OPENCODE_AUTO_SERVE: "1",
+        RETINUE_OPENCODE_COMMAND: "opencode-test",
+        RETINUE_OPENCODE_HOST: "127.0.0.1",
+        RETINUE_OPENCODE_PORT: "4096",
+        RETINUE_OPENCODE_FALLBACK_PORTS: "4097,4098"
       })
     ).toEqual({
       mode: "serve",

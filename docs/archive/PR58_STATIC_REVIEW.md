@@ -8,7 +8,7 @@ Base: `origin/main`
 
 ## Scope
 
-Reviewed PR #58 as the Anchorpoint Codex plugin milestone. The product shape is a plugin that packages:
+Reviewed PR #58 as the Retinue Codex plugin milestone. The product shape is a plugin that packages:
 
 - MCP server runtime
 - agent-facing skill
@@ -39,9 +39,9 @@ PR #58 had MCP runtime and docs, but not a Codex plugin product surface. Since t
 
 Fix:
 
-- Added `plugins/anchorpoint/.codex-plugin/plugin.json`.
-- Added `plugins/anchorpoint/.mcp.json`.
-- Added `plugins/anchorpoint/skills/anchorpoint/SKILL.md`.
+- Added `plugins/retinue/.codex-plugin/plugin.json`.
+- Added `plugins/retinue/.mcp.json`.
+- Added `plugins/retinue/skills/retinue/SKILL.md`.
 - Added `.agents/plugins/marketplace.json`.
 - Added `docs/PLUGIN_DEPLOYMENT.md`.
 - Extended package verification to require plugin files.
@@ -50,13 +50,13 @@ Fix:
 
 Severity: Important
 
-The first plugin MCP config draft set `SUPERVISOR_DAEMON_DISCOVERY=1` by default. That would fail for users without an already running and discoverable daemon.
+The first plugin MCP config draft set `RETINUE_DAEMON_DISCOVERY=1` by default. That would fail for users without an already running and discoverable daemon.
 
 Fix:
 
 - Removed default daemon discovery from plugin `.mcp.json`.
 - Documented daemon URL/discovery as explicit opt-in.
-- Added a guardrail test that the plugin MCP config does not force `SUPERVISOR_DAEMON_DISCOVERY`.
+- Added a guardrail test that the plugin MCP config does not force `RETINUE_DAEMON_DISCOVERY`.
 
 ## Static Review Result
 
@@ -70,7 +70,7 @@ Reviewed areas:
 - README and deployment docs.
 - PR #57 impact.
 
-PR #57 contains broader README/package metadata repositioning. PR #58 already has the required Anchorpoint aliases and repository metadata needed for this milestone. No broad PR #57 README rewrite was absorbed; the only necessary product-shape work was the plugin packaging added directly in PR #58.
+PR #57 contains broader README/package metadata repositioning. PR #58 already has the required Retinue aliases and repository metadata needed for this milestone. No broad PR #57 README rewrite was absorbed; the only necessary product-shape work was the plugin packaging added directly in PR #58.
 
 ## Verification
 
@@ -89,7 +89,7 @@ Observed:
 - `pnpm test` passed with 21 files and 126 tests.
 - `pnpm run build` passed.
 - `pnpm run verify:package` passed.
-- Plugin MCP relative import check passed from `plugins/anchorpoint`.
+- Plugin MCP relative import check passed from `plugins/retinue`.
 
 Real OpenCode E2E:
 
@@ -106,7 +106,7 @@ Run result:
 ```text
 jobId: job_e69a6efb-3273-429c-9fd1-f7af8a88bf59
 sessionId: ses_202bb3938ffeBGQVwiD0NWN4YV
-stdout: ANCHORPOINT_E2E_RUN_OK
+stdout: RETINUE_E2E_RUN_OK
 status: completed
 ```
 
@@ -117,7 +117,7 @@ jobId: job_07346cfd-6876-432e-9bb8-b4528312d434
 sessionId: ses_202bb3938ffeBGQVwiD0NWN4YV
 baseline message count: 2
 baseline completed assistant count: 1
-stdout: ANCHORPOINT_E2E_CONTINUE_OK
+stdout: RETINUE_E2E_CONTINUE_OK
 status: completed
 ```
 

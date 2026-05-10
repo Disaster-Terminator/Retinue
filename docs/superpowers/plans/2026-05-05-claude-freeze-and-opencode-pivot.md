@@ -118,7 +118,7 @@ Run:
 ```bash
 git add package.json pnpm-lock.yaml README.md docs/VERIFICATION.md docs/REAL_CLAUDE_PROBES.md docs/SERVICE_LIFECYCLE.md
 git add -u package-lock.json
-git commit -m "chore: standardize supervisor on pnpm"
+git commit -m "chore: standardize retinue on pnpm"
 ```
 
 ### Task 2: Absorb Daemon Client Error Fidelity

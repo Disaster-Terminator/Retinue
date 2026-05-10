@@ -9,7 +9,7 @@ import type {
   PeekOptions,
   PeekResult,
   RunOptions,
-  SupervisorApi,
+  RetinueApi,
   WaitOptions,
   WaitResult
 } from "../core/types.js";
@@ -28,7 +28,7 @@ export class DaemonClientError extends Error {
   }
 }
 
-export class DaemonClient implements SupervisorApi {
+export class DaemonClient implements RetinueApi {
   private readonly baseUrl: string;
 
   constructor(baseUrl: string) {

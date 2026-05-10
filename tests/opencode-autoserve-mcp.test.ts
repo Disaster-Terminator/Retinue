@@ -38,15 +38,15 @@ describe("Retinue OpenCode auto-serve MCP E2E", () => {
     occupied = await startExternalServer();
     const fallbackPort = await freePort();
     const env = {
-      SUPERVISOR_STATE_DIR: tempDir,
-      SUPERVISOR_RETINUE_BACKEND: "opencode",
-      SUPERVISOR_OPENCODE_AUTO_SERVE: "1",
-      SUPERVISOR_OPENCODE_COMMAND: process.execPath,
-      SUPERVISOR_OPENCODE_PREFIX_ARGS: fakeOpenCodeCommand,
-      SUPERVISOR_OPENCODE_HOST: "127.0.0.1",
-      SUPERVISOR_OPENCODE_PORT: String(occupied.port),
-      SUPERVISOR_OPENCODE_FALLBACK_PORTS: String(fallbackPort),
-      SUPERVISOR_OPENCODE_AGENT: "plan"
+      RETINUE_STATE_DIR: tempDir,
+      RETINUE_BACKEND: "opencode",
+      RETINUE_OPENCODE_AUTO_SERVE: "1",
+      RETINUE_OPENCODE_COMMAND: process.execPath,
+      RETINUE_OPENCODE_PREFIX_ARGS: fakeOpenCodeCommand,
+      RETINUE_OPENCODE_HOST: "127.0.0.1",
+      RETINUE_OPENCODE_PORT: String(occupied.port),
+      RETINUE_OPENCODE_FALLBACK_PORTS: String(fallbackPort),
+      RETINUE_OPENCODE_AGENT: "plan"
     };
 
     first = await connectRetinueMcp(env);

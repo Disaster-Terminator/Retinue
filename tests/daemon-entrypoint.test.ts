@@ -4,10 +4,10 @@ import path from "node:path";
 import { buildDaemonReadyPayload } from "../src/daemon.js";
 
 describe("daemon package entrypoint", () => {
-  it("exposes supervisor-daemon as a package binary", async () => {
+  it("exposes retinue-daemon as a package binary", async () => {
     const packageJson = JSON.parse(await fs.readFile(path.resolve("package.json"), "utf8"));
 
-    expect(packageJson.bin["supervisor-daemon"]).toBe("./dist/daemon.js");
+    expect(packageJson.bin["retinue-daemon"]).toBe("./dist/daemon.js");
   });
 
   it("builds daemon discovery-ready payloads", () => {

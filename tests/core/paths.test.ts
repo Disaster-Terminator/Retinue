@@ -5,36 +5,36 @@ import { resolveStateDir, getJobPaths, getRetinueTracePath } from "../../src/cor
 describe("state paths", () => {
   it("uses an explicit state directory before environment defaults", () => {
     const stateDir = resolveStateDir({
-      explicitStateDir: "/tmp/supervisor-explicit",
-      env: { SUPERVISOR_STATE_DIR: "/tmp/supervisor-env" },
+      explicitStateDir: "/tmp/retinue-explicit",
+      env: { RETINUE_STATE_DIR: "/tmp/retinue-env" },
       platform: "linux",
       homeDir: "/home/tester"
     });
 
-    expect(stateDir).toBe(path.normalize("/tmp/supervisor-explicit"));
+    expect(stateDir).toBe(path.normalize("/tmp/retinue-explicit"));
   });
 
-  it("uses SUPERVISOR_STATE_DIR when no explicit state directory is provided", () => {
+  it("uses RETINUE_STATE_DIR when no explicit state directory is provided", () => {
     const stateDir = resolveStateDir({
-      env: { SUPERVISOR_STATE_DIR: "/tmp/supervisor-env" },
+      env: { RETINUE_STATE_DIR: "/tmp/retinue-env" },
       platform: "linux",
       homeDir: "/home/tester"
     });
 
-    expect(stateDir).toBe(path.normalize("/tmp/supervisor-env"));
+    expect(stateDir).toBe(path.normalize("/tmp/retinue-env"));
   });
 
   it("builds stable per-job file paths", () => {
-    const paths = getJobPaths("/tmp/supervisor-state", "job_123");
+    const paths = getJobPaths("/tmp/retinue-state", "job_123");
 
-    expect(paths.dir).toBe(path.normalize("/tmp/supervisor-state/jobs/job_123"));
-    expect(paths.meta).toBe(path.normalize("/tmp/supervisor-state/jobs/job_123/meta.json"));
-    expect(paths.stdout).toBe(path.normalize("/tmp/supervisor-state/jobs/job_123/stdout.log"));
-    expect(paths.stderr).toBe(path.normalize("/tmp/supervisor-state/jobs/job_123/stderr.log"));
-    expect(paths.exitStatus).toBe(path.normalize("/tmp/supervisor-state/jobs/job_123/exit-status.json"));
+    expect(paths.dir).toBe(path.normalize("/tmp/retinue-state/jobs/job_123"));
+    expect(paths.meta).toBe(path.normalize("/tmp/retinue-state/jobs/job_123/meta.json"));
+    expect(paths.stdout).toBe(path.normalize("/tmp/retinue-state/jobs/job_123/stdout.log"));
+    expect(paths.stderr).toBe(path.normalize("/tmp/retinue-state/jobs/job_123/stderr.log"));
+    expect(paths.exitStatus).toBe(path.normalize("/tmp/retinue-state/jobs/job_123/exit-status.json"));
   });
 
   it("builds a stable Retinue trace path", () => {
-    expect(getRetinueTracePath("/tmp/supervisor-state")).toBe(path.normalize("/tmp/supervisor-state/logs/retinue.jsonl"));
+    expect(getRetinueTracePath("/tmp/retinue-state")).toBe(path.normalize("/tmp/retinue-state/logs/retinue.jsonl"));
   });
 });

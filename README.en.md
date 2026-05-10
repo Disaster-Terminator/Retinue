@@ -83,14 +83,14 @@ Note: Codex CLI 0.128 `codex plugin marketplace add/upgrade/remove` manages mark
 
 ## Default Plugin Config
 
-The plugin MCP config lives at `plugins/anchorpoint/.mcp.json`. Retinue 0.1.0 defaults to:
+The plugin MCP config lives at `plugins/retinue/.mcp.json`. Retinue 0.1.0 defaults to:
 
 ```json
 {
-  "SUPERVISOR_RETINUE_BACKEND": "opencode",
-  "SUPERVISOR_OPENCODE_AUTO_SERVE": "1",
-  "SUPERVISOR_OPENCODE_HOST": "127.0.0.1",
-  "SUPERVISOR_OPENCODE_AGENT": "plan"
+  "RETINUE_BACKEND": "opencode",
+  "RETINUE_OPENCODE_AUTO_SERVE": "1",
+  "RETINUE_OPENCODE_HOST": "127.0.0.1",
+  "RETINUE_OPENCODE_AGENT": "plan"
 }
 ```
 
@@ -106,7 +106,7 @@ This means:
 The Claude Code backend has fake E2E and best-effort real E2E coverage. It is not enabled by default in 0.1.0. To switch a deployment:
 
 ```bash
-SUPERVISOR_RETINUE_BACKEND=claude-code
+RETINUE_BACKEND=claude-code
 ```
 
 Claude Code still owns its model, endpoint, permission, and profile behavior.
@@ -118,9 +118,9 @@ The npm package installs the Retinue runtime directly. Use it for custom MCP con
 ```bash
 npm install -g @disaster-terminator/retinue@0.1.0
 codex mcp add retinue \
-  --env SUPERVISOR_RETINUE_BACKEND=opencode \
-  --env SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
-  --env SUPERVISOR_OPENCODE_AGENT=plan \
+  --env RETINUE_BACKEND=opencode \
+  --env RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
+  --env RETINUE_OPENCODE_AGENT=plan \
   -- retinue-mcp
 ```
 
@@ -148,9 +148,9 @@ Before the 0.1.0 release, Retinue passed:
 Real OpenCode probe:
 
 ```bash
-SUPERVISOR_REAL_OPENCODE_PROBE=1 \
-SUPERVISOR_RETINUE_BACKEND=opencode \
-SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
+RETINUE_REAL_OPENCODE_PROBE=1 \
+RETINUE_BACKEND=opencode \
+RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
 pnpm run probe:real:retinue-opencode
 ```
 

@@ -4,7 +4,7 @@
 
 **Goal:** Make job state more explicit under crash-like conditions without broad locking or service lifecycle work.
 
-**Architecture:** Keep the existing disk layout and `ClaudeSupervisor` core. Add a metadata schema version, distinguish ambiguous running metadata where the daemon lost ownership but the PID is alive, and clean stale atomic-write temp files conservatively.
+**Architecture:** Keep the existing disk layout and `ClaudeRetinue` core. Add a metadata schema version, distinguish ambiguous running metadata where the daemon lost ownership but the PID is alive, and clean stale atomic-write temp files conservatively.
 
 **Tech Stack:** TypeScript NodeNext, Node `fs`, Vitest, existing fake-Claude fixture.
 
@@ -16,7 +16,7 @@ This P4 slice implements:
 
 - `schemaVersion` in newly written `meta.json`
 - backward-compatible reading of old metadata without schemaVersion
-- an explicit `abandoned` status for running metadata with a live PID that is not owned by the current supervisor process
+- an explicit `abandoned` status for running metadata with a live PID that is not owned by the current retinue process
 - cleanup of stale `*.tmp` files produced by atomic JSON writes
 
 This P4 slice does not implement:
@@ -31,8 +31,8 @@ This P4 slice does not implement:
 
 **Files:**
 - Modify: `src/core/types.ts`
-- Modify: `src/core/supervisor.ts`
-- Modify: `tests/core/supervisor.test.ts`
+- Modify: `src/core/retinue.ts`
+- Modify: `tests/core/retinue.test.ts`
 - Modify: `tests/core/result-reconcile.test.ts`
 
 - [ ] **Step 1: Write failing tests**
@@ -44,7 +44,7 @@ Add an old-fixture status test where `meta.json` has no `schemaVersion`; expecte
 Run:
 
 ```bash
-npm test -- tests/core/supervisor.test.ts tests/core/result-reconcile.test.ts
+npm test -- tests/core/retinue.test.ts tests/core/result-reconcile.test.ts
 ```
 
 Expected: fail because new metadata does not include `schemaVersion`.
@@ -59,13 +59,13 @@ Run:
 
 ```bash
 npm run typecheck
-npm test -- tests/core/supervisor.test.ts tests/core/result-reconcile.test.ts
+npm test -- tests/core/retinue.test.ts tests/core/result-reconcile.test.ts
 ```
 
 Commit:
 
 ```bash
-git add src/core/types.ts src/core/supervisor.ts tests/core/supervisor.test.ts tests/core/result-reconcile.test.ts
+git add src/core/types.ts src/core/retinue.ts tests/core/retinue.test.ts tests/core/result-reconcile.test.ts
 git commit -m "feat: version job metadata schema"
 ```
 
@@ -73,20 +73,20 @@ git commit -m "feat: version job metadata schema"
 
 **Files:**
 - Modify: `src/core/types.ts`
-- Modify: `src/core/supervisor.ts`
+- Modify: `src/core/retinue.ts`
 - Modify: `tests/core/result-reconcile.test.ts`
-- Modify: `tests/core/supervisor.test.ts`
+- Modify: `tests/core/retinue.test.ts`
 
 - [ ] **Step 1: Write failing tests**
 
-Add a fixture with `status: "running"` and `pid: process.pid`, but no tracked child in the current `ClaudeSupervisor`. Expected `status(jobId)` returns `abandoned`, not `running`.
+Add a fixture with `status: "running"` and `pid: process.pid`, but no tracked child in the current `ClaudeRetinue`. Expected `status(jobId)` returns `abandoned`, not `running`.
 
 Keep the existing stale missing PID test expecting `orphaned`.
 
 Run:
 
 ```bash
-npm test -- tests/core/result-reconcile.test.ts tests/core/supervisor.test.ts
+npm test -- tests/core/result-reconcile.test.ts tests/core/retinue.test.ts
 ```
 
 Expected: fail because current code returns `running` for live external PID metadata.
@@ -95,8 +95,8 @@ Expected: fail because current code returns `running` for live external PID meta
 
 Add `abandoned` to `JobStatus`. In `status()`:
 
-- if metadata is running and current supervisor has the process tracked, return `running`
-- if metadata is running, no exit status exists, pid is alive, and current supervisor does not track it, persist and return `abandoned`
+- if metadata is running and current retinue has the process tracked, return `running`
+- if metadata is running, no exit status exists, pid is alive, and current retinue does not track it, persist and return `abandoned`
 - if metadata is running, no exit status exists, and pid is not alive, persist and return `orphaned`
 
 Do not count `abandoned` as active for concurrency. Do not cleanup `abandoned` jobs unless they later become terminal through explicit user action in a later milestone.
@@ -107,14 +107,14 @@ Run:
 
 ```bash
 npm run typecheck
-npm test -- tests/core/result-reconcile.test.ts tests/core/supervisor.test.ts
+npm test -- tests/core/result-reconcile.test.ts tests/core/retinue.test.ts
 npm test
 ```
 
 Commit:
 
 ```bash
-git add src/core/types.ts src/core/supervisor.ts tests/core/result-reconcile.test.ts tests/core/supervisor.test.ts
+git add src/core/types.ts src/core/retinue.ts tests/core/result-reconcile.test.ts tests/core/retinue.test.ts
 git commit -m "feat: mark unowned live jobs abandoned"
 ```
 
@@ -122,7 +122,7 @@ git commit -m "feat: mark unowned live jobs abandoned"
 
 **Files:**
 - Modify: `src/core/types.ts`
-- Modify: `src/core/supervisor.ts`
+- Modify: `src/core/retinue.ts`
 - Modify: `tests/core/kill-cleanup.test.ts`
 
 - [ ] **Step 1: Write failing cleanup test**
@@ -161,7 +161,7 @@ npm test
 Commit:
 
 ```bash
-git add src/core/types.ts src/core/supervisor.ts tests/core/kill-cleanup.test.ts
+git add src/core/types.ts src/core/retinue.ts tests/core/kill-cleanup.test.ts
 git commit -m "feat: report stale temp cleanup"
 ```
 
@@ -173,7 +173,7 @@ git commit -m "feat: report stale temp cleanup"
 
 - [ ] **Step 1: Document state semantics**
 
-Add `abandoned` to documented statuses and explain that it means the process appears alive but is not owned by the current supervisor instance.
+Add `abandoned` to documented statuses and explain that it means the process appears alive but is not owned by the current retinue instance.
 
 - [ ] **Step 2: Update verification notes**
 
@@ -190,7 +190,7 @@ npm run build
 - [ ] **Step 4: Run WSL fresh clone gate**
 
 ```bash
-rtk wsl.exe -e bash -lc 'set -euo pipefail; d=$(mktemp -d /tmp/supervisor-durable-state-wsl-test-XXXXXX); git clone /mnt/g/repository/supervisor "$d" >/dev/null; cd "$d"; git checkout feature/spawn-claude-code >/dev/null; npm ci; npm run typecheck; npm test; npm run build; echo WSL_TEST_DIR="$d"'
+rtk wsl.exe -e bash -lc 'set -euo pipefail; d=$(mktemp -d /tmp/retinue-durable-state-wsl-test-XXXXXX); git clone /mnt/g/repository/retinue "$d" >/dev/null; cd "$d"; git checkout feature/spawn-claude-code >/dev/null; npm ci; npm run typecheck; npm test; npm run build; echo WSL_TEST_DIR="$d"'
 ```
 
 - [ ] **Step 5: Commit and push**

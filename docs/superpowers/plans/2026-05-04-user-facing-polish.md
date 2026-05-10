@@ -38,7 +38,7 @@ npm test
 Then show a fake job dry run:
 
 ```bash
-SUPERVISOR_CLAUDE_COMMAND=node SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs node dist/cli.js run --cwd . --prompt "hello"
+RETINUE_CLAUDE_COMMAND=node RETINUE_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs node dist/cli.js run --cwd . --prompt "hello"
 node dist/cli.js wait <jobId> --timeout-ms 30000
 node dist/cli.js result <jobId>
 ```
@@ -49,19 +49,19 @@ Add a sentence that PowerShell users should set the two environment variables wi
 
 Add a section listing:
 
-- `supervisor` -> `dist/cli.js`
-- `supervisor-mcp` -> `dist/mcp.js`
-- `supervisor-daemon` -> `dist/daemon.js`
+- `retinue` -> `dist/cli.js`
+- `retinue-mcp` -> `dist/mcp.js`
+- `retinue-daemon` -> `dist/daemon.js`
 
 Add a table for:
 
-- `SUPERVISOR_STATE_DIR`
-- `SUPERVISOR_CLAUDE_COMMAND`
-- `SUPERVISOR_CLAUDE_PREFIX_ARGS`
-- `SUPERVISOR_DAEMON_URL`
-- `SUPERVISOR_DAEMON_DISCOVERY`
-- `SUPERVISOR_DEFAULT_RUNTIME_TIMEOUT_MS`
-- `SUPERVISOR_MAX_CONCURRENT_JOBS`
+- `RETINUE_STATE_DIR`
+- `RETINUE_CLAUDE_COMMAND`
+- `RETINUE_CLAUDE_PREFIX_ARGS`
+- `RETINUE_DAEMON_URL`
+- `RETINUE_DAEMON_DISCOVERY`
+- `RETINUE_DEFAULT_RUNTIME_TIMEOUT_MS`
+- `RETINUE_MAX_CONCURRENT_JOBS`
 
 - [ ] **Step 3: Add MCP config example**
 
@@ -70,18 +70,18 @@ Add a JSON example:
 ```json
 {
   "mcpServers": {
-    "supervisor": {
+    "retinue": {
       "command": "node",
-      "args": ["G:/repository/supervisor/dist/mcp.js"],
+      "args": ["G:/repository/retinue/dist/mcp.js"],
       "env": {
-        "SUPERVISOR_DAEMON_DISCOVERY": "1"
+        "RETINUE_DAEMON_DISCOVERY": "1"
       }
     }
   }
 }
 ```
 
-State that `SUPERVISOR_DAEMON_URL` can be used instead when the daemon URL is fixed.
+State that `RETINUE_DAEMON_URL` can be used instead when the daemon URL is fixed.
 
 - [ ] **Step 4: Add output and cleanup guidance**
 
@@ -197,7 +197,7 @@ git push origin feature/spawn-claude-code
 Run:
 
 ```bash
-rtk wsl.exe -e bash -lc 'set -euo pipefail; d=$(mktemp -d /tmp/supervisor-user-polish-wsl-test-XXXXXX); git clone /mnt/g/repository/supervisor "$d" >/dev/null; cd "$d"; git checkout feature/spawn-claude-code >/dev/null; npm ci; npm run typecheck; npm test; npm run build; echo WSL_TEST_DIR="$d"'
+rtk wsl.exe -e bash -lc 'set -euo pipefail; d=$(mktemp -d /tmp/retinue-user-polish-wsl-test-XXXXXX); git clone /mnt/g/repository/retinue "$d" >/dev/null; cd "$d"; git checkout feature/spawn-claude-code >/dev/null; npm ci; npm run typecheck; npm test; npm run build; echo WSL_TEST_DIR="$d"'
 ```
 
 Expected: PASS.

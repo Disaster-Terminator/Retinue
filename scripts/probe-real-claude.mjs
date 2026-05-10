@@ -29,7 +29,7 @@ async function main() {
 
 async function runDirectProbe(options) {
   const stateDir = await ensureStateDir(options.stateDir);
-  const env = buildEnv({ SUPERVISOR_STATE_DIR: stateDir });
+  const env = buildEnv({ RETINUE_STATE_DIR: stateDir });
   const result = await runCliLifecycle(options, env);
 
   return {
@@ -47,8 +47,8 @@ async function runDaemonProbe(options) {
   const daemon = await startDaemon(options, stateDir);
   try {
     const env = buildEnv({
-      SUPERVISOR_STATE_DIR: stateDir,
-      SUPERVISOR_DAEMON_URL: daemon.ready.url
+      RETINUE_STATE_DIR: stateDir,
+      RETINUE_DAEMON_URL: daemon.ready.url
     });
     const result = await runCliLifecycle(options, env);
 
@@ -74,12 +74,12 @@ async function runMcpDaemonProbe(options) {
     args: [mcpPath],
     cwd: repoRoot,
     env: buildEnv({
-      SUPERVISOR_STATE_DIR: stateDir,
-      SUPERVISOR_DAEMON_URL: daemon.ready.url
+      RETINUE_STATE_DIR: stateDir,
+      RETINUE_DAEMON_URL: daemon.ready.url
     }),
     stderr: "pipe"
   });
-  const client = new Client({ name: "supervisor-real-probe", version: "0.1.0" });
+  const client = new Client({ name: "retinue-real-probe", version: "0.1.0" });
 
   try {
     await client.connect(transport);
@@ -93,7 +93,7 @@ async function runMcpDaemonProbe(options) {
       await client.callTool({
         name: "claude_wait",
         arguments: { jobId: run.jobId, timeoutMs: options.timeoutMs }
-      })
+      }, undefined, { timeout: options.timeoutMs + 30_000 })
     );
     const result = parseToolJson(
       await client.callTool({
@@ -153,7 +153,7 @@ async function runCliLifecycle(options, env) {
 async function startDaemon(options, stateDir) {
   const child = spawn(process.execPath, [daemonPath, "--host", options.host, "--port", String(options.port)], {
     cwd: repoRoot,
-    env: buildEnv({ SUPERVISOR_STATE_DIR: stateDir }),
+    env: buildEnv({ RETINUE_STATE_DIR: stateDir }),
     stdio: ["ignore", "pipe", "pipe"]
   });
   const stderr = [];
@@ -236,7 +236,7 @@ async function ensureStateDir(stateDir) {
     await mkdir(stateDir, { recursive: true });
     return stateDir;
   }
-  return mkdtemp(path.join(os.tmpdir(), "supervisor-real-probe-"));
+  return mkdtemp(path.join(os.tmpdir(), "retinue-real-probe-"));
 }
 
 function buildEnv(overrides) {

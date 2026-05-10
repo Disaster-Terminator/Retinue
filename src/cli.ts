@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 
-import { ClaudeSupervisor } from "./core/supervisor.js";
+import { ClaudeRetinue } from "./core/retinue.js";
 import { DaemonClient } from "./daemon/client.js";
 import { readDaemonDiscovery } from "./daemon/discovery.js";
 import { resolveStateDir } from "./core/paths.js";
 import { OpenCodeBackend } from "./backends/opencode/backend.js";
 import { OpenCodeClient } from "./backends/opencode/client.js";
 import { ensureOpenCodeServer, resolveOpenCodeServerFromEnv } from "./backends/opencode/serverManager.js";
-import type { SupervisorApi } from "./core/types.js";
+import type { RetinueApi } from "./core/types.js";
 
 async function main(): Promise<void> {
   const global = extractGlobalFlags(process.argv.slice(2));
@@ -22,7 +22,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const supervisor = await createSupervisorFromEnv(global);
+  const retinue = await createRetinueFromEnv(global);
 
   switch (command) {
     case "opencode-run": {
@@ -95,7 +95,7 @@ async function main(): Promise<void> {
       const cwd = required(flags.cwd, "--cwd");
       const prompt = required(flags.prompt, "--prompt");
       writeJson(
-        await supervisor.run({
+        await retinue.run({
           cwd,
           prompt,
           name: flags.name,
@@ -108,27 +108,27 @@ async function main(): Promise<void> {
       return;
     }
     case "status": {
-      writeJson(await supervisor.status(required(args[0], "jobId")));
+      writeJson(await retinue.status(required(args[0], "jobId")));
       return;
     }
     case "wait": {
       const [jobId, ...rest] = args;
       const flags = parseFlags(rest);
       writeJson(
-        await supervisor.wait(required(jobId, "jobId"), {
+        await retinue.wait(required(jobId, "jobId"), {
           timeoutMs: flags["timeout-ms"] ? Number(flags["timeout-ms"]) : undefined
         })
       );
       return;
     }
     case "result": {
-      writeJson(await supervisor.result(required(args[0], "jobId")));
+      writeJson(await retinue.result(required(args[0], "jobId")));
       return;
     }
     case "continue": {
       const flags = parseFlags(args);
       writeJson(
-        await supervisor.continueJob({
+        await retinue.continueJob({
           cwd: required(flags.cwd, "--cwd"),
           prompt: required(flags.prompt, "--prompt"),
           jobId: flags["job-id"],
@@ -145,7 +145,7 @@ async function main(): Promise<void> {
       const [jobId, ...rest] = args;
       const flags = parseFlags(rest);
       writeJson(
-        await supervisor.peek(required(jobId, "jobId"), {
+        await retinue.peek(required(jobId, "jobId"), {
           stdoutTailBytes: flags["stdout-tail-bytes"] ? Number(flags["stdout-tail-bytes"]) : undefined,
           stderrTailBytes: flags["stderr-tail-bytes"] ? Number(flags["stderr-tail-bytes"]) : undefined
         })
@@ -153,13 +153,13 @@ async function main(): Promise<void> {
       return;
     }
     case "kill": {
-      writeJson(await supervisor.kill(required(args[0], "jobId")));
+      writeJson(await retinue.kill(required(args[0], "jobId")));
       return;
     }
     case "cleanup": {
       const flags = parseFlags(args);
       writeJson(
-        await supervisor.cleanup({
+        await retinue.cleanup({
           olderThanMs: flags["older-than-ms"] ? Number(flags["older-than-ms"]) : undefined
         })
       );
@@ -173,10 +173,10 @@ async function main(): Promise<void> {
 async function createOpenCodeBackend(flags: Record<string, string | undefined>): Promise<OpenCodeBackend> {
   const env = {
     ...process.env,
-    SUPERVISOR_OPENCODE_BASE_URL: flags["opencode-base-url"] ?? process.env.SUPERVISOR_OPENCODE_BASE_URL
+    RETINUE_OPENCODE_BASE_URL: flags["opencode-base-url"] ?? process.env.RETINUE_OPENCODE_BASE_URL
   };
   const resolution = resolveOpenCodeServerFromEnv(env);
-  const stateDir = resolveStateDir({ explicitStateDir: process.env.SUPERVISOR_STATE_DIR, env: process.env });
+  const stateDir = resolveStateDir({ explicitStateDir: process.env.RETINUE_STATE_DIR, env: process.env });
   return new OpenCodeBackend({
     target: async (cwd) => {
       const target = await ensureOpenCodeServer(resolution, { stateDir, cwd });
@@ -188,11 +188,11 @@ async function createOpenCodeBackend(flags: Record<string, string | undefined>):
 }
 
 function resolveOpenCodeModel(flags: Record<string, string | undefined>): string | undefined {
-  return flags.model ?? process.env.SUPERVISOR_OPENCODE_MODEL;
+  return flags.model ?? process.env.RETINUE_OPENCODE_MODEL;
 }
 
 function resolveOpenCodeAgent(flags: Record<string, string | undefined>): string | undefined {
-  return flags.agent ?? process.env.SUPERVISOR_OPENCODE_AGENT;
+  return flags.agent ?? process.env.RETINUE_OPENCODE_AGENT;
 }
 
 async function daemonHealth(global: { daemonUrl?: string; discoverDaemon: boolean }): Promise<unknown> {
@@ -303,8 +303,8 @@ function parseFlags(args: string[]): Record<string, string | undefined> {
 
 function extractGlobalFlags(args: string[]): { args: string[]; daemonUrl?: string; discoverDaemon: boolean } {
   const remaining: string[] = [];
-  let daemonUrl = process.env.SUPERVISOR_DAEMON_URL;
-  let discoverDaemon = process.env.SUPERVISOR_DAEMON_DISCOVERY === "1";
+  let daemonUrl = process.env.RETINUE_DAEMON_URL;
+  let discoverDaemon = process.env.RETINUE_DAEMON_DISCOVERY === "1";
 
   for (let index = 0; index < args.length; index += 1) {
     if (args[index] === "--daemon-url") {
@@ -322,25 +322,25 @@ function extractGlobalFlags(args: string[]): { args: string[]; daemonUrl?: strin
   return { args: remaining, daemonUrl, discoverDaemon };
 }
 
-async function createSupervisorFromEnv(global: { daemonUrl?: string; discoverDaemon: boolean }): Promise<SupervisorApi> {
+async function createRetinueFromEnv(global: { daemonUrl?: string; discoverDaemon: boolean }): Promise<RetinueApi> {
   const daemonUrl = global.daemonUrl ?? (global.discoverDaemon ? await discoverDaemonUrl() : undefined);
   if (daemonUrl) {
     return new DaemonClient(daemonUrl);
   }
 
-  return new ClaudeSupervisor({
-    stateDir: process.env.SUPERVISOR_STATE_DIR,
-    claudeCommand: process.env.SUPERVISOR_CLAUDE_COMMAND,
-    claudePrefixArgs: parsePrefixArgs(process.env.SUPERVISOR_CLAUDE_PREFIX_ARGS),
+  return new ClaudeRetinue({
+    stateDir: process.env.RETINUE_STATE_DIR,
+    claudeCommand: process.env.RETINUE_CLAUDE_COMMAND,
+    claudePrefixArgs: parsePrefixArgs(process.env.RETINUE_CLAUDE_PREFIX_ARGS),
     env: process.env,
-    defaultRuntimeTimeoutMs: parseOptionalNumber(process.env.SUPERVISOR_DEFAULT_RUNTIME_TIMEOUT_MS),
-    maxConcurrentJobs: parseOptionalNumber(process.env.SUPERVISOR_MAX_CONCURRENT_JOBS)
+    defaultRuntimeTimeoutMs: parseOptionalNumber(process.env.RETINUE_DEFAULT_RUNTIME_TIMEOUT_MS),
+    maxConcurrentJobs: parseOptionalNumber(process.env.RETINUE_MAX_CONCURRENT_JOBS)
   });
 }
 
 async function discoverDaemonUrl(): Promise<string> {
   const stateDir = resolveStateDir({
-    explicitStateDir: process.env.SUPERVISOR_STATE_DIR,
+    explicitStateDir: process.env.RETINUE_STATE_DIR,
     env: process.env
   });
   return (await readDaemonDiscovery(stateDir)).url;

@@ -4,7 +4,7 @@ Retinue ships as a Codex plugin. The plugin contains:
 
 - `.codex-plugin/plugin.json` for discovery and product metadata
 - `.mcp.json` for MCP tool exposure
-- `skills/anchorpoint/SKILL.md` for agent-facing operating guidance
+- `skills/retinue/SKILL.md` for agent-facing operating guidance
 - the built Retinue runtime under `dist/`
 
 The plugin identity is `retinue`. User-facing docs should call the product Retinue.
@@ -37,7 +37,7 @@ Retinue writes local diagnostic events to:
 <stateDir>/logs/retinue.jsonl
 ```
 
-The default state directory is `%LOCALAPPDATA%\supervisor` on Windows, `$XDG_STATE_HOME/supervisor` when set, or `$HOME/.local/state/supervisor` on Unix-like systems. Set `SUPERVISOR_STATE_DIR` for E2E runs when you want artifacts in a known directory.
+The default state directory is `%LOCALAPPDATA%\retinue` on Windows, `$XDG_STATE_HOME/retinue` when set, or `$HOME/.local/state/retinue` on Unix-like systems. Set `RETINUE_STATE_DIR` for E2E runs when you want artifacts in a known directory.
 
 The trace records OpenCode auto-serve events such as command resolution, port fallback, server readiness, and startup failures. It also records OpenCode job diagnostics when a wait times out while the child agent is still running: session state, abort flag, baseline and current message counts, completed assistant counts, last message role, message info keys, part types, and text byte counts. It does not write full prompt or model output text to the global trace.
 
@@ -54,10 +54,10 @@ The plugin MCP config starts the runtime shipped inside the plugin directory:
       "cwd": ".",
       "startup_timeout_sec": 30,
       "env": {
-        "SUPERVISOR_RETINUE_BACKEND": "opencode",
-        "SUPERVISOR_OPENCODE_AUTO_SERVE": "1",
-        "SUPERVISOR_OPENCODE_HOST": "127.0.0.1",
-        "SUPERVISOR_OPENCODE_AGENT": "plan"
+        "RETINUE_BACKEND": "opencode",
+        "RETINUE_OPENCODE_AUTO_SERVE": "1",
+        "RETINUE_OPENCODE_HOST": "127.0.0.1",
+        "RETINUE_OPENCODE_AGENT": "plan"
       }
     }
   }
@@ -67,7 +67,7 @@ The plugin MCP config starts the runtime shipped inside the plugin directory:
 This is intentional for 0.1.0: marketplace installs copy the plugin directory into Codex's plugin cache, so the MCP runtime must be self-contained under that directory.
 The `mcpServers` wrapper is required for Codex plugin MCP discovery. The explicit `cwd: "."` is required so Codex starts `node ./dist/mcp.js` from the installed plugin cache instead of from the current conversation working directory.
 
-The default plugin path manages the local OpenCode server lifecycle. It prefers `127.0.0.1:4096` and tries fallback ports `4097` through `4127` when earlier ports are occupied by external services. Set `SUPERVISOR_OPENCODE_BASE_URL` only for deployments that intentionally attach to an externally managed OpenCode server.
+The default plugin path manages the local OpenCode server lifecycle. It prefers `127.0.0.1:4096` and tries fallback ports `4097` through `4127` when earlier ports are occupied by external services. Set `RETINUE_OPENCODE_BASE_URL` only for deployments that intentionally attach to an externally managed OpenCode server.
 
 ## npm Runtime Path
 
@@ -84,9 +84,9 @@ Use this path for custom MCP configuration:
 ```bash
 npm install -g @disaster-terminator/retinue@0.1.0
 codex mcp add retinue \
-  --env SUPERVISOR_RETINUE_BACKEND=opencode \
-  --env SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
-  --env SUPERVISOR_OPENCODE_AGENT=plan \
+  --env RETINUE_BACKEND=opencode \
+  --env RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
+  --env RETINUE_OPENCODE_AGENT=plan \
   -- retinue-mcp
 ```
 
@@ -101,10 +101,10 @@ mcp_servers:
   retinue:
     command: "retinue-mcp"
     env:
-      SUPERVISOR_RETINUE_BACKEND: "opencode"
-      SUPERVISOR_OPENCODE_AUTO_SERVE: "1"
-      SUPERVISOR_OPENCODE_HOST: "127.0.0.1"
-      SUPERVISOR_OPENCODE_AGENT: "plan"
+      RETINUE_BACKEND: "opencode"
+      RETINUE_OPENCODE_AUTO_SERVE: "1"
+      RETINUE_OPENCODE_HOST: "127.0.0.1"
+      RETINUE_OPENCODE_AGENT: "plan"
     timeout: 180
     connect_timeout: 30
 ```
@@ -130,17 +130,17 @@ pnpm run verify:package
 Before calling the plugin production-ready, run the real OpenCode lifecycle through the product `retinue_*` MCP tools:
 
 1. Confirm the installed plugin cache starts the bundled MCP server.
-2. Set `SUPERVISOR_RETINUE_BACKEND=opencode`.
+2. Set `RETINUE_BACKEND=opencode`.
 3. Use `retinue_spawn_agent` with a deterministic prompt.
 4. Use `retinue_wait_agent` and verify the terminal result.
 5. Use `retinue_close_agent`.
 6. Confirm tool arguments did not include backend, profile, model, agent, or permission selection.
-7. Run the fake Claude parity path with `SUPERVISOR_RETINUE_BACKEND=claude-code`.
+7. Run the fake Claude parity path with `RETINUE_BACKEND=claude-code`.
 8. When Claude Code is locally usable, run the best-effort real Retinue Claude probe.
 
 The Claude real probe is allowed to fail on upstream model, quota, proxy, or Claude Code runtime instability. Treat a failure there as a local backend readiness signal, not as permission to skip fake Claude parity or the OpenCode production E2E.
 
-Backend-specific `opencode_*` and `claude_*` MCP tools are hidden by default in plugin deployments. Developers can opt into them with `SUPERVISOR_EXPOSE_BACKEND_TOOLS=1` for adapter debugging and older runbooks, but they are not the primary Codex delegation surface.
+Backend-specific `opencode_*` and `claude_*` MCP tools are hidden by default in plugin deployments. Developers can opt into them with `RETINUE_EXPOSE_BACKEND_TOOLS=1` for adapter debugging and older runbooks, but they are not the primary Codex delegation surface.
 
 Record only redacted backend/profile metadata, job id, session id, and observed result. Do not record API keys or provider secrets.
 

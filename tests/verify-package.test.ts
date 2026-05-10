@@ -23,15 +23,15 @@ function validPackJson() {
         { path: "docs/VERIFICATION.md" },
         { path: "docs/architecture/PROJECT_BOUNDARY.md" },
         { path: ".agents/plugins/marketplace.json" },
-        { path: "plugins/anchorpoint/.codex-plugin/plugin.json" },
-        { path: "plugins/anchorpoint/.mcp.json" },
-        { path: "plugins/anchorpoint/skills/anchorpoint/SKILL.md" },
+        { path: "plugins/retinue/.codex-plugin/plugin.json" },
+        { path: "plugins/retinue/.mcp.json" },
+        { path: "plugins/retinue/skills/retinue/SKILL.md" },
         { path: "integrations/hermes/mcp-retinue.yaml" },
         { path: "integrations/hermes/skills/retinue/SKILL.md" },
-        { path: "plugins/anchorpoint/dist/backends/opencode/backend.js" },
-        { path: "plugins/anchorpoint/dist/core/supervisor.js" },
-        { path: "plugins/anchorpoint/dist/daemon/client.js" },
-        { path: "plugins/anchorpoint/dist/mcp.js" },
+        { path: "plugins/retinue/dist/backends/opencode/backend.js" },
+        { path: "plugins/retinue/dist/core/retinue.js" },
+        { path: "plugins/retinue/dist/daemon/client.js" },
+        { path: "plugins/retinue/dist/mcp.js" },
         { path: "dist/backends/opencode/backend.js" },
         { path: "dist/cli.js" },
         { path: "dist/mcp.js" },
@@ -77,7 +77,7 @@ describe("verify-package script", () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "verify-package-missing-plugin-runtime-"));
     const packJsonPath = path.join(dir, "pack.json");
     const parsed = JSON.parse(validPackJson()) as Array<{ files: Array<{ path: string }> }>;
-    parsed[0].files = parsed[0].files.filter((entry) => !entry.path.startsWith("plugins/anchorpoint/dist/"));
+    parsed[0].files = parsed[0].files.filter((entry) => !entry.path.startsWith("plugins/retinue/dist/"));
     writeFileSync(packJsonPath, JSON.stringify(parsed));
 
     const result = spawnSync(process.execPath, [scriptPath, packJsonPath], { cwd: dir, encoding: "utf8" });

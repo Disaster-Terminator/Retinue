@@ -18,8 +18,8 @@ describe("OpenCodeClient", () => {
 
     await expect(client.health()).resolves.toMatchObject({ status: "ok" });
 
-    const session = await client.createSession({ cwd: "G:/repository/supervisor", title: "test session" });
-    expect(server.sessionRequests.at(-1)).toMatchObject({ directory: "G:/repository/supervisor", title: "test session" });
+    const session = await client.createSession({ cwd: "G:/repository/retinue", title: "test session" });
+    expect(server.sessionRequests.at(-1)).toMatchObject({ directory: "G:/repository/retinue", title: "test session" });
     expect(session).toMatchObject({ id: expect.any(String), directory: "C:/server-cwd", title: "test session" });
     expect(session).not.toHaveProperty("cwd");
 

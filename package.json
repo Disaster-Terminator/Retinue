@@ -23,9 +23,7 @@
     "retinue": "./dist/cli.js",
     "retinue-mcp": "./dist/mcp.js",
     "retinued": "./dist/daemon.js",
-    "supervisor": "./dist/cli.js",
-    "supervisor-mcp": "./dist/mcp.js",
-    "supervisor-daemon": "./dist/daemon.js"
+    "retinue-daemon": "./dist/daemon.js"
   },
   "files": [
     "README.md",
@@ -54,7 +52,7 @@
     "probe:hermes-retinue": "node scripts/probe-hermes-retinue-mcp.mjs",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json",
-    "check:generated": "pnpm run build && git diff --exit-code -- dist plugins/anchorpoint/dist",
+    "check:generated": "pnpm run build && git diff --exit-code -- dist plugins/retinue/dist",
     "verify:package": "pnpm pack --dry-run --json | node scripts/verify-package.mjs"
   },
   "dependencies": {

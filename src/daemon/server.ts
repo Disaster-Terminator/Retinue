@@ -1,5 +1,5 @@
 import http from "node:http";
-import type { ClaudeSupervisor } from "../core/supervisor.js";
+import type { ClaudeRetinue } from "../core/retinue.js";
 import type {
   CleanupOptions,
   ContinueOptions,
@@ -27,28 +27,28 @@ class DaemonHttpError extends Error {
   }
 }
 
-export function createDaemonServer(supervisor: ClaudeSupervisor, options: DaemonServerOptions = {}): http.Server {
+export function createDaemonServer(retinue: ClaudeRetinue, options: DaemonServerOptions = {}): http.Server {
   const maxBodyBytes = options.maxBodyBytes ?? 1024 * 1024;
   const routes = new Map<string, RouteHandler>([
-    ["POST /v1/jobs/run", (body) => supervisor.run(body as RunOptions)],
-    ["POST /v1/jobs/status", (body) => supervisor.status(requiredJobId(body))],
+    ["POST /v1/jobs/run", (body) => retinue.run(body as RunOptions)],
+    ["POST /v1/jobs/status", (body) => retinue.status(requiredJobId(body))],
     ["POST /v1/jobs/wait", (body) => {
       const input = requiredObject(body);
-      return supervisor.wait(requiredJobId(input), {
+      return retinue.wait(requiredJobId(input), {
         timeoutMs: optionalNumber(input.timeoutMs)
       } satisfies WaitOptions);
     }],
-    ["POST /v1/jobs/result", (body) => supervisor.result(requiredJobId(body))],
-    ["POST /v1/jobs/continue", (body) => supervisor.continueJob(body as ContinueOptions)],
+    ["POST /v1/jobs/result", (body) => retinue.result(requiredJobId(body))],
+    ["POST /v1/jobs/continue", (body) => retinue.continueJob(body as ContinueOptions)],
     ["POST /v1/jobs/peek", (body) => {
       const input = requiredObject(body);
-      return supervisor.peek(requiredJobId(input), {
+      return retinue.peek(requiredJobId(input), {
         stdoutTailBytes: optionalNumber(input.stdoutTailBytes),
         stderrTailBytes: optionalNumber(input.stderrTailBytes)
       } satisfies PeekOptions);
     }],
-    ["POST /v1/jobs/kill", (body) => supervisor.kill(requiredJobId(body))],
-    ["POST /v1/jobs/cleanup", (body) => supervisor.cleanup((body ?? {}) as CleanupOptions)]
+    ["POST /v1/jobs/kill", (body) => retinue.kill(requiredJobId(body))],
+    ["POST /v1/jobs/cleanup", (body) => retinue.cleanup((body ?? {}) as CleanupOptions)]
   ]);
 
   return http.createServer(async (request, response) => {
@@ -58,7 +58,7 @@ export function createDaemonServer(supervisor: ClaudeSupervisor, options: Daemon
           status: "ok",
           version,
           pid: process.pid,
-          stateDir: supervisor.getStateDir()
+          stateDir: retinue.getStateDir()
         });
         return;
       }

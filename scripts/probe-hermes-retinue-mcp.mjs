@@ -7,19 +7,19 @@ import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 
-const REAL_PROBE_ENV = "SUPERVISOR_REAL_HERMES_RETINUE_PROBE";
+const REAL_PROBE_ENV = "RETINUE_REAL_HERMES_RETINUE_PROBE";
 const DEFAULT_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent"];
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const stateDir = await ensureStateDir(options.stateDir ?? process.env.SUPERVISOR_STATE_DIR);
+  const stateDir = await ensureStateDir(options.stateDir ?? process.env.RETINUE_STATE_DIR);
   const env = {
     ...process.env,
-    SUPERVISOR_RETINUE_BACKEND: process.env.SUPERVISOR_RETINUE_BACKEND ?? "opencode",
-    SUPERVISOR_OPENCODE_AUTO_SERVE: process.env.SUPERVISOR_OPENCODE_AUTO_SERVE ?? "1",
-    SUPERVISOR_OPENCODE_HOST: process.env.SUPERVISOR_OPENCODE_HOST ?? "127.0.0.1",
-    SUPERVISOR_OPENCODE_AGENT: process.env.SUPERVISOR_OPENCODE_AGENT ?? "plan",
-    SUPERVISOR_STATE_DIR: stateDir
+    RETINUE_BACKEND: process.env.RETINUE_BACKEND ?? "opencode",
+    RETINUE_OPENCODE_AUTO_SERVE: process.env.RETINUE_OPENCODE_AUTO_SERVE ?? "1",
+    RETINUE_OPENCODE_HOST: process.env.RETINUE_OPENCODE_HOST ?? "127.0.0.1",
+    RETINUE_OPENCODE_AGENT: process.env.RETINUE_OPENCODE_AGENT ?? "plan",
+    RETINUE_STATE_DIR: stateDir
   };
 
   const transport = new StdioClientTransport({
@@ -74,7 +74,7 @@ async function main() {
       await client.callTool({
         name: "retinue_wait_agent",
         arguments: { jobId: spawn.jobId, timeoutMs: options.timeoutMs }
-      })
+      }, undefined, { timeout: options.timeoutMs + 30_000 })
     );
     const actual = wait?.result?.parsedStdout?.result;
     if (wait.status !== "completed" || typeof actual !== "string" || !actual.includes(expectText)) {

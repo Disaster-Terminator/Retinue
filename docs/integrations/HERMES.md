@@ -33,10 +33,10 @@ mcp_servers:
   retinue:
     command: "retinue-mcp"
     env:
-      SUPERVISOR_RETINUE_BACKEND: "opencode"
-      SUPERVISOR_OPENCODE_AUTO_SERVE: "1"
-      SUPERVISOR_OPENCODE_HOST: "127.0.0.1"
-      SUPERVISOR_OPENCODE_AGENT: "plan"
+      RETINUE_BACKEND: "opencode"
+      RETINUE_OPENCODE_AUTO_SERVE: "1"
+      RETINUE_OPENCODE_HOST: "127.0.0.1"
+      RETINUE_OPENCODE_AGENT: "plan"
     timeout: 180
     connect_timeout: 30
 ```
@@ -53,10 +53,10 @@ mcp_servers:
     command: "node"
     args: ["/absolute/path/to/Retinue/dist/mcp.js"]
     env:
-      SUPERVISOR_RETINUE_BACKEND: "opencode"
-      SUPERVISOR_OPENCODE_AUTO_SERVE: "1"
-      SUPERVISOR_OPENCODE_HOST: "127.0.0.1"
-      SUPERVISOR_OPENCODE_AGENT: "plan"
+      RETINUE_BACKEND: "opencode"
+      RETINUE_OPENCODE_AUTO_SERVE: "1"
+      RETINUE_OPENCODE_HOST: "127.0.0.1"
+      RETINUE_OPENCODE_AGENT: "plan"
     timeout: 180
     connect_timeout: 30
 ```
@@ -80,7 +80,7 @@ pnpm run probe:hermes-retinue
 For a real OpenCode child-agent round trip, opt in explicitly:
 
 ```bash
-SUPERVISOR_REAL_HERMES_RETINUE_PROBE=1 pnpm run probe:hermes-retinue
+RETINUE_REAL_HERMES_RETINUE_PROBE=1 pnpm run probe:hermes-retinue
 ```
 
 The real probe creates a temporary workspace with a random `RETINUE_MARKER.txt`, uses `retinue_spawn_agent -> retinue_wait_agent -> retinue_close_agent`, asks the OpenCode child to read that file, and prints the Retinue state directory plus trace path. This proves the child agent can use its file-reading tools instead of only echoing prompt text.

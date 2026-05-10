@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add an OpenCode backend to supervisor without breaking the frozen Claude Code backend.
+**Goal:** Add an OpenCode backend to retinue without breaking the frozen Claude Code backend.
 
 **Architecture:** Introduce a small backend-neutral contract and implement OpenCode through an internal client abstraction tested against a fake OpenCode HTTP server. Prefer official OpenCode server/API semantics; use CLI `opencode run --attach` only for manual probes and fallback documentation. Keep provider/model routing owned by OpenCode.
 
@@ -13,7 +13,7 @@
 ## File Structure
 
 - Create: `src/backends/types.ts` - backend-neutral run/session/result contract.
-- Create: `src/backends/claudeCode.ts` - adapter wrapper around existing `ClaudeSupervisor` behavior where useful.
+- Create: `src/backends/claudeCode.ts` - adapter wrapper around existing `ClaudeRetinue` behavior where useful.
 - Create: `src/backends/opencode/client.ts` - narrow HTTP client for OpenCode server endpoints.
 - Create: `src/backends/opencode/backend.ts` - OpenCode backend implementation.
 - Create: `src/backends/opencode/serverManager.ts` - explicit attach or opt-in `opencode serve` lifecycle helper.
@@ -21,7 +21,7 @@
 - Create: `tests/opencode-client.test.ts` - client contract tests.
 - Create: `tests/opencode-backend.test.ts` - backend run/status/result/abort tests.
 - Modify: `src/core/types.ts` - add optional backend metadata fields while keeping old metadata readable.
-- Modify: `src/core/supervisor.ts` - preserve Claude behavior and prepare backend metadata compatibility.
+- Modify: `src/core/retinue.ts` - preserve Claude behavior and prepare backend metadata compatibility.
 - Modify: `src/cli.ts` - add `opencode_*` or explicit `opencode` CLI commands after backend works.
 - Modify: `src/mcp.ts` - add `opencode_*` MCP tools after backend works.
 - Modify: `tests/cli.test.ts` - CLI coverage for OpenCode commands.
@@ -116,8 +116,8 @@ git commit -m "feat: add opencode http client"
 
 **Files:**
 - Modify: `src/core/types.ts`
-- Modify: `src/core/supervisor.ts`
-- Modify: `tests/core/supervisor.test.ts`
+- Modify: `src/core/retinue.ts`
+- Modify: `tests/core/retinue.test.ts`
 - Modify: `tests/core/result-reconcile.test.ts`
 
 - [ ] **Step 1: Write metadata tests**
@@ -136,7 +136,7 @@ Existing metadata without `backend` must be treated as `claude-code`.
 Run:
 
 ```bash
-pnpm test -- tests/core/supervisor.test.ts tests/core/result-reconcile.test.ts
+pnpm test -- tests/core/retinue.test.ts tests/core/result-reconcile.test.ts
 ```
 
 Expected: FAIL until backend metadata defaults are implemented.
@@ -162,7 +162,7 @@ New Claude jobs should write `backend: "claude-code"` and keep existing `session
 Run:
 
 ```bash
-pnpm test -- tests/core/supervisor.test.ts tests/core/result-reconcile.test.ts
+pnpm test -- tests/core/retinue.test.ts tests/core/result-reconcile.test.ts
 ```
 
 Expected: PASS.
@@ -172,7 +172,7 @@ Expected: PASS.
 Run:
 
 ```bash
-git add src/core/types.ts src/core/supervisor.ts tests/core/supervisor.test.ts tests/core/result-reconcile.test.ts
+git add src/core/types.ts src/core/retinue.ts tests/core/retinue.test.ts tests/core/result-reconcile.test.ts
 git commit -m "feat: record agent backend metadata"
 ```
 
@@ -286,11 +286,11 @@ Expected: FAIL because server manager does not exist.
 
 Support:
 
-- `SUPERVISOR_OPENCODE_BASE_URL`
-- `SUPERVISOR_OPENCODE_COMMAND`, default `opencode`
-- `SUPERVISOR_OPENCODE_AUTO_SERVE=1`
-- `SUPERVISOR_OPENCODE_HOST`, default `127.0.0.1`
-- `SUPERVISOR_OPENCODE_PORT`, default `0`
+- `RETINUE_OPENCODE_BASE_URL`
+- `RETINUE_OPENCODE_COMMAND`, default `opencode`
+- `RETINUE_OPENCODE_AUTO_SERVE=1`
+- `RETINUE_OPENCODE_HOST`, default `127.0.0.1`
+- `RETINUE_OPENCODE_PORT`, default `0`
 
 Do not auto-serve unless explicitly enabled.
 
@@ -406,7 +406,7 @@ Expected: all commands exit 0 and package output includes runtime `dist/**`, doc
 Run:
 
 ```bash
-rtk proxy wsl.exe -e bash -lc 'set -euo pipefail; d=$(mktemp -d /tmp/supervisor-opencode-wsl-test-XXXXXX); git clone /mnt/g/repository/supervisor "$d" >/dev/null; cd "$d"; git checkout feature/spawn-opencode >/dev/null; pnpm install --frozen-lockfile; pnpm run typecheck; pnpm test; pnpm run build; echo WSL_TEST_DIR="$d"'
+rtk proxy wsl.exe -e bash -lc 'set -euo pipefail; d=$(mktemp -d /tmp/retinue-opencode-wsl-test-XXXXXX); git clone /mnt/g/repository/retinue "$d" >/dev/null; cd "$d"; git checkout feature/spawn-opencode >/dev/null; pnpm install --frozen-lockfile; pnpm run typecheck; pnpm test; pnpm run build; echo WSL_TEST_DIR="$d"'
 ```
 
 Expected: all commands exit 0.

@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ClaudeSupervisor } from "../../src/core/supervisor.js";
+import { ClaudeRetinue } from "../../src/core/retinue.js";
 import { getJobPaths } from "../../src/core/paths.js";
 
 const fixturePath = path.resolve(
@@ -15,7 +15,7 @@ describe("result limits and status reconciliation", () => {
   let tempDir: string;
 
   beforeEach(async () => {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-test-"));
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-test-"));
   });
 
   afterEach(async () => {
@@ -23,16 +23,16 @@ describe("result limits and status reconciliation", () => {
   });
 
   it("limits result output by default while preserving file paths", async () => {
-    const supervisor = new ClaudeSupervisor({
+    const retinue = new ClaudeRetinue({
       stateDir: tempDir,
       claudeCommand: process.execPath,
       claudePrefixArgs: [fixturePath],
       env: { ...process.env, FAKE_CLAUDE_LARGE_STDOUT_BYTES: "70000" }
     });
-    const started = await supervisor.run({ cwd: tempDir, prompt: "large" });
-    await supervisor.wait(started.jobId, { timeoutMs: 5000 });
+    const started = await retinue.run({ cwd: tempDir, prompt: "large" });
+    await retinue.wait(started.jobId, { timeoutMs: 5000 });
 
-    const result = await supervisor.result(started.jobId);
+    const result = await retinue.result(started.jobId);
 
     expect(result.stdout.length).toBeLessThan(70000);
     expect(result.stdoutTruncated).toBe(true);
@@ -43,7 +43,7 @@ describe("result limits and status reconciliation", () => {
   });
 
   it("marks stale running metadata as orphaned when pid no longer exists", async () => {
-    const supervisor = new ClaudeSupervisor({ stateDir: tempDir });
+    const retinue = new ClaudeRetinue({ stateDir: tempDir });
     const paths = getJobPaths(tempDir, "job_stale");
     await fs.mkdir(paths.dir, { recursive: true });
     await fs.writeFile(
@@ -67,14 +67,14 @@ describe("result limits and status reconciliation", () => {
       "utf8"
     );
 
-    await expect(supervisor.status("job_stale")).resolves.toMatchObject({
+    await expect(retinue.status("job_stale")).resolves.toMatchObject({
       jobId: "job_stale",
       status: "orphaned"
     });
   });
 
   it("marks unowned running metadata with a live pid as abandoned", async () => {
-    const supervisor = new ClaudeSupervisor({ stateDir: tempDir });
+    const retinue = new ClaudeRetinue({ stateDir: tempDir });
     const paths = getJobPaths(tempDir, "job_unowned_alive");
     const now = new Date().toISOString();
     await fs.mkdir(paths.dir, { recursive: true });
@@ -100,14 +100,14 @@ describe("result limits and status reconciliation", () => {
       "utf8"
     );
 
-    await expect(supervisor.status("job_unowned_alive")).resolves.toMatchObject({
+    await expect(retinue.status("job_unowned_alive")).resolves.toMatchObject({
       jobId: "job_unowned_alive",
       status: "abandoned"
     });
   });
 
   it("reads old job metadata without schemaVersion", async () => {
-    const supervisor = new ClaudeSupervisor({ stateDir: tempDir });
+    const retinue = new ClaudeRetinue({ stateDir: tempDir });
     const paths = getJobPaths(tempDir, "job_old_schema");
     const now = new Date().toISOString();
     await fs.mkdir(paths.dir, { recursive: true });
@@ -132,40 +132,40 @@ describe("result limits and status reconciliation", () => {
       "utf8"
     );
 
-    await expect(supervisor.status("job_old_schema")).resolves.toMatchObject({
+    await expect(retinue.status("job_old_schema")).resolves.toMatchObject({
       jobId: "job_old_schema",
       status: "completed"
     });
   });
 
   it("returns structured not_found for missing jobs", async () => {
-    const supervisor = new ClaudeSupervisor({ stateDir: tempDir });
+    const retinue = new ClaudeRetinue({ stateDir: tempDir });
 
-    await expect(supervisor.status("job_missing")).resolves.toMatchObject({
+    await expect(retinue.status("job_missing")).resolves.toMatchObject({
       jobId: "job_missing",
       status: "not_found"
     });
-    await expect(supervisor.result("job_missing")).resolves.toMatchObject({
+    await expect(retinue.result("job_missing")).resolves.toMatchObject({
       jobId: "job_missing",
       status: "not_found"
     });
-    await expect(supervisor.kill("job_missing")).resolves.toMatchObject({
+    await expect(retinue.kill("job_missing")).resolves.toMatchObject({
       jobId: "job_missing",
       status: "not_found"
     });
   });
 
   it("returns structured corrupted for invalid job metadata", async () => {
-    const supervisor = new ClaudeSupervisor({ stateDir: tempDir });
+    const retinue = new ClaudeRetinue({ stateDir: tempDir });
     const paths = getJobPaths(tempDir, "job_corrupt");
     await fs.mkdir(paths.dir, { recursive: true });
     await fs.writeFile(paths.meta, "{not-json", "utf8");
 
-    await expect(supervisor.status("job_corrupt")).resolves.toMatchObject({
+    await expect(retinue.status("job_corrupt")).resolves.toMatchObject({
       jobId: "job_corrupt",
       status: "corrupted"
     });
-    await expect(supervisor.result("job_corrupt")).resolves.toMatchObject({
+    await expect(retinue.result("job_corrupt")).resolves.toMatchObject({
       jobId: "job_corrupt",
       status: "corrupted"
     });

@@ -7,16 +7,16 @@ describe("real Claude probe helpers", () => {
       parseProbeArgs([
         "daemon",
         "--cwd",
-        "G:/repository/supervisor",
+        "G:/repository/retinue",
         "--expect",
-        "SUPERVISOR_REAL_OK",
+        "RETINUE_REAL_OK",
         "--timeout-ms",
         "120000"
       ])
     ).toMatchObject({
       mode: "daemon",
-      cwd: "G:/repository/supervisor",
-      expected: "SUPERVISOR_REAL_OK",
+      cwd: "G:/repository/retinue",
+      expected: "RETINUE_REAL_OK",
       timeoutMs: 120000
     });
   });
@@ -38,9 +38,9 @@ describe("real Claude probe helpers", () => {
         {
           status: "completed",
           exitCode: 0,
-          parsedStdout: { result: "SUPERVISOR_REAL_OK" }
+          parsedStdout: { result: "RETINUE_REAL_OK" }
         },
-        "SUPERVISOR_REAL_OK"
+        "RETINUE_REAL_OK"
       )
     ).not.toThrow();
 
@@ -51,7 +51,7 @@ describe("real Claude probe helpers", () => {
           exitCode: 0,
           parsedStdout: { result: "wrong" }
         },
-        "SUPERVISOR_REAL_OK"
+        "RETINUE_REAL_OK"
       )
     ).toThrow("Expected Claude result");
   });
@@ -62,9 +62,9 @@ describe("real Claude probe helpers", () => {
         {
           status: "completed",
           exitStatus: { exitCode: 0 },
-          parsedStdout: { result: "SUPERVISOR_REAL_OK" }
+          parsedStdout: { result: "RETINUE_REAL_OK" }
         },
-        "SUPERVISOR_REAL_OK"
+        "RETINUE_REAL_OK"
       )
     ).not.toThrow();
   });

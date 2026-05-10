@@ -9,7 +9,7 @@ describe("daemon discovery", () => {
   let tempDir: string;
 
   beforeEach(async () => {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-discovery-test-"));
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-discovery-test-"));
   });
 
   afterEach(async () => {
@@ -73,7 +73,7 @@ describe("daemon discovery", () => {
 
   it("rejects discovery metadata with unsupported url protocol", async () => {
     await writeDaemonDiscovery(tempDir, {
-      url: "file:///tmp/supervisor.sock",
+      url: "file:///tmp/retinue.sock",
       pid: process.pid,
       startedAt: "2026-05-04T00:00:00.000Z",
       version: "0.1.0"

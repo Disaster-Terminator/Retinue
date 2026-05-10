@@ -17,7 +17,7 @@ export interface RunOptions {
   timeoutMs?: number;
 }
 
-export interface SupervisorOptions {
+export interface RetinueOptions {
   claudeCommand?: string;
   claudePrefixArgs?: string[];
   stateDir?: string;
@@ -140,7 +140,7 @@ export interface ContinueOptions {
   timeoutMs?: number;
 }
 
-export interface SupervisorApi {
+export interface RetinueApi {
   run(options: RunOptions): Promise<JobMeta>;
   status(jobId: string): Promise<JobStatusResult>;
   wait(jobId: string, options?: WaitOptions): Promise<WaitResult>;

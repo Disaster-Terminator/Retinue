@@ -85,7 +85,7 @@ describe("package.json guardrails", () => {
     const scripts = packageJson.scripts ?? {};
 
     expect(scripts["verify:package"]).toBeTypeOf("string");
-    expect(scripts["check:generated"]).toBe("pnpm run build && git diff --exit-code -- dist plugins/anchorpoint/dist");
+    expect(scripts["check:generated"]).toBe("pnpm run build && git diff --exit-code -- dist plugins/retinue/dist");
 
     const realProbeScriptNames = Object.keys(scripts).filter((name) => name.startsWith("probe:real:"));
     expect(realProbeScriptNames.length).toBeGreaterThan(0);
@@ -138,7 +138,7 @@ describe("Retinue Codex plugin guardrails", () => {
   });
 
   it("declares a plugin manifest with skill and MCP surfaces", () => {
-    const manifest = JSON.parse(readFileSync("plugins/anchorpoint/.codex-plugin/plugin.json", "utf8")) as {
+    const manifest = JSON.parse(readFileSync("plugins/retinue/.codex-plugin/plugin.json", "utf8")) as {
       name?: string;
       skills?: string;
       mcpServers?: string;
@@ -152,7 +152,7 @@ describe("Retinue Codex plugin guardrails", () => {
   });
 
   it("uses Codex plugin MCP server map shape", () => {
-    const raw = JSON.parse(readFileSync("plugins/anchorpoint/.mcp.json", "utf8")) as RetinueMcpConfig;
+    const raw = JSON.parse(readFileSync("plugins/retinue/.mcp.json", "utf8")) as RetinueMcpConfig;
     const mcp = raw.mcpServers ?? {};
 
     expect(raw).toHaveProperty("mcpServers");
@@ -160,16 +160,16 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(mcp.retinue?.command).toBe("node");
     expect(mcp.retinue?.args).toEqual(["./dist/mcp.js"]);
     expect(mcp.retinue?.cwd).toBe(".");
-    expect(existsSync(path.join("plugins/anchorpoint", mcp.retinue?.args?.[0] ?? ""))).toBe(true);
+    expect(existsSync(path.join("plugins/retinue", mcp.retinue?.args?.[0] ?? ""))).toBe(true);
     expect(mcp.retinue?.startup_timeout_sec).toBe(30);
-    expect(mcp.retinue?.env?.SUPERVISOR_RETINUE_BACKEND).toBe("opencode");
-    expect(mcp.retinue?.env?.SUPERVISOR_OPENCODE_AUTO_SERVE).toBe("1");
-    expect(mcp.retinue?.env?.SUPERVISOR_OPENCODE_HOST).toBe("127.0.0.1");
-    expect(mcp.retinue?.env?.SUPERVISOR_OPENCODE_PORT).toBeUndefined();
-    expect(mcp.retinue?.env?.SUPERVISOR_OPENCODE_BASE_URL).toBeUndefined();
-    expect(mcp.retinue?.env?.SUPERVISOR_OPENCODE_AGENT).toBe("plan");
-    expect(mcp.retinue?.env?.SUPERVISOR_DAEMON_DISCOVERY).toBeUndefined();
-    expect(mcp.retinue?.env?.SUPERVISOR_EXPOSE_BACKEND_TOOLS).toBeUndefined();
+    expect(mcp.retinue?.env?.RETINUE_BACKEND).toBe("opencode");
+    expect(mcp.retinue?.env?.RETINUE_OPENCODE_AUTO_SERVE).toBe("1");
+    expect(mcp.retinue?.env?.RETINUE_OPENCODE_HOST).toBe("127.0.0.1");
+    expect(mcp.retinue?.env?.RETINUE_OPENCODE_PORT).toBeUndefined();
+    expect(mcp.retinue?.env?.RETINUE_OPENCODE_BASE_URL).toBeUndefined();
+    expect(mcp.retinue?.env?.RETINUE_OPENCODE_AGENT).toBe("plan");
+    expect(mcp.retinue?.env?.RETINUE_DAEMON_DISCOVERY).toBeUndefined();
+    expect(mcp.retinue?.env?.RETINUE_EXPOSE_BACKEND_TOOLS).toBeUndefined();
   });
 
   it("makes the Retinue plugin available from its marketplace", () => {
@@ -181,12 +181,12 @@ describe("Retinue Codex plugin guardrails", () => {
   });
 
   it("ships an agent-facing skill", () => {
-    expect(existsSync("plugins/anchorpoint/skills/anchorpoint/SKILL.md")).toBe(true);
+    expect(existsSync("plugins/retinue/skills/retinue/SKILL.md")).toBe(true);
   });
 
   it("starts the plugin-local MCP server over stdio from an isolated plugin cache", async () => {
     const pluginCacheDir = mkdtempSync(path.join(os.tmpdir(), "retinue-plugin-cache-"));
-    cpSync("plugins/anchorpoint", pluginCacheDir, { recursive: true });
+    cpSync("plugins/retinue", pluginCacheDir, { recursive: true });
     const mcp = loadPluginMcpConfig(pluginCacheDir);
     const retinue = resolvePluginMcpServer(pluginCacheDir, mcp.retinue);
     const transport = new StdioClientTransport({
@@ -214,7 +214,7 @@ describe("Retinue Codex plugin guardrails", () => {
   it("starts from an isolated plugin cache even when the Codex conversation cwd is elsewhere", async () => {
     const pluginCacheDir = mkdtempSync(path.join(os.tmpdir(), "retinue-plugin-cache-"));
     const conversationCwd = mkdtempSync(path.join(os.tmpdir(), "retinue-conversation-cwd-"));
-    cpSync("plugins/anchorpoint", pluginCacheDir, { recursive: true });
+    cpSync("plugins/retinue", pluginCacheDir, { recursive: true });
     const mcp = loadPluginMcpConfig(pluginCacheDir);
     const retinue = resolvePluginMcpServer(pluginCacheDir, mcp.retinue);
     expect(retinue.cwd).toBe(pluginCacheDir);
