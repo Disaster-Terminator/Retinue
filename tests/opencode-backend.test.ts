@@ -135,6 +135,22 @@ describe("OpenCodeBackend", () => {
     });
   });
 
+  it("does not complete from tool-call assistant messages with interim text", async () => {
+    const backend = createBackend();
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "collect data then answer" });
+    server!.completeSessionWithToolCallTextOnly(started.externalSessionId!);
+
+    await expect(backend.wait({ jobId: started.jobId }, 1)).resolves.toMatchObject({ status: "running" });
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_job_wait_timeout"');
+    expect(trace).toContain('"lastAssistantPartTypes":["step-start","text","tool","step-finish"]');
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "running",
+      parsedStdout: { result: "" }
+    });
+  });
+
   it("does not reuse old completed assistant messages for continued jobs", async () => {
     const backend = createBackend();
     const first = await backend.run({ cwd: tempDir, prompt: "first" });
