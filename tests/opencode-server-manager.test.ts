@@ -87,6 +87,38 @@ describe("OpenCode server manager", () => {
     }
   });
 
+  it("falls back to the next candidate port when the spawned server exits before health", async () => {
+    const failingPort = await freePort();
+    const fallbackPort = await freePort();
+    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-startup-fallback-"));
+    const command = await writeFakeOpenCodeCommandThatExitsOnPort(failingPort);
+    let target: Awaited<ReturnType<typeof ensureOpenCodeServer>> | undefined;
+    try {
+      target = await ensureOpenCodeServer(
+        {
+          mode: "serve",
+          command,
+          args: buildServeArgs({ host: "127.0.0.1", port: failingPort }),
+          host: "127.0.0.1",
+          port: failingPort,
+          fallbackPorts: [fallbackPort]
+        },
+        { stateDir, healthTimeoutMs: 5000, healthPollMs: 50 }
+      );
+
+      expect(target.baseUrl).toBe(`http://127.0.0.1:${fallbackPort}`);
+      expect(target.started).toBe(true);
+      const trace = await fs.readFile(getRetinueTracePath(stateDir), "utf8");
+      expect(trace).toContain('"event":"opencode_server_start_failed"');
+      expect(trace).toContain(`"baseUrl":"http://127.0.0.1:${failingPort}"`);
+      expect(trace).toContain(`"baseUrl":"http://127.0.0.1:${fallbackPort}"`);
+      expect(trace).toContain('"event":"opencode_server_ready"');
+    } finally {
+      target?.child?.kill();
+      await fs.rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
   it("does not attach to an unowned healthy OpenCode server while auto-serving", async () => {
     const occupied = await startHealthServer(JSON.stringify({ healthy: true, version: "external" }));
     const fallbackPort = await freePort();
@@ -301,6 +333,34 @@ async function writeFakeOpenCodeCommand(): Promise<string> {
 import http from "node:http";
 const port = Number(process.argv[process.argv.indexOf("--port") + 1]);
 const host = process.argv[process.argv.indexOf("--hostname") + 1];
+const server = http.createServer((request, response) => {
+  if (request.url === "/global/health") {
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ healthy: true, version: "fake" }));
+    return;
+  }
+  response.statusCode = 404;
+  response.end("{}");
+});
+server.listen(port, host);
+`,
+    { mode: 0o755 }
+  );
+  return file;
+}
+
+async function writeFakeOpenCodeCommandThatExitsOnPort(failingPort: number): Promise<string> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-fake-opencode-command-"));
+  const file = path.join(dir, "opencode-fake.mjs");
+  await fs.writeFile(
+    file,
+    `#!/usr/bin/env node
+import http from "node:http";
+const port = Number(process.argv[process.argv.indexOf("--port") + 1]);
+const host = process.argv[process.argv.indexOf("--hostname") + 1];
+if (port === ${JSON.stringify(failingPort)}) {
+  process.exit(1);
+}
 const server = http.createServer((request, response) => {
   if (request.url === "/global/health") {
     response.setHeader("content-type", "application/json");

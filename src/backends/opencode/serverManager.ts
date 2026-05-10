@@ -13,6 +13,16 @@ const DEFAULT_LOCK_TIMEOUT_MS = 10_000;
 const managedServers = new Map<string, OpenCodeServerTarget>();
 const WINDOWS_EXECUTABLE_EXTENSIONS = [".EXE", ".CMD", ".BAT", ""];
 
+class OpenCodeStartupError extends Error {
+  constructor(
+    message: string,
+    readonly kind: "spawn-error" | "early-exit"
+  ) {
+    super(message);
+    this.name = "OpenCodeStartupError";
+  }
+}
+
 export interface OpenCodeServerConfig {
   baseUrl?: string;
   command?: string;
@@ -159,8 +169,9 @@ async function startManagedOpenCodeServer(
 ): Promise<OpenCodeServerTarget> {
   const ports = [resolution.port, ...resolution.fallbackPorts];
   const occupiedPorts: number[] = [];
+  const startupFailures: string[] = [];
 
-  for (const port of ports) {
+  for (const [index, port] of ports.entries()) {
     const baseUrl = `http://${resolution.host}:${port}`;
     const managed = managedServers.get(baseUrl);
     if (managed?.child && managed.child.exitCode === null && managed.cwd === options.cwd) {
@@ -217,14 +228,19 @@ async function startManagedOpenCodeServer(
     } catch (error) {
       cleanup();
       process.removeListener("exit", cleanup);
+      const message = error instanceof Error ? error.message : String(error);
       await writeRetinueTrace(options.stateDir, {
         event: "opencode_server_start_failed",
         requestedCommand: resolution.command,
         resolvedCommand: spawnCommand.command,
         baseUrl,
-        error: error instanceof Error ? error.message : String(error),
+        error: message,
         cwd: options.cwd
       });
+      if (error instanceof OpenCodeStartupError && error.kind === "early-exit" && index < ports.length - 1) {
+        startupFailures.push(`${baseUrl}: ${message}`);
+        continue;
+      }
       throw error;
     }
 
@@ -260,7 +276,7 @@ async function startManagedOpenCodeServer(
   throw new Error(
     `OpenCode auto-serve could not start because candidate port${ports.length === 1 ? "" : "s"} ${ports.join(", ")} on ${resolution.host} ${
       occupiedPorts.length === ports.length ? "are already in use by non-OpenCode services" : "were unavailable"
-    }`
+    }${startupFailures.length > 0 ? `. Startup failures: ${startupFailures.join("; ")}` : ""}`
   );
 }
 
@@ -280,10 +296,10 @@ async function writeRetinueTrace(stateDir: string | undefined, event: RetinueTra
 function waitForStartupFailure(child: ChildProcess, command: string): Promise<never> {
   return new Promise((_, reject) => {
     child.once("error", (error) => {
-      reject(new Error(`Failed to start OpenCode server command "${command}": ${error.message}`));
+      reject(new OpenCodeStartupError(`Failed to start OpenCode server command "${command}": ${error.message}`, "spawn-error"));
     });
     child.once("exit", (code, signal) => {
-      reject(new Error(`OpenCode server command "${command}" exited before becoming healthy: ${formatExit(code, signal)}`));
+      reject(new OpenCodeStartupError(`OpenCode server command "${command}" exited before becoming healthy: ${formatExit(code, signal)}`, "early-exit"));
     });
   });
 }
