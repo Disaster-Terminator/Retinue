@@ -33,9 +33,11 @@ interface OpenCodeJobDiagnostic {
   completedAssistantCount?: number;
   jobCompletedAssistantCount?: number;
   lastMessageRole?: string;
+  lastMessageFinish?: string;
   lastMessageInfoKeys?: string[];
   lastMessagePartTypes?: string[];
   lastMessageTextBytes?: number;
+  lastAssistantFinish?: string;
   lastAssistantPartTypes?: string[];
   lastAssistantTextBytes?: number;
   lastAssistantProviderID?: string;
@@ -46,6 +48,7 @@ interface OpenCodeJobDiagnostic {
   lastAssistantTokens?: unknown;
   messageSummaries?: Array<{
     role?: string;
+    finish?: string;
     partTypes?: string[];
     textBytes: number;
     completed: boolean;
@@ -367,9 +370,11 @@ export class OpenCodeBackend implements AgentBackend {
       diagnostic.completedAssistantCount = countCompletedAssistantMessages(messages);
       diagnostic.jobCompletedAssistantCount = countCompletedAssistantMessages(jobMessages);
       diagnostic.lastMessageRole = lastMessage?.info?.role;
+      diagnostic.lastMessageFinish = stringInfo(lastMessage, "finish");
       diagnostic.lastMessageInfoKeys = Object.keys(lastMessage?.info ?? {}).sort();
       diagnostic.lastMessagePartTypes = lastMessage?.parts?.map((part) => part.type ?? "unknown");
       diagnostic.lastMessageTextBytes = Buffer.byteLength(extractMessageText(lastMessage ?? {}), "utf8");
+      diagnostic.lastAssistantFinish = stringInfo(lastAssistant, "finish");
       diagnostic.lastAssistantPartTypes = lastAssistant?.parts?.map((part) => part.type ?? "unknown");
       diagnostic.lastAssistantTextBytes = Buffer.byteLength(latestAssistantMessageText(jobMessages), "utf8");
       diagnostic.lastAssistantProviderID = stringInfo(lastAssistant, "providerID");
@@ -380,6 +385,7 @@ export class OpenCodeBackend implements AgentBackend {
       diagnostic.lastAssistantTokens = lastAssistant?.info?.tokens;
       diagnostic.messageSummaries = jobMessages.map((message) => ({
         role: message.info?.role,
+        finish: stringInfo(message, "finish"),
         partTypes: message.parts?.map((part) => part.type ?? "unknown") ?? [],
         textBytes: Buffer.byteLength(extractMessageText(message), "utf8"),
         completed: isCompletedAssistantMessage(message)
@@ -472,9 +478,9 @@ function latestAssistantMessageText(messages: OpenCodeMessage[]): string {
   return (
     [...messages]
       .reverse()
-      .filter((message) => message.info?.role === "assistant")
+      .filter(isFinalAssistantTextMessage)
       .map(extractMessageText)
-      .find((messageText) => messageText.length > 0) ?? ""
+      .at(0) ?? ""
   );
 }
 
@@ -483,12 +489,30 @@ function countCompletedAssistantMessages(messages: OpenCodeMessage[]): number {
 }
 
 function isCompletedAssistantMessage(message: OpenCodeMessage): boolean {
-  const info = message.info;
-  if (info?.role !== "assistant") {
+  if (!isFinalAssistantTextMessage(message)) {
     return false;
   }
+  const info = message.info!;
   const time = typeof info.time === "object" && info.time !== null ? info.time : undefined;
-  return Boolean(time && "completed" in time && typeof time.completed === "number" && extractMessageText(message).length > 0);
+  return Boolean(time && "completed" in time && typeof time.completed === "number");
+}
+
+function isFinalAssistantTextMessage(message: OpenCodeMessage): boolean {
+  if (message.info?.role !== "assistant") {
+    return false;
+  }
+  if (isToolCallAssistantMessage(message)) {
+    return false;
+  }
+  return extractMessageText(message).length > 0;
+}
+
+function isToolCallAssistantMessage(message: OpenCodeMessage): boolean {
+  return message.info?.finish === "tool-calls" || hasToolPart(message);
+}
+
+function hasToolPart(message: OpenCodeMessage): boolean {
+  return Array.isArray(message.parts) && message.parts.some((part) => part?.type === "tool");
 }
 
 function extractMessageText(message: { parts?: Array<{ type?: string; text?: string }> }): string {

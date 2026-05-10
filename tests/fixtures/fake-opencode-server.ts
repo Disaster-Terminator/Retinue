@@ -23,6 +23,7 @@ export interface FakeOpenCodeServer {
   setAutoAssistantResponses(enabled: boolean): void;
   completeSession(sessionId: string): void;
   completeSessionByMessageOnly(sessionId: string): void;
+  completeSessionWithToolCallTextOnly(sessionId: string): void;
   completeSessionWithReasoningOnly(sessionId: string): void;
   failSession(sessionId: string, reason?: string): void;
   close(): Promise<void>;
@@ -159,6 +160,27 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
           last.info.time = { completed: Date.now() };
           last.info.finish = "stop";
         }
+      }
+    },
+    completeSessionWithToolCallTextOnly: (sessionId: string) => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.omitState = true;
+        session.messages.push({
+          info: {
+            id: `msg_${nextMessage++}`,
+            sessionID: session.id,
+            role: "assistant",
+            time: { completed: Date.now() },
+            finish: "tool-calls"
+          },
+          parts: [
+            { type: "step-start" },
+            { type: "text", text: "Let me gather more data before the final answer." },
+            { type: "tool", text: "tool call placeholder" },
+            { type: "step-finish" }
+          ]
+        });
       }
     },
     completeSessionWithReasoningOnly: (sessionId: string) => {
