@@ -51,11 +51,18 @@ export function createMcpServer(supervisor = createMcpSupervisorFromEnv(), optio
         }
     }, async (args) => {
         const taskName = normalizeTaskName(args);
-        const started = await (await createRetinueBackend(supervisor)).run({
+        const backend = await createRetinueBackend(supervisor);
+        const started = await backend.run({
             cwd: args.cwd ?? process.cwd(),
             prompt: args.message,
             name: taskName,
-            title: args.title ?? taskName
+            title: args.title ?? taskName,
+            ...(backend.kind === "opencode"
+                ? {
+                    model: process.env.SUPERVISOR_OPENCODE_MODEL,
+                    agent: process.env.SUPERVISOR_OPENCODE_AGENT
+                }
+                : {})
         });
         return jsonToolResult({
             task_name: taskName,

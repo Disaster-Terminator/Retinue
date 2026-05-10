@@ -586,6 +586,35 @@ describe("MCP tools", () => {
     }
   });
 
+  it("uses OpenCode model and agent defaults from environment for Retinue OpenCode runs", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-retinue-opencode-defaults-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }));
+    try {
+      process.env.SUPERVISOR_STATE_DIR = tempDir;
+      process.env.SUPERVISOR_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.SUPERVISOR_OPENCODE_MODEL = "litellm/pro-router";
+      process.env.SUPERVISOR_OPENCODE_AGENT = "plan";
+      parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue env defaults", task_name: "env-defaults" }
+        })
+      );
+      expect(fakeOpenCode.promptRequests[0]).toMatchObject({
+        model: { providerID: "litellm", modelID: "pro-router" },
+        agent: "plan"
+      });
+    } finally {
+      delete process.env.SUPERVISOR_STATE_DIR;
+      delete process.env.SUPERVISOR_OPENCODE_BASE_URL;
+      delete process.env.SUPERVISOR_OPENCODE_MODEL;
+      delete process.env.SUPERVISOR_OPENCODE_AGENT;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("throws a controlled error for invalid daemon discovery URL configuration", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-bad-discovery-"));
     try {

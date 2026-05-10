@@ -80,6 +80,29 @@ describe("OpenCodeBackend", () => {
     await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "completed" });
   });
 
+  it("records completed wait and result diagnostics for real E2E debugging", async () => {
+    const backend = createBackend();
+    const started = await backend.run({ cwd: tempDir, prompt: "diagnose me" });
+    server!.completeSession(started.externalSessionId!);
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "completed",
+      parsedStdout: { result: "fake result: diagnose me" }
+    });
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_job_status_changed"');
+    expect(trace).toContain('"fromStatus":"running"');
+    expect(trace).toContain('"toStatus":"completed"');
+    expect(trace).toContain('"event":"opencode_job_result_read"');
+    expect(trace).toContain('"jobMessageCount":2');
+    expect(trace).toContain('"selectedAssistantTextBytes":24');
+
+    await expect(fs.readFile(getJobPaths(tempDir, started.jobId).stdout, "utf8")).resolves.toBe("fake result: diagnose me");
+    await expect(fs.readFile(getJobPaths(tempDir, started.jobId).stderr, "utf8")).resolves.toContain('"event":"opencode_job_result_read"');
+  });
+
   it("transitions to completed from completed assistant messages when session state is absent", async () => {
     const backend = createBackend();
     const started = await backend.run({ cwd: tempDir, prompt: "result please" });

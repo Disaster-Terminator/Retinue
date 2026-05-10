@@ -38,6 +38,21 @@ interface OpenCodeJobDiagnostic {
   lastMessageTextBytes?: number;
   lastAssistantPartTypes?: string[];
   lastAssistantTextBytes?: number;
+  lastAssistantProviderID?: string;
+  lastAssistantModelID?: string;
+  lastAssistantAgent?: string;
+  lastAssistantMode?: string;
+  lastAssistantCost?: number;
+  lastAssistantTokens?: unknown;
+  messageSummaries?: Array<{
+    role?: string;
+    partTypes?: string[];
+    textBytes: number;
+    completed: boolean;
+  }>;
+  selectedAssistantTextBytes?: number;
+  selectedAssistantSha256?: string;
+  selectedAssistantPreview?: string;
   error?: string;
 }
 
@@ -169,13 +184,23 @@ export class OpenCodeBackend implements AgentBackend {
     const messages = await client.messages(meta.externalSessionId);
     const jobMessages = selectMessagesForMeta(messages, meta);
     const text = meta.externalMessageBaselineCount === undefined ? latestAssistantMessageText(messages) : latestAssistantMessageText(jobMessages);
+    const paths = getJobPaths(this.stateDir, handle.jobId);
+    await fs.writeFile(paths.stdout, text, "utf8");
+    const diagnostic = await this.inspectJob(meta);
+    diagnostic.selectedAssistantTextBytes = Buffer.byteLength(text, "utf8");
+    diagnostic.selectedAssistantSha256 = sha256(text);
+    if (process.env.SUPERVISOR_TRACE_TEXT_PREVIEW === "1") {
+      diagnostic.selectedAssistantPreview = createPromptPreview(text);
+    }
+    await this.writeJobTrace("opencode_job_result_read", meta, diagnostic);
+    await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_result_read", diagnostic });
     return {
       jobId: handle.jobId,
       status: meta.status,
       stdout: text,
       stderr: "",
-      stdoutPath: getJobPaths(this.stateDir, handle.jobId).stdout,
-      stderrPath: getJobPaths(this.stateDir, handle.jobId).stderr,
+      stdoutPath: paths.stdout,
+      stderrPath: paths.stderr,
       stdoutBytes: Buffer.byteLength(text, "utf8"),
       stderrBytes: 0,
       stdoutTruncated: false,
@@ -280,6 +305,14 @@ export class OpenCodeBackend implements AgentBackend {
       }
       const updated: JobMeta = { ...meta, status, updatedAt: new Date().toISOString() };
       await writeJsonAtomic(getJobPaths(this.stateDir, meta.jobId).meta, updated);
+      const diagnostic = await this.inspectJob(updated);
+      await this.writeJobTrace("opencode_job_status_changed", updated, diagnostic, { fromStatus: meta.status, toStatus: status });
+      await appendJobDiagnostic(this.stateDir, meta.jobId, {
+        event: "opencode_job_status_changed",
+        fromStatus: meta.status,
+        toStatus: status,
+        diagnostic
+      });
       return updated;
     } catch (error) {
       if (error instanceof OpenCodeClientError && error.status === 404) {
@@ -339,18 +372,31 @@ export class OpenCodeBackend implements AgentBackend {
       diagnostic.lastMessageTextBytes = Buffer.byteLength(extractMessageText(lastMessage ?? {}), "utf8");
       diagnostic.lastAssistantPartTypes = lastAssistant?.parts?.map((part) => part.type ?? "unknown");
       diagnostic.lastAssistantTextBytes = Buffer.byteLength(latestAssistantMessageText(jobMessages), "utf8");
+      diagnostic.lastAssistantProviderID = stringInfo(lastAssistant, "providerID");
+      diagnostic.lastAssistantModelID = stringInfo(lastAssistant, "modelID");
+      diagnostic.lastAssistantAgent = stringInfo(lastAssistant, "agent");
+      diagnostic.lastAssistantMode = stringInfo(lastAssistant, "mode");
+      diagnostic.lastAssistantCost = numberInfo(lastAssistant, "cost");
+      diagnostic.lastAssistantTokens = lastAssistant?.info?.tokens;
+      diagnostic.messageSummaries = jobMessages.map((message) => ({
+        role: message.info?.role,
+        partTypes: message.parts?.map((part) => part.type ?? "unknown") ?? [],
+        textBytes: Buffer.byteLength(extractMessageText(message), "utf8"),
+        completed: isCompletedAssistantMessage(message)
+      }));
     } catch (error) {
       diagnostic.error = error instanceof Error ? error.message : String(error);
     }
     return diagnostic;
   }
 
-  private async writeJobTrace(event: string, meta: JobMeta, diagnostic: OpenCodeJobDiagnostic): Promise<void> {
+  private async writeJobTrace(event: string, meta: JobMeta, diagnostic: OpenCodeJobDiagnostic, extra: Record<string, unknown> = {}): Promise<void> {
     await writeRetinueTrace(this.stateDir, {
       event,
       backend: "opencode",
       jobId: meta.jobId,
       status: meta.status,
+      ...extra,
       cwd: meta.cwd,
       promptSha256: meta.promptSha256,
       diagnostic
@@ -453,6 +499,16 @@ function extractMessageText(message: { parts?: Array<{ type?: string; text?: str
     .filter((part) => part?.type === "text" && typeof part.text === "string")
     .map((part) => part.text ?? "")
     .join("");
+}
+
+function stringInfo(message: OpenCodeMessage | undefined, key: string): string | undefined {
+  const value = message?.info?.[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function numberInfo(message: OpenCodeMessage | undefined, key: string): number | undefined {
+  const value = message?.info?.[key];
+  return typeof value === "number" ? value : undefined;
 }
 
 async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> {
