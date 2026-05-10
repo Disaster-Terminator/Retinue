@@ -1,6 +1,6 @@
 const VALID_MODES = new Set(["direct", "daemon", "mcp-daemon"]);
-const DEFAULT_PROMPT = "Reply exactly: SUPERVISOR_REAL_OK";
-const DEFAULT_EXPECTED = "SUPERVISOR_REAL_OK";
+const DEFAULT_PROMPT = "Reply exactly: RETINUE_REAL_OK";
+const DEFAULT_EXPECTED = "RETINUE_REAL_OK";
 const DEFAULT_TIMEOUT_MS = 90000;
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 0;

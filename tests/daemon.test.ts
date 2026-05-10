@@ -6,16 +6,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { createDaemonServer } from "../src/daemon/server.js";
-import { ClaudeSupervisor } from "../src/core/supervisor.js";
+import { ClaudeRetinue } from "../src/core/retinue.js";
 
 const fixturePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/fake-claude.mjs");
 
-describe("supervisor daemon", () => {
+describe("retinue daemon", () => {
   let tempDir: string;
   let server: http.Server | undefined;
 
   beforeEach(async () => {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-daemon-test-"));
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-daemon-test-"));
   });
 
   afterEach(async () => {
@@ -27,12 +27,12 @@ describe("supervisor daemon", () => {
   });
 
   it("runs, waits, and reads a job through HTTP", async () => {
-    const supervisor = new ClaudeSupervisor({
+    const retinue = new ClaudeRetinue({
       stateDir: tempDir,
       claudeCommand: process.execPath,
       claudePrefixArgs: [fixturePath]
     });
-    const daemon = await startDaemon(supervisor);
+    const daemon = await startDaemon(retinue);
 
     await expect(getJson(`${daemon.url}/health`)).resolves.toMatchObject({
       status: "ok",
@@ -59,7 +59,7 @@ describe("supervisor daemon", () => {
 
   it("returns structured HTTP errors", async () => {
     const daemon = await startDaemon(
-      new ClaudeSupervisor({
+      new ClaudeRetinue({
         stateDir: tempDir,
         claudeCommand: process.execPath,
         claudePrefixArgs: [fixturePath]
@@ -76,8 +76,8 @@ describe("supervisor daemon", () => {
     });
   });
 
-  async function startDaemon(supervisor: ClaudeSupervisor): Promise<{ url: string }> {
-    server = createDaemonServer(supervisor);
+  async function startDaemon(retinue: ClaudeRetinue): Promise<{ url: string }> {
+    server = createDaemonServer(retinue);
     await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
     const address = server.address() as AddressInfo;
     return { url: `http://127.0.0.1:${address.port}` };

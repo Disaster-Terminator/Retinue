@@ -69,7 +69,7 @@ export function resolveOpenCodeServer(config: OpenCodeServerConfig): OpenCodeSer
     return { mode: "attach", baseUrl: normalizeBaseUrl(config.baseUrl) };
   }
   if (!config.autoServe) {
-    throw new Error("OpenCode server target missing: provide SUPERVISOR_OPENCODE_BASE_URL or enable SUPERVISOR_OPENCODE_AUTO_SERVE=1");
+    throw new Error("OpenCode server target missing: provide RETINUE_OPENCODE_BASE_URL or enable RETINUE_OPENCODE_AUTO_SERVE=1");
   }
   const host = config.host ?? DEFAULT_OPENCODE_HOST;
   const port = config.port ?? DEFAULT_OPENCODE_PORT;
@@ -86,13 +86,13 @@ export function resolveOpenCodeServer(config: OpenCodeServerConfig): OpenCodeSer
 
 export function resolveOpenCodeServerFromEnv(env: NodeJS.ProcessEnv | Record<string, string | undefined>): OpenCodeServerResolution {
   return resolveOpenCodeServer({
-    baseUrl: env.SUPERVISOR_OPENCODE_BASE_URL,
-    command: env.SUPERVISOR_OPENCODE_COMMAND,
-    prefixArgs: parsePrefixArgs(env.SUPERVISOR_OPENCODE_PREFIX_ARGS),
-    autoServe: env.SUPERVISOR_OPENCODE_AUTO_SERVE === "1",
-    host: env.SUPERVISOR_OPENCODE_HOST,
-    port: parseOptionalPort(env.SUPERVISOR_OPENCODE_PORT),
-    fallbackPorts: parseOptionalPorts(env.SUPERVISOR_OPENCODE_FALLBACK_PORTS)
+    baseUrl: env.RETINUE_OPENCODE_BASE_URL,
+    command: env.RETINUE_OPENCODE_COMMAND,
+    prefixArgs: parsePrefixArgs(env.RETINUE_OPENCODE_PREFIX_ARGS),
+    autoServe: env.RETINUE_OPENCODE_AUTO_SERVE === "1",
+    host: env.RETINUE_OPENCODE_HOST,
+    port: parseOptionalPort(env.RETINUE_OPENCODE_PORT),
+    fallbackPorts: parseOptionalPorts(env.RETINUE_OPENCODE_FALLBACK_PORTS)
   });
 }
 
@@ -580,7 +580,7 @@ function parseOptionalPort(value: string | undefined): number | undefined {
   }
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
-    throw new Error("SUPERVISOR_OPENCODE_PORT must be a port between 0 and 65535");
+    throw new Error("RETINUE_OPENCODE_PORT must be a port between 0 and 65535");
   }
   return parsed;
 }
@@ -614,7 +614,7 @@ function parsePrefixArgs(value: string | undefined): string[] | undefined {
 function parseRequiredPort(value: string): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
-    throw new Error("SUPERVISOR_OPENCODE_FALLBACK_PORTS must contain ports between 0 and 65535");
+    throw new Error("RETINUE_OPENCODE_FALLBACK_PORTS must contain ports between 0 and 65535");
   }
   return parsed;
 }

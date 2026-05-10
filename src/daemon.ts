@@ -3,18 +3,18 @@
 import { fileURLToPath } from "node:url";
 import { createDaemonServer } from "./daemon/server.js";
 import { writeDaemonDiscovery } from "./daemon/discovery.js";
-import { ClaudeSupervisor } from "./core/supervisor.js";
+import { ClaudeRetinue } from "./core/retinue.js";
 
 async function main(): Promise<void> {
   const flags = parseFlags(process.argv.slice(2));
-  const host = flags.host ?? process.env.SUPERVISOR_DAEMON_HOST ?? "127.0.0.1";
-  const port = flags.port ? Number(flags.port) : Number(process.env.SUPERVISOR_DAEMON_PORT ?? "27777");
+  const host = flags.host ?? process.env.RETINUE_DAEMON_HOST ?? "127.0.0.1";
+  const port = flags.port ? Number(flags.port) : Number(process.env.RETINUE_DAEMON_PORT ?? "27777");
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
-    throw new Error(`Invalid --port: ${String(flags.port ?? process.env.SUPERVISOR_DAEMON_PORT)}`);
+    throw new Error(`Invalid --port: ${String(flags.port ?? process.env.RETINUE_DAEMON_PORT)}`);
   }
 
-  const supervisor = createSupervisorFromEnv();
-  const server = createDaemonServer(supervisor);
+  const retinue = createRetinueFromEnv();
+  const server = createDaemonServer(retinue);
   await new Promise<void>((resolve) => server.listen(port, host, resolve));
   const address = server.address();
   const actualPort = typeof address === "object" && address ? address.port : port;
@@ -26,7 +26,7 @@ async function main(): Promise<void> {
     startedAt,
     version: "0.1.0"
   });
-  await writeDaemonDiscovery(supervisor.getStateDir(), {
+  await writeDaemonDiscovery(retinue.getStateDir(), {
     url: ready.url,
     pid: ready.pid,
     startedAt: ready.startedAt,
@@ -63,14 +63,14 @@ export function buildDaemonReadyPayload(options: {
   };
 }
 
-function createSupervisorFromEnv(): ClaudeSupervisor {
-  return new ClaudeSupervisor({
-    stateDir: process.env.SUPERVISOR_STATE_DIR,
-    claudeCommand: process.env.SUPERVISOR_CLAUDE_COMMAND,
-    claudePrefixArgs: parsePrefixArgs(process.env.SUPERVISOR_CLAUDE_PREFIX_ARGS),
+function createRetinueFromEnv(): ClaudeRetinue {
+  return new ClaudeRetinue({
+    stateDir: process.env.RETINUE_STATE_DIR,
+    claudeCommand: process.env.RETINUE_CLAUDE_COMMAND,
+    claudePrefixArgs: parsePrefixArgs(process.env.RETINUE_CLAUDE_PREFIX_ARGS),
     env: process.env,
-    defaultRuntimeTimeoutMs: parseOptionalNumber(process.env.SUPERVISOR_DEFAULT_RUNTIME_TIMEOUT_MS),
-    maxConcurrentJobs: parseOptionalNumber(process.env.SUPERVISOR_MAX_CONCURRENT_JOBS)
+    defaultRuntimeTimeoutMs: parseOptionalNumber(process.env.RETINUE_DEFAULT_RUNTIME_TIMEOUT_MS),
+    maxConcurrentJobs: parseOptionalNumber(process.env.RETINUE_MAX_CONCURRENT_JOBS)
   });
 }
 

@@ -4,9 +4,9 @@
 
 **Goal:** Add explicit local daemon discovery so CLI and MCP can connect to a running daemon without hard-coding the URL, while avoiding silent auto-start.
 
-**Architecture:** The daemon writes a small readiness file under the supervisor state directory. CLI and MCP use that file only when explicitly requested by an env var or flag; stale or invalid discovery files produce clear errors.
+**Architecture:** The daemon writes a small readiness file under the retinue state directory. CLI and MCP use that file only when explicitly requested by an env var or flag; stale or invalid discovery files produce clear errors.
 
-**Tech Stack:** Node built-in `fs`, TypeScript NodeNext, Vitest, existing daemon and supervisor core.
+**Tech Stack:** Node built-in `fs`, TypeScript NodeNext, Vitest, existing daemon and retinue core.
 
 ---
 
@@ -14,11 +14,11 @@
 
 This milestone adds:
 
-- `daemon.json` discovery file under `SUPERVISOR_STATE_DIR` or the resolved default state directory
+- `daemon.json` discovery file under `RETINUE_STATE_DIR` or the resolved default state directory
 - discovery metadata: `url`, `pid`, `startedAt`, `version`
 - stale PID detection
-- explicit CLI discovery via `--discover-daemon` or `SUPERVISOR_DAEMON_DISCOVERY=1`
-- explicit MCP discovery via `SUPERVISOR_DAEMON_DISCOVERY=1`
+- explicit CLI discovery via `--discover-daemon` or `RETINUE_DAEMON_DISCOVERY=1`
+- explicit MCP discovery via `RETINUE_DAEMON_DISCOVERY=1`
 
 This milestone does not add:
 
@@ -152,9 +152,9 @@ Start a daemon in test, write discovery metadata, then run CLI with `--discover-
 `src/cli.ts` should resolve daemon URL in this order:
 
 1. `--daemon-url`
-2. `SUPERVISOR_DAEMON_URL`
-3. discovery file only when `--discover-daemon` or `SUPERVISOR_DAEMON_DISCOVERY=1` is set
-4. direct local supervisor fallback
+2. `RETINUE_DAEMON_URL`
+3. discovery file only when `--discover-daemon` or `RETINUE_DAEMON_DISCOVERY=1` is set
+4. direct local retinue fallback
 
 - [ ] **Step 3: Verify and commit**
 
@@ -180,11 +180,11 @@ git commit -m "feat: let cli discover daemon explicitly"
 
 - [ ] **Step 1: Write failing MCP discovery construction test**
 
-Write discovery metadata in a temp state dir, call `createMcpSupervisorFromEnv({ SUPERVISOR_STATE_DIR: tempDir, SUPERVISOR_DAEMON_DISCOVERY: "1" })`, and expect `DaemonClient`.
+Write discovery metadata in a temp state dir, call `createMcpRetinueFromEnv({ RETINUE_STATE_DIR: tempDir, RETINUE_DAEMON_DISCOVERY: "1" })`, and expect `DaemonClient`.
 
 - [ ] **Step 2: Implement MCP discovery**
 
-`src/mcp.ts` should use `SUPERVISOR_DAEMON_URL` first, discovery only when `SUPERVISOR_DAEMON_DISCOVERY=1`, then direct fallback.
+`src/mcp.ts` should use `RETINUE_DAEMON_URL` first, discovery only when `RETINUE_DAEMON_DISCOVERY=1`, then direct fallback.
 
 - [ ] **Step 3: Verify and commit**
 
@@ -210,7 +210,7 @@ git commit -m "feat: let mcp discover daemon explicitly"
 
 - [ ] **Step 1: Document discovery mode**
 
-Explain `SUPERVISOR_DAEMON_DISCOVERY=1`, `--discover-daemon`, discovery file path, and stale file behavior.
+Explain `RETINUE_DAEMON_DISCOVERY=1`, `--discover-daemon`, discovery file path, and stale file behavior.
 
 - [ ] **Step 2: Run Windows gate**
 
@@ -223,7 +223,7 @@ npm run build
 - [ ] **Step 3: Run WSL fresh clone gate**
 
 ```bash
-rtk wsl.exe -e bash -lc 'set -euo pipefail; d=$(mktemp -d /tmp/supervisor-daemon-discovery-wsl-test-XXXXXX); git clone /mnt/g/repository/supervisor "$d" >/dev/null; cd "$d"; git checkout feature/spawn-claude-code >/dev/null; npm ci; npm run typecheck; npm test; npm run build; echo WSL_TEST_DIR="$d"'
+rtk wsl.exe -e bash -lc 'set -euo pipefail; d=$(mktemp -d /tmp/retinue-daemon-discovery-wsl-test-XXXXXX); git clone /mnt/g/repository/retinue "$d" >/dev/null; cd "$d"; git checkout feature/spawn-claude-code >/dev/null; npm ci; npm run typecheck; npm test; npm run build; echo WSL_TEST_DIR="$d"'
 ```
 
 - [ ] **Step 4: Commit and push**

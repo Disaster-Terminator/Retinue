@@ -1,6 +1,6 @@
 # Service Lifecycle
 
-`supervisor-daemon` is currently manual and explicit. The project does not install a Windows service, scheduled task, systemd unit, or shell startup hook automatically.
+`retinue-daemon` is currently manual and explicit. The project does not install a Windows service, scheduled task, systemd unit, or shell startup hook automatically.
 
 ## Start
 
@@ -76,16 +76,16 @@ node dist/cli.js daemon-health --daemon-url http://127.0.0.1:27777
 MCP with explicit discovery:
 
 ```text
-SUPERVISOR_DAEMON_DISCOVERY=1
+RETINUE_DAEMON_DISCOVERY=1
 ```
 
 Direct URL mode:
 
 ```text
-SUPERVISOR_DAEMON_URL=http://127.0.0.1:27777
+RETINUE_DAEMON_URL=http://127.0.0.1:27777
 ```
 
-Discovery remains opt-in for clients. Without `SUPERVISOR_DAEMON_URL`, `--daemon-url`, `SUPERVISOR_DAEMON_DISCOVERY=1`, or `--discover-daemon`, CLI and MCP use direct local mode.
+Discovery remains opt-in for clients. Without `RETINUE_DAEMON_URL`, `--daemon-url`, `RETINUE_DAEMON_DISCOVERY=1`, or `--discover-daemon`, CLI and MCP use direct local mode.
 
 ## Stop
 

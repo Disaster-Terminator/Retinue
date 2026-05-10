@@ -4,7 +4,7 @@
 
 **Goal:** Build a repository-grade MCP server and CLI that lets Codex-like clients spawn Claude Code as background jobs with run/status/wait/result/kill/cleanup lifecycle tools.
 
-**Architecture:** A TypeScript core supervisor owns job state and process lifecycle. CLI and MCP adapters stay thin and call the same core. Tests use a fake Claude executable so lifecycle behavior is deterministic and does not consume Claude Code quota.
+**Architecture:** A TypeScript core retinue owns job state and process lifecycle. CLI and MCP adapters stay thin and call the same core. Tests use a fake Claude executable so lifecycle behavior is deterministic and does not consume Claude Code quota.
 
 **Tech Stack:** Node.js, TypeScript, Vitest, `@modelcontextprotocol/sdk`, `zod`.
 

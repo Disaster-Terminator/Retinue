@@ -3,18 +3,18 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ClaudeSupervisor } from "../../src/core/supervisor.js";
+import { ClaudeRetinue } from "../../src/core/retinue.js";
 
 const fixturePath = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../fixtures/fake-claude.mjs"
 );
 
-describe("ClaudeSupervisor peek", () => {
+describe("ClaudeRetinue peek", () => {
   let tempDir: string;
 
   beforeEach(async () => {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-peek-test-"));
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-peek-test-"));
   });
 
   afterEach(async () => {
@@ -22,7 +22,7 @@ describe("ClaudeSupervisor peek", () => {
   });
 
   it("returns bounded stdout and stderr tails for a running job", async () => {
-    const supervisor = new ClaudeSupervisor({
+    const retinue = new ClaudeRetinue({
       stateDir: tempDir,
       claudeCommand: process.execPath,
       claudePrefixArgs: [fixturePath],
@@ -33,16 +33,16 @@ describe("ClaudeSupervisor peek", () => {
         FAKE_CLAUDE_INITIAL_STDERR: "stderr-start"
       }
     });
-    const started = await supervisor.run({ cwd: tempDir, prompt: "peek" });
+    const started = await retinue.run({ cwd: tempDir, prompt: "peek" });
 
-    await waitForText(async () => (await supervisor.peek(started.jobId)).stdoutTail, "stdout-start");
-    const peek = await supervisor.peek(started.jobId, { stdoutTailBytes: 6, stderrTailBytes: 6 });
+    await waitForText(async () => (await retinue.peek(started.jobId)).stdoutTail, "stdout-start");
+    const peek = await retinue.peek(started.jobId, { stdoutTailBytes: 6, stderrTailBytes: 6 });
 
     expect(peek.status).toBe("running");
     expect(peek.stdoutTail).toBe("start\n");
     expect(peek.stderrTail).toBe("start\n");
 
-    await supervisor.kill(started.jobId);
+    await retinue.kill(started.jobId);
   });
 });
 

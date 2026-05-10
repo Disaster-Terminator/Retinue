@@ -18,20 +18,20 @@ const requiredDocs = [
 
 const requiredPluginFiles = [
   ".agents/plugins/marketplace.json",
-  "plugins/anchorpoint/.codex-plugin/plugin.json",
-  "plugins/anchorpoint/.mcp.json",
-  "plugins/anchorpoint/skills/anchorpoint/SKILL.md",
+  "plugins/retinue/.codex-plugin/plugin.json",
+  "plugins/retinue/.mcp.json",
+  "plugins/retinue/skills/retinue/SKILL.md",
   "integrations/hermes/mcp-retinue.yaml",
   "integrations/hermes/skills/retinue/SKILL.md",
-  "plugins/anchorpoint/dist/mcp.js"
+  "plugins/retinue/dist/mcp.js"
 ];
 
 const requiredRuntimePatterns = ["dist/backends/", "dist/cli.", "dist/mcp.", "dist/daemon."];
 const requiredPluginRuntimePatterns = [
-  "plugins/anchorpoint/dist/backends/",
-  "plugins/anchorpoint/dist/core/",
-  "plugins/anchorpoint/dist/daemon/",
-  "plugins/anchorpoint/dist/mcp."
+  "plugins/retinue/dist/backends/",
+  "plugins/retinue/dist/core/",
+  "plugins/retinue/dist/daemon/",
+  "plugins/retinue/dist/mcp."
 ];
 
 function fail(message) {

@@ -2,7 +2,7 @@
 
 This document records the production-style OpenCode path for `feature/spawn-opencode`.
 
-Supervisor stays a thin lifecycle wrapper. OpenCode owns provider configuration, endpoint routing, login, model availability, agent behavior, and permission policy. Supervisor owns job metadata, wait/result/continue/kill/cleanup, and MCP/CLI surfaces.
+Retinue stays a thin lifecycle wrapper. OpenCode owns provider configuration, endpoint routing, login, model availability, agent behavior, and permission policy. Retinue owns job metadata, wait/result/continue/kill/cleanup, and MCP/CLI surfaces.
 
 ## WSL Baseline
 
@@ -29,19 +29,19 @@ opencode serve --hostname 127.0.0.1 --port 4096
 
 Windows can either attach to that WSL server through the loopback URL or maintain its own equivalent OpenCode config. The old Windows OpenCode config is not the baseline for this project.
 
-## Supervisor Configuration
+## Retinue Configuration
 
 Attach to the server:
 
 ```bash
-SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096
+RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096
 ```
 
 Use the production model only when explicitly configured:
 
 ```bash
-SUPERVISOR_OPENCODE_MODEL=litellm/pro-router
-SUPERVISOR_OPENCODE_AGENT=plan
+RETINUE_OPENCODE_MODEL=litellm/pro-router
+RETINUE_OPENCODE_AGENT=plan
 ```
 
 Retinue 0.1.0 uses `plan` as the default OpenCode plugin agent. Use `build` only when the deployment intentionally allows the child agent to edit.
@@ -49,10 +49,10 @@ Retinue 0.1.0 uses `plan` as the default OpenCode plugin agent. Use `build` only
 Precedence is:
 
 1. CLI/MCP input fields.
-2. `SUPERVISOR_OPENCODE_MODEL` and `SUPERVISOR_OPENCODE_AGENT`.
+2. `RETINUE_OPENCODE_MODEL` and `RETINUE_OPENCODE_AGENT`.
 3. Unset: omit the field and let OpenCode choose its default.
 
-`SUPERVISOR_OPENCODE_MODEL=litellm/pro-router` is sent to OpenCode as:
+`RETINUE_OPENCODE_MODEL=litellm/pro-router` is sent to OpenCode as:
 
 ```json
 {
@@ -72,12 +72,12 @@ pnpm run build
 Run:
 
 ```bash
-SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
-SUPERVISOR_OPENCODE_MODEL=litellm/pro-router \
+RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
+RETINUE_OPENCODE_MODEL=litellm/pro-router \
 node dist/cli.js opencode-run \
-  --cwd /mnt/g/repository/supervisor \
-  --prompt "Reply exactly: SUPERVISOR_SPAWN_OPENCODE_OK" \
-  --title supervisor-spawn-opencode-live
+  --cwd /mnt/g/repository/retinue \
+  --prompt "Reply exactly: RETINUE_SPAWN_OPENCODE_OK" \
+  --title retinue-spawn-opencode-live
 ```
 
 Wait and read:
@@ -90,12 +90,12 @@ node dist/cli.js opencode-result <jobId>
 Continue:
 
 ```bash
-SUPERVISOR_OPENCODE_MODEL=litellm/pro-router \
+RETINUE_OPENCODE_MODEL=litellm/pro-router \
 node dist/cli.js opencode-continue \
-  --cwd /mnt/g/repository/supervisor \
+  --cwd /mnt/g/repository/retinue \
   --external-session-id <sessionId> \
   --job-id <jobId> \
-  --prompt "Reply exactly: SUPERVISOR_SPAWN_OPENCODE_CONTINUE_OK"
+  --prompt "Reply exactly: RETINUE_SPAWN_OPENCODE_CONTINUE_OK"
 ```
 
 Kill and cleanup:
@@ -105,7 +105,7 @@ node dist/cli.js opencode-kill <jobId>
 node dist/cli.js opencode-cleanup --older-than-ms 0
 ```
 
-PowerShell uses the same commands with `$env:SUPERVISOR_OPENCODE_BASE_URL` and `$env:SUPERVISOR_OPENCODE_MODEL`.
+PowerShell uses the same commands with `$env:RETINUE_OPENCODE_BASE_URL` and `$env:RETINUE_OPENCODE_MODEL`.
 
 ## Retinue MCP Spawn Flow
 
@@ -115,26 +115,26 @@ This probe validates the OpenCode-first Retinue product surface:
 - `retinue_wait_agent`
 - `retinue_close_agent`
 
-It intentionally does not pass a backend, profile, model, agent, or permission mode through the MCP tool arguments. Retinue uses the deployment-selected OpenCode server from `SUPERVISOR_OPENCODE_BASE_URL`, and OpenCode uses its active profile.
+It intentionally does not pass a backend, profile, model, agent, or permission mode through the MCP tool arguments. Retinue uses the deployment-selected OpenCode server from `RETINUE_OPENCODE_BASE_URL`, and OpenCode uses its active profile.
 
-For local E2E, set `SUPERVISOR_STATE_DIR` to a known directory. Retinue writes job artifacts under `<stateDir>/jobs/<jobId>/` and diagnostics under `<stateDir>/logs/retinue.jsonl`. The real MCP probe prints both `stateDir` and `tracePath` on success or failure. If `retinue_wait_agent` returns `running`, inspect the trace and the job's `stderr.log` for the OpenCode session/message snapshot.
+For local E2E, set `RETINUE_STATE_DIR` to a known directory. Retinue writes job artifacts under `<stateDir>/jobs/<jobId>/` and diagnostics under `<stateDir>/logs/retinue.jsonl`. The real MCP probe prints both `stateDir` and `tracePath` on success or failure. If `retinue_wait_agent` returns `running`, inspect the trace and the job's `stderr.log` for the OpenCode session/message snapshot.
 
 ```bash
 pnpm run build
-SUPERVISOR_REAL_OPENCODE_PROBE=1 \
-SUPERVISOR_RETINUE_BACKEND=opencode \
-SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
-SUPERVISOR_OPENCODE_AGENT=plan \
+RETINUE_REAL_OPENCODE_PROBE=1 \
+RETINUE_BACKEND=opencode \
+RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
+RETINUE_OPENCODE_AGENT=plan \
 pnpm run probe:real:retinue-opencode
 ```
 
 On PowerShell:
 
 ```powershell
-$env:SUPERVISOR_REAL_OPENCODE_PROBE = "1"
-$env:SUPERVISOR_RETINUE_BACKEND = "opencode"
-$env:SUPERVISOR_OPENCODE_BASE_URL = "http://127.0.0.1:4096"
-$env:SUPERVISOR_OPENCODE_AGENT = "plan"
+$env:RETINUE_REAL_OPENCODE_PROBE = "1"
+$env:RETINUE_BACKEND = "opencode"
+$env:RETINUE_OPENCODE_BASE_URL = "http://127.0.0.1:4096"
+$env:RETINUE_OPENCODE_AGENT = "plan"
 pnpm run probe:real:retinue-opencode
 ```
 
@@ -146,7 +146,7 @@ Environment:
 Host runner: Windows PowerShell
 OpenCode server: WSL Ubuntu-22.04, http://127.0.0.1:4096
 OpenCode version: 1.14.35
-Workspace sent to OpenCode: /mnt/g/repository/supervisor
+Workspace sent to OpenCode: /mnt/g/repository/retinue
 Model override: litellm/pro-router
 Agent: build
 ```
@@ -159,7 +159,7 @@ sessionId: ses_2075283c6ffezabgaTHjAQGj3s
 providerID: litellm
 modelID: pro-router
 status: completed
-stdout: SUPERVISOR_SPAWN_OPENCODE_OK
+stdout: RETINUE_SPAWN_OPENCODE_OK
 ```
 
 ## 2026-05-07 Retinue MCP E2E Result
@@ -170,7 +170,7 @@ Environment:
 Host runner: Windows PowerShell
 OpenCode server: Windows local, http://127.0.0.1:41987
 OpenCode version: 1.14.39
-Workspace sent to OpenCode: G:\repository\supervisor
+Workspace sent to OpenCode: G:\repository\retinue
 Backend/profile selection in tool args: none
 ```
 
@@ -195,7 +195,7 @@ sessionId: ses_2075283c6ffezabgaTHjAQGj3s
 providerID: litellm
 modelID: pro-router
 status: completed
-stdout: SUPERVISOR_SPAWN_OPENCODE_CONTINUE_OK
+stdout: RETINUE_SPAWN_OPENCODE_CONTINUE_OK
 ```
 
 Kill and cleanup were also exercised:
@@ -217,7 +217,7 @@ sessionId: ses_2074a18d2ffe9opvrLoLl1PdvE
 providerID: litellm
 modelID: pro-router
 status: completed
-stdout: SUPERVISOR_WSL_OPENCODE_OK
+stdout: RETINUE_WSL_OPENCODE_OK
 cleanup removed: job_3eb667da-a718-4670-ba7a-2c60deb63de0
 ```
 
@@ -229,7 +229,7 @@ Environment:
 Host runner: Windows PowerShell
 OpenCode server: WSL Ubuntu-22.04, http://127.0.0.1:4096
 OpenCode version: 1.14.35
-Workspace sent to OpenCode: /mnt/g/repository/supervisor
+Workspace sent to OpenCode: /mnt/g/repository/retinue
 Model override: litellm/pro-router
 Provider/model confirmed by OpenCode messages: litellm/pro-router
 ```
@@ -240,7 +240,7 @@ Run result:
 jobId: job_e69a6efb-3273-429c-9fd1-f7af8a88bf59
 sessionId: ses_202bb3938ffeBGQVwiD0NWN4YV
 status: completed
-stdout: ANCHORPOINT_E2E_RUN_OK
+stdout: RETINUE_E2E_RUN_OK
 ```
 
 Continue result:
@@ -251,7 +251,7 @@ sessionId: ses_202bb3938ffeBGQVwiD0NWN4YV
 externalMessageBaselineCount: 2
 externalCompletedAssistantBaselineCount: 1
 status: completed
-stdout: ANCHORPOINT_E2E_CONTINUE_OK
+stdout: RETINUE_E2E_CONTINUE_OK
 ```
 
 Kill and cleanup result:
@@ -273,7 +273,7 @@ Environment:
 Host runner: Windows PowerShell
 OpenCode server: Windows local, http://127.0.0.1:41987
 OpenCode version: 1.14.39
-Workspace sent to OpenCode: G:\repository\supervisor
+Workspace sent to OpenCode: G:\repository\retinue
 Retinue backend: opencode
 OpenCode agent: plan
 ```
@@ -281,10 +281,10 @@ OpenCode agent: plan
 Command:
 
 ```powershell
-$env:SUPERVISOR_REAL_OPENCODE_PROBE = "1"
-$env:SUPERVISOR_RETINUE_BACKEND = "opencode"
-$env:SUPERVISOR_OPENCODE_BASE_URL = "http://127.0.0.1:41987"
-$env:SUPERVISOR_OPENCODE_AGENT = "plan"
+$env:RETINUE_REAL_OPENCODE_PROBE = "1"
+$env:RETINUE_BACKEND = "opencode"
+$env:RETINUE_OPENCODE_BASE_URL = "http://127.0.0.1:41987"
+$env:RETINUE_OPENCODE_AGENT = "plan"
 pnpm run probe:real:retinue-opencode
 ```
 

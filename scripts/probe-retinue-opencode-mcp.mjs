@@ -7,18 +7,18 @@ import os from "node:os";
 import path from "node:path";
 import { createMcpServer } from "../dist/mcp.js";
 
-const OPT_IN_ENV = "SUPERVISOR_REAL_OPENCODE_PROBE";
+const OPT_IN_ENV = "RETINUE_REAL_OPENCODE_PROBE";
 
 async function main() {
   if (process.env[OPT_IN_ENV] !== "1") {
     throw new Error(`Manual probe blocked. Set ${OPT_IN_ENV}=1 to run this script.`);
   }
-  if (!process.env.SUPERVISOR_OPENCODE_BASE_URL) {
-    throw new Error("Missing SUPERVISOR_OPENCODE_BASE_URL.");
+  if (!process.env.RETINUE_OPENCODE_BASE_URL) {
+    throw new Error("Missing RETINUE_OPENCODE_BASE_URL.");
   }
-  const stateDir = await ensureStateDir(process.env.SUPERVISOR_STATE_DIR);
-  process.env.SUPERVISOR_RETINUE_BACKEND = "opencode";
-  process.env.SUPERVISOR_STATE_DIR = stateDir;
+  const stateDir = await ensureStateDir(process.env.RETINUE_STATE_DIR);
+  process.env.RETINUE_BACKEND = "opencode";
+  process.env.RETINUE_STATE_DIR = stateDir;
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "retinue-opencode-real-probe", version: "0.1.0" });
@@ -42,7 +42,7 @@ async function main() {
       await client.callTool({
         name: "retinue_wait_agent",
         arguments: { jobId: spawn.jobId, timeoutMs: 120000 }
-      })
+      }, undefined, { timeout: 150000 })
     );
 
     const actual = wait?.result?.parsedStdout?.result;
@@ -61,7 +61,7 @@ async function main() {
       `${JSON.stringify(
         {
           ok: true,
-          retinueBackend: process.env.SUPERVISOR_RETINUE_BACKEND,
+          retinueBackend: process.env.RETINUE_BACKEND,
           backend: spawn.backend,
           task_name: spawn.task_name,
           jobId: spawn.jobId,
@@ -98,7 +98,7 @@ function parseToolJson(result) {
 }
 
 main().catch((error) => {
-  const stateDir = process.env.SUPERVISOR_STATE_DIR;
+  const stateDir = process.env.RETINUE_STATE_DIR;
   process.stderr.write(
     `${JSON.stringify({
       ok: false,

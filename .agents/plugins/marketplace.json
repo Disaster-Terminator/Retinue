@@ -8,7 +8,7 @@
       "name": "retinue",
       "source": {
         "source": "local",
-        "path": "./plugins/anchorpoint"
+        "path": "./plugins/retinue"
       },
       "policy": {
         "installation": "AVAILABLE",

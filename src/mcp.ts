@@ -11,8 +11,8 @@ import { ensureOpenCodeServer, resolveOpenCodeServerFromEnv } from "./backends/o
 import { DaemonClient } from "./daemon/client.js";
 import { readDaemonDiscoverySync } from "./daemon/discovery.js";
 import { getJobPaths, getRetinueTracePath, resolveStateDir } from "./core/paths.js";
-import { ClaudeSupervisor } from "./core/supervisor.js";
-import type { AgentBackendKind, JobMeta, JobStatusResult, SupervisorApi, WaitResult } from "./core/types.js";
+import { ClaudeRetinue } from "./core/retinue.js";
+import type { AgentBackendKind, JobMeta, JobStatusResult, RetinueApi, WaitResult } from "./core/types.js";
 import type { AgentBackend, AgentContinueOptions, AgentHandle, AgentRunOptions } from "./backends/types.js";
 
 export const CLAUDE_TOOL_NAMES = [
@@ -42,14 +42,14 @@ export interface CreateMcpServerOptions {
   exposeBackendTools?: boolean;
 }
 
-export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorFromEnv(), options: CreateMcpServerOptions = {}): McpServer {
+export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(), options: CreateMcpServerOptions = {}): McpServer {
   const server = new McpServer({
-    name: "supervisor",
+    name: "retinue",
     version: "0.1.0"
   });
 
-  if (options.exposeBackendTools ?? process.env.SUPERVISOR_EXPOSE_BACKEND_TOOLS === "1") {
-    registerBackendTools(server, supervisor);
+  if (options.exposeBackendTools ?? process.env.RETINUE_EXPOSE_BACKEND_TOOLS === "1") {
+    registerBackendTools(server, retinue);
   }
 
   server.registerTool(
@@ -67,7 +67,7 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
     },
     async (args) => {
       const taskName = normalizeTaskName(args);
-      const backend = await createRetinueBackend(supervisor);
+      const backend = await createRetinueBackend(retinue);
       const started = await backend.run({
         cwd: args.cwd ?? process.cwd(),
         prompt: args.message,
@@ -75,8 +75,8 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
         title: args.title ?? taskName,
         ...(backend.kind === "opencode"
           ? {
-              model: process.env.SUPERVISOR_OPENCODE_MODEL,
-              agent: process.env.SUPERVISOR_OPENCODE_AGENT
+              model: process.env.RETINUE_OPENCODE_MODEL,
+              agent: process.env.RETINUE_OPENCODE_AGENT
             }
           : {})
       });
@@ -102,12 +102,12 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
       }
     },
     async ({ jobId, timeoutMs }) => {
-      const backend = await createRetinueBackendForJob(supervisor, jobId);
+      const backend = await createRetinueBackendForJob(retinue, jobId);
       const waited = await backend.wait({ jobId }, timeoutMs);
       const status = await backend.status({ jobId });
       if (waited.status === "running") {
         const stateDir = resolveStateDir({
-          explicitStateDir: process.env.SUPERVISOR_STATE_DIR,
+          explicitStateDir: process.env.RETINUE_STATE_DIR,
           env: process.env
         });
         return jsonToolResult({
@@ -141,7 +141,7 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
       }
     },
     async ({ jobId }) => {
-      const backend = await createRetinueBackendForJob(supervisor, jobId);
+      const backend = await createRetinueBackendForJob(retinue, jobId);
       const status = await backend.status({ jobId });
       if (isJobMeta(status) && status.status === "running") {
         await backend.abort({ jobId });
@@ -154,7 +154,7 @@ export function createMcpServer(supervisor: SupervisorApi = createMcpSupervisorF
   return server;
 }
 
-function registerBackendTools(server: McpServer, supervisor: SupervisorApi): void {
+function registerBackendTools(server: McpServer, retinue: RetinueApi): void {
   server.registerTool(
     "claude_run",
     {
@@ -170,7 +170,7 @@ function registerBackendTools(server: McpServer, supervisor: SupervisorApi): voi
         timeoutMs: z.number().int().positive().optional()
       }
     },
-    async (args) => jsonToolResult(await supervisor.run(args))
+    async (args) => jsonToolResult(await retinue.run(args))
   );
 
   server.registerTool(
@@ -180,7 +180,7 @@ function registerBackendTools(server: McpServer, supervisor: SupervisorApi): voi
       description: "Read current status metadata for a Claude Code job.",
       inputSchema: { jobId: z.string() }
     },
-    async ({ jobId }) => jsonToolResult(await supervisor.status(jobId))
+    async ({ jobId }) => jsonToolResult(await retinue.status(jobId))
   );
 
   server.registerTool(
@@ -193,7 +193,7 @@ function registerBackendTools(server: McpServer, supervisor: SupervisorApi): voi
         timeoutMs: z.number().int().positive().optional()
       }
     },
-    async ({ jobId, timeoutMs }) => jsonToolResult(await supervisor.wait(jobId, { timeoutMs }))
+    async ({ jobId, timeoutMs }) => jsonToolResult(await retinue.wait(jobId, { timeoutMs }))
   );
 
   server.registerTool(
@@ -203,7 +203,7 @@ function registerBackendTools(server: McpServer, supervisor: SupervisorApi): voi
       description: "Read stdout, stderr, parsed JSON, and exit status for a Claude Code job.",
       inputSchema: { jobId: z.string() }
     },
-    async ({ jobId }) => jsonToolResult(await supervisor.result(jobId))
+    async ({ jobId }) => jsonToolResult(await retinue.result(jobId))
   );
 
   server.registerTool(
@@ -222,7 +222,7 @@ function registerBackendTools(server: McpServer, supervisor: SupervisorApi): voi
         timeoutMs: z.number().int().positive().optional()
       }
     },
-    async (args) => jsonToolResult(await supervisor.continueJob(args))
+    async (args) => jsonToolResult(await retinue.continueJob(args))
   );
 
   server.registerTool(
@@ -237,7 +237,7 @@ function registerBackendTools(server: McpServer, supervisor: SupervisorApi): voi
       }
     },
     async ({ jobId, stdoutTailBytes, stderrTailBytes }) =>
-      jsonToolResult(await supervisor.peek(jobId, { stdoutTailBytes, stderrTailBytes }))
+      jsonToolResult(await retinue.peek(jobId, { stdoutTailBytes, stderrTailBytes }))
   );
 
   server.registerTool(
@@ -247,7 +247,7 @@ function registerBackendTools(server: McpServer, supervisor: SupervisorApi): voi
       description: "Kill a running Claude Code job process tree.",
       inputSchema: { jobId: z.string() }
     },
-    async ({ jobId }) => jsonToolResult(await supervisor.kill(jobId))
+    async ({ jobId }) => jsonToolResult(await retinue.kill(jobId))
   );
 
   server.registerTool(
@@ -257,7 +257,7 @@ function registerBackendTools(server: McpServer, supervisor: SupervisorApi): voi
       description: "Remove terminal job directories while preserving running jobs.",
       inputSchema: { olderThanMs: z.number().int().nonnegative().optional() }
     },
-    async ({ olderThanMs }) => jsonToolResult(await supervisor.cleanup({ olderThanMs }))
+    async ({ olderThanMs }) => jsonToolResult(await retinue.cleanup({ olderThanMs }))
   );
 
   server.registerTool(
@@ -297,7 +297,7 @@ function registerBackendTools(server: McpServer, supervisor: SupervisorApi): voi
     "opencode_result",
     {
       title: "Read OpenCode Job Result",
-      description: "Read the latest OpenCode message result for a supervisor job.",
+      description: "Read the latest OpenCode message result for a retinue job.",
       inputSchema: { jobId: z.string(), opencodeBaseUrl: z.string().optional() }
     },
     async ({ jobId, opencodeBaseUrl }) => jsonToolResult(await (await createOpenCodeBackend({ opencodeBaseUrl })).result({ jobId }))
@@ -328,7 +328,7 @@ function registerBackendTools(server: McpServer, supervisor: SupervisorApi): voi
     "opencode_kill",
     {
       title: "Abort OpenCode Job",
-      description: "Abort the OpenCode session associated with a supervisor job.",
+      description: "Abort the OpenCode session associated with a retinue job.",
       inputSchema: { jobId: z.string(), opencodeBaseUrl: z.string().optional() }
     },
     async ({ jobId, opencodeBaseUrl }) => {
@@ -363,10 +363,10 @@ function opencodeRunSchema() {
 async function createOpenCodeBackend(args: { opencodeBaseUrl?: string }): Promise<OpenCodeBackend> {
   const env = {
     ...process.env,
-    SUPERVISOR_OPENCODE_BASE_URL: args.opencodeBaseUrl ?? process.env.SUPERVISOR_OPENCODE_BASE_URL
+    RETINUE_OPENCODE_BASE_URL: args.opencodeBaseUrl ?? process.env.RETINUE_OPENCODE_BASE_URL
   };
   const resolution = resolveOpenCodeServerFromEnv(env);
-  const stateDir = resolveStateDir({ explicitStateDir: process.env.SUPERVISOR_STATE_DIR, env: process.env });
+  const stateDir = resolveStateDir({ explicitStateDir: process.env.RETINUE_STATE_DIR, env: process.env });
   return new OpenCodeBackend({
     target: async (cwd) => {
       const target = await ensureOpenCodeServer(resolution, { stateDir, cwd });
@@ -380,8 +380,8 @@ async function createOpenCodeBackend(args: { opencodeBaseUrl?: string }): Promis
 function withOpenCodeDefaults<T extends { model?: string; agent?: string }>(args: T): T {
   return {
     ...args,
-    model: args.model ?? process.env.SUPERVISOR_OPENCODE_MODEL,
-    agent: args.agent ?? process.env.SUPERVISOR_OPENCODE_AGENT
+    model: args.model ?? process.env.RETINUE_OPENCODE_MODEL,
+    agent: args.agent ?? process.env.RETINUE_OPENCODE_AGENT
   };
 }
 
@@ -389,42 +389,42 @@ type RetinueBackend = AgentBackend & {
   wait(handle: AgentHandle, timeoutMs?: number): Promise<Pick<WaitResult, "jobId" | "status">>;
 };
 
-async function createRetinueBackend(supervisor: SupervisorApi): Promise<RetinueBackend> {
-  return createRetinueBackendByKind(readRetinueBackendKindFromEnv(), supervisor);
+async function createRetinueBackend(retinue: RetinueApi): Promise<RetinueBackend> {
+  return createRetinueBackendByKind(readRetinueBackendKindFromEnv(), retinue);
 }
 
-async function createRetinueBackendForJob(supervisor: SupervisorApi, jobId: string): Promise<RetinueBackend> {
+async function createRetinueBackendForJob(retinue: RetinueApi, jobId: string): Promise<RetinueBackend> {
   const recordedKind = await readRetinueJobBackendKind(jobId);
   if (recordedKind) {
-    return createRetinueBackendByKind(recordedKind, supervisor);
+    return createRetinueBackendByKind(recordedKind, retinue);
   }
-  return createRetinueBackend(supervisor);
+  return createRetinueBackend(retinue);
 }
 
-async function createRetinueBackendByKind(kind: AgentBackendKind, supervisor: SupervisorApi): Promise<RetinueBackend> {
+async function createRetinueBackendByKind(kind: AgentBackendKind, retinue: RetinueApi): Promise<RetinueBackend> {
   if (kind === "opencode") {
     return createOpenCodeBackend({});
   }
   if (kind === "claude-code") {
-    return new SupervisorAgentBackend(supervisor);
+    return new RetinueAgentBackend(retinue);
   }
   throw new Error(`Unsupported Retinue backend: ${kind satisfies never}`);
 }
 
 function readRetinueBackendKindFromEnv(): AgentBackendKind {
-  const backend = (process.env.SUPERVISOR_RETINUE_BACKEND ?? "opencode").trim().toLowerCase();
+  const backend = (process.env.RETINUE_BACKEND ?? "opencode").trim().toLowerCase();
   if (backend === "opencode") {
     return "opencode";
   }
   if (backend === "claude-code" || backend === "claude") {
     return "claude-code";
   }
-  throw new Error(`Unsupported SUPERVISOR_RETINUE_BACKEND: ${backend}`);
+  throw new Error(`Unsupported RETINUE_BACKEND: ${backend}`);
 }
 
 async function readRetinueJobBackendKind(jobId: string): Promise<AgentBackendKind | undefined> {
   const stateDir = resolveStateDir({
-    explicitStateDir: process.env.SUPERVISOR_STATE_DIR,
+    explicitStateDir: process.env.RETINUE_STATE_DIR,
     env: process.env
   });
   try {
@@ -435,33 +435,33 @@ async function readRetinueJobBackendKind(jobId: string): Promise<AgentBackendKin
   }
 }
 
-class SupervisorAgentBackend implements RetinueBackend {
+class RetinueAgentBackend implements RetinueBackend {
   readonly kind = "claude-code" as const;
 
-  constructor(private readonly supervisor: SupervisorApi) {}
+  constructor(private readonly retinue: RetinueApi) {}
 
   run(options: AgentRunOptions) {
-    return this.supervisor.run(options);
+    return this.retinue.run(options);
   }
 
   continueJob(options: AgentContinueOptions) {
-    return this.supervisor.run(options);
+    return this.retinue.run(options);
   }
 
   status(handle: AgentHandle): Promise<JobStatusResult> {
-    return this.supervisor.status(handle.jobId);
+    return this.retinue.status(handle.jobId);
   }
 
   result(handle: AgentHandle) {
-    return this.supervisor.result(handle.jobId);
+    return this.retinue.result(handle.jobId);
   }
 
   async abort(handle: AgentHandle): Promise<void> {
-    await this.supervisor.kill(handle.jobId);
+    await this.retinue.kill(handle.jobId);
   }
 
   async wait(handle: AgentHandle, timeoutMs?: number): Promise<Pick<WaitResult, "jobId" | "status">> {
-    const result = await this.supervisor.wait(handle.jobId, { timeoutMs });
+    const result = await this.retinue.wait(handle.jobId, { timeoutMs });
     return { jobId: result.jobId, status: result.status };
   }
 }
@@ -475,27 +475,27 @@ function isJobMeta(value: unknown): value is { name?: string } {
 }
 
 
-export function createMcpSupervisorFromEnv(
+export function createMcpRetinueFromEnv(
   env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env
-): SupervisorApi {
-  if (env.SUPERVISOR_DAEMON_URL) {
-    return new DaemonClient(env.SUPERVISOR_DAEMON_URL);
+): RetinueApi {
+  if (env.RETINUE_DAEMON_URL) {
+    return new DaemonClient(env.RETINUE_DAEMON_URL);
   }
-  if (env.SUPERVISOR_DAEMON_DISCOVERY === "1") {
+  if (env.RETINUE_DAEMON_DISCOVERY === "1") {
     const stateDir = resolveStateDir({
-      explicitStateDir: env.SUPERVISOR_STATE_DIR,
+      explicitStateDir: env.RETINUE_STATE_DIR,
       env
     });
     return new DaemonClient(readDaemonDiscoverySync(stateDir).url);
   }
 
-  return new ClaudeSupervisor({
-    stateDir: env.SUPERVISOR_STATE_DIR,
-    claudeCommand: env.SUPERVISOR_CLAUDE_COMMAND,
-    claudePrefixArgs: parsePrefixArgs(env.SUPERVISOR_CLAUDE_PREFIX_ARGS),
+  return new ClaudeRetinue({
+    stateDir: env.RETINUE_STATE_DIR,
+    claudeCommand: env.RETINUE_CLAUDE_COMMAND,
+    claudePrefixArgs: parsePrefixArgs(env.RETINUE_CLAUDE_PREFIX_ARGS),
     env,
-    defaultRuntimeTimeoutMs: parseOptionalNumber(env.SUPERVISOR_DEFAULT_RUNTIME_TIMEOUT_MS),
-    maxConcurrentJobs: parseOptionalNumber(env.SUPERVISOR_MAX_CONCURRENT_JOBS)
+    defaultRuntimeTimeoutMs: parseOptionalNumber(env.RETINUE_DEFAULT_RUNTIME_TIMEOUT_MS),
+    maxConcurrentJobs: parseOptionalNumber(env.RETINUE_MAX_CONCURRENT_JOBS)
   });
 }
 

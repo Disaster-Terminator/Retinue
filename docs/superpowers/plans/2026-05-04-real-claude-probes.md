@@ -39,16 +39,16 @@ describe("real Claude probe helpers", () => {
       parseProbeArgs([
         "daemon",
         "--cwd",
-        "G:/repository/supervisor",
+        "G:/repository/retinue",
         "--expect",
-        "SUPERVISOR_REAL_OK",
+        "RETINUE_REAL_OK",
         "--timeout-ms",
         "120000"
       ])
     ).toMatchObject({
       mode: "daemon",
-      cwd: "G:/repository/supervisor",
-      expected: "SUPERVISOR_REAL_OK",
+      cwd: "G:/repository/retinue",
+      expected: "RETINUE_REAL_OK",
       timeoutMs: 120000
     });
   });
@@ -70,9 +70,9 @@ describe("real Claude probe helpers", () => {
         {
           status: "completed",
           exitCode: 0,
-          parsedStdout: { result: "SUPERVISOR_REAL_OK" }
+          parsedStdout: { result: "RETINUE_REAL_OK" }
         },
-        "SUPERVISOR_REAL_OK"
+        "RETINUE_REAL_OK"
       )
     ).not.toThrow();
 
@@ -83,7 +83,7 @@ describe("real Claude probe helpers", () => {
           exitCode: 0,
           parsedStdout: { result: "wrong" }
         },
-        "SUPERVISOR_REAL_OK"
+        "RETINUE_REAL_OK"
       )
     ).toThrow("Expected Claude result");
   });
@@ -109,12 +109,12 @@ Create `scripts/probe-real-claude.mjs` with these concrete behaviors:
 - `parseProbeArgs(argv)` returns `{ mode, cwd, prompt, expected, timeoutMs, host, port, stateDir }`.
 - Default mode is `direct`.
 - Valid modes are `direct`, `daemon`, and `mcp-daemon`.
-- Default prompt is `Reply exactly: SUPERVISOR_REAL_OK`.
-- Default expected result is `SUPERVISOR_REAL_OK`.
+- Default prompt is `Reply exactly: RETINUE_REAL_OK`.
+- Default expected result is `RETINUE_REAL_OK`.
 - `readJsonOutput(stdout)` returns the first parseable JSON object from stdout.
 - `assertExpectedResult(result, expected)` requires `status: "completed"`, `exitCode: 0`, and `parsedStdout.result === expected`.
 - `direct` calls `node dist/cli.js run`, `wait`, and `result`.
-- `daemon` starts `node dist/daemon.js --host <host> --port <port>`, reads readiness JSON, then calls the CLI through `SUPERVISOR_DAEMON_URL`.
+- `daemon` starts `node dist/daemon.js --host <host> --port <port>`, reads readiness JSON, then calls the CLI through `RETINUE_DAEMON_URL`.
 - `mcp-daemon` starts the daemon, starts `node dist/mcp.js` through `StdioClientTransport`, calls `claude_run`, `claude_wait`, and `claude_result`, then validates the same result.
 - Any daemon/MCP child process created by the script is closed in `finally`.
 
@@ -129,9 +129,9 @@ Expected: PASS.
 Run after `npm run build`:
 
 ```bash
-SUPERVISOR_CLAUDE_COMMAND=node SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs node scripts/probe-real-claude.mjs direct --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
-SUPERVISOR_CLAUDE_COMMAND=node SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs node scripts/probe-real-claude.mjs daemon --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
-SUPERVISOR_CLAUDE_COMMAND=node SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs node scripts/probe-real-claude.mjs mcp-daemon --expect "fake result: Reply exactly: SUPERVISOR_REAL_OK"
+RETINUE_CLAUDE_COMMAND=node RETINUE_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs node scripts/probe-real-claude.mjs direct --expect "fake result: Reply exactly: RETINUE_REAL_OK"
+RETINUE_CLAUDE_COMMAND=node RETINUE_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs node scripts/probe-real-claude.mjs daemon --expect "fake result: Reply exactly: RETINUE_REAL_OK"
+RETINUE_CLAUDE_COMMAND=node RETINUE_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs node scripts/probe-real-claude.mjs mcp-daemon --expect "fake result: Reply exactly: RETINUE_REAL_OK"
 ```
 
 Expected: each prints JSON with `ok: true`, `mode`, `jobId`, and `result`.
@@ -161,12 +161,12 @@ Do not reference these from `test`, `build`, or `typecheck`.
 Create `docs/REAL_CLAUDE_PROBES.md` with sections:
 
 - Deterministic gates first: `npm run typecheck`, `npm test`, `npm run build`
-- Fake dry-run probes using `SUPERVISOR_CLAUDE_COMMAND=node` and `SUPERVISOR_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs`
+- Fake dry-run probes using `RETINUE_CLAUDE_COMMAND=node` and `RETINUE_CLAUDE_PREFIX_ARGS=tests/fixtures/fake-claude.mjs`
 - Windows real CLI direct probe: `npm run probe:real:direct`
 - WSL fresh clone deterministic gate command
 - Daemon mode real probe: `npm run probe:real:daemon`
 - MCP-to-daemon real probe: `npm run probe:real:mcp-daemon`
-- cc-switch boundary: supervisor invokes only the system `claude`; routing/quota stay in Claude Code configuration
+- cc-switch boundary: retinue invokes only the system `claude`; routing/quota stay in Claude Code configuration
 - Safety notes: opt-in only, may consume quota, no permission bypass, no service install
 
 - [ ] **Step 3: Update verification notes and README**
@@ -209,7 +209,7 @@ git push origin feature/spawn-claude-code
 Run:
 
 ```bash
-rtk wsl.exe -e bash -lc 'set -euo pipefail; d=$(mktemp -d /tmp/supervisor-real-probes-wsl-test-XXXXXX); git clone /mnt/g/repository/supervisor "$d" >/dev/null; cd "$d"; git checkout feature/spawn-claude-code >/dev/null; npm ci; npm run typecheck; npm test; npm run build; echo WSL_TEST_DIR="$d"'
+rtk wsl.exe -e bash -lc 'set -euo pipefail; d=$(mktemp -d /tmp/retinue-real-probes-wsl-test-XXXXXX); git clone /mnt/g/repository/retinue "$d" >/dev/null; cd "$d"; git checkout feature/spawn-claude-code >/dev/null; npm ci; npm run typecheck; npm test; npm run build; echo WSL_TEST_DIR="$d"'
 ```
 
 Expected: PASS.

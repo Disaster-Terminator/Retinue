@@ -11,10 +11,10 @@ import { createMcpServer } from "../dist/mcp.js";
 async function main() {
   const options = parseProbeArgs(["direct", ...process.argv.slice(2)]);
   const stateDir = options.stateDir ?? (await mkdtemp(path.join(os.tmpdir(), "retinue-claude-real-state-")));
-  const previousStateDir = process.env.SUPERVISOR_STATE_DIR;
-  const previousBackend = process.env.SUPERVISOR_RETINUE_BACKEND;
-  process.env.SUPERVISOR_STATE_DIR = stateDir;
-  process.env.SUPERVISOR_RETINUE_BACKEND = "claude-code";
+  const previousStateDir = process.env.RETINUE_STATE_DIR;
+  const previousBackend = process.env.RETINUE_BACKEND;
+  process.env.RETINUE_STATE_DIR = stateDir;
+  process.env.RETINUE_BACKEND = "claude-code";
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "retinue-claude-real-probe", version: "0.1.0" });
@@ -37,7 +37,7 @@ async function main() {
       await client.callTool({
         name: "retinue_wait_agent",
         arguments: { jobId: spawn.jobId, timeoutMs: options.timeoutMs }
-      })
+      }, undefined, { timeout: options.timeoutMs + 30_000 })
     );
     const actual = assertExpectedResult(wait.result, options.expected);
 
@@ -52,7 +52,7 @@ async function main() {
       `${JSON.stringify(
         {
           ok: true,
-          retinueBackend: process.env.SUPERVISOR_RETINUE_BACKEND,
+          retinueBackend: process.env.RETINUE_BACKEND,
           backend: spawn.backend,
           task_name: spawn.task_name,
           jobId: spawn.jobId,
@@ -67,8 +67,8 @@ async function main() {
     );
   } finally {
     await Promise.allSettled([client.close(), clientTransport.close(), serverTransport.close()]);
-    restoreEnv("SUPERVISOR_STATE_DIR", previousStateDir);
-    restoreEnv("SUPERVISOR_RETINUE_BACKEND", previousBackend);
+    restoreEnv("RETINUE_STATE_DIR", previousStateDir);
+    restoreEnv("RETINUE_BACKEND", previousBackend);
   }
 }
 

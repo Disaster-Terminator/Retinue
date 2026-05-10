@@ -40,13 +40,13 @@ function parseStderr(stderr: string) {
 
 describe("probe-real-opencode", () => {
   it("rejects missing opt-in", () => {
-    const result = runProbeSync(["--base-url", "http://127.0.0.1:1"], { SUPERVISOR_REAL_OPENCODE_PROBE: "0" });
+    const result = runProbeSync(["--base-url", "http://127.0.0.1:1"], { RETINUE_REAL_OPENCODE_PROBE: "0" });
     expect(result.status).toBe(1);
-    expect(parseStderr(result.stderr)?.error).toContain("SUPERVISOR_REAL_OPENCODE_PROBE=1");
+    expect(parseStderr(result.stderr)?.error).toContain("RETINUE_REAL_OPENCODE_PROBE=1");
   });
 
   it("rejects non-loopback URL", () => {
-    const result = runProbeSync(["--base-url", "http://example.com:1234"], { SUPERVISOR_REAL_OPENCODE_PROBE: "1" });
+    const result = runProbeSync(["--base-url", "http://example.com:1234"], { RETINUE_REAL_OPENCODE_PROBE: "1" });
     expect(result.status).toBe(1);
     expect(parseStderr(result.stderr)?.error).toContain("Non-loopback URL rejected");
   });
@@ -68,13 +68,13 @@ describe("probe-real-opencode", () => {
       if (req.method === "POST" && req.url === "/session/s1/abort") return json(res, 200, { ok: true });
       return json(res, 500, { error: `unexpected ${req.method} ${req.url}` });
     }, async (baseUrl) => {
-      const result = await runProbeAsync(["--base-url", baseUrl], { SUPERVISOR_REAL_OPENCODE_PROBE: "1" });
+      const result = await runProbeAsync(["--base-url", baseUrl], { RETINUE_REAL_OPENCODE_PROBE: "1" });
       const output = JSON.parse(result.stdout);
       expect(output.operations.promptAsync.status).toBe(204);
     });
 
     const promptReq = requests.find((r) => r.method === "POST" && r.url === "/session/s1/prompt_async");
-    expect(promptReq?.body).toEqual({ parts: [{ type: "text", text: "Reply exactly: SUPERVISOR_OPENCODE_REAL_OK" }] });
+    expect(promptReq?.body).toEqual({ parts: [{ type: "text", text: "Reply exactly: RETINUE_OPENCODE_REAL_OK" }] });
   });
 
   it("falls back to session details when status endpoint returns HTML", async () => {
@@ -92,7 +92,7 @@ describe("probe-real-opencode", () => {
       if (req.method === "POST" && req.url === "/session/s1/abort") return json(res, 200, { ok: true });
       return json(res, 500, { error: `unexpected ${req.method} ${req.url}` });
     }, async (baseUrl) => {
-      const result = await runProbeAsync(["--base-url", baseUrl], { SUPERVISOR_REAL_OPENCODE_PROBE: "1" });
+      const result = await runProbeAsync(["--base-url", baseUrl], { RETINUE_REAL_OPENCODE_PROBE: "1" });
       const output = JSON.parse(result.stdout);
       expect(output.operations.sessionStatus).toMatchObject({
         ok: true,

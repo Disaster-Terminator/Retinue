@@ -4,7 +4,7 @@
 
 **Goal:** Harden the daemon HTTP layer from a minimal wrapper into a stable local RPC contract with deterministic error behavior and readiness metadata.
 
-**Architecture:** Keep `ClaudeSupervisor` unchanged where possible. Harden `src/daemon/server.ts` around the core with structured errors, request body limits, and health metadata; update `DaemonClient` only to consume the new error shape.
+**Architecture:** Keep `ClaudeRetinue` unchanged where possible. Harden `src/daemon/server.ts` around the core with structured errors, request body limits, and health metadata; update `DaemonClient` only to consume the new error shape.
 
 **Tech Stack:** Node built-in `http`, TypeScript NodeNext, Vitest, existing fake-Claude fixture.
 
@@ -103,7 +103,7 @@ git commit -m "feat: structure daemon rpc errors"
 
 - [ ] **Step 1: Write failing body limit test**
 
-Add a test creating `createDaemonServer(supervisor, { maxBodyBytes: 16 })` and POSTing a larger JSON body. Expected response:
+Add a test creating `createDaemonServer(retinue, { maxBodyBytes: 16 })` and POSTing a larger JSON body. Expected response:
 
 ```json
 { "error": { "code": "body_too_large" } }
@@ -139,7 +139,7 @@ git commit -m "feat: limit daemon json request bodies"
 - Modify: `tests/daemon-rpc-contract.test.ts`
 - Modify: `src/daemon/server.ts`
 - Modify: `src/daemon.ts`
-- Modify: `src/core/supervisor.ts`
+- Modify: `src/core/retinue.ts`
 
 - [ ] **Step 1: Write failing health test**
 
@@ -156,11 +156,11 @@ expect(health).toMatchObject({
 
 - [ ] **Step 2: Expose state dir safely**
 
-Add `getStateDir(): string` to `ClaudeSupervisor` so daemon health can report the actual state directory without duplicating resolution logic.
+Add `getStateDir(): string` to `ClaudeRetinue` so daemon health can report the actual state directory without duplicating resolution logic.
 
 - [ ] **Step 3: Implement health metadata**
 
-`createDaemonServer(supervisor)` should return health with `pid: process.pid` and `stateDir: supervisor.getStateDir()`.
+`createDaemonServer(retinue)` should return health with `pid: process.pid` and `stateDir: retinue.getStateDir()`.
 
 - [ ] **Step 4: Verify and commit**
 
@@ -177,7 +177,7 @@ Expected: pass.
 Commit:
 
 ```bash
-git add tests/daemon-rpc-contract.test.ts src/daemon/server.ts src/daemon.ts src/core/supervisor.ts
+git add tests/daemon-rpc-contract.test.ts src/daemon/server.ts src/daemon.ts src/core/retinue.ts
 git commit -m "feat: expose daemon health metadata"
 ```
 
@@ -206,7 +206,7 @@ npm run build
 - [ ] **Step 4: Run WSL fresh clone gate**
 
 ```bash
-rtk wsl.exe -e bash -lc 'set -euo pipefail; d=$(mktemp -d /tmp/supervisor-daemon-rpc-wsl-test-XXXXXX); git clone /mnt/g/repository/supervisor "$d" >/dev/null; cd "$d"; git checkout feature/spawn-claude-code >/dev/null; npm ci; npm run typecheck; npm test; npm run build; echo WSL_TEST_DIR="$d"'
+rtk wsl.exe -e bash -lc 'set -euo pipefail; d=$(mktemp -d /tmp/retinue-daemon-rpc-wsl-test-XXXXXX); git clone /mnt/g/repository/retinue "$d" >/dev/null; cd "$d"; git checkout feature/spawn-claude-code >/dev/null; npm ci; npm run typecheck; npm test; npm run build; echo WSL_TEST_DIR="$d"'
 ```
 
 - [ ] **Step 5: Commit and push**

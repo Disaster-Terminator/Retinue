@@ -4,7 +4,7 @@
 
 **Goal:** Make MCP optionally use the local daemon while preserving direct in-process MCP fallback and stable tool names/response shapes.
 
-**Architecture:** Introduce a shared supervisor API boundary implemented by both `ClaudeSupervisor` and `DaemonClient`. `supervisor-mcp` should construct `DaemonClient` when `SUPERVISOR_DAEMON_URL` is configured, otherwise keep constructing `ClaudeSupervisor`.
+**Architecture:** Introduce a shared retinue API boundary implemented by both `ClaudeRetinue` and `DaemonClient`. `retinue-mcp` should construct `DaemonClient` when `RETINUE_DAEMON_URL` is configured, otherwise keep constructing `ClaudeRetinue`.
 
 **Tech Stack:** TypeScript NodeNext, `@modelcontextprotocol/sdk`, Node built-in `http`, Vitest, existing fake-Claude fixture.
 
@@ -12,7 +12,7 @@
 
 ## P0 Baseline Map
 
-Baseline commands run on 2026-05-04 in `G:\repository\supervisor\.worktrees\spawn-claude-code`:
+Baseline commands run on 2026-05-04 in `G:\repository\retinue\.worktrees\spawn-claude-code`:
 
 ```bash
 npm run typecheck
@@ -30,24 +30,24 @@ Current daemon coverage:
 
 - `src/daemon/server.ts` exposes `GET /health` and JSON `POST /v1/jobs/*` routes for `run`, `status`, `wait`, `result`, `continue`, `peek`, `kill`, and `cleanup`.
 - `tests/daemon.test.ts` covers health, HTTP `run` -> `wait` -> `result`, and unknown route errors.
-- `tests/daemon-entrypoint.test.ts` covers `supervisor-daemon` package bin exposure.
+- `tests/daemon-entrypoint.test.ts` covers `retinue-daemon` package bin exposure.
 
 Current MCP direct-core behavior:
 
-- `src/mcp.ts` constructs `new ClaudeSupervisor(...)` in `createSupervisorFromEnv()`.
-- `createMcpServer(supervisor = createSupervisorFromEnv())` accepts an injected supervisor for tests.
+- `src/mcp.ts` constructs `new ClaudeRetinue(...)` in `createRetinueFromEnv()`.
+- `createMcpServer(retinue = createRetinueFromEnv())` accepts an injected retinue for tests.
 - `tests/mcp-tools.test.ts` verifies tool names and server construction only.
 - There is no test that invokes MCP tools through an MCP client/transport.
 
 CLI direct vs daemon behavior:
 
-- `src/cli.ts` uses direct `ClaudeSupervisor` by default.
-- `src/cli.ts` uses `DaemonClient` when `SUPERVISOR_DAEMON_URL` or `--daemon-url` is set.
+- `src/cli.ts` uses direct `ClaudeRetinue` by default.
+- `src/cli.ts` uses `DaemonClient` when `RETINUE_DAEMON_URL` or `--daemon-url` is set.
 - `tests/cli.test.ts` covers both direct fake-Claude CLI mode and daemon-delegated CLI mode.
 
 State directory layout:
 
-- `resolveStateDir()` prefers explicit `stateDir`, then `SUPERVISOR_STATE_DIR`, then `%LOCALAPPDATA%\supervisor` on Windows, then `$XDG_STATE_HOME/supervisor`, then `~/.local/state/supervisor`.
+- `resolveStateDir()` prefers explicit `stateDir`, then `RETINUE_STATE_DIR`, then `%LOCALAPPDATA%\retinue` on Windows, then `$XDG_STATE_HOME/retinue`, then `~/.local/state/retinue`.
 - Job files live under `<stateDir>/jobs/<jobId>/`.
 - Per-job files are `meta.json`, `stdout.log`, `stderr.log`, `exit-status.json`, and `prompt.md`.
 
@@ -61,7 +61,7 @@ Job metadata schema:
 Test coverage gaps:
 
 - MCP tools are not invoked end-to-end through MCP transport.
-- MCP has no `SUPERVISOR_DAEMON_URL` path.
+- MCP has no `RETINUE_DAEMON_URL` path.
 - Daemon errors are string-only; there are no structured error codes yet.
 - Daemon request validation is minimal and route coverage is not exhaustive.
 - Daemon health does not include state directory or pid.
@@ -73,11 +73,11 @@ Known remaining daemon limitations:
 - No daemon discovery file.
 - No auth token.
 - No service install for Windows service, scheduled task, or systemd user service.
-- MCP still owns an in-process `ClaudeSupervisor` unless a test injects a fake instance.
+- MCP still owns an in-process `ClaudeRetinue` unless a test injects a fake instance.
 
 ## P1 Implementation Tasks: MCP Optional Daemon Mode
 
-### Task 1: Define The Shared Supervisor API
+### Task 1: Define The Shared Retinue API
 
 **Files:**
 - Modify: `src/core/types.ts`
@@ -87,20 +87,20 @@ Known remaining daemon limitations:
 
 - [ ] **Step 1: Write the failing type-level usage change**
 
-Edit `src/mcp.ts` locally so `createMcpServer()` can accept a supervisor value that is not specifically a `ClaudeSupervisor`. Run:
+Edit `src/mcp.ts` locally so `createMcpServer()` can accept a retinue value that is not specifically a `ClaudeRetinue`. Run:
 
 ```bash
 npm run typecheck
 ```
 
-Expected: fail because there is no shared interface exported for `ClaudeSupervisor` and `DaemonClient`.
+Expected: fail because there is no shared interface exported for `ClaudeRetinue` and `DaemonClient`.
 
 - [ ] **Step 2: Add the shared interface**
 
 Add this interface to `src/core/types.ts`:
 
 ```ts
-export interface SupervisorApi {
+export interface RetinueApi {
   run(options: RunOptions): Promise<JobMeta>;
   status(jobId: string): Promise<JobStatusResult>;
   wait(jobId: string, options?: WaitOptions): Promise<WaitResult>;
@@ -112,7 +112,7 @@ export interface SupervisorApi {
 }
 ```
 
-Then update CLI and MCP local supervisor variables to use `SupervisorApi`.
+Then update CLI and MCP local retinue variables to use `RetinueApi`.
 
 - [ ] **Step 3: Verify**
 
@@ -129,7 +129,7 @@ Expected: pass.
 
 ```bash
 git add src/core/types.ts src/cli.ts src/mcp.ts src/daemon/client.ts
-git commit -m "refactor: define supervisor api boundary"
+git commit -m "refactor: define retinue api boundary"
 ```
 
 ### Task 2: Add MCP Daemon URL Construction
@@ -140,17 +140,17 @@ git commit -m "refactor: define supervisor api boundary"
 
 - [ ] **Step 1: Write failing construction test**
 
-Add a test in `tests/mcp-tools.test.ts` that imports a new `createMcpSupervisorFromEnv(env)` helper from `src/mcp.ts`, sets `SUPERVISOR_DAEMON_URL`, and asserts the returned object is a daemon client by checking it has daemon-client behavior without constructing `ClaudeSupervisor`.
+Add a test in `tests/mcp-tools.test.ts` that imports a new `createMcpRetinueFromEnv(env)` helper from `src/mcp.ts`, sets `RETINUE_DAEMON_URL`, and asserts the returned object is a daemon client by checking it has daemon-client behavior without constructing `ClaudeRetinue`.
 
 Use this test shape:
 
 ```ts
-it("creates a daemon-backed supervisor when SUPERVISOR_DAEMON_URL is set", () => {
-  const supervisor = createMcpSupervisorFromEnv({
-    SUPERVISOR_DAEMON_URL: "http://127.0.0.1:27777"
+it("creates a daemon-backed retinue when RETINUE_DAEMON_URL is set", () => {
+  const retinue = createMcpRetinueFromEnv({
+    RETINUE_DAEMON_URL: "http://127.0.0.1:27777"
   });
 
-  expect(supervisor.constructor.name).toBe("DaemonClient");
+  expect(retinue.constructor.name).toBe("DaemonClient");
 });
 ```
 
@@ -160,27 +160,27 @@ Run:
 npm test -- tests/mcp-tools.test.ts
 ```
 
-Expected: fail because `createMcpSupervisorFromEnv` is not exported and MCP ignores `SUPERVISOR_DAEMON_URL`.
+Expected: fail because `createMcpRetinueFromEnv` is not exported and MCP ignores `RETINUE_DAEMON_URL`.
 
 - [ ] **Step 2: Implement helper**
 
-In `src/mcp.ts`, export `createMcpSupervisorFromEnv(env = process.env): SupervisorApi`. It should return:
+In `src/mcp.ts`, export `createMcpRetinueFromEnv(env = process.env): RetinueApi`. It should return:
 
 ```ts
-if (env.SUPERVISOR_DAEMON_URL) {
-  return new DaemonClient(env.SUPERVISOR_DAEMON_URL);
+if (env.RETINUE_DAEMON_URL) {
+  return new DaemonClient(env.RETINUE_DAEMON_URL);
 }
-return new ClaudeSupervisor({
-  stateDir: env.SUPERVISOR_STATE_DIR,
-  claudeCommand: env.SUPERVISOR_CLAUDE_COMMAND,
-  claudePrefixArgs: parsePrefixArgs(env.SUPERVISOR_CLAUDE_PREFIX_ARGS),
+return new ClaudeRetinue({
+  stateDir: env.RETINUE_STATE_DIR,
+  claudeCommand: env.RETINUE_CLAUDE_COMMAND,
+  claudePrefixArgs: parsePrefixArgs(env.RETINUE_CLAUDE_PREFIX_ARGS),
   env,
-  defaultRuntimeTimeoutMs: parseOptionalNumber(env.SUPERVISOR_DEFAULT_RUNTIME_TIMEOUT_MS),
-  maxConcurrentJobs: parseOptionalNumber(env.SUPERVISOR_MAX_CONCURRENT_JOBS)
+  defaultRuntimeTimeoutMs: parseOptionalNumber(env.RETINUE_DEFAULT_RUNTIME_TIMEOUT_MS),
+  maxConcurrentJobs: parseOptionalNumber(env.RETINUE_MAX_CONCURRENT_JOBS)
 });
 ```
 
-Make `createMcpServer(supervisor = createMcpSupervisorFromEnv())` use that helper.
+Make `createMcpServer(retinue = createMcpRetinueFromEnv())` use that helper.
 
 - [ ] **Step 3: Verify**
 
@@ -197,7 +197,7 @@ Expected: pass.
 
 ```bash
 git add src/mcp.ts tests/mcp-tools.test.ts
-git commit -m "feat: let mcp use configured supervisor daemon"
+git commit -m "feat: let mcp use configured retinue daemon"
 ```
 
 ### Task 3: Prove MCP Tool Calls Through Daemon RPC
@@ -222,7 +222,7 @@ Expected: find the supported client/transport path for invoking registered tools
 
 Add a test that:
 
-1. Starts `createDaemonServer(new ClaudeSupervisor({ stateDir, claudeCommand: process.execPath, claudePrefixArgs: [fixturePath] }))` on port `0`.
+1. Starts `createDaemonServer(new ClaudeRetinue({ stateDir, claudeCommand: process.execPath, claudePrefixArgs: [fixturePath] }))` on port `0`.
 2. Creates an MCP server through the daemon-backed helper.
 3. Calls `claude_run`, `claude_wait`, and `claude_result` through the MCP client/transport.
 4. Asserts the result contains `fake result: mcp daemon`.
@@ -265,7 +265,7 @@ git commit -m "test: cover mcp daemon tool flow"
 
 - [ ] **Step 1: Document MCP daemon mode**
 
-Add `SUPERVISOR_DAEMON_URL` to the MCP environment overrides in `README.md` and state that MCP uses daemon mode only when explicitly configured.
+Add `RETINUE_DAEMON_URL` to the MCP environment overrides in `README.md` and state that MCP uses daemon mode only when explicitly configured.
 
 - [ ] **Step 2: Update verification notes**
 
@@ -288,7 +288,7 @@ Expected: all pass.
 Run from Windows:
 
 ```bash
-rtk wsl.exe -e bash -lc 'set -euo pipefail; d=$(mktemp -d /tmp/supervisor-mcp-daemon-wsl-test-XXXXXX); git clone /mnt/g/repository/supervisor "$d" >/dev/null; cd "$d"; git checkout feature/spawn-claude-code >/dev/null; npm ci; npm run typecheck; npm test; npm run build; echo WSL_TEST_DIR="$d"'
+rtk wsl.exe -e bash -lc 'set -euo pipefail; d=$(mktemp -d /tmp/retinue-mcp-daemon-wsl-test-XXXXXX); git clone /mnt/g/repository/retinue "$d" >/dev/null; cd "$d"; git checkout feature/spawn-claude-code >/dev/null; npm ci; npm run typecheck; npm test; npm run build; echo WSL_TEST_DIR="$d"'
 ```
 
 Expected: all pass.

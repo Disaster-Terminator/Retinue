@@ -1,19 +1,19 @@
 # Repository Metadata Proposal
 
-This file records the proposed public repository metadata for the Anchorpoint repositioning.
+This file records the proposed public repository metadata for the Retinue repositioning.
 
 No GitHub repository settings are changed by this document. Apply these manually only after the README/package alias direction is accepted.
 
 ## Repository name
 
 ```text
-anchorpoint
+retinue
 ```
 
 ## Display title
 
 ```text
-Anchorpoint
+Retinue
 ```
 
 ## GitHub About description
@@ -25,7 +25,7 @@ Local control plane for long-running coding-agent jobs via CLI, MCP, and a durab
 ## Short tagline
 
 ```text
-Anchorpoint turns local coding agents into durable, inspectable background jobs.
+Retinue turns local coding agents into durable, inspectable background jobs.
 ```
 
 ## Longer product subtitle
@@ -49,7 +49,7 @@ developer-tools
 
 ## Naming rationale
 
-`supervisor` describes an implementation role. `Anchorpoint` describes the durable product boundary: a stable local control point for agent jobs that outlive a single foreground CLI or MCP request.
+`retinue` describes an implementation role. `Retinue` describes the durable product boundary: a stable local control point for agent jobs that outlive a single foreground CLI or MCP request.
 
 The project should not be positioned as a Claude Code wrapper. Claude Code is the frozen compatibility backend. The product boundary is lifecycle ownership for local coding-agent jobs:
 
@@ -63,14 +63,14 @@ The project should not be positioned as a Claude Code wrapper. Claude Code is th
 
 ## Compatibility policy
 
-The public repo may eventually move from `supervisor` to `anchorpoint`, but existing command names and environment variables should not be broken in the first rename pass.
+The public repo may eventually move from `retinue` to `retinue`, but existing command names and environment variables should not be broken in the first rename pass.
 
 Recommended compatibility window:
 
-- add `anchorpoint`, `anchorpoint-mcp`, and `anchorpointd` bin aliases
-- keep `supervisor`, `supervisor-mcp`, and `supervisor-daemon` aliases
-- add `ANCHORPOINT_*` environment variable aliases later
-- keep `SUPERVISOR_*` variables until a deliberate breaking release
+- add `retinue`, `retinue-mcp`, and `retinued` bin aliases
+- keep `retinue`, `retinue-mcp`, and `retinue-daemon` aliases
+- add `RETINUE_*` environment variable aliases later
+- keep `RETINUE_*` variables until a deliberate breaking release
 - keep current `claude_*` MCP tool names as the Claude Code compatibility surface
 
 ## Non-goals to preserve in public metadata

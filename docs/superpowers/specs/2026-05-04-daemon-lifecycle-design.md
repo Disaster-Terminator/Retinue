@@ -2,7 +2,7 @@
 
 ## Context
 
-`PROJECT_BOUNDARY.md` says the long-term lifecycle owner must be a durable local daemon, while `supervisor-mcp` and `supervisor-cli` become adapters. The previous milestone hardened the stdio MCP implementation enough to prove the job model, safety defaults, Windows/WSL behavior, and real Claude Code integration. The next milestone should move lifecycle ownership one step toward the target architecture without adding service installation, provider routing, or cross-machine behavior.
+`PROJECT_BOUNDARY.md` says the long-term lifecycle owner must be a durable local daemon, while `retinue-mcp` and `retinue-cli` become adapters. The previous milestone hardened the stdio MCP implementation enough to prove the job model, safety defaults, Windows/WSL behavior, and real Claude Code integration. The next milestone should move lifecycle ownership one step toward the target architecture without adding service installation, provider routing, or cross-machine behavior.
 
 ## Recommended Approach
 
@@ -20,11 +20,11 @@ The recommended third option is the smallest meaningful step.
 
 This milestone adds:
 
-- `supervisor-daemon` entrypoint.
+- `retinue-daemon` entrypoint.
 - Local HTTP server bound to `127.0.0.1` by default.
 - `GET /health` for readiness.
 - JSON `POST` endpoints for the existing job operations: `run`, `status`, `wait`, `result`, `continue`, `peek`, `kill`, and `cleanup`.
-- A daemon client used by CLI when `SUPERVISOR_DAEMON_URL` or `--daemon-url` is set.
+- A daemon client used by CLI when `RETINUE_DAEMON_URL` or `--daemon-url` is set.
 - Tests proving a job can be started through the daemon and inspected through the CLI adapter.
 
 This milestone does not add:
@@ -39,15 +39,15 @@ This milestone does not add:
 ## Architecture
 
 ```text
-supervisor-daemon
+retinue-daemon
   -> local HTTP JSON API
-  -> one in-process ClaudeSupervisor
+  -> one in-process ClaudeRetinue
   -> system claude process
   -> job files on disk
 
-supervisor-cli
-  -> direct ClaudeSupervisor by default
-  -> daemon HTTP client when --daemon-url or SUPERVISOR_DAEMON_URL is set
+retinue-cli
+  -> direct ClaudeRetinue by default
+  -> daemon HTTP client when --daemon-url or RETINUE_DAEMON_URL is set
 ```
 
 The direct CLI path remains available for compatibility and for deterministic tests. The daemon path is opt-in until startup/discovery semantics are designed.
@@ -71,7 +71,7 @@ Errors return non-2xx status with `{ "error": string }`.
 ## Safety
 
 - Bind to loopback by default.
-- Keep permission-bypass behavior unchanged; daemon calls the same `ClaudeSupervisor` core.
+- Keep permission-bypass behavior unchanged; daemon calls the same `ClaudeRetinue` core.
 - Keep prompt handling unchanged; prompts are written to job-local `prompt.md` and sent over stdin.
 - Keep bounded result behavior unchanged.
 - Do not introduce a background service that users cannot inspect or stop.
@@ -83,7 +83,7 @@ Tests should cover:
 - health endpoint
 - daemon `run` -> `wait` -> `result` against fake Claude
 - structured HTTP error for unknown route or bad JSON
-- CLI adapter using `SUPERVISOR_DAEMON_URL` against the daemon
+- CLI adapter using `RETINUE_DAEMON_URL` against the daemon
 
 Windows and WSL gates remain:
 
@@ -95,8 +95,8 @@ npm run build
 
 ## Acceptance Criteria
 
-- `supervisor-daemon` is buildable as a package binary.
+- `retinue-daemon` is buildable as a package binary.
 - `node dist/daemon.js --host 127.0.0.1 --port 0` can start a daemon in tests.
-- CLI commands can use a daemon URL without constructing a local `ClaudeSupervisor`.
+- CLI commands can use a daemon URL without constructing a local `ClaudeRetinue`.
 - Existing direct CLI and MCP behavior remains intact.
 - Deterministic Windows and WSL test suites pass.

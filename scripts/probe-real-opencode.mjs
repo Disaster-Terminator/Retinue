@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-const OPT_IN_ENV = "SUPERVISOR_REAL_OPENCODE_PROBE";
-const BASE_URL_ENV = "SUPERVISOR_OPENCODE_BASE_URL";
+const OPT_IN_ENV = "RETINUE_REAL_OPENCODE_PROBE";
+const BASE_URL_ENV = "RETINUE_OPENCODE_BASE_URL";
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -24,7 +24,7 @@ async function main() {
 
   const created = await requestJson(baseUrl, "POST", "/session", {
     cwd: process.cwd(),
-    title: "supervisor-real-opencode-probe"
+    title: "retinue-real-opencode-probe"
   });
   output.operations.createSession = summarizeResult(created);
 
@@ -38,7 +38,7 @@ async function main() {
   output.operations.getSession = summarizeResult(session);
 
   const prompt = await requestJson(baseUrl, "POST", `/session/${encodeURIComponent(sessionId)}/prompt_async`, {
-    parts: [{ type: "text", text: "Reply exactly: SUPERVISOR_OPENCODE_REAL_OK" }]
+    parts: [{ type: "text", text: "Reply exactly: RETINUE_OPENCODE_REAL_OK" }]
   });
   output.operations.promptAsync = summarizeResult(prompt);
 

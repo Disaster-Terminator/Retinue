@@ -9,8 +9,8 @@ import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { createDaemonServer } from "../src/daemon/server.js";
 import { writeDaemonDiscovery } from "../src/daemon/discovery.js";
-import { CLAUDE_TOOL_NAMES, OPENCODE_TOOL_NAMES, RETINUE_TOOL_NAMES, createMcpServer, createMcpSupervisorFromEnv } from "../src/mcp.js";
-import { ClaudeSupervisor } from "../src/core/supervisor.js";
+import { CLAUDE_TOOL_NAMES, OPENCODE_TOOL_NAMES, RETINUE_TOOL_NAMES, createMcpServer, createMcpRetinueFromEnv } from "../src/mcp.js";
+import { ClaudeRetinue } from "../src/core/retinue.js";
 import { startFakeOpenCodeServer } from "./fixtures/fake-opencode-server.js";
 
 const fixturePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/fake-claude.mjs");
@@ -46,14 +46,14 @@ describe("MCP tools", () => {
   });
 
   it("creates a server instance with registered tools", () => {
-    const server = createMcpServer(new ClaudeSupervisor({ stateDir: "unused" }));
+    const server = createMcpServer(new ClaudeRetinue({ stateDir: "unused" }));
 
     expect(server).toBeTruthy();
     expect(server.server).toBeTruthy();
   });
 
   it("publishes only Retinue product tools by default", async () => {
-    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }), false);
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }), false);
     try {
       const toolNames = (await connection.client.listTools()).tools.map((tool) => tool.name);
       expect(toolNames).toEqual([...RETINUE_TOOL_NAMES]);
@@ -62,16 +62,16 @@ describe("MCP tools", () => {
     }
   });
 
-  it("creates a daemon-backed supervisor when SUPERVISOR_DAEMON_URL is set", () => {
-    const supervisor = createMcpSupervisorFromEnv({
-      SUPERVISOR_DAEMON_URL: "http://127.0.0.1:27777"
+  it("creates a daemon-backed retinue when RETINUE_DAEMON_URL is set", () => {
+    const retinue = createMcpRetinueFromEnv({
+      RETINUE_DAEMON_URL: "http://127.0.0.1:27777"
     });
 
-    expect(supervisor.constructor.name).toBe("DaemonClient");
+    expect(retinue.constructor.name).toBe("DaemonClient");
   });
 
-  it("discovers a daemon-backed supervisor when explicitly requested", async () => {
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-discovery-test-"));
+  it("discovers a daemon-backed retinue when explicitly requested", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-discovery-test-"));
     try {
       await writeDaemonDiscovery(tempDir, {
         url: "http://127.0.0.1:27777",
@@ -80,35 +80,35 @@ describe("MCP tools", () => {
         version: "0.1.0"
       });
 
-      const supervisor = createMcpSupervisorFromEnv({
-        SUPERVISOR_STATE_DIR: tempDir,
-        SUPERVISOR_DAEMON_DISCOVERY: "1"
+      const retinue = createMcpRetinueFromEnv({
+        RETINUE_STATE_DIR: tempDir,
+        RETINUE_DAEMON_DISCOVERY: "1"
       });
 
-      expect(supervisor.constructor.name).toBe("DaemonClient");
+      expect(retinue.constructor.name).toBe("DaemonClient");
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
 
   it("calls Claude lifecycle tools through daemon RPC", async () => {
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-daemon-test-"));
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-daemon-test-"));
     const daemon = createDaemonServer(
-      new ClaudeSupervisor({
+      new ClaudeRetinue({
         stateDir: tempDir,
         claudeCommand: process.execPath,
         claudePrefixArgs: [fixturePath]
       })
     );
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    const client = new Client({ name: "supervisor-test-client", version: "0.1.0" });
+    const client = new Client({ name: "retinue-test-client", version: "0.1.0" });
 
     try {
       await new Promise<void>((resolve) => daemon.listen(0, "127.0.0.1", resolve));
       const address = daemon.address() as AddressInfo;
       const mcpServer = createMcpServer(
-        createMcpSupervisorFromEnv({
-          SUPERVISOR_DAEMON_URL: `http://127.0.0.1:${address.port}`
+        createMcpRetinueFromEnv({
+          RETINUE_DAEMON_URL: `http://127.0.0.1:${address.port}`
         }),
         { exposeBackendTools: true }
       );
@@ -144,9 +144,9 @@ describe("MCP tools", () => {
   });
 
   it("keeps daemon job truth after MCP adapter reconnects", async () => {
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-reconnect-test-"));
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-reconnect-test-"));
     const daemon = createDaemonServer(
-      new ClaudeSupervisor({
+      new ClaudeRetinue({
         stateDir: tempDir,
         claudeCommand: process.execPath,
         claudePrefixArgs: [fixturePath],
@@ -199,7 +199,7 @@ describe("MCP tools", () => {
   });
 
   it("returns structured MCP errors for missing required fields", async () => {
-    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }));
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
     try {
       await expectMcpInvalidParams(
         connection.client.callTool({
@@ -213,7 +213,7 @@ describe("MCP tools", () => {
   });
 
   it("returns structured MCP errors for wrong field types", async () => {
-    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }));
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
     try {
       await expectMcpInvalidParams(
         connection.client.callTool({
@@ -227,7 +227,7 @@ describe("MCP tools", () => {
   });
 
   it("returns structured MCP errors for unsupported permission modes", async () => {
-    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }));
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
     try {
       await expectMcpInvalidParams(
         connection.client.callTool({
@@ -241,7 +241,7 @@ describe("MCP tools", () => {
   });
 
   it("publishes concrete input schemas for key Claude tools", async () => {
-    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }));
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
     try {
       const tools = await connection.client.listTools();
 
@@ -268,12 +268,12 @@ describe("MCP tools", () => {
   });
 
   it("runs the Retinue OpenCode-first spawn/wait/result/close flow without backend arguments", async () => {
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-retinue-opencode-"));
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-"));
     const fakeOpenCode = await startFakeOpenCodeServer();
-    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }));
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
     try {
-      process.env.SUPERVISOR_STATE_DIR = tempDir;
-      process.env.SUPERVISOR_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
 
       const spawn = parseToolJson(
         await connection.client.callTool({
@@ -305,21 +305,21 @@ describe("MCP tools", () => {
       );
       expect(close).toMatchObject({ jobId: spawn.jobId, status: "completed" });
     } finally {
-      delete process.env.SUPERVISOR_STATE_DIR;
-      delete process.env.SUPERVISOR_OPENCODE_BASE_URL;
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
 
   it("returns OpenCode diagnostics when Retinue wait times out while still running", async () => {
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-retinue-opencode-running-"));
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-running-"));
     const fakeOpenCode = await startFakeOpenCodeServer();
     fakeOpenCode.setAutoAssistantResponses(false);
-    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }));
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
     try {
-      process.env.SUPERVISOR_STATE_DIR = tempDir;
-      process.env.SUPERVISOR_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
 
       const spawn = parseToolJson(
         await connection.client.callTool({
@@ -346,20 +346,20 @@ describe("MCP tools", () => {
         tracePath: path.join(tempDir, "logs", "retinue.jsonl")
       });
     } finally {
-      delete process.env.SUPERVISOR_STATE_DIR;
-      delete process.env.SUPERVISOR_OPENCODE_BASE_URL;
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
 
   it("keeps Retinue wait/close bound to the spawned OpenCode backend even if deployment env changes", async () => {
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-retinue-opencode-bound-"));
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-bound-"));
     const fakeOpenCode = await startFakeOpenCodeServer();
-    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: tempDir }));
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: tempDir }));
     try {
-      process.env.SUPERVISOR_STATE_DIR = tempDir;
-      process.env.SUPERVISOR_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
 
       const spawn = parseToolJson(
         await connection.client.callTool({
@@ -370,7 +370,7 @@ describe("MCP tools", () => {
       expect(spawn).toMatchObject({ task_name: "bound-opencode", backend: "opencode", status: "running" });
       fakeOpenCode.completeSession(spawn.externalSessionId);
 
-      process.env.SUPERVISOR_RETINUE_BACKEND = "claude-code";
+      process.env.RETINUE_BACKEND = "claude-code";
 
       const wait = parseToolJson(
         await connection.client.callTool({
@@ -393,25 +393,25 @@ describe("MCP tools", () => {
       );
       expect(close).toMatchObject({ jobId: spawn.jobId, status: "completed" });
     } finally {
-      delete process.env.SUPERVISOR_STATE_DIR;
-      delete process.env.SUPERVISOR_OPENCODE_BASE_URL;
-      delete process.env.SUPERVISOR_RETINUE_BACKEND;
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      delete process.env.RETINUE_BACKEND;
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
 
   it("runs the Retinue Claude Code parity flow when deployment selects claude-code", async () => {
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-retinue-claude-"));
-    const connection = await connectMcpClientWithSupervisor(
-      new ClaudeSupervisor({
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-claude-"));
+    const connection = await connectMcpClientWithRetinue(
+      new ClaudeRetinue({
         stateDir: tempDir,
         claudeCommand: process.execPath,
         claudePrefixArgs: [fixturePath]
       })
     );
     try {
-      process.env.SUPERVISOR_RETINUE_BACKEND = "claude-code";
+      process.env.RETINUE_BACKEND = "claude-code";
 
       const spawn = parseToolJson(
         await connection.client.callTool({
@@ -443,24 +443,24 @@ describe("MCP tools", () => {
       );
       expect(close).toMatchObject({ jobId: spawn.jobId, status: "completed" });
     } finally {
-      delete process.env.SUPERVISOR_RETINUE_BACKEND;
+      delete process.env.RETINUE_BACKEND;
       await closeMcpClient(connection);
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
 
   it("keeps Retinue wait/close bound to the spawned Claude backend even if deployment env changes", async () => {
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-retinue-claude-bound-"));
-    const connection = await connectMcpClientWithSupervisor(
-      new ClaudeSupervisor({
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-claude-bound-"));
+    const connection = await connectMcpClientWithRetinue(
+      new ClaudeRetinue({
         stateDir: tempDir,
         claudeCommand: process.execPath,
         claudePrefixArgs: [fixturePath]
       })
     );
     try {
-      process.env.SUPERVISOR_STATE_DIR = tempDir;
-      process.env.SUPERVISOR_RETINUE_BACKEND = "claude-code";
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_BACKEND = "claude-code";
 
       const spawn = parseToolJson(
         await connection.client.callTool({
@@ -470,7 +470,7 @@ describe("MCP tools", () => {
       );
       expect(spawn).toMatchObject({ task_name: "bound-claude", backend: "claude-code", status: "running" });
 
-      process.env.SUPERVISOR_RETINUE_BACKEND = "opencode";
+      process.env.RETINUE_BACKEND = "opencode";
 
       const wait = parseToolJson(
         await connection.client.callTool({
@@ -493,19 +493,19 @@ describe("MCP tools", () => {
       );
       expect(close).toMatchObject({ jobId: spawn.jobId, status: "completed" });
     } finally {
-      delete process.env.SUPERVISOR_STATE_DIR;
-      delete process.env.SUPERVISOR_RETINUE_BACKEND;
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_BACKEND;
       await closeMcpClient(connection);
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
 
   it("calls OpenCode lifecycle tools through an explicit server URL", async () => {
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-opencode-test-"));
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-opencode-test-"));
     const fakeOpenCode = await startFakeOpenCodeServer();
-    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }));
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
     try {
-      process.env.SUPERVISOR_STATE_DIR = tempDir;
+      process.env.RETINUE_STATE_DIR = tempDir;
       const run = parseToolJson(
         await connection.client.callTool({
           name: "opencode_run",
@@ -522,21 +522,21 @@ describe("MCP tools", () => {
       );
       expect(result.parsedStdout.result).toBe("fake result: mcp opencode");
     } finally {
-      delete process.env.SUPERVISOR_STATE_DIR;
+      delete process.env.RETINUE_STATE_DIR;
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
 
   it("keeps the MCP connection alive when OpenCode auto-serve cannot start", async () => {
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-opencode-spawn-error-"));
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-opencode-spawn-error-"));
     const port = await freePort();
-    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }));
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
     try {
-      process.env.SUPERVISOR_STATE_DIR = tempDir;
-      process.env.SUPERVISOR_OPENCODE_AUTO_SERVE = "1";
-      process.env.SUPERVISOR_OPENCODE_COMMAND = "retinue-missing-opencode-command";
-      process.env.SUPERVISOR_OPENCODE_PORT = String(port);
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_AUTO_SERVE = "1";
+      process.env.RETINUE_OPENCODE_COMMAND = "retinue-missing-opencode-command";
+      process.env.RETINUE_OPENCODE_PORT = String(port);
 
       const result = (await connection.client.callTool({
         name: "opencode_run",
@@ -550,23 +550,23 @@ describe("MCP tools", () => {
         tools: expect.arrayContaining([expect.objectContaining({ name: "opencode_status" })])
       });
     } finally {
-      delete process.env.SUPERVISOR_STATE_DIR;
-      delete process.env.SUPERVISOR_OPENCODE_AUTO_SERVE;
-      delete process.env.SUPERVISOR_OPENCODE_COMMAND;
-      delete process.env.SUPERVISOR_OPENCODE_PORT;
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_AUTO_SERVE;
+      delete process.env.RETINUE_OPENCODE_COMMAND;
+      delete process.env.RETINUE_OPENCODE_PORT;
       await closeMcpClient(connection);
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
 
   it("uses OpenCode model and agent defaults from environment for MCP runs", async () => {
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-opencode-defaults-"));
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-opencode-defaults-"));
     const fakeOpenCode = await startFakeOpenCodeServer();
-    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }));
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
     try {
-      process.env.SUPERVISOR_STATE_DIR = tempDir;
-      process.env.SUPERVISOR_OPENCODE_MODEL = "litellm/pro-router";
-      process.env.SUPERVISOR_OPENCODE_AGENT = "build";
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_MODEL = "litellm/pro-router";
+      process.env.RETINUE_OPENCODE_AGENT = "build";
       parseToolJson(
         await connection.client.callTool({
           name: "opencode_run",
@@ -578,23 +578,23 @@ describe("MCP tools", () => {
         agent: "build"
       });
     } finally {
-      delete process.env.SUPERVISOR_STATE_DIR;
-      delete process.env.SUPERVISOR_OPENCODE_MODEL;
-      delete process.env.SUPERVISOR_OPENCODE_AGENT;
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_MODEL;
+      delete process.env.RETINUE_OPENCODE_AGENT;
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
 
   it("uses OpenCode model and agent defaults from environment for Retinue OpenCode runs", async () => {
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-retinue-opencode-defaults-"));
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-defaults-"));
     const fakeOpenCode = await startFakeOpenCodeServer();
-    const connection = await connectMcpClientWithSupervisor(new ClaudeSupervisor({ stateDir: "unused" }));
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
     try {
-      process.env.SUPERVISOR_STATE_DIR = tempDir;
-      process.env.SUPERVISOR_OPENCODE_BASE_URL = fakeOpenCode.url;
-      process.env.SUPERVISOR_OPENCODE_MODEL = "litellm/pro-router";
-      process.env.SUPERVISOR_OPENCODE_AGENT = "plan";
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.RETINUE_OPENCODE_MODEL = "litellm/pro-router";
+      process.env.RETINUE_OPENCODE_AGENT = "plan";
       parseToolJson(
         await connection.client.callTool({
           name: "retinue_spawn_agent",
@@ -606,17 +606,17 @@ describe("MCP tools", () => {
         agent: "plan"
       });
     } finally {
-      delete process.env.SUPERVISOR_STATE_DIR;
-      delete process.env.SUPERVISOR_OPENCODE_BASE_URL;
-      delete process.env.SUPERVISOR_OPENCODE_MODEL;
-      delete process.env.SUPERVISOR_OPENCODE_AGENT;
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      delete process.env.RETINUE_OPENCODE_MODEL;
+      delete process.env.RETINUE_OPENCODE_AGENT;
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
 
   it("throws a controlled error for invalid daemon discovery URL configuration", async () => {
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-mcp-bad-discovery-"));
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-bad-discovery-"));
     try {
       await writeDaemonDiscovery(tempDir, {
         url: "not-a-url",
@@ -626,9 +626,9 @@ describe("MCP tools", () => {
       });
 
       expect(() =>
-        createMcpSupervisorFromEnv({
-          SUPERVISOR_STATE_DIR: tempDir,
-          SUPERVISOR_DAEMON_DISCOVERY: "1"
+        createMcpRetinueFromEnv({
+          RETINUE_STATE_DIR: tempDir,
+          RETINUE_DAEMON_DISCOVERY: "1"
         })
       ).toThrowError("Invalid daemon discovery: invalid url");
     } finally {
@@ -660,10 +660,10 @@ function closeServer(server: http.Server): Promise<void> {
 
 async function connectMcpClient(daemonUrl: string) {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  const client = new Client({ name: "supervisor-test-client", version: "0.1.0" });
+  const client = new Client({ name: "retinue-test-client", version: "0.1.0" });
   const mcpServer = createMcpServer(
-    createMcpSupervisorFromEnv({
-      SUPERVISOR_DAEMON_URL: daemonUrl
+    createMcpRetinueFromEnv({
+      RETINUE_DAEMON_URL: daemonUrl
     }),
     { exposeBackendTools: true }
   );
@@ -671,10 +671,10 @@ async function connectMcpClient(daemonUrl: string) {
   return { client, clientTransport, serverTransport };
 }
 
-async function connectMcpClientWithSupervisor(supervisor: ClaudeSupervisor, exposeBackendTools = true) {
+async function connectMcpClientWithRetinue(retinue: ClaudeRetinue, exposeBackendTools = true) {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  const client = new Client({ name: "supervisor-test-client", version: "0.1.0" });
-  const mcpServer = createMcpServer(supervisor, { exposeBackendTools });
+  const client = new Client({ name: "retinue-test-client", version: "0.1.0" });
+  const mcpServer = createMcpServer(retinue, { exposeBackendTools });
   await Promise.all([mcpServer.connect(serverTransport), client.connect(clientTransport)]);
   return { client, clientTransport, serverTransport };
 }

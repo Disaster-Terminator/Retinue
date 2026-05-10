@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ClaudeSupervisor } from "../../src/core/supervisor.js";
+import { ClaudeRetinue } from "../../src/core/retinue.js";
 import { getJobPaths } from "../../src/core/paths.js";
 
 const fixturePath = path.resolve(
@@ -11,11 +11,11 @@ const fixturePath = path.resolve(
   "../fixtures/fake-claude.mjs"
 );
 
-describe("ClaudeSupervisor kill and cleanup", () => {
+describe("ClaudeRetinue kill and cleanup", () => {
   let tempDir: string;
 
   beforeEach(async () => {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-test-"));
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-test-"));
   });
 
   afterEach(async () => {
@@ -23,30 +23,30 @@ describe("ClaudeSupervisor kill and cleanup", () => {
   });
 
   it("kills a running job and records killed status", async () => {
-    const supervisor = new ClaudeSupervisor({
+    const retinue = new ClaudeRetinue({
       stateDir: tempDir,
       claudeCommand: process.execPath,
       claudePrefixArgs: [fixturePath],
       env: { ...process.env, FAKE_CLAUDE_DELAY_MS: "10000" }
     });
 
-    const started = await supervisor.run({ cwd: tempDir, prompt: "slow" });
-    const killed = await supervisor.kill(started.jobId);
+    const started = await retinue.run({ cwd: tempDir, prompt: "slow" });
+    const killed = await retinue.kill(started.jobId);
 
     expect(killed.status).toBe("killed");
-    await expect(supervisor.status(started.jobId)).resolves.toMatchObject({ status: "killed" });
+    await expect(retinue.status(started.jobId)).resolves.toMatchObject({ status: "killed" });
 
-    const waited = await supervisor.wait(started.jobId, { timeoutMs: 5000 });
+    const waited = await retinue.wait(started.jobId, { timeoutMs: 5000 });
     expect(waited.status).toBe("killed");
   });
 
   it("cleans terminal jobs and preserves running jobs", async () => {
-    const fast = new ClaudeSupervisor({
+    const fast = new ClaudeRetinue({
       stateDir: tempDir,
       claudeCommand: process.execPath,
       claudePrefixArgs: [fixturePath]
     });
-    const slow = new ClaudeSupervisor({
+    const slow = new ClaudeRetinue({
       stateDir: tempDir,
       claudeCommand: process.execPath,
       claudePrefixArgs: [fixturePath],
@@ -68,12 +68,12 @@ describe("ClaudeSupervisor kill and cleanup", () => {
   });
 
   it("reports temp files removed with terminal jobs and preserves running temp files", async () => {
-    const fast = new ClaudeSupervisor({
+    const fast = new ClaudeRetinue({
       stateDir: tempDir,
       claudeCommand: process.execPath,
       claudePrefixArgs: [fixturePath]
     });
-    const slow = new ClaudeSupervisor({
+    const slow = new ClaudeRetinue({
       stateDir: tempDir,
       claudeCommand: process.execPath,
       claudePrefixArgs: [fixturePath],

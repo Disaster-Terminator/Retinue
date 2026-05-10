@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { createDaemonServer } from "../src/daemon/server.js";
 import { writeDaemonDiscovery } from "../src/daemon/discovery.js";
-import { ClaudeSupervisor } from "../src/core/supervisor.js";
+import { ClaudeRetinue } from "../src/core/retinue.js";
 import { startFakeOpenCodeServer, type FakeOpenCodeServer } from "./fixtures/fake-opencode-server.js";
 
 const cliPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/cli.ts");
@@ -23,7 +23,7 @@ describe("CLI", () => {
   let fakeOpenCode: FakeOpenCodeServer | undefined;
 
   beforeEach(async () => {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-cli-test-"));
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-cli-test-"));
   });
 
   afterEach(async () => {
@@ -56,9 +56,9 @@ describe("CLI", () => {
     const daemonUrl = await startDaemon();
     const env = {
       ...process.env,
-      SUPERVISOR_DAEMON_URL: daemonUrl,
-      SUPERVISOR_STATE_DIR: path.join(tempDir, "client-state"),
-      SUPERVISOR_CLAUDE_COMMAND: path.join(tempDir, "missing-local-claude")
+      RETINUE_DAEMON_URL: daemonUrl,
+      RETINUE_STATE_DIR: path.join(tempDir, "client-state"),
+      RETINUE_CLAUDE_COMMAND: path.join(tempDir, "missing-local-claude")
     };
 
     const run = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "run", "--cwd", tempDir, "--prompt", "daemon cli"], { env });
@@ -221,8 +221,8 @@ describe("CLI", () => {
     });
     const env = {
       ...process.env,
-      SUPERVISOR_STATE_DIR: tempDir,
-      SUPERVISOR_CLAUDE_COMMAND: path.join(tempDir, "missing-local-claude")
+      RETINUE_STATE_DIR: tempDir,
+      RETINUE_CLAUDE_COMMAND: path.join(tempDir, "missing-local-claude")
     };
 
     const run = await execFileAsync(
@@ -249,7 +249,7 @@ describe("CLI", () => {
 
   it("runs and reads an OpenCode job through an explicit server URL", async () => {
     fakeOpenCode = await startFakeOpenCodeServer();
-    const env = { ...process.env, SUPERVISOR_STATE_DIR: tempDir };
+    const env = { ...process.env, RETINUE_STATE_DIR: tempDir };
 
     const run = await execFileAsync(
       process.execPath,
@@ -284,9 +284,9 @@ describe("CLI", () => {
     fakeOpenCode = await startFakeOpenCodeServer();
     const env = {
       ...process.env,
-      SUPERVISOR_STATE_DIR: tempDir,
-      SUPERVISOR_OPENCODE_MODEL: "litellm/pro-router",
-      SUPERVISOR_OPENCODE_AGENT: "build"
+      RETINUE_STATE_DIR: tempDir,
+      RETINUE_OPENCODE_MODEL: "litellm/pro-router",
+      RETINUE_OPENCODE_AGENT: "build"
     };
 
     await execFileAsync(
@@ -314,19 +314,19 @@ describe("CLI", () => {
   function cliEnv(stateDir: string): NodeJS.ProcessEnv {
     return {
       ...process.env,
-      SUPERVISOR_STATE_DIR: stateDir,
-      SUPERVISOR_CLAUDE_COMMAND: process.execPath,
-      SUPERVISOR_CLAUDE_PREFIX_ARGS: fixturePath
+      RETINUE_STATE_DIR: stateDir,
+      RETINUE_CLAUDE_COMMAND: process.execPath,
+      RETINUE_CLAUDE_PREFIX_ARGS: fixturePath
     };
   }
 
   async function startDaemon(): Promise<string> {
-    const supervisor = new ClaudeSupervisor({
+    const retinue = new ClaudeRetinue({
       stateDir: tempDir,
       claudeCommand: process.execPath,
       claudePrefixArgs: [fixturePath]
     });
-    server = createDaemonServer(supervisor);
+    server = createDaemonServer(retinue);
     await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
     const address = server.address() as AddressInfo;
     return `http://127.0.0.1:${address.port}`;

@@ -12,7 +12,7 @@ describe("OpenCodeBackend", () => {
   let server: FakeOpenCodeServer | undefined;
 
   beforeEach(async () => {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-opencode-backend-"));
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-backend-"));
     server = await startFakeOpenCodeServer();
   });
 

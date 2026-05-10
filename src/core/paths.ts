@@ -30,19 +30,19 @@ export function resolveStateDir(options: ResolveStateDirOptions = {}): string {
     return path.normalize(options.explicitStateDir);
   }
 
-  if (env.SUPERVISOR_STATE_DIR) {
-    return path.normalize(env.SUPERVISOR_STATE_DIR);
+  if (env.RETINUE_STATE_DIR) {
+    return path.normalize(env.RETINUE_STATE_DIR);
   }
 
   if (platform === "win32" && env.LOCALAPPDATA) {
-    return path.join(env.LOCALAPPDATA, "supervisor");
+    return path.join(env.LOCALAPPDATA, "retinue");
   }
 
   if (env.XDG_STATE_HOME) {
-    return path.join(env.XDG_STATE_HOME, "supervisor");
+    return path.join(env.XDG_STATE_HOME, "retinue");
   }
 
-  return path.join(homeDir, ".local", "state", "supervisor");
+  return path.join(homeDir, ".local", "state", "retinue");
 }
 
 export function getJobPaths(stateDir: string, jobId: string): JobPaths {

@@ -10,9 +10,9 @@ describe("Hermes Agent integration", () => {
     expect(hermesConfig).toContain("mcp_servers:");
     expect(hermesConfig).toContain("retinue:");
     expect(hermesConfig).toContain('command: "retinue-mcp"');
-    expect(hermesConfig).toContain('SUPERVISOR_RETINUE_BACKEND: "opencode"');
-    expect(hermesConfig).toContain('SUPERVISOR_OPENCODE_AUTO_SERVE: "1"');
-    expect(hermesConfig).toContain('SUPERVISOR_OPENCODE_AGENT: "plan"');
+    expect(hermesConfig).toContain('RETINUE_BACKEND: "opencode"');
+    expect(hermesConfig).toContain('RETINUE_OPENCODE_AUTO_SERVE: "1"');
+    expect(hermesConfig).toContain('RETINUE_OPENCODE_AGENT: "plan"');
     expect(hermesConfig).not.toContain("mcpServers");
   });
 
@@ -20,8 +20,8 @@ describe("Hermes Agent integration", () => {
     expect(hermesDoc).toContain("Hermes Agent is a peer master-agent surface, not a Retinue backend");
     expect(hermesDoc).toContain("mcp_servers");
     expect(hermesDoc).toContain("mcp_retinue_retinue_spawn_agent");
-    expect(hermesDoc).toContain("SUPERVISOR_REAL_HERMES_RETINUE_PROBE=1");
-    expect(hermesDoc).not.toContain("SUPERVISOR_RETINUE_BACKEND=hermes");
+    expect(hermesDoc).toContain("RETINUE_REAL_HERMES_RETINUE_PROBE=1");
+    expect(hermesDoc).not.toContain("RETINUE_BACKEND=hermes");
   });
 
   it("ships a Hermes-facing skill that names the prefixed Retinue tools", () => {

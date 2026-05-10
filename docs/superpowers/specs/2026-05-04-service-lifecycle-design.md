@@ -4,7 +4,7 @@
 
 `goal.md` requires service lifecycle work only after MCP-to-daemon and discovery are stable. That condition is now met for the current explicit-discovery design: CLI and MCP can use daemon URL or explicit discovery, and direct fallback remains available.
 
-The next decision is how users should start, stop, and inspect `supervisor-daemon` on Windows and WSL without hidden auto-start or irreversible setup.
+The next decision is how users should start, stop, and inspect `retinue-daemon` on Windows and WSL without hidden auto-start or irreversible setup.
 
 ## Options Compared
 
@@ -158,13 +158,13 @@ node dist/cli.js --discover-daemon status <jobId>
 Set:
 
 ```text
-SUPERVISOR_DAEMON_DISCOVERY=1
+RETINUE_DAEMON_DISCOVERY=1
 ```
 
 or:
 
 ```text
-SUPERVISOR_DAEMON_URL=http://127.0.0.1:27777
+RETINUE_DAEMON_URL=http://127.0.0.1:27777
 ```
 
 ### Stop

@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
 import { createDaemonServer } from "../src/daemon/server.js";
-import { ClaudeSupervisor } from "../src/core/supervisor.js";
+import { ClaudeRetinue } from "../src/core/retinue.js";
 
 describe("daemon RPC contract", () => {
   let tempDir: string;
@@ -13,8 +13,8 @@ describe("daemon RPC contract", () => {
   let baseUrl: string;
 
   beforeEach(async () => {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "supervisor-rpc-contract-test-"));
-    server = createDaemonServer(new ClaudeSupervisor({ stateDir: tempDir }));
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-rpc-contract-test-"));
+    server = createDaemonServer(new ClaudeRetinue({ stateDir: tempDir }));
     await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
     const address = server.address() as AddressInfo;
     baseUrl = `http://127.0.0.1:${address.port}`;
@@ -63,7 +63,7 @@ describe("daemon RPC contract", () => {
 
   it("returns a structured body_too_large error when JSON exceeds the configured limit", async () => {
     await closeServer(server!);
-    server = createDaemonServer(new ClaudeSupervisor({ stateDir: tempDir }), { maxBodyBytes: 16 });
+    server = createDaemonServer(new ClaudeRetinue({ stateDir: tempDir }), { maxBodyBytes: 16 });
     await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
     const address = server.address() as AddressInfo;
     baseUrl = `http://127.0.0.1:${address.port}`;
