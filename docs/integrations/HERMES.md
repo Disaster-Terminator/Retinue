@@ -83,7 +83,7 @@ For a real OpenCode child-agent round trip, opt in explicitly:
 SUPERVISOR_REAL_HERMES_RETINUE_PROBE=1 pnpm run probe:hermes-retinue
 ```
 
-The real probe uses `retinue_spawn_agent -> retinue_wait_agent -> retinue_close_agent`, asks the OpenCode child to return `HERMES_RETINUE_OK`, and prints the Retinue state directory plus trace path.
+The real probe creates a temporary workspace with a random `RETINUE_MARKER.txt`, uses `retinue_spawn_agent -> retinue_wait_agent -> retinue_close_agent`, asks the OpenCode child to read that file, and prints the Retinue state directory plus trace path. This proves the child agent can use its file-reading tools instead of only echoing prompt text.
 
 ## Safety Notes
 

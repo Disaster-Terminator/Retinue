@@ -2,7 +2,8 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { mkdir, mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 
@@ -54,13 +55,18 @@ async function main() {
       return;
     }
 
+    const fixture = await prepareRealProbeFixture(stateDir, options);
+    const projectCwd = options.projectCwd ?? fixture.cwd;
+    const prompt = options.prompt ?? fixture.prompt;
+    const expectText = options.expect ?? fixture.expect;
+
     const spawn = parseToolJson(
       await client.callTool({
         name: "retinue_spawn_agent",
         arguments: {
-          cwd: options.projectCwd,
+          cwd: projectCwd,
           task_name: "hermes-retinue-smoke",
-          message: options.prompt
+          message: prompt
         }
       })
     );
@@ -71,7 +77,7 @@ async function main() {
       })
     );
     const actual = wait?.result?.parsedStdout?.result;
-    if (wait.status !== "completed" || typeof actual !== "string" || !actual.includes(options.expect)) {
+    if (wait.status !== "completed" || typeof actual !== "string" || !actual.includes(expectText)) {
       throw new Error(`Unexpected Retinue result: ${JSON.stringify(wait)}`);
     }
     const close = parseToolJson(
@@ -91,6 +97,8 @@ async function main() {
       status: wait.status,
       result: actual,
       closeStatus: close.status,
+      projectCwd,
+      markerSha256: fixture.markerSha256,
       stateDir,
       tracePath: path.join(stateDir, "logs", "retinue.jsonl")
     });
@@ -104,9 +112,9 @@ function parseArgs(args) {
     command: process.execPath,
     args: [path.resolve("dist/mcp.js")],
     cwd: process.cwd(),
-    projectCwd: process.cwd(),
-    prompt: "Reply exactly: HERMES_RETINUE_OK",
-    expect: "HERMES_RETINUE_OK",
+    projectCwd: undefined,
+    prompt: undefined,
+    expect: undefined,
     timeoutMs: 120000,
     stateDir: undefined
   };
@@ -147,6 +155,30 @@ function parseArgs(args) {
   return options;
 }
 
+async function prepareRealProbeFixture(stateDir, options) {
+  if (options.projectCwd || options.prompt || options.expect) {
+    return {
+      cwd: options.projectCwd ?? process.cwd(),
+      prompt: options.prompt ?? "Reply exactly: HERMES_RETINUE_OK",
+      expect: options.expect ?? "HERMES_RETINUE_OK",
+      markerSha256: undefined
+    };
+  }
+
+  const cwd = path.join(stateDir, "fixture-workspace");
+  const marker = `retinue-marker-${randomUUID()}`;
+  await mkdir(cwd, { recursive: true });
+  await writeFile(path.join(cwd, "RETINUE_MARKER.txt"), `${marker}\n`, "utf8");
+  await writeFile(path.join(cwd, "package.json"), `${JSON.stringify({ name: "retinue-hermes-fixture", private: true }, null, 2)}\n`, "utf8");
+  return {
+    cwd,
+    prompt:
+      "Read RETINUE_MARKER.txt in the current working directory. Reply with exactly two lines: first line MARKER=<the exact file contents without trailing newline>, second line HERMES_RETINUE_FILE_READ_OK.",
+    expect: marker,
+    markerSha256: sha256(marker)
+  };
+}
+
 async function ensureStateDir(stateDir) {
   if (stateDir) {
     await mkdir(stateDir, { recursive: true });
@@ -173,6 +205,10 @@ function parseToolJson(result) {
 
 function printResult(value) {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+function sha256(value) {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 main().catch((error) => {
