@@ -92,6 +92,25 @@ codex mcp add retinue \
 
 The npm path installs runtime only. It does not install the Retinue skill; the plugin marketplace remains the preferred user path.
 
+## Hermes Agent Runtime Path
+
+Hermes Agent uses `~/.hermes/config.yaml` under the `mcp_servers` key, not Codex's `mcpServers` plugin wrapper. For Hermes, install the npm runtime and configure:
+
+```yaml
+mcp_servers:
+  retinue:
+    command: "retinue-mcp"
+    env:
+      SUPERVISOR_RETINUE_BACKEND: "opencode"
+      SUPERVISOR_OPENCODE_AUTO_SERVE: "1"
+      SUPERVISOR_OPENCODE_HOST: "127.0.0.1"
+      SUPERVISOR_OPENCODE_AGENT: "plan"
+    timeout: 180
+    connect_timeout: 30
+```
+
+See [Hermes Agent Integration](../integrations/HERMES.md) for the full Hermes master-agent setup and probe commands.
+
 ## Build Gate
 
 Before tagging a release, build and verify:

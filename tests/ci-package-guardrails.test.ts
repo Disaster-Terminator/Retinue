@@ -96,6 +96,7 @@ describe("package.json guardrails", () => {
       expect(command).toMatch(/scripts\/(probe-real-(claude|opencode)|probe-retinue-(opencode|claude)-mcp)\.mjs/);
     }
 
+    expect(scripts["probe:hermes-retinue"]).toBe("node scripts/probe-hermes-retinue-mcp.mjs");
     expect(scripts.test).not.toContain("probe:real:");
     expect(scripts.build).not.toContain("probe:real:");
     expect(scripts.typecheck).not.toContain("probe:real:");
@@ -103,6 +104,10 @@ describe("package.json guardrails", () => {
 
   it("packages the Codex plugin surface", () => {
     expect(packageJson.files).toEqual(expect.arrayContaining(["plugins/**", ".agents/plugins/**"]));
+  });
+
+  it("packages the Hermes integration surface", () => {
+    expect(packageJson.files).toEqual(expect.arrayContaining(["integrations/**"]));
   });
 });
 

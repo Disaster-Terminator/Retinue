@@ -126,6 +126,12 @@ codex mcp add retinue \
 
 Normal Codex users should prefer the plugin marketplace path. The npm path does not install the Retinue skill.
 
+## Hermes Agent
+
+Hermes Agent can use Retinue as a master-agent MCP integration. Hermes is not a Retinue backend; Hermes loads Retinue under `mcp_servers`, then calls the prefixed tools `mcp_retinue_retinue_spawn_agent`, `mcp_retinue_retinue_wait_agent`, and `mcp_retinue_retinue_close_agent`.
+
+Install the npm runtime and merge `integrations/hermes/mcp-retinue.yaml` into `~/.hermes/config.yaml`, or see [Hermes Agent Integration](docs/integrations/HERMES.md). The default remains OpenCode `plan` with Retinue-managed OpenCode server lifecycle.
+
 ## Verification
 
 Before the 0.1.0 release, Retinue passed:
@@ -148,6 +154,12 @@ SUPERVISOR_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
 pnpm run probe:real:retinue-opencode
 ```
 
+Hermes MCP shape probe:
+
+```bash
+pnpm run probe:hermes-retinue
+```
+
 ## Developer Docs
 
 - [Source install and development](docs/development/SOURCE_INSTALL.md)
@@ -157,3 +169,4 @@ pnpm run probe:real:retinue-opencode
 - [Project Boundary](docs/architecture/PROJECT_BOUNDARY.md)
 - [Service Lifecycle](docs/deployment/SERVICE_LIFECYCLE.md)
 - [Plugin Deployment](docs/deployment/PLUGIN_DEPLOYMENT.md)
+- [Hermes Agent Integration](docs/integrations/HERMES.md)
