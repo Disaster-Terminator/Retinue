@@ -84,6 +84,23 @@ When `RETINUE_OPENCODE_PORT` is explicit, Retinue does not silently fall back to
 
 MCP hosts commonly enforce their own per-tool timeout. Retinue therefore clamps `retinue_wait_agent` and `opencode_wait` calls to a host-safe maximum of 90 seconds by default. Complex OpenCode tasks should be polled with repeated wait calls; set `RETINUE_MCP_WAIT_MAX_MS` only when the host timeout is known to be higher.
 
+If a wait call returns `status: "running"`, keep the same `jobId` and call wait again. Do not spawn a replacement job only because one wait window elapsed.
+
+## Diagnostics
+
+Retinue writes OpenCode backend diagnostics to the Retinue state directory:
+
+```text
+<stateDir>/logs/retinue.jsonl
+<stateDir>/jobs/<jobId>/meta.json
+<stateDir>/jobs/<jobId>/stdout.log
+<stateDir>/jobs/<jobId>/stderr.log
+```
+
+If `RETINUE_STATE_DIR` is unset, Linux/WSL/macOS defaults to `$XDG_STATE_HOME/retinue` or `$HOME/.local/state/retinue`; Windows defaults to `%LOCALAPPDATA%\retinue`.
+
+When `retinue_wait_agent` returns `running`, its response includes `tracePath`. Use that path to inspect recent OpenCode message summaries, selected model/provider metadata, server URL, and stall diagnostics.
+
 ## Current Status
 
 Implemented:

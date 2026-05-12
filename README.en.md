@@ -52,7 +52,13 @@ Requirements:
 
 - Node.js 20+
 - Codex CLI 0.128+
-- OpenCode 1.14+
+- OpenCode 1.14+, preferably from the official install script:
+
+```bash
+curl -fsSL https://opencode.ai/install | bash
+```
+
+The official script installs OpenCode under `$HOME/.opencode/bin/opencode`. Retinue also checks common npm/pnpm/bun global install paths, but the 0.1.0 quickstart and smoke path assume the official script install.
 
 Add the Retinue plugin marketplace to Codex:
 
@@ -101,6 +107,23 @@ This means:
 - OpenCode uses the active local profile for provider, model, login, permissions, plugins, and skills.
 - `plan` is the 0.1.0 safety default. A future Retinue config file will allow deployments to choose `build` without exposing that choice as a per-call tool argument.
 - `retinue_wait_agent` keeps each MCP wait call inside a host-safe window, 90 seconds by default. Long jobs should be polled by calling wait again; deployments can tune the cap with `RETINUE_MCP_WAIT_MAX_MS`.
+
+A long child-agent task is still running when `retinue_wait_agent` returns `status: "running"`. Call `retinue_wait_agent` again with the same `jobId`; do not respawn unless the job reaches `failed`, `killed`, `stalled`, or another terminal status.
+
+When a wait returns `running`, the response includes `tracePath`. Use that path for diagnostics before closing the job.
+
+## Logs
+
+Retinue writes local diagnostics under `RETINUE_STATE_DIR`. If unset, the defaults are:
+
+- Windows: `%LOCALAPPDATA%\retinue`
+- Linux/WSL/macOS: `$XDG_STATE_HOME/retinue` or `$HOME/.local/state/retinue`
+
+Useful files:
+
+- `<stateDir>/logs/retinue.jsonl`: Retinue trace events, including OpenCode server lifecycle and wait diagnostics.
+- `<stateDir>/jobs/<jobId>/meta.json`: job metadata.
+- `<stateDir>/jobs/<jobId>/stdout.log` and `stderr.log`: terminal result and per-job diagnostics.
 
 ## Claude Code Backend
 

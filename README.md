@@ -108,6 +108,23 @@ Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE
 - `plan` 是 0.1.0 的安全默认；后续会通过 Retinue 配置支持切到 `build`，不把这个选择暴露成每次 tool call 的参数。
 - `retinue_wait_agent` 会把单次 MCP wait 限制在宿主安全窗口内，默认最大 90 秒。长任务应重复调用 wait 轮询；可用 `RETINUE_MCP_WAIT_MAX_MS` 调整上限。
 
+当 `retinue_wait_agent` 返回 `status: "running"` 时，子代理仍在运行。继续用同一个 `jobId` 再次调用 `retinue_wait_agent`；只有任务进入 `failed`、`killed`、`stalled` 或其他终态时，才需要按终态处理或重新启动。
+
+`running` 响应会包含 `tracePath`。关闭 job 前，优先用这个路径查看诊断。
+
+## 日志
+
+Retinue 把本地诊断写入 `RETINUE_STATE_DIR`。未设置时默认位置：
+
+- Windows：`%LOCALAPPDATA%\retinue`
+- Linux / WSL / macOS：`$XDG_STATE_HOME/retinue` 或 `$HOME/.local/state/retinue`
+
+常用文件：
+
+- `<stateDir>/logs/retinue.jsonl`：Retinue trace，包括 OpenCode server 生命周期和 wait 诊断。
+- `<stateDir>/jobs/<jobId>/meta.json`：job 元数据。
+- `<stateDir>/jobs/<jobId>/stdout.log` 和 `stderr.log`：终态结果和单 job 诊断。
+
 ## Claude Code 后端
 
 Claude Code 后端已经通过 fake E2E 和真实 best-effort E2E。0.1.0 默认不启用它。需要切换时，修改部署配置：
