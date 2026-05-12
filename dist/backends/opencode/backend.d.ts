@@ -18,6 +18,7 @@ export declare class OpenCodeBackend implements AgentBackend {
     private readonly baseUrl?;
     private readonly resolveTarget;
     private readonly stateDir;
+    private readonly env?;
     constructor(options: OpenCodeBackendOptions);
     run(options: AgentRunOptions): Promise<JobMeta>;
     continueJob(options: AgentContinueOptions): Promise<JobMeta>;
@@ -33,6 +34,7 @@ export declare class OpenCodeBackend implements AgentBackend {
     private reconcileStatus;
     private captureMessageBaseline;
     private hasNewCompletedAssistantMessage;
+    private isStalledOpenCodeJob;
     private inspectJob;
     private writeJobTrace;
     private clientForMeta;

@@ -21238,12 +21238,15 @@ function formatModelOverride(model) {
 // src/backends/opencode/backend.ts
 var DEFAULT_WAIT_TIMEOUT_MS = 3e4;
 var DEFAULT_WAIT_POLL_MS = 250;
+var DEFAULT_STALL_MS = 10 * 6e4;
+var DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
 var OpenCodeBackend = class {
   kind = "opencode";
   client;
   baseUrl;
   resolveTarget;
   stateDir;
+  env;
   constructor(options) {
     this.client = options.client;
     this.baseUrl = options.baseUrl?.replace(/\/+$/, "");
@@ -21254,6 +21257,7 @@ var OpenCodeBackend = class {
       return { client: this.client, baseUrl: this.baseUrl };
     });
     this.stateDir = resolveStateDir({ explicitStateDir: options.stateDir, env: options.env });
+    this.env = options.env;
   }
   async run(options) {
     const jobId = `job_${randomUUID()}`;
@@ -21357,10 +21361,33 @@ var OpenCodeBackend = class {
     const client = this.clientForMeta(meta);
     const messages = await client.messages(meta.externalSessionId);
     const jobMessages = selectMessagesForMeta(messages, meta);
-    const text = meta.externalMessageBaselineCount === void 0 ? latestAssistantMessageText(messages) : latestAssistantMessageText(jobMessages);
     const paths = getJobPaths(this.stateDir, handle.jobId);
-    await fs.writeFile(paths.stdout, text, "utf8");
     const diagnostic = await this.inspectJob(meta);
+    if (meta.status === "stalled") {
+      const stderr = createStallMessage(diagnostic);
+      await fs.writeFile(paths.stdout, "", "utf8");
+      await fs.appendFile(paths.stderr, `${stderr}
+`, "utf8");
+      await this.writeJobTrace("opencode_job_result_read", meta, diagnostic);
+      await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_result_read", diagnostic });
+      return {
+        jobId: handle.jobId,
+        status: meta.status,
+        stdout: "",
+        stderr,
+        stdoutPath: paths.stdout,
+        stderrPath: paths.stderr,
+        stdoutBytes: 0,
+        stderrBytes: Buffer.byteLength(stderr, "utf8"),
+        stdoutTruncated: false,
+        stderrTruncated: false,
+        sessionId: meta.externalSessionId,
+        parsedStdout: { result: "" },
+        error: stderr
+      };
+    }
+    const text = meta.externalMessageBaselineCount === void 0 ? latestAssistantMessageText(messages) : latestAssistantMessageText(jobMessages);
+    await fs.writeFile(paths.stdout, text, "utf8");
     diagnostic.selectedAssistantTextBytes = Buffer.byteLength(text, "utf8");
     diagnostic.selectedAssistantSha256 = sha256(text);
     if (process.env.RETINUE_TRACE_TEXT_PREVIEW === "1") {
@@ -21462,8 +21489,10 @@ var OpenCodeBackend = class {
         status = "completed";
       } else if (session.state === "failed") {
         status = "failed";
-      } else if (session.state === void 0 && await this.hasNewCompletedAssistantMessage(client, meta.externalSessionId, meta)) {
+      } else if (await this.hasNewCompletedAssistantMessage(client, meta.externalSessionId, meta)) {
         status = "completed";
+      } else if (await this.isStalledOpenCodeJob(client, meta.externalSessionId, meta)) {
+        status = "stalled";
       } else {
         status = "running";
       }
@@ -21480,6 +21509,15 @@ var OpenCodeBackend = class {
         toStatus: status,
         diagnostic
       });
+      if (status === "stalled") {
+        await this.writeJobTrace("opencode_job_stalled", updated, diagnostic, { fromStatus: meta.status, toStatus: status });
+        await appendJobDiagnostic(this.stateDir, meta.jobId, {
+          event: "opencode_job_stalled",
+          fromStatus: meta.status,
+          toStatus: status,
+          diagnostic
+        });
+      }
       return updated;
     } catch (error2) {
       if (error2 instanceof OpenCodeClientError && error2.status === 404) {
@@ -21505,6 +21543,12 @@ var OpenCodeBackend = class {
       return false;
     }
     return countCompletedAssistantMessages(messages) > (meta.externalCompletedAssistantBaselineCount ?? 0);
+  }
+  async isStalledOpenCodeJob(client, sessionId, meta) {
+    const messages = await client.messages(sessionId);
+    const jobMessages = selectMessagesForMeta(messages, meta);
+    const stall = computeStallDiagnostic(jobMessages, meta, this.env);
+    return stall !== void 0;
   }
   async inspectJob(meta) {
     const diagnostic = {
@@ -21551,6 +21595,7 @@ var OpenCodeBackend = class {
         textBytes: Buffer.byteLength(extractMessageText(message), "utf8"),
         completed: isCompletedAssistantMessage(message)
       }));
+      Object.assign(diagnostic, computeStallDiagnostic(jobMessages, meta, this.env));
     } catch (error2) {
       diagnostic.error = error2 instanceof Error ? error2.message : String(error2);
     }
@@ -21611,7 +21656,7 @@ function asRecord(value) {
   return typeof value === "object" && value !== null ? value : { value };
 }
 function isTerminal2(status) {
-  return status === "completed" || status === "failed" || status === "killed" || status === "timed_out";
+  return status === "completed" || status === "failed" || status === "killed" || status === "timed_out" || status === "stalled";
 }
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -21650,6 +21695,43 @@ function isFinalAssistantTextMessage(message) {
 }
 function isToolCallAssistantMessage(message) {
   return message.info?.finish === "tool-calls" || hasToolPart(message);
+}
+function computeStallDiagnostic(jobMessages, meta, env) {
+  if (jobMessages.some(isCompletedAssistantMessage)) {
+    return void 0;
+  }
+  const thresholdMs = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_MS, DEFAULT_STALL_MS);
+  if (thresholdMs <= 0) {
+    return void 0;
+  }
+  const roundThreshold = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS, DEFAULT_STALL_TOOL_CALL_ROUNDS);
+  const toolCallAssistantRounds = jobMessages.filter((message) => message.info?.role === "assistant" && isToolCallAssistantMessage(message)).length;
+  if (toolCallAssistantRounds < roundThreshold) {
+    return void 0;
+  }
+  const startedAt = Date.parse(meta.createdAt);
+  const durationMs = Number.isFinite(startedAt) ? Date.now() - startedAt : 0;
+  if (durationMs < thresholdMs) {
+    return void 0;
+  }
+  return {
+    toolCallAssistantRounds,
+    noCompletedAssistantDurationMs: Math.max(0, durationMs),
+    stallThresholdMs: thresholdMs,
+    stallToolCallRoundThreshold: roundThreshold
+  };
+}
+function createStallMessage(diagnostic) {
+  const rounds = diagnostic.toolCallAssistantRounds ?? 0;
+  const durationMs = diagnostic.noCompletedAssistantDurationMs ?? 0;
+  return `OpenCode job stalled: observed ${rounds} tool-call assistant round(s) with no completed assistant text for ${durationMs}ms. Inspect Retinue trace/job diagnostics for message summaries.`;
+}
+function parseOptionalNonNegativeInt(value, fallback) {
+  if (!value) {
+    return fallback;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : fallback;
 }
 function hasToolPart(message) {
   return Array.isArray(message.parts) && message.parts.some((part) => part?.type === "tool");
