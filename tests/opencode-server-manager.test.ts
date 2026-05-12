@@ -61,6 +61,17 @@ describe("OpenCode server manager", () => {
     });
   });
 
+  it("diagnoses stale legacy supervisor env without treating it as Retinue config", () => {
+    expect(() =>
+      resolveOpenCodeServerFromEnv({
+        SUPERVISOR_RETINUE_BACKEND: "opencode",
+        SUPERVISOR_OPENCODE_AUTO_SERVE: "1",
+        SUPERVISOR_OPENCODE_HOST: "127.0.0.1",
+        SUPERVISOR_OPENCODE_AGENT: "plan"
+      })
+    ).toThrow(/legacy SUPERVISOR_.*reload or restart/i);
+  });
+
   it("falls back to the next candidate port when the preferred port is not OpenCode", async () => {
     const occupied = await startHealthServer("not opencode");
     const fallbackPort = await freePort();

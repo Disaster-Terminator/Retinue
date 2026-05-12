@@ -95,6 +95,7 @@ export function resolveOpenCodeServer(config: OpenCodeServerConfig): OpenCodeSer
 }
 
 export function resolveOpenCodeServerFromEnv(env: NodeJS.ProcessEnv | Record<string, string | undefined>): OpenCodeServerResolution {
+  assertNoStaleSupervisorOpenCodeEnv(env);
   return resolveOpenCodeServer({
     baseUrl: env.RETINUE_OPENCODE_BASE_URL,
     command: env.RETINUE_OPENCODE_COMMAND,
@@ -104,6 +105,29 @@ export function resolveOpenCodeServerFromEnv(env: NodeJS.ProcessEnv | Record<str
     port: parseOptionalPort(env.RETINUE_OPENCODE_PORT),
     fallbackPorts: parseOptionalPorts(env.RETINUE_OPENCODE_FALLBACK_PORTS)
   });
+}
+
+function assertNoStaleSupervisorOpenCodeEnv(env: NodeJS.ProcessEnv | Record<string, string | undefined>): void {
+  const hasRetinueOpenCodeTarget = Boolean(env.RETINUE_OPENCODE_BASE_URL?.trim()) || env.RETINUE_OPENCODE_AUTO_SERVE === "1";
+  if (hasRetinueOpenCodeTarget) {
+    return;
+  }
+  const legacyKeys = [
+    "SUPERVISOR_RETINUE_BACKEND",
+    "SUPERVISOR_OPENCODE_BASE_URL",
+    "SUPERVISOR_OPENCODE_AUTO_SERVE",
+    "SUPERVISOR_OPENCODE_HOST",
+    "SUPERVISOR_OPENCODE_PORT",
+    "SUPERVISOR_OPENCODE_AGENT"
+  ].filter((key) => Boolean(env[key]));
+  if (legacyKeys.length === 0) {
+    return;
+  }
+  throw new Error(
+    `OpenCode server target missing: Retinue received legacy SUPERVISOR_* environment (${legacyKeys.join(
+      ", "
+    )}) but no RETINUE_OPENCODE_BASE_URL or RETINUE_OPENCODE_AUTO_SERVE=1. Reload or restart the MCP host so it reads the current Retinue env config.`
+  );
 }
 
 export function buildServeArgs(options: { host: string; port: number }): string[] {
