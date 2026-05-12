@@ -26,3 +26,5 @@ jobs:
         run: pnpm test
       - name: Verify package
         run: pnpm run verify:package
+      - name: Smoke package artifacts
+        run: pnpm run smoke:package

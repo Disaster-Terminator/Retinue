@@ -56,6 +56,7 @@ describe("CI workflow guardrails", () => {
     expect(ciWorkflow).toContain("run: pnpm run check:generated");
     expect(ciWorkflow).toContain("run: pnpm test");
     expect(ciWorkflow).toContain("run: pnpm run verify:package");
+    expect(ciWorkflow).toContain("run: pnpm run smoke:package");
   });
 
   it("does not run real probes or npm/package-lock flows", () => {
@@ -85,6 +86,7 @@ describe("package.json guardrails", () => {
     const scripts = packageJson.scripts ?? {};
 
     expect(scripts["verify:package"]).toBeTypeOf("string");
+    expect(scripts["smoke:package"]).toBe("node scripts/smoke-package-artifacts.mjs");
     expect(scripts["check:generated"]).toBe("pnpm run build && git diff --exit-code -- dist plugins/retinue/dist");
 
     const realProbeScriptNames = Object.keys(scripts).filter((name) => name.startsWith("probe:real:"));

@@ -54,7 +54,8 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json",
     "check:generated": "pnpm run build && git diff --exit-code -- dist plugins/retinue/dist",
-    "verify:package": "pnpm pack --dry-run --json | node scripts/verify-package.mjs"
+    "verify:package": "pnpm pack --dry-run --json | node scripts/verify-package.mjs",
+    "smoke:package": "node scripts/smoke-package-artifacts.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.5",
