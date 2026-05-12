@@ -38,6 +38,8 @@ export const OPENCODE_TOOL_NAMES = [
 
 export const RETINUE_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent"] as const;
 
+const DEFAULT_MCP_WAIT_MAX_MS = 90_000;
+
 export interface CreateMcpServerOptions {
   exposeBackendTools?: boolean;
 }
@@ -103,7 +105,8 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
     },
     async ({ jobId, timeoutMs }) => {
       const backend = await createRetinueBackendForJob(retinue, jobId);
-      const waited = await backend.wait({ jobId }, timeoutMs);
+      const effectiveTimeoutMs = clampMcpWaitTimeoutMs(timeoutMs, process.env);
+      const waited = await backend.wait({ jobId }, effectiveTimeoutMs);
       const status = await backend.status({ jobId });
       if (waited.status === "running") {
         const stateDir = resolveStateDir({
@@ -118,7 +121,9 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
           externalSessionId: isJobMeta(status) ? status.externalSessionId : undefined,
           externalServerUrl: isJobMeta(status) ? status.externalServerUrl : undefined,
           stateDir,
-          tracePath: getRetinueTracePath(stateDir)
+          tracePath: getRetinueTracePath(stateDir),
+          requestedTimeoutMs: timeoutMs,
+          effectiveTimeoutMs
         });
       }
       const result = await backend.result({ jobId });
@@ -288,7 +293,7 @@ function registerBackendTools(server: McpServer, retinue: RetinueApi): void {
       inputSchema: { jobId: z.string(), timeoutMs: z.number().int().nonnegative().optional(), opencodeBaseUrl: z.string().optional() }
     },
     async ({ jobId, timeoutMs, opencodeBaseUrl }) => {
-      const result = await (await createOpenCodeBackend({ opencodeBaseUrl })).wait({ jobId }, timeoutMs);
+      const result = await (await createOpenCodeBackend({ opencodeBaseUrl })).wait({ jobId }, clampMcpWaitTimeoutMs(timeoutMs, process.env));
       return jsonToolResult(result);
     }
   );
@@ -516,6 +521,17 @@ function parseOptionalNumber(value: string | undefined): number | undefined {
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function clampMcpWaitTimeoutMs(timeoutMs: number | undefined, env: NodeJS.ProcessEnv): number | undefined {
+  const maxMs = parseOptionalNumber(env.RETINUE_MCP_WAIT_MAX_MS) ?? DEFAULT_MCP_WAIT_MAX_MS;
+  if (!Number.isFinite(maxMs) || maxMs <= 0) {
+    return timeoutMs;
+  }
+  if (timeoutMs === undefined) {
+    return undefined;
+  }
+  return Math.min(timeoutMs, Math.floor(maxMs));
 }
 
 function jsonToolResult(value: unknown) {

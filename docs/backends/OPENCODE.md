@@ -14,6 +14,8 @@ curl -fsSL https://opencode.ai/install | bash
 
 The script installs the CLI under `$HOME/.opencode/bin/opencode`. Retinue first honors an explicit `RETINUE_OPENCODE_COMMAND`, then the inherited `PATH`, then common default install locations. On Windows that fallback includes `%USERPROFILE%\.opencode\bin\opencode` before package-manager shims such as pnpm/npm/bun.
 
+On POSIX systems, including WSL and macOS, Retinue also checks `$HOME/.opencode/bin/opencode` even when the installer did not add it to `PATH`.
+
 ## Server Target
 
 The default plugin integration mode is Retinue-managed auto-serve:
@@ -79,6 +81,8 @@ RETINUE_OPENCODE_PORT=4096
 ```
 
 When `RETINUE_OPENCODE_PORT` is explicit, Retinue does not silently fall back to another port.
+
+MCP hosts commonly enforce their own per-tool timeout. Retinue therefore clamps `retinue_wait_agent` and `opencode_wait` calls to a host-safe maximum of 90 seconds by default. Complex OpenCode tasks should be polled with repeated wait calls; set `RETINUE_MCP_WAIT_MAX_MS` only when the host timeout is known to be higher.
 
 ## Current Status
 

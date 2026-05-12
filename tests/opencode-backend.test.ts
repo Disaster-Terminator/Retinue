@@ -173,6 +173,8 @@ describe("OpenCodeBackend", () => {
     await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "stalled" });
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
       status: "stalled",
+      stdout: expect.stringContaining("OpenCode job stalled"),
+      parsedStdout: { result: expect.stringContaining("OpenCode job stalled") },
       error: expect.stringContaining("OpenCode job stalled")
     });
 
@@ -182,6 +184,34 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"toolCallAssistantRounds":3');
     expect(trace).toContain('"noCompletedAssistantDurationMs"');
     await expect(fs.readFile(getJobPaths(tempDir, started.jobId).stderr, "utf8")).resolves.toContain('"event":"opencode_job_stalled"');
+  });
+
+  it("recovers a stalled OpenCode job when the backend later produces a final result", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_MS: "1",
+        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "complex audit eventually answers" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source two");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source three");
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "stalled" });
+    server!.completeSessionWithFinalText(started.externalSessionId!, "final audit result");
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "completed",
+      parsedStdout: { result: "final audit result" }
+    });
   });
 
   it("does not reuse old completed assistant messages for continued jobs", async () => {

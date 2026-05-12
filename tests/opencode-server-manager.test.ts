@@ -308,6 +308,24 @@ describe("OpenCode server manager", () => {
     });
   });
 
+  it("finds the default official POSIX OpenCode install outside the inherited PATH", async () => {
+    const existing = new Set(["/home/raystorm/.opencode/bin/opencode"]);
+
+    await expect(
+      resolveOpenCodeCommandForSpawn("opencode", {
+        platform: "linux",
+        env: {
+          HOME: "/home/raystorm",
+          PATH: "/usr/local/bin:/usr/bin"
+        },
+        exists: async (candidate) => existing.has(candidate)
+      })
+    ).resolves.toEqual({
+      command: "/home/raystorm/.opencode/bin/opencode",
+      shell: false
+    });
+  });
+
   it("rejects non-loopback and non-http base URLs", () => {
     expect(() => resolveOpenCodeServer({ baseUrl: "https://127.0.0.1:4096" })).toThrow("must use http");
     expect(() => resolveOpenCodeServer({ baseUrl: "http://example.com:4096" })).toThrow("must be loopback");
