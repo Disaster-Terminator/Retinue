@@ -2,7 +2,7 @@
   "mcpServers": {
     "retinue": {
       "command": "node",
-      "args": ["./dist/mcp.js"],
+      "args": ["./mcp-bootstrap.mjs"],
       "cwd": ".",
       "startup_timeout_sec": 30,
       "env": {

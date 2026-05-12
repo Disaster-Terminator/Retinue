@@ -4,7 +4,7 @@ This Codex plugin exposes Retinue as an agent-facing product surface:
 
 - skill instructions under `skills/`
 - MCP server configuration in `.mcp.json`
-- runtime entrypoint from the release-shipped `dist/mcp.js`
+- runtime entrypoint from `mcp-bootstrap.mjs`, which loads the release-shipped `dist/mcp.js`
 
 Users install it through the Codex plugin marketplace:
 

@@ -158,9 +158,10 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(raw).toHaveProperty("mcpServers");
     expect(mcp).toHaveProperty("retinue");
     expect(mcp.retinue?.command).toBe("node");
-    expect(mcp.retinue?.args).toEqual(["./dist/mcp.js"]);
+    expect(mcp.retinue?.args).toEqual(["./mcp-bootstrap.mjs"]);
     expect(mcp.retinue?.cwd).toBe(".");
     expect(existsSync(path.join("plugins/retinue", mcp.retinue?.args?.[0] ?? ""))).toBe(true);
+    expect(readFileSync("plugins/retinue/mcp-bootstrap.mjs", "utf8")).toContain("process.chdir");
     expect(mcp.retinue?.startup_timeout_sec).toBe(30);
     expect(mcp.retinue?.env?.RETINUE_BACKEND).toBe("opencode");
     expect(mcp.retinue?.env?.RETINUE_OPENCODE_AUTO_SERVE).toBe("1");
