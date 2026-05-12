@@ -50,7 +50,7 @@ The plugin MCP config starts the runtime shipped inside the plugin directory:
   "mcpServers": {
     "retinue": {
       "command": "node",
-      "args": ["./dist/mcp.js"],
+      "args": ["./mcp-bootstrap.mjs"],
       "cwd": ".",
       "startup_timeout_sec": 30,
       "env": {
@@ -65,7 +65,7 @@ The plugin MCP config starts the runtime shipped inside the plugin directory:
 ```
 
 This is intentional for 0.1.0: marketplace installs copy the plugin directory into Codex's plugin cache, so the MCP runtime must be self-contained under that directory.
-The `mcpServers` wrapper is required for Codex plugin MCP discovery. The explicit `cwd: "."` is required so Codex starts `node ./dist/mcp.js` from the installed plugin cache instead of from the current conversation working directory.
+The `mcpServers` wrapper is required for Codex plugin MCP discovery. The explicit `cwd: "."` is required so Codex starts `node ./mcp-bootstrap.mjs` from the installed plugin cache instead of from the current conversation working directory. The bootstrap resolves the real bundled `dist/mcp.js` from its own plugin directory, then moves the process cwd to Retinue state before starting stdio so Windows cache refresh and uninstall paths are less likely to be blocked by an MCP process holding the plugin cache directory as its cwd.
 
 The default plugin path manages the local OpenCode server lifecycle. It prefers `127.0.0.1:4096` and tries fallback ports `4097` through `4127` when earlier ports are occupied by external services. Set `RETINUE_OPENCODE_BASE_URL` only for deployments that intentionally attach to an externally managed OpenCode server.
 

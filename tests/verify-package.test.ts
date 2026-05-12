@@ -25,6 +25,7 @@ function validPackJson() {
         { path: ".agents/plugins/marketplace.json" },
         { path: "plugins/retinue/.codex-plugin/plugin.json" },
         { path: "plugins/retinue/.mcp.json" },
+        { path: "plugins/retinue/mcp-bootstrap.mjs" },
         { path: "plugins/retinue/skills/retinue/SKILL.md" },
         { path: "integrations/hermes/mcp-retinue.yaml" },
         { path: "integrations/hermes/skills/retinue/SKILL.md" },

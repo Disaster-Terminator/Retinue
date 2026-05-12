@@ -20,6 +20,7 @@ const requiredPluginFiles = [
   ".agents/plugins/marketplace.json",
   "plugins/retinue/.codex-plugin/plugin.json",
   "plugins/retinue/.mcp.json",
+  "plugins/retinue/mcp-bootstrap.mjs",
   "plugins/retinue/skills/retinue/SKILL.md",
   "integrations/hermes/mcp-retinue.yaml",
   "integrations/hermes/skills/retinue/SKILL.md",
