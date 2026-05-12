@@ -3225,8 +3225,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path3) {
-      let input = path3;
+    function removeDotSegments(path4) {
+      let input = path4;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3469,8 +3469,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path3, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path3 && path3 !== "/" ? path3 : void 0;
+        const [path4, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path4 && path4 !== "/" ? path4 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -6845,6 +6845,7 @@ var require_dist = __commonJS({
 
 // src/mcp.ts
 import fs4 from "node:fs/promises";
+import path3 from "node:path";
 import { fileURLToPath } from "node:url";
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/external.js
@@ -7325,8 +7326,8 @@ function getErrorMap() {
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path3, errorMaps, issueData } = params;
-  const fullPath = [...path3, ...issueData.path || []];
+  const { data, path: path4, errorMaps, issueData } = params;
+  const fullPath = [...path4, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7442,11 +7443,11 @@ var errorUtil;
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path3, key) {
+  constructor(parent, value, path4, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path3;
+    this._path = path4;
     this._key = key;
   }
   get path() {
@@ -11083,10 +11084,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path3) {
-  if (!path3)
+function getElementAtPath(obj, path4) {
+  if (!path4)
     return obj;
-  return path3.reduce((acc, key) => acc?.[key], obj);
+  return path4.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -11406,11 +11407,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path3, issues) {
+function prefixIssues(path4, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path3);
+    iss.path.unshift(path4);
     return iss;
   });
 }
@@ -21110,11 +21111,11 @@ function getOpenCodeServerLockPath(stateDir) {
 
 // src/backends/opencode/client.ts
 var OpenCodeClientError = class extends Error {
-  constructor(message, code, status, path3, details) {
+  constructor(message, code, status, path4, details) {
     super(message);
     this.code = code;
     this.status = status;
-    this.path = path3;
+    this.path = path4;
     this.details = details;
     this.name = "OpenCodeClientError";
   }
@@ -21156,39 +21157,39 @@ var OpenCodeClient = class {
   abort(sessionId) {
     return this.request("POST", `/session/${encodeURIComponent(sessionId)}/abort`, {});
   }
-  async request(method, path3, body) {
-    const response = await this.fetch(method, path3, body);
+  async request(method, path4, body) {
+    const response = await this.fetch(method, path4, body);
     const text = await response.text();
     const parsed = parseJson(text);
     if (!parsed.ok) {
-      throw new OpenCodeClientError("OpenCode response was not valid JSON", "invalid_json", response.status, path3, text);
+      throw new OpenCodeClientError("OpenCode response was not valid JSON", "invalid_json", response.status, path4, text);
     }
     if (!response.ok) {
       const message = extractErrorMessage(parsed.value) ?? `OpenCode request failed with HTTP ${response.status}`;
-      throw new OpenCodeClientError(message, "http_error", response.status, path3, parsed.value);
+      throw new OpenCodeClientError(message, "http_error", response.status, path4, parsed.value);
     }
     return parsed.value;
   }
-  async requestVoid(method, path3, body) {
-    const response = await this.fetch(method, path3, body);
+  async requestVoid(method, path4, body) {
+    const response = await this.fetch(method, path4, body);
     if (!response.ok) {
       const text = await response.text();
       const parsed = parseJson(text);
       const details = parsed.ok ? parsed.value : text;
       const message = parsed.ok ? extractErrorMessage(parsed.value) : void 0;
-      throw new OpenCodeClientError(message ?? `OpenCode request failed with HTTP ${response.status}`, "http_error", response.status, path3, details);
+      throw new OpenCodeClientError(message ?? `OpenCode request failed with HTTP ${response.status}`, "http_error", response.status, path4, details);
     }
   }
-  async fetch(method, path3, body) {
+  async fetch(method, path4, body) {
     let response;
     try {
-      response = await fetch(`${this.baseUrl}${path3}`, {
+      response = await fetch(`${this.baseUrl}${path4}`, {
         method,
         headers: method === "POST" ? { "content-type": "application/json" } : void 0,
         body: method === "POST" ? JSON.stringify(body ?? {}) : void 0
       });
     } catch (error2) {
-      throw new OpenCodeClientError(error2 instanceof Error ? error2.message : String(error2), "transport_error", 0, path3);
+      throw new OpenCodeClientError(error2 instanceof Error ? error2.message : String(error2), "transport_error", 0, path4);
     }
     return response;
   }
@@ -22373,24 +22374,24 @@ var DaemonClient = class {
   cleanup(options = {}) {
     return this.post("/v1/jobs/cleanup", options);
   }
-  async post(path3, body) {
+  async post(path4, body) {
     let response;
     try {
-      response = await fetch(`${this.baseUrl}${path3}`, {
+      response = await fetch(`${this.baseUrl}${path4}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body)
       });
     } catch (error2) {
       const transport = classifyTransportError(error2);
-      throw new DaemonClientError(transport.message, { code: transport.code, status: 0, path: path3 });
+      throw new DaemonClientError(transport.message, { code: transport.code, status: 0, path: path4 });
     }
     const text = await response.text();
     const parsed = parseJson3(text);
     if (!response.ok) {
       const error2 = extractDaemonError(parsed);
       const message = error2?.message ?? `Daemon request failed with HTTP ${response.status}`;
-      throw new DaemonClientError(message, { code: error2?.code, status: response.status, path: path3 });
+      throw new DaemonClientError(message, { code: error2?.code, status: response.status, path: path4 });
     }
     return parsed;
   }
@@ -23041,9 +23042,10 @@ var OPENCODE_TOOL_NAMES = [
   "opencode_kill",
   "opencode_cleanup"
 ];
-var RETINUE_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent"];
+var RETINUE_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"];
 var DEFAULT_MCP_WAIT_MAX_MS = 9e4;
 function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
+  const agentPool = new RetinueAgentPool();
   const server = new McpServer({
     name: "retinue",
     version: "0.1.0"
@@ -23067,6 +23069,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
     async (args) => {
       const taskName = normalizeTaskName(args);
       const backend = await createRetinueBackend(retinue);
+      const evicted = await agentPool.ensureSpawnSlot(retinue, process.env);
       const started = await backend.run({
         cwd: args.cwd ?? process.cwd(),
         prompt: args.message,
@@ -23077,13 +23080,20 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
           agent: process.env.RETINUE_OPENCODE_AGENT
         } : {}
       });
+      agentPool.add({
+        jobId: started.jobId,
+        backend: started.backend ?? backend.kind,
+        taskName,
+        createdAt: Date.now()
+      });
       return jsonToolResult({
         task_name: taskName,
         jobId: started.jobId,
         status: started.status,
         backend: started.backend,
         sessionId: started.sessionId,
-        externalSessionId: started.externalSessionId
+        externalSessionId: started.externalSessionId,
+        evictedJobId: evicted?.jobId
       });
     }
   );
@@ -23143,10 +23153,24 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
       const status = await backend.status({ jobId });
       if (isJobMeta(status) && status.status === "running") {
         await backend.abort({ jobId });
+        agentPool.remove(jobId);
         return jsonToolResult({ jobId, status: "killed" });
       }
+      agentPool.remove(jobId);
       return jsonToolResult({ jobId, status: "status" in status ? status.status : "unknown" });
     }
+  );
+  server.registerTool(
+    "retinue_list_agents",
+    {
+      title: "List Retinue Agents",
+      description: "List live Retinue child agents tracked by this MCP server session.",
+      inputSchema: {}
+    },
+    async () => jsonToolResult({
+      maxAgents: parseMaxConcurrentAgents(process.env),
+      agents: await agentPool.list(retinue)
+    })
   );
   return server;
 }
@@ -23360,6 +23384,91 @@ function withOpenCodeDefaults(args) {
     model: args.model ?? process.env.RETINUE_OPENCODE_MODEL,
     agent: args.agent ?? process.env.RETINUE_OPENCODE_AGENT
   };
+}
+var RetinueAgentPool = class {
+  entries = /* @__PURE__ */ new Map();
+  async ensureSpawnSlot(retinue, env) {
+    const maxAgents = parseMaxConcurrentAgents(env);
+    if (maxAgents === void 0) {
+      return void 0;
+    }
+    const activeEntries = [];
+    for (const entry of [...this.entries.values()]) {
+      const backend2 = await createRetinueBackendByKind(entry.backend, retinue);
+      const status = await backend2.status({ jobId: entry.jobId });
+      if (!isJobMeta(status) || !isActivePoolStatus(status.status)) {
+        this.entries.delete(entry.jobId);
+        continue;
+      }
+      activeEntries.push(entry);
+    }
+    if (activeEntries.length < maxAgents) {
+      return void 0;
+    }
+    activeEntries.sort((left, right) => left.createdAt - right.createdAt);
+    const evicted = activeEntries[0];
+    if (!evicted) {
+      return void 0;
+    }
+    const backend = await createRetinueBackendByKind(evicted.backend, retinue);
+    await backend.abort({ jobId: evicted.jobId });
+    this.entries.delete(evicted.jobId);
+    await writeMcpTrace(env, {
+      event: "retinue_agent_evicted",
+      evictedJobId: evicted.jobId,
+      taskName: evicted.taskName,
+      backend: evicted.backend,
+      maxAgents
+    });
+    return evicted;
+  }
+  add(entry) {
+    this.entries.set(entry.jobId, entry);
+  }
+  remove(jobId) {
+    this.entries.delete(jobId);
+  }
+  async list(retinue) {
+    const agents = [];
+    for (const entry of [...this.entries.values()].sort((left, right) => left.createdAt - right.createdAt)) {
+      const backend = await createRetinueBackendByKind(entry.backend, retinue);
+      const status = await backend.status({ jobId: entry.jobId });
+      if (!isJobMeta(status)) {
+        this.entries.delete(entry.jobId);
+        continue;
+      }
+      if (!isActivePoolStatus(status.status)) {
+        this.entries.delete(entry.jobId);
+        continue;
+      }
+      agents.push({
+        jobId: entry.jobId,
+        task_name: entry.taskName,
+        backend: entry.backend,
+        status: status.status,
+        createdAt: new Date(entry.createdAt).toISOString()
+      });
+    }
+    return agents;
+  }
+};
+function parseMaxConcurrentAgents(env) {
+  const configured = parseOptionalNumber(env.RETINUE_MAX_CONCURRENT_AGENTS);
+  const maxAgents = configured ?? 3;
+  if (!Number.isFinite(maxAgents)) {
+    return 3;
+  }
+  return Math.max(1, Math.floor(maxAgents));
+}
+function isActivePoolStatus(status) {
+  return status === "running" || status === "stalled" || status === "orphaned" || status === "abandoned";
+}
+async function writeMcpTrace(env, value) {
+  const stateDir = resolveStateDir({ explicitStateDir: env.RETINUE_STATE_DIR, env });
+  const tracePath = getRetinueTracePath(stateDir);
+  await fs4.mkdir(path3.dirname(tracePath), { recursive: true });
+  await fs4.appendFile(tracePath, `${JSON.stringify({ timestamp: (/* @__PURE__ */ new Date()).toISOString(), ...value })}
+`, "utf8");
 }
 async function createRetinueBackend(retinue) {
   return createRetinueBackendByKind(readRetinueBackendKindFromEnv(), retinue);

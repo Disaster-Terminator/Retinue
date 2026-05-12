@@ -9,12 +9,14 @@ Hermes reads MCP servers from `~/.hermes/config.yaml` under the `mcp_servers` ke
 - `retinue_spawn_agent`
 - `retinue_wait_agent`
 - `retinue_close_agent`
+- `retinue_list_agents`
 
 Hermes registers them with the server prefix, so Hermes tool names are:
 
 - `mcp_retinue_retinue_spawn_agent`
 - `mcp_retinue_retinue_wait_agent`
 - `mcp_retinue_retinue_close_agent`
+- `mcp_retinue_retinue_list_agents`
 
 The Retinue backend remains deployment-selected. The default Hermes config uses OpenCode with Retinue-managed auto-serve and the OpenCode `plan` agent.
 

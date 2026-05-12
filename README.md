@@ -78,6 +78,7 @@ Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE
 - Codex 能调用 `retinue_spawn_agent`。
 - `retinue_wait_agent` 返回包含 `RETINUE_OK` 的结果。
 - `retinue_close_agent` 返回 terminal 状态。
+- `retinue_list_agents` 可列出当前 MCP 会话内仍在运行的 Retinue 子代理。
 
 说明：Codex CLI 0.128 的 `codex plugin marketplace add/upgrade/remove` 只管理插件市场；插件安装在 Codex TUI 的 `/plugins` 里完成。`codex plugin marketplace upgrade retinue-local` 只用于更新已有市场，不是安装命令。
 
@@ -107,6 +108,7 @@ Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE
 - OpenCode 使用当前本机 profile，包括 provider、model、login、permission、plugin 和 skill。
 - `plan` 是 0.1.0 的安全默认；后续会通过 Retinue 配置支持切到 `build`，不把这个选择暴露成每次 tool call 的参数。
 - `retinue_wait_agent` 会把单次 MCP wait 限制在宿主安全窗口内，默认最大 90 秒。长任务应重复调用 wait 轮询；可用 `RETINUE_MCP_WAIT_MAX_MS` 调整上限。
+- 每个 Retinue MCP server 会话默认最多保留 3 个 active 子代理，贴近 Codex v2 的默认“4 个线程含 root”模型。第 4 个 active spawn 会关闭最旧的 running 子代理并返回 `evictedJobId`；可用 `RETINUE_MAX_CONCURRENT_AGENTS` 调整这个上限。
 
 当 `retinue_wait_agent` 返回 `status: "running"` 时，子代理仍在运行。继续用同一个 `jobId` 再次调用 `retinue_wait_agent`；只有任务进入 `failed`、`killed`、`stalled` 或其他终态时，才需要按终态处理或重新启动。
 
@@ -152,7 +154,7 @@ codex mcp add retinue \
 
 ## Hermes Agent
 
-Hermes Agent 可以把 Retinue 当作 master-agent MCP 集成来用。Hermes 不是 Retinue 后端；Hermes 通过 `mcp_servers` 加载 Retinue，然后调用带前缀的工具：`mcp_retinue_retinue_spawn_agent`、`mcp_retinue_retinue_wait_agent`、`mcp_retinue_retinue_close_agent`。
+Hermes Agent 可以把 Retinue 当作 master-agent MCP 集成来用。Hermes 不是 Retinue 后端；Hermes 通过 `mcp_servers` 加载 Retinue，然后调用带前缀的工具：`mcp_retinue_retinue_spawn_agent`、`mcp_retinue_retinue_wait_agent`、`mcp_retinue_retinue_close_agent`、`mcp_retinue_retinue_list_agents`。
 
 安装 npm runtime，并把 `integrations/hermes/mcp-retinue.yaml` 合并进 `~/.hermes/config.yaml`；完整说明见 [Hermes Agent Integration](docs/integrations/HERMES.md)。默认仍然是 OpenCode `plan`，并由 Retinue 管理 OpenCode server 生命周期。
 
