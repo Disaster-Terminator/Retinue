@@ -23091,6 +23091,14 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
         jobId: started.jobId,
         status: started.status,
         backend: started.backend,
+        cwd: started.cwd,
+        jobDir: getJobPaths(
+          resolveStateDir({
+            explicitStateDir: process.env.RETINUE_STATE_DIR,
+            env: process.env
+          }),
+          started.jobId
+        ).dir,
         sessionId: started.sessionId,
         externalSessionId: started.externalSessionId,
         evictedJobId: evicted?.jobId
@@ -23117,14 +23125,29 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
           explicitStateDir: process.env.RETINUE_STATE_DIR,
           env: process.env
         });
+        const paths = getJobPaths(stateDir, jobId);
+        const [stdoutTail, stderrTail] = await Promise.all([readTailIfExists(paths.stdout), readTailIfExists(paths.stderr)]);
         return jsonToolResult({
           task_name: isJobMeta(status) ? status.name : void 0,
           jobId,
           status: waited.status,
           backend: isJobMeta(status) ? status.backend : void 0,
+          cwd: isJobMeta(status) ? status.cwd : void 0,
+          createdAt: isJobMeta(status) ? status.createdAt : void 0,
+          updatedAt: isJobMeta(status) ? status.updatedAt : void 0,
           externalSessionId: isJobMeta(status) ? status.externalSessionId : void 0,
           externalServerUrl: isJobMeta(status) ? status.externalServerUrl : void 0,
           stateDir,
+          jobDir: paths.dir,
+          promptPath: paths.prompt,
+          stdoutPath: paths.stdout,
+          stderrPath: paths.stderr,
+          stdoutTail: stdoutTail.text,
+          stderrTail: stderrTail.text,
+          stdoutTailBytes: stdoutTail.bytes,
+          stderrTailBytes: stderrTail.bytes,
+          stdoutTailTruncated: stdoutTail.truncated,
+          stderrTailTruncated: stderrTail.truncated,
           tracePath: getRetinueTracePath(stateDir),
           requestedTimeoutMs: timeoutMs,
           effectiveTimeoutMs
@@ -23469,6 +23492,21 @@ async function writeMcpTrace(env, value) {
   await fs4.mkdir(path3.dirname(tracePath), { recursive: true });
   await fs4.appendFile(tracePath, `${JSON.stringify({ timestamp: (/* @__PURE__ */ new Date()).toISOString(), ...value })}
 `, "utf8");
+}
+async function readTailIfExists(filePath, maxBytes = 4096) {
+  try {
+    const text = await fs4.readFile(filePath, "utf8");
+    const bytes = Buffer.byteLength(text, "utf8");
+    if (bytes <= maxBytes) {
+      return { text, bytes, truncated: false };
+    }
+    return { text: text.slice(-maxBytes), bytes, truncated: true };
+  } catch (error2) {
+    if (typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === "ENOENT") {
+      return { text: "", bytes: 0, truncated: false };
+    }
+    throw error2;
+  }
 }
 async function createRetinueBackend(retinue) {
   return createRetinueBackendByKind(readRetinueBackendKindFromEnv(), retinue);

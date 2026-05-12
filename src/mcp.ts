@@ -96,6 +96,14 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
         jobId: started.jobId,
         status: started.status,
         backend: started.backend,
+        cwd: started.cwd,
+        jobDir: getJobPaths(
+          resolveStateDir({
+            explicitStateDir: process.env.RETINUE_STATE_DIR,
+            env: process.env
+          }),
+          started.jobId
+        ).dir,
         sessionId: started.sessionId,
         externalSessionId: started.externalSessionId,
         evictedJobId: evicted?.jobId
@@ -123,14 +131,29 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
           explicitStateDir: process.env.RETINUE_STATE_DIR,
           env: process.env
         });
+        const paths = getJobPaths(stateDir, jobId);
+        const [stdoutTail, stderrTail] = await Promise.all([readTailIfExists(paths.stdout), readTailIfExists(paths.stderr)]);
         return jsonToolResult({
           task_name: isJobMeta(status) ? status.name : undefined,
           jobId,
           status: waited.status,
           backend: isJobMeta(status) ? status.backend : undefined,
+          cwd: isJobMeta(status) ? status.cwd : undefined,
+          createdAt: isJobMeta(status) ? status.createdAt : undefined,
+          updatedAt: isJobMeta(status) ? status.updatedAt : undefined,
           externalSessionId: isJobMeta(status) ? status.externalSessionId : undefined,
           externalServerUrl: isJobMeta(status) ? status.externalServerUrl : undefined,
           stateDir,
+          jobDir: paths.dir,
+          promptPath: paths.prompt,
+          stdoutPath: paths.stdout,
+          stderrPath: paths.stderr,
+          stdoutTail: stdoutTail.text,
+          stderrTail: stderrTail.text,
+          stdoutTailBytes: stdoutTail.bytes,
+          stderrTailBytes: stderrTail.bytes,
+          stdoutTailTruncated: stdoutTail.truncated,
+          stderrTailTruncated: stderrTail.truncated,
           tracePath: getRetinueTracePath(stateDir),
           requestedTimeoutMs: timeoutMs,
           effectiveTimeoutMs
@@ -529,6 +552,22 @@ async function writeMcpTrace(env: NodeJS.ProcessEnv, value: Record<string, unkno
   const tracePath = getRetinueTracePath(stateDir);
   await fs.mkdir(path.dirname(tracePath), { recursive: true });
   await fs.appendFile(tracePath, `${JSON.stringify({ timestamp: new Date().toISOString(), ...value })}\n`, "utf8");
+}
+
+async function readTailIfExists(filePath: string, maxBytes = 4096): Promise<{ text: string; bytes: number; truncated: boolean }> {
+  try {
+    const text = await fs.readFile(filePath, "utf8");
+    const bytes = Buffer.byteLength(text, "utf8");
+    if (bytes <= maxBytes) {
+      return { text, bytes, truncated: false };
+    }
+    return { text: text.slice(-maxBytes), bytes, truncated: true };
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
+      return { text: "", bytes: 0, truncated: false };
+    }
+    throw error;
+  }
 }
 
 async function createRetinueBackend(retinue: RetinueApi): Promise<RetinueBackend> {
