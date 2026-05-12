@@ -283,7 +283,13 @@ describe("MCP tools", () => {
           arguments: { cwd: tempDir, message: "retinue mcp", task_name: "smoke" }
         })
       );
-      expect(spawn).toMatchObject({ task_name: "smoke", backend: "opencode", status: "running" });
+      expect(spawn).toMatchObject({
+        task_name: "smoke",
+        backend: "opencode",
+        status: "running",
+        cwd: tempDir,
+        jobDir: path.join(tempDir, "jobs", spawn.jobId)
+      });
       fakeOpenCode.completeSession(spawn.externalSessionId);
 
       const wait = parseToolJson(
@@ -342,13 +348,25 @@ describe("MCP tools", () => {
         jobId: spawn.jobId,
         status: "running",
         backend: "opencode",
+        cwd: tempDir,
         externalSessionId: spawn.externalSessionId,
         externalServerUrl: fakeOpenCode.url,
         stateDir: tempDir,
+        jobDir: path.join(tempDir, "jobs", spawn.jobId),
+        promptPath: path.join(tempDir, "jobs", spawn.jobId, "prompt.md"),
+        stdoutPath: path.join(tempDir, "jobs", spawn.jobId, "stdout.log"),
+        stderrPath: path.join(tempDir, "jobs", spawn.jobId, "stderr.log"),
+        stdoutTail: "",
+        stdoutTailBytes: 0,
+        stdoutTailTruncated: false,
+        stderrTailTruncated: false,
         tracePath: path.join(tempDir, "logs", "retinue.jsonl"),
         requestedTimeoutMs: 5000,
         effectiveTimeoutMs: 5
       });
+      expect(wait.stderrTail).toContain('"event":"opencode_job_wait_timeout"');
+      expect(wait.stderrTail).toContain('"jobMessageCount"');
+      expect(wait.stderrTailBytes).toBeGreaterThan(0);
     } finally {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;

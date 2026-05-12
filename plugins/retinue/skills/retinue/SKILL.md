@@ -38,6 +38,10 @@ Use these Retinue tools for normal Codex subagent work:
 - `retinue_close_agent`
 - `retinue_list_agents`
 
+When spawning read-only exploration work, pass an explicit absolute `cwd` and ask the child to include path evidence for file-existence claims. `retinue_spawn_agent` returns the effective `cwd` and job artifact directory; use those fields to catch workspace drift early.
+
+If `retinue_wait_agent` returns `running`, treat it as a workflow event, not a dead end. The response includes `stateDir`, `tracePath`, `jobDir`, `promptPath`, `stdoutPath`, `stderrPath`, and bounded stdout/stderr tails. Inspect the tail fields first; they usually contain recent backend diagnostics without requiring a separate filesystem read.
+
 Backend-specific `opencode_*` and `claude_*` tools are adapter/debug surfaces and are hidden by default in plugin deployments. If a developer explicitly enables `RETINUE_EXPOSE_BACKEND_TOOLS=1`, do not prefer those tools for product-level Codex subagent delegation unless debugging a backend-specific issue.
 
 ## Production E2E Gate
