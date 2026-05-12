@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 
 const REAL_PROBE_ENV = "RETINUE_REAL_HERMES_RETINUE_PROBE";
-const DEFAULT_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent"];
+const DEFAULT_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"];
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));

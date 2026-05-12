@@ -36,6 +36,7 @@ Use these Retinue tools for normal Codex subagent work:
 - `retinue_spawn_agent`
 - `retinue_wait_agent`
 - `retinue_close_agent`
+- `retinue_list_agents`
 
 Backend-specific `opencode_*` and `claude_*` tools are adapter/debug surfaces and are hidden by default in plugin deployments. If a developer explicitly enables `RETINUE_EXPOSE_BACKEND_TOOLS=1`, do not prefer those tools for product-level Codex subagent delegation unless debugging a backend-specific issue.
 

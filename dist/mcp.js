@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs/promises";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -30,9 +31,10 @@ export const OPENCODE_TOOL_NAMES = [
     "opencode_kill",
     "opencode_cleanup"
 ];
-export const RETINUE_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent"];
+export const RETINUE_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"];
 const DEFAULT_MCP_WAIT_MAX_MS = 90_000;
 export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
+    const agentPool = new RetinueAgentPool();
     const server = new McpServer({
         name: "retinue",
         version: "0.1.0"
@@ -53,6 +55,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
     }, async (args) => {
         const taskName = normalizeTaskName(args);
         const backend = await createRetinueBackend(retinue);
+        const evicted = await agentPool.ensureSpawnSlot(retinue, process.env);
         const started = await backend.run({
             cwd: args.cwd ?? process.cwd(),
             prompt: args.message,
@@ -65,13 +68,20 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
                 }
                 : {})
         });
+        agentPool.add({
+            jobId: started.jobId,
+            backend: started.backend ?? backend.kind,
+            taskName,
+            createdAt: Date.now()
+        });
         return jsonToolResult({
             task_name: taskName,
             jobId: started.jobId,
             status: started.status,
             backend: started.backend,
             sessionId: started.sessionId,
-            externalSessionId: started.externalSessionId
+            externalSessionId: started.externalSessionId,
+            evictedJobId: evicted?.jobId
         });
     });
     server.registerTool("retinue_wait_agent", {
@@ -123,10 +133,20 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
         const status = await backend.status({ jobId });
         if (isJobMeta(status) && status.status === "running") {
             await backend.abort({ jobId });
+            agentPool.remove(jobId);
             return jsonToolResult({ jobId, status: "killed" });
         }
+        agentPool.remove(jobId);
         return jsonToolResult({ jobId, status: "status" in status ? status.status : "unknown" });
     });
+    server.registerTool("retinue_list_agents", {
+        title: "List Retinue Agents",
+        description: "List live Retinue child agents tracked by this MCP server session.",
+        inputSchema: {}
+    }, async () => jsonToolResult({
+        maxAgents: parseMaxConcurrentAgents(process.env),
+        agents: await agentPool.list(retinue)
+    }));
     return server;
 }
 function registerBackendTools(server, retinue) {
@@ -277,6 +297,90 @@ function withOpenCodeDefaults(args) {
         model: args.model ?? process.env.RETINUE_OPENCODE_MODEL,
         agent: args.agent ?? process.env.RETINUE_OPENCODE_AGENT
     };
+}
+class RetinueAgentPool {
+    entries = new Map();
+    async ensureSpawnSlot(retinue, env) {
+        const maxAgents = parseMaxConcurrentAgents(env);
+        if (maxAgents === undefined) {
+            return undefined;
+        }
+        const activeEntries = [];
+        for (const entry of [...this.entries.values()]) {
+            const backend = await createRetinueBackendByKind(entry.backend, retinue);
+            const status = await backend.status({ jobId: entry.jobId });
+            if (!isJobMeta(status) || !isActivePoolStatus(status.status)) {
+                this.entries.delete(entry.jobId);
+                continue;
+            }
+            activeEntries.push(entry);
+        }
+        if (activeEntries.length < maxAgents) {
+            return undefined;
+        }
+        activeEntries.sort((left, right) => left.createdAt - right.createdAt);
+        const evicted = activeEntries[0];
+        if (!evicted) {
+            return undefined;
+        }
+        const backend = await createRetinueBackendByKind(evicted.backend, retinue);
+        await backend.abort({ jobId: evicted.jobId });
+        this.entries.delete(evicted.jobId);
+        await writeMcpTrace(env, {
+            event: "retinue_agent_evicted",
+            evictedJobId: evicted.jobId,
+            taskName: evicted.taskName,
+            backend: evicted.backend,
+            maxAgents
+        });
+        return evicted;
+    }
+    add(entry) {
+        this.entries.set(entry.jobId, entry);
+    }
+    remove(jobId) {
+        this.entries.delete(jobId);
+    }
+    async list(retinue) {
+        const agents = [];
+        for (const entry of [...this.entries.values()].sort((left, right) => left.createdAt - right.createdAt)) {
+            const backend = await createRetinueBackendByKind(entry.backend, retinue);
+            const status = await backend.status({ jobId: entry.jobId });
+            if (!isJobMeta(status)) {
+                this.entries.delete(entry.jobId);
+                continue;
+            }
+            if (!isActivePoolStatus(status.status)) {
+                this.entries.delete(entry.jobId);
+                continue;
+            }
+            agents.push({
+                jobId: entry.jobId,
+                task_name: entry.taskName,
+                backend: entry.backend,
+                status: status.status,
+                createdAt: new Date(entry.createdAt).toISOString()
+            });
+        }
+        return agents;
+    }
+}
+function parseMaxConcurrentAgents(env) {
+    const configured = parseOptionalNumber(env.RETINUE_MAX_CONCURRENT_AGENTS);
+    const maxAgents = configured ?? 3;
+    if (!Number.isFinite(maxAgents)) {
+        return 3;
+    }
+    return Math.max(1, Math.floor(maxAgents));
+}
+function isActivePoolStatus(status) {
+    return status === "running" || status === "stalled" || status === "orphaned" || status === "abandoned";
+}
+async function writeMcpTrace(env, value) {
+    const stateDir = resolveStateDir({ explicitStateDir: env.RETINUE_STATE_DIR, env });
+    const tracePath = getRetinueTracePath(stateDir);
+    await fs.mkdir(path.dirname(tracePath), { recursive: true });
+    await fs.appendFile(tracePath, `${JSON.stringify({ timestamp: new Date().toISOString(), ...value })}\n`, "utf8");
 }
 async function createRetinueBackend(retinue) {
     return createRetinueBackendByKind(readRetinueBackendKindFromEnv(), retinue);

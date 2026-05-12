@@ -26,6 +26,7 @@ Hermes registers Retinue MCP tools with the `mcp_retinue_` prefix:
 - `mcp_retinue_retinue_spawn_agent`
 - `mcp_retinue_retinue_wait_agent`
 - `mcp_retinue_retinue_close_agent`
+- `mcp_retinue_retinue_list_agents`
 
 Retinue selects the backend from deployment configuration. The default Hermes integration uses OpenCode with the `plan` agent and Retinue-managed OpenCode server lifecycle. Do not pass backend, model, provider, profile, permission, or OpenCode server choices in tool arguments.
 

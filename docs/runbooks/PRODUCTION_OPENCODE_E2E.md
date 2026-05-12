@@ -114,6 +114,7 @@ This probe validates the OpenCode-first Retinue product surface:
 - `retinue_spawn_agent`
 - `retinue_wait_agent`
 - `retinue_close_agent`
+- `retinue_list_agents`
 
 It intentionally does not pass a backend, profile, model, agent, or permission mode through the MCP tool arguments. Retinue uses the deployment-selected OpenCode server from `RETINUE_OPENCODE_BASE_URL`, and OpenCode uses its active profile.
 
@@ -126,6 +127,17 @@ RETINUE_BACKEND=opencode \
 RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
 RETINUE_OPENCODE_AGENT=plan \
 pnpm run probe:real:retinue-opencode
+```
+
+Slot-pool pressure probe:
+
+```bash
+pnpm run build
+RETINUE_REAL_OPENCODE_SLOT_PROBE=1 \
+RETINUE_BACKEND=opencode \
+RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
+RETINUE_OPENCODE_AGENT=plan \
+pnpm run probe:real:retinue-opencode-slots
 ```
 
 On PowerShell:

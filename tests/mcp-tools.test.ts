@@ -42,7 +42,7 @@ describe("MCP tools", () => {
   });
 
   it("declares the Retinue Codex-like spawn tools", () => {
-    expect(RETINUE_TOOL_NAMES).toEqual(["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent"]);
+    expect(RETINUE_TOOL_NAMES).toEqual(["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"]);
   });
 
   it("creates a server instance with registered tools", () => {
@@ -262,6 +262,7 @@ describe("MCP tools", () => {
       assertAbsentFields(tools.tools, "retinue_wait_agent", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
       assertRequiredFields(tools.tools, "retinue_close_agent", ["jobId"]);
       assertAbsentFields(tools.tools, "retinue_close_agent", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
+      assertAbsentFields(tools.tools, "retinue_list_agents", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
     } finally {
       await closeMcpClient(connection);
     }
@@ -352,6 +353,123 @@ describe("MCP tools", () => {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
       delete process.env.RETINUE_MCP_WAIT_MAX_MS;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("evicts the oldest running Retinue OpenCode agent when the session slot pool is full", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-slots-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    fakeOpenCode.setAutoAssistantResponses(false);
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.RETINUE_MAX_CONCURRENT_AGENTS = "3";
+
+      const spawns = [];
+      for (const taskName of ["slot-1", "slot-2", "slot-3", "slot-4"]) {
+        spawns.push(
+          parseToolJson(
+            await connection.client.callTool({
+              name: "retinue_spawn_agent",
+              arguments: { cwd: tempDir, message: `retinue ${taskName}`, task_name: taskName }
+            })
+          )
+        );
+      }
+
+      expect(spawns[3]).toMatchObject({
+        task_name: "slot-4",
+        backend: "opencode",
+        status: "running",
+        evictedJobId: spawns[0].jobId
+      });
+
+      const evicted = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_close_agent",
+          arguments: { jobId: spawns[0].jobId }
+        })
+      );
+      expect(evicted).toMatchObject({ jobId: spawns[0].jobId, status: "killed" });
+
+      const trace = await fs.readFile(path.join(tempDir, "logs", "retinue.jsonl"), "utf8");
+      expect(trace).toContain('"event":"retinue_agent_evicted"');
+      expect(trace).toContain(`"evictedJobId":"${spawns[0].jobId}"`);
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      delete process.env.RETINUE_MAX_CONCURRENT_AGENTS;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("lists active Retinue agents in the current MCP session pool", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-list-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    fakeOpenCode.setAutoAssistantResponses(false);
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+
+      const first = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue list first", task_name: "list-first" }
+        })
+      );
+      const second = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue list second", task_name: "list-second" }
+        })
+      );
+
+      const list = parseToolJson(await connection.client.callTool({ name: "retinue_list_agents", arguments: {} }));
+      expect(list).toMatchObject({
+        maxAgents: 3,
+        agents: [
+          { jobId: first.jobId, task_name: "list-first", backend: "opencode", status: "running" },
+          { jobId: second.jobId, task_name: "list-second", backend: "opencode", status: "running" }
+        ]
+      });
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("removes closed Retinue agents from the MCP session pool", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-close-pool-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    fakeOpenCode.setAutoAssistantResponses(false);
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+
+      const spawn = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue close pool", task_name: "close-pool" }
+        })
+      );
+      await connection.client.callTool({
+        name: "retinue_close_agent",
+        arguments: { jobId: spawn.jobId }
+      });
+
+      const list = parseToolJson(await connection.client.callTool({ name: "retinue_list_agents", arguments: {} }));
+      expect(list).toMatchObject({ maxAgents: 3, agents: [] });
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });
     }

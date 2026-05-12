@@ -93,7 +93,7 @@ describe("package.json guardrails", () => {
     for (const scriptName of realProbeScriptNames) {
       const command = scripts[scriptName];
       expect(command).toBeTypeOf("string");
-      expect(command).toMatch(/scripts\/(probe-real-(claude|opencode)|probe-retinue-(opencode|claude)-mcp)\.mjs/);
+      expect(command).toMatch(/scripts\/(probe-real-(claude|opencode)|probe-retinue-(opencode|claude)(-slots)?-mcp|probe-retinue-opencode-slots)\.mjs/);
     }
 
     expect(scripts["probe:hermes-retinue"]).toBe("node scripts/probe-hermes-retinue-mcp.mjs");
@@ -204,7 +204,7 @@ describe("Retinue Codex plugin guardrails", () => {
     try {
       await client.connect(transport);
       const tools = await client.listTools();
-      expect(tools.tools.map((tool) => tool.name)).toEqual(["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent"]);
+      expect(tools.tools.map((tool) => tool.name)).toEqual(["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"]);
       expect(Buffer.concat(stderrChunks).toString("utf8")).toBe("");
     } finally {
       await Promise.allSettled([client.close(), transport.close()]);
@@ -231,7 +231,7 @@ describe("Retinue Codex plugin guardrails", () => {
     try {
       await client.connect(transport);
       const tools = await client.listTools();
-      expect(tools.tools.map((tool) => tool.name)).toEqual(["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent"]);
+      expect(tools.tools.map((tool) => tool.name)).toEqual(["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"]);
     } finally {
       await Promise.allSettled([client.close(), transport.close()]);
       rmSync(pluginCacheDir, { recursive: true, force: true });
