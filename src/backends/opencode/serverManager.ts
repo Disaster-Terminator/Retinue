@@ -369,6 +369,9 @@ function buildOpenCodeCommandCandidates(platform: NodeJS.Platform, env: NodeJS.P
   for (const directory of getPathEntries(env, ":")) {
     add(path.join(directory, "opencode"));
   }
+  for (const directory of getPosixOpenCodeFallbackDirectories(env)) {
+    add(path.join(directory, "opencode"));
+  }
   return candidates;
 }
 
@@ -392,6 +395,11 @@ function getWindowsOpenCodeFallbackDirectories(env: NodeJS.ProcessEnv | Record<s
     userProfile ? path.win32.join(userProfile, "AppData", "Local", "pnpm") : undefined,
     userProfile ? path.win32.join(userProfile, ".bun", "bin") : undefined
   ].filter((entry): entry is string => Boolean(entry));
+}
+
+function getPosixOpenCodeFallbackDirectories(env: NodeJS.ProcessEnv | Record<string, string | undefined>): string[] {
+  const home = env.HOME;
+  return [home ? path.join(home, ".opencode", "bin") : undefined].filter((entry): entry is string => Boolean(entry));
 }
 
 function formatExit(code: number | null, signal: NodeJS.Signals | null): string {

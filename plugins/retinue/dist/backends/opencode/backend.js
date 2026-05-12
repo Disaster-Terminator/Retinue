@@ -133,23 +133,23 @@ export class OpenCodeBackend {
         const diagnostic = await this.inspectJob(meta);
         if (meta.status === "stalled") {
             const stderr = createStallMessage(diagnostic);
-            await fs.writeFile(paths.stdout, "", "utf8");
+            await fs.writeFile(paths.stdout, stderr, "utf8");
             await fs.appendFile(paths.stderr, `${stderr}\n`, "utf8");
             await this.writeJobTrace("opencode_job_result_read", meta, diagnostic);
             await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_result_read", diagnostic });
             return {
                 jobId: handle.jobId,
                 status: meta.status,
-                stdout: "",
+                stdout: stderr,
                 stderr,
                 stdoutPath: paths.stdout,
                 stderrPath: paths.stderr,
-                stdoutBytes: 0,
+                stdoutBytes: Buffer.byteLength(stderr, "utf8"),
                 stderrBytes: Buffer.byteLength(stderr, "utf8"),
                 stdoutTruncated: false,
                 stderrTruncated: false,
                 sessionId: meta.externalSessionId,
-                parsedStdout: { result: "" },
+                parsedStdout: { result: stderr },
                 error: stderr
             };
         }
@@ -244,7 +244,7 @@ export class OpenCodeBackend {
         }
     }
     async reconcileStatus(meta) {
-        if (!meta.externalSessionId || isTerminal(meta.status)) {
+        if (!meta.externalSessionId || (isTerminal(meta.status) && meta.status !== "stalled")) {
             return meta;
         }
         try {
@@ -262,6 +262,9 @@ export class OpenCodeBackend {
             }
             else if (await this.hasNewCompletedAssistantMessage(client, meta.externalSessionId, meta)) {
                 status = "completed";
+            }
+            else if (meta.status === "stalled") {
+                status = "stalled";
             }
             else if (await this.isStalledOpenCodeJob(client, meta.externalSessionId, meta)) {
                 status = "stalled";

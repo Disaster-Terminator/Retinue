@@ -21365,7 +21365,7 @@ var OpenCodeBackend = class {
     const diagnostic = await this.inspectJob(meta);
     if (meta.status === "stalled") {
       const stderr = createStallMessage(diagnostic);
-      await fs.writeFile(paths.stdout, "", "utf8");
+      await fs.writeFile(paths.stdout, stderr, "utf8");
       await fs.appendFile(paths.stderr, `${stderr}
 `, "utf8");
       await this.writeJobTrace("opencode_job_result_read", meta, diagnostic);
@@ -21373,16 +21373,16 @@ var OpenCodeBackend = class {
       return {
         jobId: handle.jobId,
         status: meta.status,
-        stdout: "",
+        stdout: stderr,
         stderr,
         stdoutPath: paths.stdout,
         stderrPath: paths.stderr,
-        stdoutBytes: 0,
+        stdoutBytes: Buffer.byteLength(stderr, "utf8"),
         stderrBytes: Buffer.byteLength(stderr, "utf8"),
         stdoutTruncated: false,
         stderrTruncated: false,
         sessionId: meta.externalSessionId,
-        parsedStdout: { result: "" },
+        parsedStdout: { result: stderr },
         error: stderr
       };
     }
@@ -21476,7 +21476,7 @@ var OpenCodeBackend = class {
     }
   }
   async reconcileStatus(meta) {
-    if (!meta.externalSessionId || isTerminal2(meta.status)) {
+    if (!meta.externalSessionId || isTerminal2(meta.status) && meta.status !== "stalled") {
       return meta;
     }
     try {
@@ -21491,6 +21491,8 @@ var OpenCodeBackend = class {
         status = "failed";
       } else if (await this.hasNewCompletedAssistantMessage(client, meta.externalSessionId, meta)) {
         status = "completed";
+      } else if (meta.status === "stalled") {
+        status = "stalled";
       } else if (await this.isStalledOpenCodeJob(client, meta.externalSessionId, meta)) {
         status = "stalled";
       } else {
@@ -22059,6 +22061,9 @@ function buildOpenCodeCommandCandidates(platform, env) {
   for (const directory of getPathEntries(env, ":")) {
     add(path2.join(directory, "opencode"));
   }
+  for (const directory of getPosixOpenCodeFallbackDirectories(env)) {
+    add(path2.join(directory, "opencode"));
+  }
   return candidates;
 }
 function getPathEntries(env, delimiter) {
@@ -22077,6 +22082,10 @@ function getWindowsOpenCodeFallbackDirectories(env) {
     userProfile ? path2.win32.join(userProfile, "AppData", "Local", "pnpm") : void 0,
     userProfile ? path2.win32.join(userProfile, ".bun", "bin") : void 0
   ].filter((entry) => Boolean(entry));
+}
+function getPosixOpenCodeFallbackDirectories(env) {
+  const home = env.HOME;
+  return [home ? path2.join(home, ".opencode", "bin") : void 0].filter((entry) => Boolean(entry));
 }
 function formatExit(code, signal) {
   if (code !== null) {
@@ -23033,6 +23042,7 @@ var OPENCODE_TOOL_NAMES = [
   "opencode_cleanup"
 ];
 var RETINUE_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent"];
+var DEFAULT_MCP_WAIT_MAX_MS = 9e4;
 function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
   const server = new McpServer({
     name: "retinue",
@@ -23089,7 +23099,8 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
     },
     async ({ jobId, timeoutMs }) => {
       const backend = await createRetinueBackendForJob(retinue, jobId);
-      const waited = await backend.wait({ jobId }, timeoutMs);
+      const effectiveTimeoutMs = clampMcpWaitTimeoutMs(timeoutMs, process.env);
+      const waited = await backend.wait({ jobId }, effectiveTimeoutMs);
       const status = await backend.status({ jobId });
       if (waited.status === "running") {
         const stateDir = resolveStateDir({
@@ -23104,7 +23115,9 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
           externalSessionId: isJobMeta(status) ? status.externalSessionId : void 0,
           externalServerUrl: isJobMeta(status) ? status.externalServerUrl : void 0,
           stateDir,
-          tracePath: getRetinueTracePath(stateDir)
+          tracePath: getRetinueTracePath(stateDir),
+          requestedTimeoutMs: timeoutMs,
+          effectiveTimeoutMs
         });
       }
       const result = await backend.result({ jobId });
@@ -23260,7 +23273,7 @@ function registerBackendTools(server, retinue) {
       inputSchema: { jobId: external_exports.string(), timeoutMs: external_exports.number().int().nonnegative().optional(), opencodeBaseUrl: external_exports.string().optional() }
     },
     async ({ jobId, timeoutMs, opencodeBaseUrl }) => {
-      const result = await (await createOpenCodeBackend({ opencodeBaseUrl })).wait({ jobId }, timeoutMs);
+      const result = await (await createOpenCodeBackend({ opencodeBaseUrl })).wait({ jobId }, clampMcpWaitTimeoutMs(timeoutMs, process.env));
       return jsonToolResult(result);
     }
   );
@@ -23457,6 +23470,16 @@ function parseOptionalNumber(value) {
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : void 0;
+}
+function clampMcpWaitTimeoutMs(timeoutMs, env) {
+  const maxMs = parseOptionalNumber(env.RETINUE_MCP_WAIT_MAX_MS) ?? DEFAULT_MCP_WAIT_MAX_MS;
+  if (!Number.isFinite(maxMs) || maxMs <= 0) {
+    return timeoutMs;
+  }
+  if (timeoutMs === void 0) {
+    return void 0;
+  }
+  return Math.min(timeoutMs, Math.floor(maxMs));
 }
 function jsonToolResult(value) {
   return {

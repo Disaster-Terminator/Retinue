@@ -106,6 +106,7 @@ Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE
 - Retinue 默认管理 OpenCode server 生命周期，优先使用 `127.0.0.1:4096`，端口被外部服务占用时尝试 `4097` 到 `4127`。
 - OpenCode 使用当前本机 profile，包括 provider、model、login、permission、plugin 和 skill。
 - `plan` 是 0.1.0 的安全默认；后续会通过 Retinue 配置支持切到 `build`，不把这个选择暴露成每次 tool call 的参数。
+- `retinue_wait_agent` 会把单次 MCP wait 限制在宿主安全窗口内，默认最大 90 秒。长任务应重复调用 wait 轮询；可用 `RETINUE_MCP_WAIT_MAX_MS` 调整上限。
 
 ## Claude Code 后端
 

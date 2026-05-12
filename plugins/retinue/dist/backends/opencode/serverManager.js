@@ -275,6 +275,9 @@ function buildOpenCodeCommandCandidates(platform, env) {
     for (const directory of getPathEntries(env, ":")) {
         add(path.join(directory, "opencode"));
     }
+    for (const directory of getPosixOpenCodeFallbackDirectories(env)) {
+        add(path.join(directory, "opencode"));
+    }
     return candidates;
 }
 function getPathEntries(env, delimiter) {
@@ -296,6 +299,10 @@ function getWindowsOpenCodeFallbackDirectories(env) {
         userProfile ? path.win32.join(userProfile, "AppData", "Local", "pnpm") : undefined,
         userProfile ? path.win32.join(userProfile, ".bun", "bin") : undefined
     ].filter((entry) => Boolean(entry));
+}
+function getPosixOpenCodeFallbackDirectories(env) {
+    const home = env.HOME;
+    return [home ? path.join(home, ".opencode", "bin") : undefined].filter((entry) => Boolean(entry));
 }
 function formatExit(code, signal) {
     if (code !== null) {
