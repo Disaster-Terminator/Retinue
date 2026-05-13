@@ -277,6 +277,39 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"incompleteAssistantStallThresholdMs":1');
   });
 
+  it("includes bounded OpenCode assistant errors in stalled diagnostics", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_MS: "600000",
+        RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "complex audit hits provider error" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source two");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source three");
+    server!.appendErroredIncompleteAssistant(started.externalSessionId!, {
+      message: "tool result channel closed",
+      code: "transport_closed",
+      details: "x".repeat(2000)
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"lastMessageError"');
+    expect(trace).toContain("tool result channel closed");
+    expect(trace).toContain("transport_closed");
+    expect(trace).toContain('"truncated":true');
+    expect(trace).toContain('"messageError"');
+  });
+
   it("keeps default incomplete assistant tool rounds running before the long stall threshold", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),

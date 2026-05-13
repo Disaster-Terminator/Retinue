@@ -28,6 +28,13 @@ const DEFAULT_STALL_MS = 10 * 60_000;
 const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = DEFAULT_STALL_MS;
 const DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
 const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 1;
+const DIAGNOSTIC_VALUE_PREVIEW_BYTES = 1000;
+
+interface DiagnosticValuePreview {
+  type: string;
+  preview: string;
+  truncated?: boolean;
+}
 
 interface OpenCodeJobDiagnostic {
   baseUrl: string;
@@ -47,9 +54,11 @@ interface OpenCodeJobDiagnostic {
   lastMessageInfoKeys?: string[];
   lastMessagePartTypes?: string[];
   lastMessageTextBytes?: number;
+  lastMessageError?: DiagnosticValuePreview;
   lastAssistantFinish?: string;
   lastAssistantPartTypes?: string[];
   lastAssistantTextBytes?: number;
+  lastAssistantError?: DiagnosticValuePreview;
   lastAssistantProviderID?: string;
   lastAssistantModelID?: string;
   lastAssistantAgent?: string;
@@ -62,6 +71,7 @@ interface OpenCodeJobDiagnostic {
     partTypes?: string[];
     textBytes: number;
     completed: boolean;
+    messageError?: DiagnosticValuePreview;
   }>;
   selectedAssistantTextBytes?: number;
   selectedAssistantSha256?: string;
@@ -430,9 +440,11 @@ export class OpenCodeBackend implements AgentBackend {
       diagnostic.lastMessageInfoKeys = Object.keys(lastMessage?.info ?? {}).sort();
       diagnostic.lastMessagePartTypes = lastMessage?.parts?.map((part) => part.type ?? "unknown");
       diagnostic.lastMessageTextBytes = Buffer.byteLength(extractMessageText(lastMessage ?? {}), "utf8");
+      diagnostic.lastMessageError = diagnosticValuePreview(lastMessage?.info?.error);
       diagnostic.lastAssistantFinish = stringInfo(lastAssistant, "finish");
       diagnostic.lastAssistantPartTypes = lastAssistant?.parts?.map((part) => part.type ?? "unknown");
       diagnostic.lastAssistantTextBytes = Buffer.byteLength(latestAssistantMessageText(jobMessages), "utf8");
+      diagnostic.lastAssistantError = diagnosticValuePreview(lastAssistant?.info?.error);
       diagnostic.lastAssistantProviderID = stringInfo(lastAssistant, "providerID");
       diagnostic.lastAssistantModelID = stringInfo(lastAssistant, "modelID");
       diagnostic.lastAssistantAgent = stringInfo(lastAssistant, "agent");
@@ -444,7 +456,8 @@ export class OpenCodeBackend implements AgentBackend {
         finish: stringInfo(message, "finish"),
         partTypes: message.parts?.map((part) => part.type ?? "unknown") ?? [],
         textBytes: Buffer.byteLength(extractMessageText(message), "utf8"),
-        completed: isCompletedAssistantMessage(message)
+        completed: isCompletedAssistantMessage(message),
+        messageError: diagnosticValuePreview(message.info?.error)
       }));
       Object.assign(diagnostic, computeStallDiagnostic(jobMessages, meta, this.env));
     } catch (error) {
@@ -531,6 +544,53 @@ async function writeRetinueTrace(stateDir: string, value: unknown): Promise<void
 
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : { value };
+}
+
+function diagnosticValuePreview(value: unknown): DiagnosticValuePreview | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const type = value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+  let text: string;
+  if (typeof value === "string") {
+    text = value;
+  } else {
+    try {
+      text = JSON.stringify(value);
+    } catch {
+      text = String(value);
+    }
+  }
+  const redacted = redactDiagnosticValue(text);
+  const bytes = Buffer.byteLength(redacted, "utf8");
+  if (bytes <= DIAGNOSTIC_VALUE_PREVIEW_BYTES) {
+    return { type, preview: redacted };
+  }
+  return {
+    type,
+    preview: truncateUtf8(redacted, DIAGNOSTIC_VALUE_PREVIEW_BYTES),
+    truncated: true
+  };
+}
+
+function redactDiagnosticValue(value: string): string {
+  return value
+    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]")
+    .replace(/sk-[A-Za-z0-9_-]{16,}/g, "sk-[REDACTED]");
+}
+
+function truncateUtf8(value: string, maxBytes: number): string {
+  let bytes = 0;
+  let result = "";
+  for (const char of value) {
+    const charBytes = Buffer.byteLength(char, "utf8");
+    if (bytes + charBytes > maxBytes) {
+      break;
+    }
+    result += char;
+    bytes += charBytes;
+  }
+  return result;
 }
 
 function isTerminal(status: JobStatusResult["status"]): boolean {
