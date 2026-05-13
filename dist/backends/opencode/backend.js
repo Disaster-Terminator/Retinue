@@ -358,10 +358,12 @@ export class OpenCodeBackend {
             diagnostic.lastMessageFinish = stringInfo(lastMessage, "finish");
             diagnostic.lastMessageInfoKeys = Object.keys(lastMessage?.info ?? {}).sort();
             diagnostic.lastMessagePartTypes = lastMessage?.parts?.map((part) => part.type ?? "unknown");
+            diagnostic.lastMessagePartSummaries = summarizeMessageParts(lastMessage);
             diagnostic.lastMessageTextBytes = Buffer.byteLength(extractMessageText(lastMessage ?? {}), "utf8");
             diagnostic.lastMessageError = diagnosticValuePreview(lastMessage?.info?.error);
             diagnostic.lastAssistantFinish = stringInfo(lastAssistant, "finish");
             diagnostic.lastAssistantPartTypes = lastAssistant?.parts?.map((part) => part.type ?? "unknown");
+            diagnostic.lastAssistantPartSummaries = summarizeMessageParts(lastAssistant);
             diagnostic.lastAssistantTextBytes = Buffer.byteLength(latestAssistantMessageText(jobMessages), "utf8");
             diagnostic.lastAssistantError = diagnosticValuePreview(lastAssistant?.info?.error);
             diagnostic.lastAssistantProviderID = stringInfo(lastAssistant, "providerID");
@@ -374,6 +376,7 @@ export class OpenCodeBackend {
                 role: message.info?.role,
                 finish: stringInfo(message, "finish"),
                 partTypes: message.parts?.map((part) => part.type ?? "unknown") ?? [],
+                partSummaries: summarizeMessageParts(message),
                 textBytes: Buffer.byteLength(extractMessageText(message), "utf8"),
                 completed: isCompletedAssistantMessage(message),
                 messageError: diagnosticValuePreview(message.info?.error)
@@ -488,6 +491,30 @@ function diagnosticValuePreview(value) {
         preview: truncateUtf8(redacted, DIAGNOSTIC_VALUE_PREVIEW_BYTES),
         truncated: true
     };
+}
+function summarizeMessageParts(message) {
+    if (!Array.isArray(message?.parts)) {
+        return undefined;
+    }
+    return message.parts.map((part) => {
+        const state = typeof part.state === "object" && part.state !== null ? part.state : undefined;
+        const summary = {
+            type: typeof part.type === "string" ? part.type : "unknown"
+        };
+        if (typeof part.tool === "string") {
+            summary.tool = part.tool;
+        }
+        if (typeof part.callID === "string") {
+            summary.callID = part.callID;
+        }
+        if (typeof state?.status === "string") {
+            summary.stateStatus = state.status;
+        }
+        if (typeof part.text === "string") {
+            summary.textBytes = Buffer.byteLength(part.text, "utf8");
+        }
+        return summary;
+    });
 }
 function redactDiagnosticValue(value) {
     return value

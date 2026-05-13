@@ -12,7 +12,7 @@ interface FakeSession {
   failureReason?: string;
   messages: Array<{
     info: { id: string; sessionID: string; role: string; time?: { completed?: number }; finish?: string; error?: unknown };
-    parts: Array<{ type: string; text?: string }>;
+    parts: Array<{ type: string; text?: string; tool?: string; callID?: string; state?: Record<string, unknown> }>;
   }>;
 }
 
@@ -198,7 +198,7 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
           parts: [
             { type: "step-start" },
             { type: "text", text: "Let me gather more data before the final answer." },
-            { type: "tool", text: "tool call placeholder" },
+            { type: "tool", text: "tool call placeholder", tool: "task", callID: `call_${nextMessage}`, state: { status: "completed" } },
             { type: "step-finish" }
           ]
         });
@@ -219,7 +219,7 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
           parts: [
             { type: "step-start" },
             ...(text ? [{ type: "text", text }] : []),
-            { type: "tool", text: "tool call placeholder" },
+            { type: "tool", text: "tool call placeholder", tool: "task", callID: `call_${nextMessage}`, state: { status: "completed" } },
             { type: "step-finish" }
           ]
         });
@@ -266,7 +266,11 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
             sessionID: session.id,
             role: "assistant"
           },
-          parts: [{ type: "step-start" }, ...(text ? [{ type: "text", text }] : []), { type: "tool", text: "tool call placeholder" }]
+          parts: [
+            { type: "step-start" },
+            ...(text ? [{ type: "text", text }] : []),
+            { type: "tool", text: "tool call placeholder", tool: "task", callID: `call_${nextMessage}`, state: { status: "running" } }
+          ]
         });
       }
     },
