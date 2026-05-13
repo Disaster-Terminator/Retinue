@@ -86,7 +86,7 @@ MCP hosts commonly enforce their own per-tool timeout. Retinue therefore clamps 
 
 If a wait call returns `status: "running"`, keep the same `jobId` and call wait again. Do not spawn a replacement job only because one wait window elapsed.
 
-If OpenCode returns assistant rounds with no visible text, Retinue keeps them out of successful results. Empty `finish=stop` assistant rounds and long no-text tool-call loops become `stalled` with diagnostics so the caller can inspect logs or close the child agent.
+If OpenCode returns assistant rounds with no visible text, Retinue keeps them out of successful results. Empty `finish=stop` assistant rounds and long no-text tool-call loops become `stalled` with diagnostics so the caller can inspect logs or close the child agent. When OpenCode has already produced several tool-call rounds and the latest assistant round is still incomplete, Retinue uses a shorter incomplete-round stall threshold instead of waiting for the full long-loop threshold.
 
 ## Diagnostics
 

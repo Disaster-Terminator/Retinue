@@ -21240,6 +21240,7 @@ function formatModelOverride(model) {
 var DEFAULT_WAIT_TIMEOUT_MS = 3e4;
 var DEFAULT_WAIT_POLL_MS = 250;
 var DEFAULT_STALL_MS = 10 * 6e4;
+var DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = 9e4;
 var DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
 var DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 1;
 var OpenCodeBackend = class {
@@ -21708,17 +21709,21 @@ function computeStallDiagnostic(jobMessages, meta, env) {
   if (thresholdMs <= 0) {
     return void 0;
   }
+  const incompleteThresholdMs = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS, DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS);
   const roundThreshold = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS, DEFAULT_STALL_TOOL_CALL_ROUNDS);
   const emptyAssistantThreshold = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS, DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS);
   const toolCallAssistantRounds = jobMessages.filter((message) => message.info?.role === "assistant" && isToolCallAssistantMessage(message)).length;
   const emptyAssistantRounds = jobMessages.filter((message) => message.info?.role === "assistant" && isEmptyStopAssistantMessage(message)).length;
-  if (toolCallAssistantRounds < roundThreshold && emptyAssistantRounds < emptyAssistantThreshold) {
+  const lastAssistant = [...jobMessages].reverse().find((message) => message.info?.role === "assistant");
+  const incompleteAssistantRound = isIncompleteAssistantMessage(lastAssistant);
+  if (toolCallAssistantRounds < roundThreshold && emptyAssistantRounds < emptyAssistantThreshold && !incompleteAssistantRound) {
     return void 0;
   }
   const startedAt = Date.parse(meta.createdAt);
   const durationMs = Number.isFinite(startedAt) ? Date.now() - startedAt : 0;
   const emptyAssistantStalled = emptyAssistantRounds >= emptyAssistantThreshold;
-  if (!emptyAssistantStalled && durationMs < thresholdMs) {
+  const incompleteAssistantStalled = incompleteAssistantRound && toolCallAssistantRounds >= roundThreshold && durationMs >= incompleteThresholdMs;
+  if (!emptyAssistantStalled && !incompleteAssistantStalled && durationMs < thresholdMs) {
     return void 0;
   }
   return {
@@ -21726,8 +21731,10 @@ function computeStallDiagnostic(jobMessages, meta, env) {
     emptyAssistantRounds,
     noCompletedAssistantDurationMs: Math.max(0, durationMs),
     stallThresholdMs: thresholdMs,
+    incompleteAssistantStallThresholdMs: incompleteThresholdMs,
     stallToolCallRoundThreshold: roundThreshold,
-    stallEmptyAssistantRoundThreshold: emptyAssistantThreshold
+    stallEmptyAssistantRoundThreshold: emptyAssistantThreshold,
+    incompleteAssistantRound
   };
 }
 function createStallMessage(diagnostic) {
@@ -21755,6 +21762,16 @@ function isEmptyStopAssistantMessage(message) {
   }
   const partTypes = message.parts?.map((part) => part?.type ?? "unknown") ?? [];
   return partTypes.length > 0 && partTypes.every((type) => type === "step-start" || type === "step-finish");
+}
+function isIncompleteAssistantMessage(message) {
+  if (message?.info?.role !== "assistant") {
+    return false;
+  }
+  if (typeof message.info.finish === "string") {
+    return false;
+  }
+  const partTypes = message.parts?.map((part) => part?.type ?? "unknown") ?? [];
+  return partTypes.length === 0 || !partTypes.includes("step-finish");
 }
 function extractMessageText(message) {
   if (!Array.isArray(message.parts)) {
