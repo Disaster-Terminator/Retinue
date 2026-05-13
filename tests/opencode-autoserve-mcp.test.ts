@@ -75,6 +75,55 @@ describe("Retinue OpenCode auto-serve MCP E2E", () => {
     expect(discovery.baseUrl).toBe(`http://127.0.0.1:${fallbackPort}`);
     expect(discovery.cwd).toBe(tempDir);
   });
+
+  it("lets multiple MCP processes concurrently spawn through one managed OpenCode server", async () => {
+    const preferredPort = await freePort();
+    const env = {
+      RETINUE_STATE_DIR: tempDir,
+      RETINUE_BACKEND: "opencode",
+      RETINUE_OPENCODE_AUTO_SERVE: "1",
+      RETINUE_OPENCODE_COMMAND: process.execPath,
+      RETINUE_OPENCODE_PREFIX_ARGS: fakeOpenCodeCommand,
+      RETINUE_OPENCODE_HOST: "127.0.0.1",
+      RETINUE_OPENCODE_PORT: String(preferredPort),
+      RETINUE_OPENCODE_AGENT: "plan"
+    };
+    const connections: Array<Awaited<ReturnType<typeof connectRetinueMcp>>> = [];
+
+    try {
+      connections.push(...(await Promise.all([connectRetinueMcp(env), connectRetinueMcp(env), connectRetinueMcp(env), connectRetinueMcp(env)])));
+
+      const spawns = await Promise.all(
+        connections.map((connection, index) =>
+          connection.client
+            .callTool({
+              name: "retinue_spawn_agent",
+              arguments: { cwd: tempDir, task_name: `thread-${index + 1}`, message: `Reply exactly: THREAD_${index + 1}_OK` }
+            })
+            .then(parseToolJson)
+        )
+      );
+      const waits = await Promise.all(
+        spawns.map((spawn, index) =>
+          connections[index].client.callTool({ name: "retinue_wait_agent", arguments: { jobId: spawn.jobId, timeoutMs: 5000 } }).then(parseToolJson)
+        )
+      );
+
+      expect(waits.map((wait) => wait.status)).toEqual(["completed", "completed", "completed", "completed"]);
+      expect(waits.map((wait) => wait.result.parsedStdout.result)).toEqual([
+        "fake cli result: Reply exactly: THREAD_1_OK",
+        "fake cli result: Reply exactly: THREAD_2_OK",
+        "fake cli result: Reply exactly: THREAD_3_OK",
+        "fake cli result: Reply exactly: THREAD_4_OK"
+      ]);
+
+      const discovery = JSON.parse(await fs.readFile(getScopedDiscoveryPath(tempDir, tempDir), "utf8")) as { baseUrl?: string; cwd?: string };
+      expect(discovery.baseUrl).toBe(`http://127.0.0.1:${preferredPort}`);
+      expect(discovery.cwd).toBe(tempDir);
+    } finally {
+      await Promise.allSettled(connections.map((connection) => closeRetinueMcp(connection)));
+    }
+  });
 });
 
 async function connectRetinueMcp(env: Record<string, string>) {

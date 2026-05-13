@@ -72,24 +72,27 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
     async (args) => {
       const taskName = normalizeTaskName(args);
       const backend = await createRetinueBackend(retinue);
-      const evicted = await agentPool.ensureSpawnSlot(retinue, process.env);
-      const started = await backend.run({
-        cwd: args.cwd ?? process.cwd(),
-        prompt: args.message,
-        name: taskName,
-        title: args.title ?? taskName,
-        ...(backend.kind === "opencode"
-          ? {
-              model: process.env.RETINUE_OPENCODE_MODEL,
-              agent: process.env.RETINUE_OPENCODE_AGENT
-            }
-          : {})
-      });
-      agentPool.add({
-        jobId: started.jobId,
-        backend: started.backend ?? backend.kind,
-        taskName,
-        createdAt: Date.now()
+      const { evicted, started } = await agentPool.withSpawnLock(async () => {
+        const evicted = await agentPool.ensureSpawnSlot(retinue, process.env);
+        const started = await backend.run({
+          cwd: args.cwd ?? process.cwd(),
+          prompt: args.message,
+          name: taskName,
+          title: args.title ?? taskName,
+          ...(backend.kind === "opencode"
+            ? {
+                model: process.env.RETINUE_OPENCODE_MODEL,
+                agent: process.env.RETINUE_OPENCODE_AGENT
+              }
+            : {})
+        });
+        agentPool.add({
+          jobId: started.jobId,
+          backend: started.backend ?? backend.kind,
+          taskName,
+          createdAt: Date.now()
+        });
+        return { evicted, started };
       });
       return jsonToolResult({
         task_name: taskName,
@@ -461,6 +464,21 @@ interface ListedRetinueAgent {
 
 class RetinueAgentPool {
   private readonly entries = new Map<string, RetinueAgentPoolEntry>();
+  private spawnQueue: Promise<void> = Promise.resolve();
+
+  async withSpawnLock<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.spawnQueue;
+    let release: () => void = () => undefined;
+    this.spawnQueue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
+  }
 
   async ensureSpawnSlot(retinue: RetinueApi, env: NodeJS.ProcessEnv): Promise<RetinueAgentPoolEntry | undefined> {
     const maxAgents = parseMaxConcurrentAgents(env);
