@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+
+if [ "${RETINUE_SKIP_GIT_HOOKS:-}" = "1" ]; then
+  exit 0
+fi
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "Retinue post-commit: pnpm is not on PATH; skipping generated artifact check." >&2
+  exit 0
+fi
+
+echo "Retinue post-commit: checking generated artifacts..."
+
+if pnpm run check:generated; then
+  exit 0
+fi
+
+cat >&2 <<'EOF'
+Retinue post-commit: generated artifacts do not match the committed source.
+
+Fix the commit before pushing:
+  pnpm run build
+  git add dist plugins/retinue/dist
+  git commit --amend --no-edit
+
+Set RETINUE_SKIP_GIT_HOOKS=1 only for emergency local bypasses.
+EOF
+
+exit 1

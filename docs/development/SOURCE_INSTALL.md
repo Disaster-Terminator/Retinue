@@ -27,11 +27,18 @@ The repo-local plugin config points to the plugin-local bootstrap at `./mcp-boot
 Run deterministic gates:
 
 ```bash
-pnpm run typecheck
-pnpm run check:generated
-pnpm test
-pnpm run verify:package
+pnpm run gate:local
 ```
+
+Install repository-scoped Git hooks to avoid repeating the deterministic gates manually:
+
+```bash
+pnpm run dev:install-hooks
+```
+
+The `pre-commit` hook runs the fast commit gate, currently `pnpm run typecheck`. The `post-commit`
+hook checks generated artifact drift after generated files can be part of the commit. The
+`pre-push` hook runs the full deterministic local gate before changes leave the workstation.
 
 For fast Codex plugin reloads during development, see [Plugin Reload Workflow](PLUGIN_RELOAD.md). The short version is: build and smoke the source first, then use `pnpm run dev:sync-plugin-cache -- --apply` only when the installed Codex plugin cache must consume the new bundle.
 

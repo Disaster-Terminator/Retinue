@@ -54,11 +54,14 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json",
     "check:generated": "pnpm run build && git diff --exit-code -- dist plugins/retinue/dist",
+    "gate:commit": "pnpm run typecheck",
+    "gate:local": "pnpm run typecheck && pnpm test && pnpm run check:generated && pnpm run smoke:package && pnpm run verify:package",
     "verify:package": "pnpm pack --dry-run --json | node scripts/verify-package.mjs",
     "smoke:package": "node scripts/smoke-package-artifacts.mjs",
-    "prepublishOnly": "pnpm run typecheck && pnpm test && pnpm run check:generated && pnpm run smoke:package && pnpm run verify:package",
+    "prepublishOnly": "pnpm run gate:local",
     "dev:sync-plugin-cache": "node scripts/sync-installed-plugin-cache.mjs",
-    "dev:sync-plugin-cache:all": "node scripts/sync-installed-plugin-cache.mjs --include-windows --include-wsl"
+    "dev:sync-plugin-cache:all": "node scripts/sync-installed-plugin-cache.mjs --include-windows --include-wsl",
+    "dev:install-hooks": "node scripts/install-git-hooks.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.5",
