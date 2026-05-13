@@ -33,6 +33,8 @@ pnpm test
 pnpm run verify:package
 ```
 
+For fast Codex plugin reloads during development, see [Plugin Reload Workflow](PLUGIN_RELOAD.md). The short version is: build and smoke the source first, then use `pnpm run dev:sync-plugin-cache -- --apply` only when the installed Codex plugin cache must consume the new bundle.
+
 Run the real OpenCode product probe only when a local OpenCode server is running:
 
 ```bash

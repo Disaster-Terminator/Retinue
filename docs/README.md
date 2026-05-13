@@ -16,6 +16,7 @@ directory stays readable.
 
 - [Plugin Deployment](deployment/PLUGIN_DEPLOYMENT.md) - Codex plugin packaging and install shape.
 - [Source Install And Development](development/SOURCE_INSTALL.md) - contributor setup and source-tree verification.
+- [Plugin Reload Workflow](development/PLUGIN_RELOAD.md) - fast WSL/Windows cache sync during plugin development.
 - [Service Lifecycle](deployment/SERVICE_LIFECYCLE.md) - daemon start, inspect, and stop workflow.
 - [Verification](VERIFICATION.md) - short test and packaging gates.
 
