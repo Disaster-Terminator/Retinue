@@ -298,8 +298,15 @@ describe("MCP tools", () => {
           edit: false,
           write: false,
           apply_patch: false,
-          bash: false
+          task: false
         }
+      });
+      expect(fakeOpenCode.sessionRequests.at(-1)).toMatchObject({
+        permission: expect.arrayContaining([
+          { permission: "doom_loop", pattern: "*", action: "deny" },
+          { permission: "bash", pattern: "*", action: "deny" },
+          { permission: "bash", pattern: "git show*", action: "allow" }
+        ])
       });
       fakeOpenCode.completeSession(spawn.externalSessionId);
 

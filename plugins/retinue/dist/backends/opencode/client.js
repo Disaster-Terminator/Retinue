@@ -26,6 +26,7 @@ export class OpenCodeClient {
     createSession(options = {}) {
         return this.request("POST", "/session", {
             title: options.title,
+            permission: options.permission,
             directory: options.cwd
         });
     }

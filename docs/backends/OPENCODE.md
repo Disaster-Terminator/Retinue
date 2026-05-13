@@ -88,7 +88,7 @@ MCP hosts commonly enforce their own per-tool timeout. Retinue therefore clamps 
 
 Retinue's local HTTP clients also apply a 30-second transport timeout to OpenCode and daemon requests. Set `RETINUE_HTTP_TIMEOUT_MS` when a deployment needs a different local request ceiling; set it to `0` only when another layer already enforces a reliable timeout.
 
-Product `retinue_spawn_agent` calls are read-only by default on the OpenCode backend. In read-only mode, Retinue sends `tools: { edit: false, write: false, apply_patch: false, bash: false, task: false }` with `prompt_async`, so local OpenCode profiles that allow edits do not leak write access into child-agent review tasks and OpenCode cannot recursively delegate to nested task agents.
+Product `retinue_spawn_agent` calls are read-only by default on the OpenCode backend. In read-only mode, Retinue creates the OpenCode session with explicit non-interactive permissions: file edits and nested `task` agents are denied, `doom_loop` and interactive `question` prompts are denied so headless runs do not wait for UI approval, and `bash` is limited to Git inspection commands such as `git show`, `git diff`, `git status`, `git log`, `git grep`, and `git blame`. Retinue still sends `tools: { edit: false, write: false, apply_patch: false, task: false }` with `prompt_async`, so local OpenCode profiles that allow edits do not leak write access into child-agent review tasks while normal code-review inspection remains usable through OpenCode's `read`, `grep`, and `glob` tools.
 
 Codex plugin installs read the default from the installation-scoped `retinue.config.json` beside the plugin bootstrap. The shipped default is:
 

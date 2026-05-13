@@ -19,6 +19,11 @@ export interface OpenCodeMessage {
     }>;
     [key: string]: unknown;
 }
+export interface OpenCodePermissionRule {
+    permission: string;
+    pattern: string;
+    action: "allow" | "deny" | "ask";
+}
 export declare class OpenCodeClientError extends Error {
     readonly code: string;
     readonly status?: number | undefined;
@@ -36,6 +41,7 @@ export declare class OpenCodeClient {
     createSession(options?: {
         cwd?: string;
         title?: string;
+        permission?: OpenCodePermissionRule[];
     }): Promise<OpenCodeSession>;
     listSessions(): Promise<OpenCodeSession[]>;
     getSession(sessionId: string): Promise<OpenCodeSession>;
