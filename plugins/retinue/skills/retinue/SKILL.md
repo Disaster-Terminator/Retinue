@@ -28,7 +28,7 @@ RETINUE_OPENCODE_HOST=127.0.0.1
 RETINUE_OPENCODE_AGENT=plan
 ```
 
-The 0.1.0 default OpenCode agent is `plan`. Retinue manages the default OpenCode server lifecycle and falls back across local ports `4097` through `4127` when the preferred port `4096` is occupied by an external service. Each Retinue MCP server session keeps up to 3 active child agents by default. A spawn beyond that limit closes the oldest active child and returns `evictedJobId`; deployments can tune this with `RETINUE_MAX_CONCURRENT_AGENTS`. Use `RETINUE_BACKEND=claude-code` only when the deployment should route the same `retinue_*` tools to Claude Code. Do not pass backend, profile, model, agent, or permission choices in `retinue_*` tool arguments.
+The 0.1.0 default OpenCode agent is `plan`. Product `retinue_spawn_agent` calls are read-only by default: Retinue sends a prompt-level override that denies OpenCode `edit`, `write`, `apply_patch`, and `bash` tools even when the local OpenCode profile allows them. Codex plugin installs read the default from installation-scoped `retinue.config.json`, which ships with `opencode.defaultAccessMode: "read_only"`. A single spawn may pass `access_mode: "profile"` only when the child is intentionally allowed to follow the active OpenCode profile, including write-capable tools if that profile allows them. Hermes and custom MCP deployments can set `RETINUE_OPENCODE_ACCESS_MODE=profile` or the older `RETINUE_OPENCODE_READ_ONLY=0` for the same default. Retinue manages the default OpenCode server lifecycle and falls back across local ports `4097` through `4127` when the preferred port `4096` is occupied by an external service. Each Retinue MCP server session keeps up to 3 active child agents by default. A spawn beyond that limit closes the oldest active child and returns `evictedJobId`; deployments can tune this with `RETINUE_MAX_CONCURRENT_AGENTS`. Use `RETINUE_BACKEND=claude-code` only when the deployment should route the same `retinue_*` tools to Claude Code. Do not pass backend, profile, model, agent, or OpenCode server choices in `retinue_*` tool arguments.
 
 ## Tool Use
 
@@ -39,7 +39,7 @@ Use these Retinue tools for normal Codex subagent work:
 - `retinue_close_agent`
 - `retinue_list_agents`
 
-When spawning read-only exploration work, pass an explicit absolute `cwd` and ask the child to include path evidence for file-existence claims. `retinue_spawn_agent` returns the effective `cwd` and job artifact directory; use those fields to catch workspace drift early.
+When spawning read-only exploration work, pass an explicit absolute `cwd` and ask the child to include path evidence for file-existence claims. `retinue_spawn_agent` returns the effective `cwd` and job artifact directory; use those fields to catch workspace drift early. Pass `access_mode: "profile"` only for tasks where child-agent edits are intended and acceptable.
 
 If `retinue_wait_agent` returns `running`, treat it as a workflow event, not a dead end. The response includes `stateDir`, `tracePath`, `jobDir`, `promptPath`, `stdoutPath`, `stderrPath`, and bounded stdout/stderr tails. Inspect the tail fields first; they usually contain recent backend diagnostics without requiring a separate filesystem read. Complex OpenCode `plan` jobs can spend several minutes in tool-call rounds before producing final text, so keep polling unless the task reaches a terminal state.
 

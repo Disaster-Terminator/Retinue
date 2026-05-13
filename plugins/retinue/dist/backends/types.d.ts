@@ -6,6 +6,7 @@ export interface AgentRunOptions extends RunOptions {
     title?: string;
     model?: string;
     agent?: string;
+    readOnly?: boolean;
 }
 export interface AgentContinueOptions extends AgentRunOptions {
     externalSessionId?: string;

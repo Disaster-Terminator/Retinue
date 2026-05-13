@@ -21148,6 +21148,7 @@ var OpenCodeClient = class {
     return this.requestVoid("POST", `/session/${encodeURIComponent(sessionId)}/prompt_async`, {
       model: formatModelOverride(options.model),
       agent: options.agent,
+      tools: options.tools,
       parts: [{ type: "text", text: options.prompt }]
     });
   }
@@ -21237,6 +21238,12 @@ function formatModelOverride(model) {
 }
 
 // src/backends/opencode/backend.ts
+var OPENCODE_READ_ONLY_TOOLS = {
+  edit: false,
+  write: false,
+  apply_patch: false,
+  bash: false
+};
 var DEFAULT_WAIT_TIMEOUT_MS = 3e4;
 var DEFAULT_WAIT_POLL_MS = 250;
 var DEFAULT_STALL_MS = 10 * 6e4;
@@ -21273,7 +21280,8 @@ var OpenCodeBackend = class {
     await target.client.promptAsync(session.id, {
       prompt: options.prompt,
       model: options.model,
-      agent: options.agent
+      agent: options.agent,
+      tools: options.readOnly === true ? OPENCODE_READ_ONLY_TOOLS : void 0
     });
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const meta = {
@@ -21315,7 +21323,8 @@ var OpenCodeBackend = class {
     await target.client.promptAsync(options.externalSessionId, {
       prompt: options.prompt,
       model: options.model,
-      agent: options.agent
+      agent: options.agent,
+      tools: options.readOnly === true ? OPENCODE_READ_ONLY_TOOLS : void 0
     });
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const meta = {
@@ -23078,6 +23087,7 @@ var OPENCODE_TOOL_NAMES = [
 ];
 var RETINUE_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"];
 var DEFAULT_MCP_WAIT_MAX_MS = 9e4;
+var ACCESS_MODES = ["read_only", "profile"];
 function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
   const agentPool = new RetinueAgentPool();
   const server = new McpServer({
@@ -23097,7 +23107,8 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
         task_name: external_exports.string().optional(),
         taskName: external_exports.string().optional(),
         cwd: external_exports.string().optional(),
-        title: external_exports.string().optional()
+        title: external_exports.string().optional(),
+        access_mode: external_exports.enum(ACCESS_MODES).optional()
       }
     },
     async (args) => {
@@ -23112,7 +23123,8 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
           title: args.title ?? taskName,
           ...backend.kind === "opencode" ? {
             model: process.env.RETINUE_OPENCODE_MODEL,
-            agent: process.env.RETINUE_OPENCODE_AGENT
+            agent: process.env.RETINUE_OPENCODE_AGENT,
+            readOnly: await resolveOpenCodeAccessMode(args.access_mode, process.env) === "read_only"
           } : {}
         });
         agentPool.add({
@@ -23534,6 +23546,56 @@ function parseMaxConcurrentAgents(env) {
     return 3;
   }
   return Math.max(1, Math.floor(maxAgents));
+}
+async function resolveOpenCodeAccessMode(requested, env) {
+  if (requested) {
+    return requested;
+  }
+  const configMode = await readConfiguredOpenCodeAccessMode(env);
+  if (configMode) {
+    return configMode;
+  }
+  return readOpenCodeAccessModeFromEnv(env);
+}
+async function readConfiguredOpenCodeAccessMode(env) {
+  const configPath = env.RETINUE_CONFIG_FILE?.trim();
+  if (!configPath) {
+    return void 0;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(await fs4.readFile(configPath, "utf8"));
+  } catch (error2) {
+    if (isMissingFile2(error2)) {
+      return void 0;
+    }
+    throw new Error(`Failed to read Retinue config ${configPath}: ${error2 instanceof Error ? error2.message : String(error2)}`);
+  }
+  const value = typeof parsed === "object" && parsed !== null && "opencode" in parsed ? parsed.opencode.defaultAccessMode : void 0;
+  if (value === void 0 || value === "") {
+    return void 0;
+  }
+  if (value === "read_only" || value === "profile") {
+    return value;
+  }
+  throw new Error(`Unsupported opencode.defaultAccessMode in Retinue config ${configPath}: ${String(value)}`);
+}
+function readOpenCodeAccessModeFromEnv(env) {
+  const accessMode = env.RETINUE_OPENCODE_ACCESS_MODE?.trim().toLowerCase();
+  if (accessMode === "read_only" || accessMode === "profile") {
+    return accessMode;
+  }
+  if (accessMode) {
+    throw new Error(`Unsupported RETINUE_OPENCODE_ACCESS_MODE: ${accessMode}`);
+  }
+  const configured = env.RETINUE_OPENCODE_READ_ONLY?.trim().toLowerCase();
+  if (configured === void 0 || configured === "") {
+    return "read_only";
+  }
+  return configured === "0" || configured === "false" || configured === "no" || configured === "off" ? "profile" : "read_only";
+}
+function isMissingFile2(error2) {
+  return typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === "ENOENT";
 }
 function isActivePoolStatus(status) {
   return status === "running" || status === "stalled" || status === "orphaned" || status === "abandoned";

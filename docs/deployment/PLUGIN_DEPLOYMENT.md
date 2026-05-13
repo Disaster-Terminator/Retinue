@@ -69,6 +69,18 @@ The `mcpServers` wrapper is required for Codex plugin MCP discovery. The explici
 
 The default plugin path manages the local OpenCode server lifecycle. It prefers `127.0.0.1:4096` and tries fallback ports `4097` through `4127` when earlier ports are occupied by external services. Set `RETINUE_OPENCODE_BASE_URL` only for deployments that intentionally attach to an externally managed OpenCode server.
 
+The Codex plugin also ships an installation-scoped `retinue.config.json` beside the bootstrap:
+
+```json
+{
+  "opencode": {
+    "defaultAccessMode": "read_only"
+  }
+}
+```
+
+This is global to that installed plugin cache, not project-scoped. The product tool still exposes per-spawn `access_mode` so callers can explicitly choose `profile` for tasks where child-agent writes are intended and acceptable.
+
 ## npm Runtime Path
 
 The npm package is `@disaster-terminator/retinue`. It exposes:
@@ -134,7 +146,7 @@ Before calling the plugin production-ready, run the real OpenCode lifecycle thro
 3. Use `retinue_spawn_agent` with a deterministic prompt.
 4. Use `retinue_wait_agent` and verify the terminal result.
 5. Use `retinue_close_agent`.
-6. Confirm tool arguments did not include backend, profile, model, agent, or permission selection.
+6. Confirm tool arguments did not include backend, profile, model, agent, or OpenCode server selection. `access_mode` may be present only to choose the child-agent safety mode for that spawn.
 7. Run the fake Claude parity path with `RETINUE_BACKEND=claude-code`.
 8. When Claude Code is locally usable, run the best-effort real Retinue Claude probe.
 

@@ -105,8 +105,11 @@ Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE
 
 - Codex 只调用 Retinue，不选择具体后端。
 - Retinue 默认管理 OpenCode server 生命周期，优先使用 `127.0.0.1:4096`，端口被外部服务占用时尝试 `4097` 到 `4127`。
-- OpenCode 使用当前本机 profile，包括 provider、model、login、permission、plugin 和 skill。
-- `plan` 是 0.1.0 的安全默认；后续会通过 Retinue 配置支持切到 `build`，不把这个选择暴露成每次 tool call 的参数。
+- OpenCode 使用当前本机 profile，包括 provider、model、login、plugin 和 skill。
+- `plan` 是 0.1.0 的默认 agent。Retinue 产品级 spawn 默认只读：即使本机 OpenCode profile 允许写入，Retinue 也会发送 prompt-level 覆盖，拒绝 `edit`、`write`、`apply_patch` 和 `bash`。
+- Codex 插件安装读取插件目录里的全局 `retinue.config.json`。默认值是 `{ "opencode": { "defaultAccessMode": "read_only" } }`，这是安装域配置，不是项目域配置。
+- `retinue_spawn_agent` 支持用 `access_mode: "read_only"` 或 `access_mode: "profile"` 覆盖单次子代理权限意图。只有明确需要子代理按当前 OpenCode profile 执行、并接受 profile 中可能开放写工具时，才使用 `"profile"`。
+- Hermes 和自定义 MCP 部署仍可走环境变量。`RETINUE_OPENCODE_ACCESS_MODE=profile` 或旧的 `RETINUE_OPENCODE_READ_ONLY=0` 表示允许子代理跟随 OpenCode profile 权限。
 - `retinue_wait_agent` 会把单次 MCP wait 限制在宿主安全窗口内，默认最大 90 秒。长任务应重复调用 wait 轮询；可用 `RETINUE_MCP_WAIT_MAX_MS` 调整上限。
 - 每个 Retinue MCP server 会话默认最多保留 3 个 active 子代理，贴近 Codex v2 的默认“4 个线程含 root”模型。第 4 个 active spawn 会关闭最旧的 running 子代理并返回 `evictedJobId`；可用 `RETINUE_MAX_CONCURRENT_AGENTS` 调整这个上限。
 

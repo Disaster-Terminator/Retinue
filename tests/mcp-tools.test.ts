@@ -257,6 +257,7 @@ describe("MCP tools", () => {
       assertRequiredFields(tools.tools, "retinue_spawn_agent", ["message"]);
       assertOptionalField(tools.tools, "retinue_spawn_agent", "task_name");
       assertOptionalField(tools.tools, "retinue_spawn_agent", "cwd");
+      assertOptionalField(tools.tools, "retinue_spawn_agent", "access_mode");
       assertAbsentFields(tools.tools, "retinue_spawn_agent", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
       assertRequiredFields(tools.tools, "retinue_wait_agent", ["jobId"]);
       assertAbsentFields(tools.tools, "retinue_wait_agent", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
@@ -290,6 +291,14 @@ describe("MCP tools", () => {
         cwd: tempDir,
         jobDir: path.join(tempDir, "jobs", spawn.jobId)
       });
+      expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({
+        tools: {
+          edit: false,
+          write: false,
+          apply_patch: false,
+          bash: false
+        }
+      });
       fakeOpenCode.completeSession(spawn.externalSessionId);
 
       const wait = parseToolJson(
@@ -315,6 +324,54 @@ describe("MCP tools", () => {
     } finally {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("lets a Retinue OpenCode spawn opt into the active OpenCode profile permissions", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-profile-access-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+
+      await connection.client.callTool({
+        name: "retinue_spawn_agent",
+        arguments: { cwd: tempDir, message: "retinue profile access", task_name: "profile-access", access_mode: "profile" }
+      });
+
+      expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses the configured Retinue plugin access mode when spawn omits access_mode", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-config-access-"));
+    const configPath = path.join(tempDir, "retinue.config.json");
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      await fs.writeFile(configPath, JSON.stringify({ opencode: { defaultAccessMode: "profile" } }), "utf8");
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.RETINUE_CONFIG_FILE = configPath;
+
+      await connection.client.callTool({
+        name: "retinue_spawn_agent",
+        arguments: { cwd: tempDir, message: "retinue configured access", task_name: "configured-access" }
+      });
+
+      expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      delete process.env.RETINUE_CONFIG_FILE;
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });
     }

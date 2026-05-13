@@ -40,6 +40,9 @@ export const OPENCODE_TOOL_NAMES = [
 export const RETINUE_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"] as const;
 
 const DEFAULT_MCP_WAIT_MAX_MS = 90_000;
+const ACCESS_MODES = ["read_only", "profile"] as const;
+
+type AccessMode = (typeof ACCESS_MODES)[number];
 
 export interface CreateMcpServerOptions {
   exposeBackendTools?: boolean;
@@ -66,7 +69,8 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
         task_name: z.string().optional(),
         taskName: z.string().optional(),
         cwd: z.string().optional(),
-        title: z.string().optional()
+        title: z.string().optional(),
+        access_mode: z.enum(ACCESS_MODES).optional()
       }
     },
     async (args) => {
@@ -82,7 +86,8 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
           ...(backend.kind === "opencode"
             ? {
                 model: process.env.RETINUE_OPENCODE_MODEL,
-                agent: process.env.RETINUE_OPENCODE_AGENT
+                agent: process.env.RETINUE_OPENCODE_AGENT,
+                readOnly: (await resolveOpenCodeAccessMode(args.access_mode, process.env)) === "read_only"
               }
             : {})
         });
@@ -560,6 +565,68 @@ function parseMaxConcurrentAgents(env: NodeJS.ProcessEnv): number | undefined {
     return 3;
   }
   return Math.max(1, Math.floor(maxAgents));
+}
+
+async function resolveOpenCodeAccessMode(requested: AccessMode | undefined, env: NodeJS.ProcessEnv): Promise<AccessMode> {
+  if (requested) {
+    return requested;
+  }
+
+  const configMode = await readConfiguredOpenCodeAccessMode(env);
+  if (configMode) {
+    return configMode;
+  }
+
+  return readOpenCodeAccessModeFromEnv(env);
+}
+
+async function readConfiguredOpenCodeAccessMode(env: NodeJS.ProcessEnv): Promise<AccessMode | undefined> {
+  const configPath = env.RETINUE_CONFIG_FILE?.trim();
+  if (!configPath) {
+    return undefined;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await fs.readFile(configPath, "utf8"));
+  } catch (error) {
+    if (isMissingFile(error)) {
+      return undefined;
+    }
+    throw new Error(`Failed to read Retinue config ${configPath}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  const value =
+    typeof parsed === "object" && parsed !== null && "opencode" in parsed
+      ? (parsed.opencode as { defaultAccessMode?: unknown }).defaultAccessMode
+      : undefined;
+  if (value === undefined || value === "") {
+    return undefined;
+  }
+  if (value === "read_only" || value === "profile") {
+    return value;
+  }
+  throw new Error(`Unsupported opencode.defaultAccessMode in Retinue config ${configPath}: ${String(value)}`);
+}
+
+function readOpenCodeAccessModeFromEnv(env: NodeJS.ProcessEnv): AccessMode {
+  const accessMode = env.RETINUE_OPENCODE_ACCESS_MODE?.trim().toLowerCase();
+  if (accessMode === "read_only" || accessMode === "profile") {
+    return accessMode;
+  }
+  if (accessMode) {
+    throw new Error(`Unsupported RETINUE_OPENCODE_ACCESS_MODE: ${accessMode}`);
+  }
+
+  const configured = env.RETINUE_OPENCODE_READ_ONLY?.trim().toLowerCase();
+  if (configured === undefined || configured === "") {
+    return "read_only";
+  }
+  return configured === "0" || configured === "false" || configured === "no" || configured === "off" ? "profile" : "read_only";
+}
+
+function isMissingFile(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
 function isActivePoolStatus(status: JobMeta["status"]): boolean {
