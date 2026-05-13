@@ -64,6 +64,7 @@ function parseArgs(args) {
     apply: false,
     cacheRoots: [],
     includeWindows: false,
+    includeWsl: false,
     marketplaceName: undefined,
     pluginName: undefined,
     sourceDir: undefined,
@@ -87,6 +88,8 @@ function parseArgs(args) {
       options.cacheRoots.push(next());
     } else if (arg === "--include-windows") {
       options.includeWindows = true;
+    } else if (arg === "--include-wsl") {
+      options.includeWsl = true;
     } else if (arg === "--marketplace") {
       options.marketplaceName = next();
     } else if (arg === "--plugin") {
@@ -111,6 +114,12 @@ async function resolveCacheRoots(options) {
       roots.push(windowsRoot);
     }
   }
+  if (options.includeWsl) {
+    const wslRoot = await detectWslCacheRoot();
+    if (wslRoot) {
+      roots.push(wslRoot);
+    }
+  }
   return [...new Set(roots.map((root) => path.resolve(root)))];
 }
 
@@ -130,6 +139,22 @@ async function detectWindowsCacheRoot() {
     const windowsHome = stdout.trim().replace(/\r/g, "");
     const mountedHome = windowsPathToWslPath(windowsHome);
     return mountedHome ? path.join(mountedHome, ".codex", "plugins", "cache") : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function detectWslCacheRoot() {
+  if (process.platform !== "win32") {
+    return defaultCurrentCacheRoot();
+  }
+  try {
+    const { stdout } = await execFileAsync("wsl.exe", ["-e", "bash", "-lc", "wslpath -w ~/.codex/plugins/cache"], {
+      encoding: "utf8",
+      timeout: 5000
+    });
+    const cacheRoot = stdout.trim().replace(/\r/g, "");
+    return cacheRoot || undefined;
   } catch {
     return undefined;
   }
