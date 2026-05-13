@@ -40,6 +40,7 @@ const realOpenCodeMcpProbe = readFileSync("scripts/probe-retinue-opencode-mcp.mj
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   name?: string;
   private?: boolean;
+  license?: string;
   bin?: Record<string, string>;
   packageManager?: string;
   scripts?: Record<string, string>;
@@ -71,6 +72,7 @@ describe("package.json guardrails", () => {
   it("ships as the Retinue npm runtime package", () => {
     expect(packageJson.name).toBe("@disaster-terminator/retinue");
     expect(packageJson.private).toBe(false);
+    expect(packageJson.license).toBe("Apache-2.0");
     expect(packageJson.bin).toMatchObject({
       retinue: "./dist/cli.js",
       "retinue-mcp": "./dist/mcp.js",
