@@ -375,6 +375,21 @@ describe("OpenCodeBackend", () => {
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({ status: "killed" });
   });
 
+  it("recovers completed OpenCode text that arrives around an abort race", async () => {
+    const backend = createBackend();
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "finish while closing" });
+
+    await backend.abort({ jobId: started.jobId });
+    server!.completeSessionWithFinalText(started.externalSessionId!, "late but usable result");
+
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "completed" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "completed",
+      parsedStdout: { result: "late but usable result" }
+    });
+  });
+
   it("wait returns running before completion then completed after completion", async () => {
     const backend = createBackend();
     const started = await backend.run({ cwd: tempDir, prompt: "wait-me" });
