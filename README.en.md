@@ -32,6 +32,7 @@ Codex / MCP client
 | Wait or poll | Wait within a short timeout window without blocking the main agent's whole task |
 | Read results | Return bounded stdout/stderr, exit metadata, external session ids, and local artifact paths |
 | Continue sessions | Continue an existing Claude/OpenCode session when the backend supports it |
+| Run concurrent children | Keep a small per-MCP-session child-agent slot pool and evict the oldest active child when the pool is full |
 | Kill and clean up | Kill selected jobs and remove terminal job directories while preserving running or ambiguous jobs |
 
 ## Boundary
@@ -78,6 +79,7 @@ Expected result:
 - Codex can call `retinue_spawn_agent`.
 - `retinue_wait_agent` returns a result containing `RETINUE_OK`.
 - `retinue_close_agent` returns a terminal status.
+- `retinue_list_agents` can list Retinue child agents that are still active in the current MCP session.
 
 Note: Codex CLI 0.128 `codex plugin marketplace add/upgrade/remove` manages marketplaces only. Plugin installation happens in the Codex TUI `/plugins` screen. `codex plugin marketplace upgrade retinue-local` updates an existing marketplace; it is not an install command.
 
@@ -107,10 +109,13 @@ This means:
 - OpenCode uses the active local profile for provider, model, login, permissions, plugins, and skills.
 - `plan` is the 0.1.0 safety default. A future Retinue config file will allow deployments to choose `build` without exposing that choice as a per-call tool argument.
 - `retinue_wait_agent` keeps each MCP wait call inside a host-safe window, 90 seconds by default. Long jobs should be polled by calling wait again; deployments can tune the cap with `RETINUE_MCP_WAIT_MAX_MS`.
+- Each Retinue MCP server session keeps up to 3 active child agents by default, matching the Codex v2 shape of "4 threads including root." The 4th active spawn closes the oldest still-running child and returns `evictedJobId`; deployments can tune this with `RETINUE_MAX_CONCURRENT_AGENTS`.
 
 A long child-agent task is still running when `retinue_wait_agent` returns `status: "running"`. Call `retinue_wait_agent` again with the same `jobId`; do not respawn unless the job reaches `failed`, `killed`, `stalled`, or another terminal status.
 
-When a wait returns `running`, the response includes `tracePath`. Use that path for diagnostics before closing the job.
+When a wait returns `running`, the response includes `stdoutTail`, `stderrTail`, `tracePath`, and job artifact paths. Inspect the tail fields first. Complex OpenCode `plan` tasks can spend several minutes in tool-call rounds before producing final text, so a timeout from one wait call is not by itself a failed child.
+
+Retinue reports OpenCode empty-output or incomplete assistant loops as `stalled` only after diagnostic thresholds are crossed. The default long stall threshold is 10 minutes; deployments can tune `RETINUE_OPENCODE_STALL_MS`, `RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS`, `RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS`, and `RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS`.
 
 ## Logs
 
@@ -152,7 +157,7 @@ Normal Codex users should prefer the plugin marketplace path. The npm path does 
 
 ## Hermes Agent
 
-Hermes Agent can use Retinue as a master-agent MCP integration. Hermes is not a Retinue backend; Hermes loads Retinue under `mcp_servers`, then calls the prefixed tools `mcp_retinue_retinue_spawn_agent`, `mcp_retinue_retinue_wait_agent`, and `mcp_retinue_retinue_close_agent`.
+Hermes Agent can use Retinue as a master-agent MCP integration. Hermes is not a Retinue backend; Hermes loads Retinue under `mcp_servers`, then calls the prefixed tools `mcp_retinue_retinue_spawn_agent`, `mcp_retinue_retinue_wait_agent`, `mcp_retinue_retinue_close_agent`, and `mcp_retinue_retinue_list_agents`.
 
 Install the npm runtime and merge `integrations/hermes/mcp-retinue.yaml` into `~/.hermes/config.yaml`, or see [Hermes Agent Integration](docs/integrations/HERMES.md). The default remains OpenCode `plan` with Retinue-managed OpenCode server lifecycle.
 

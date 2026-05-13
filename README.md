@@ -112,7 +112,9 @@ Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE
 
 当 `retinue_wait_agent` 返回 `status: "running"` 时，子代理仍在运行。继续用同一个 `jobId` 再次调用 `retinue_wait_agent`；只有任务进入 `failed`、`killed`、`stalled` 或其他终态时，才需要按终态处理或重新启动。
 
-`running` 响应会包含 `tracePath`。关闭 job 前，优先用这个路径查看诊断。
+`running` 响应会包含 `stdoutTail`、`stderrTail`、`tracePath` 和 job artifact 路径。先看 tail 字段；复杂 OpenCode `plan` 任务可能会连续几分钟处在 tool-call 阶段，单次 wait 超时不等于子代理失败。
+
+OpenCode 空输出或未完成 assistant 循环超过诊断阈值后，Retinue 会把任务报告为 `stalled`。默认长 stall 阈值是 10 分钟；部署可以用 `RETINUE_OPENCODE_STALL_MS`、`RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS`、`RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS` 和 `RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS` 调整。
 
 ## 日志
 

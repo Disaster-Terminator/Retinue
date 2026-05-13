@@ -15,6 +15,7 @@ Retinue is not a provider router and does not select backend profiles from tool 
 - `wait`
 - terminal result return through `wait`
 - `close`
+- per-MCP-session child-agent slot tracking
 
 ## Deployment Defaults
 
@@ -27,7 +28,7 @@ RETINUE_OPENCODE_HOST=127.0.0.1
 RETINUE_OPENCODE_AGENT=plan
 ```
 
-The 0.1.0 default OpenCode agent is `plan`. Retinue manages the default OpenCode server lifecycle and falls back across local ports `4097` through `4127` when the preferred port `4096` is occupied by an external service. Use `RETINUE_BACKEND=claude-code` only when the deployment should route the same `retinue_*` tools to Claude Code. Do not pass backend, profile, model, agent, or permission choices in `retinue_*` tool arguments.
+The 0.1.0 default OpenCode agent is `plan`. Retinue manages the default OpenCode server lifecycle and falls back across local ports `4097` through `4127` when the preferred port `4096` is occupied by an external service. Each Retinue MCP server session keeps up to 3 active child agents by default. A spawn beyond that limit closes the oldest active child and returns `evictedJobId`; deployments can tune this with `RETINUE_MAX_CONCURRENT_AGENTS`. Use `RETINUE_BACKEND=claude-code` only when the deployment should route the same `retinue_*` tools to Claude Code. Do not pass backend, profile, model, agent, or permission choices in `retinue_*` tool arguments.
 
 ## Tool Use
 
@@ -40,7 +41,7 @@ Use these Retinue tools for normal Codex subagent work:
 
 When spawning read-only exploration work, pass an explicit absolute `cwd` and ask the child to include path evidence for file-existence claims. `retinue_spawn_agent` returns the effective `cwd` and job artifact directory; use those fields to catch workspace drift early.
 
-If `retinue_wait_agent` returns `running`, treat it as a workflow event, not a dead end. The response includes `stateDir`, `tracePath`, `jobDir`, `promptPath`, `stdoutPath`, `stderrPath`, and bounded stdout/stderr tails. Inspect the tail fields first; they usually contain recent backend diagnostics without requiring a separate filesystem read.
+If `retinue_wait_agent` returns `running`, treat it as a workflow event, not a dead end. The response includes `stateDir`, `tracePath`, `jobDir`, `promptPath`, `stdoutPath`, `stderrPath`, and bounded stdout/stderr tails. Inspect the tail fields first; they usually contain recent backend diagnostics without requiring a separate filesystem read. Complex OpenCode `plan` jobs can spend several minutes in tool-call rounds before producing final text, so keep polling unless the task reaches a terminal state.
 
 Backend-specific `opencode_*` and `claude_*` tools are adapter/debug surfaces and are hidden by default in plugin deployments. If a developer explicitly enables `RETINUE_EXPOSE_BACKEND_TOOLS=1`, do not prefer those tools for product-level Codex subagent delegation unless debugging a backend-specific issue.
 

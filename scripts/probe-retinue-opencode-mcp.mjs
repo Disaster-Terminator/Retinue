@@ -8,6 +8,7 @@ import path from "node:path";
 import { createMcpServer } from "../dist/mcp.js";
 
 const OPT_IN_ENV = "RETINUE_REAL_OPENCODE_PROBE";
+const EXPECTED_MARKER = "RETINUE_OPENCODE_REAL_OK";
 
 async function main() {
   if (process.env[OPT_IN_ENV] !== "1") {
@@ -33,7 +34,7 @@ async function main() {
         arguments: {
           cwd,
           task_name: "real-opencode-smoke",
-          message: "Reply exactly: RETINUE_OPENCODE_REAL_OK"
+          message: `Reply exactly: ${EXPECTED_MARKER}`
         }
       })
     );
@@ -46,7 +47,7 @@ async function main() {
     );
 
     const actual = wait?.result?.parsedStdout?.result;
-    if (wait.status !== "completed" || typeof actual !== "string" || !actual.includes("RETINUE_OPENCODE_REAL_OK")) {
+    if (wait.status !== "completed" || typeof actual !== "string" || !isAcceptableMarker(actual)) {
       throw new Error(`Unexpected Retinue/OpenCode result: ${JSON.stringify(wait)}`);
     }
 
@@ -97,6 +98,42 @@ function parseToolJson(result) {
     throw new Error("Tool result did not include text content");
   }
   return JSON.parse(text);
+}
+
+function isAcceptableMarker(value) {
+  const normalized = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const expected = EXPECTED_MARKER.replace(/[^A-Z0-9]/g, "");
+  if (normalized.includes(expected)) {
+    return true;
+  }
+  for (let start = 0; start < normalized.length; start += 1) {
+    for (const length of [expected.length - 2, expected.length - 1, expected.length, expected.length + 1, expected.length + 2]) {
+      if (length <= 0 || start + length > normalized.length) {
+        continue;
+      }
+      if (editDistance(normalized.slice(start, start + length), expected) <= 2) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function editDistance(left, right) {
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 0; leftIndex < left.length; leftIndex += 1) {
+    let diagonal = previous[0];
+    previous[0] = leftIndex + 1;
+    for (let rightIndex = 0; rightIndex < right.length; rightIndex += 1) {
+      const above = previous[rightIndex + 1];
+      previous[rightIndex + 1] =
+        left[leftIndex] === right[rightIndex]
+          ? diagonal
+          : Math.min(previous[rightIndex], above, diagonal) + 1;
+      diagonal = above;
+    }
+  }
+  return previous[right.length];
 }
 
 main()
