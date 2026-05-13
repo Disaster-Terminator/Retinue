@@ -118,7 +118,9 @@ This probe validates the OpenCode-first Retinue product surface:
 
 It intentionally does not pass a backend, profile, model, agent, or permission mode through the MCP tool arguments. Retinue uses the deployment-selected OpenCode path. By default this is Retinue-managed auto-serve; set `RETINUE_OPENCODE_BASE_URL` only when intentionally attaching to an externally managed OpenCode server. OpenCode uses its active profile.
 
-For local E2E, set `RETINUE_STATE_DIR` to a known directory. Retinue writes job artifacts under `<stateDir>/jobs/<jobId>/` and diagnostics under `<stateDir>/logs/retinue.jsonl`. The real MCP probe prints both `stateDir` and `tracePath` on success or failure. If `retinue_wait_agent` returns `running`, inspect the returned `stdoutTail` and `stderrTail` first; the response also includes `jobDir`, `promptPath`, `stdoutPath`, and `stderrPath` for deeper OpenCode session/message snapshots.
+For local E2E, set `RETINUE_STATE_DIR` to a known directory. Retinue writes job artifacts under `<stateDir>/jobs/<jobId>/` and diagnostics under `<stateDir>/logs/retinue.jsonl`. The real MCP probe prints both `stateDir` and `tracePath` on success or failure. If `retinue_wait_agent` returns `running`, inspect the returned `stdoutTail` and `stderrTail` first; the response also includes `jobDir`, `promptPath`, `stdoutPath`, and `stderrPath` for deeper OpenCode session/message snapshots. Complex OpenCode `plan` tasks can spend several minutes in tool-call rounds before emitting final text, so a single MCP wait timeout is a polling event rather than a failed child.
+
+Retinue reports OpenCode empty-output or incomplete assistant loops as `stalled` only after diagnostic thresholds are crossed. Defaults are intentionally conservative for real plan-agent work: the long stall threshold is 10 minutes, and incomplete assistant tool loops use the same default. Use `RETINUE_OPENCODE_STALL_MS`, `RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS`, `RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS`, and `RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS` only when a probe needs a shorter failure window.
 
 ```bash
 pnpm run build

@@ -21240,7 +21240,7 @@ function formatModelOverride(model) {
 var DEFAULT_WAIT_TIMEOUT_MS = 3e4;
 var DEFAULT_WAIT_POLL_MS = 250;
 var DEFAULT_STALL_MS = 10 * 6e4;
-var DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = 9e4;
+var DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = DEFAULT_STALL_MS;
 var DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
 var DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 1;
 var OpenCodeBackend = class {
@@ -23154,7 +23154,8 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
       const effectiveTimeoutMs = clampMcpWaitTimeoutMs(timeoutMs, process.env);
       const waited = await backend.wait({ jobId }, effectiveTimeoutMs);
       const status = await backend.status({ jobId });
-      if (waited.status === "running") {
+      const responseStatus = isJobMeta(status) ? status.status : waited.status;
+      if (responseStatus === "running") {
         const stateDir = resolveStateDir({
           explicitStateDir: process.env.RETINUE_STATE_DIR,
           env: process.env
@@ -23191,7 +23192,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
       return jsonToolResult({
         task_name: isJobMeta(status) ? status.name : void 0,
         jobId,
-        status: waited.status,
+        status: responseStatus,
         result
       });
     }

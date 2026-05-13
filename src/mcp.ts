@@ -126,7 +126,8 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
       const effectiveTimeoutMs = clampMcpWaitTimeoutMs(timeoutMs, process.env);
       const waited = await backend.wait({ jobId }, effectiveTimeoutMs);
       const status = await backend.status({ jobId });
-      if (waited.status === "running") {
+      const responseStatus = isJobMeta(status) ? status.status : waited.status;
+      if (responseStatus === "running") {
         const stateDir = resolveStateDir({
           explicitStateDir: process.env.RETINUE_STATE_DIR,
           env: process.env
@@ -163,7 +164,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
       return jsonToolResult({
         task_name: isJobMeta(status) ? status.name : undefined,
         jobId,
-        status: waited.status,
+        status: responseStatus,
         result
       });
     }

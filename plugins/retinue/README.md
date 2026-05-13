@@ -30,4 +30,8 @@ Codex-facing product delegation should use:
 - `retinue_close_agent`
 - `retinue_list_agents`
 
+The default deployment uses OpenCode `plan` and lets Retinue manage the local OpenCode server lifecycle. Each Retinue MCP server session keeps a small active child-agent pool; the default limit is 3 active children, and a new spawn beyond the limit closes the oldest active child and returns `evictedJobId`.
+
+When `retinue_wait_agent` returns `running`, inspect the returned stdout/stderr tails and trace path before closing the child. Complex OpenCode `plan` jobs can stay in tool-call rounds for several minutes before producing final text.
+
 Backend-specific `opencode_*` and `claude_*` tools remain available for adapter debugging and runbook probes.

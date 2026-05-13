@@ -37,6 +37,7 @@ const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
 const readmeZh = readFileSync("README.md", "utf8");
 const readmeEn = readFileSync("README.en.md", "utf8");
 const realOpenCodeMcpProbe = readFileSync("scripts/probe-retinue-opencode-mcp.mjs", "utf8");
+const opencodeBackendSource = readFileSync("src/backends/opencode/backend.ts", "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   name?: string;
   private?: boolean;
@@ -151,6 +152,23 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(readmeEn).toContain("`4097` through `4127`");
     expect(readmeZh).not.toContain("端口被外部服务占用时尝试 `4097`。");
     expect(readmeEn).not.toContain("tries `4097` when that port is occupied");
+  });
+
+  it("documents Retinue child-agent slots and running-job diagnostics", () => {
+    expect(readmeZh).toContain("`RETINUE_MAX_CONCURRENT_AGENTS`");
+    expect(readmeZh).toContain("`evictedJobId`");
+    expect(readmeZh).toContain("`stdoutTail`、`stderrTail`、`tracePath`");
+    expect(readmeZh).toContain("单次 wait 超时不等于子代理失败");
+    expect(readmeEn).toContain("`RETINUE_MAX_CONCURRENT_AGENTS`");
+    expect(readmeEn).toContain("`evictedJobId`");
+    expect(readmeEn).toContain("`stdoutTail`, `stderrTail`, `tracePath`");
+    expect(readmeEn).toContain("a timeout from one wait call is not by itself a failed child");
+  });
+
+  it("keeps OpenCode incomplete-assistant stall detection conservative by default", () => {
+    expect(opencodeBackendSource).toContain("const DEFAULT_STALL_MS = 10 * 60_000");
+    expect(opencodeBackendSource).toContain("const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = DEFAULT_STALL_MS");
+    expect(opencodeBackendSource).not.toContain("const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = 90_000");
   });
 
   it("declares a plugin manifest with skill and MCP surfaces", () => {
