@@ -10,6 +10,7 @@ import { OpenCodeClient } from "./backends/opencode/client.js";
 import { ensureOpenCodeServer, resolveOpenCodeServerFromEnv } from "./backends/opencode/serverManager.js";
 import { DaemonClient } from "./daemon/client.js";
 import { readDaemonDiscoverySync } from "./daemon/discovery.js";
+import { readTextTailIfExists } from "./core/fileTail.js";
 import { resolveHttpTimeoutMs } from "./core/http.js";
 import { getJobPaths, getRetinueTracePath, resolveStateDir } from "./core/paths.js";
 import { ClaudeRetinue } from "./core/retinue.js";
@@ -119,8 +120,8 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             });
             const paths = getJobPaths(stateDir, jobId);
             const [stdoutTail, stderrTail, diagnostic] = await Promise.all([
-                readTailIfExists(paths.stdout),
-                readTailIfExists(paths.stderr),
+                readTextTailIfExists(paths.stdout, 4096),
+                readTextTailIfExists(paths.stderr, 4096),
                 readLatestJobDiagnostic(paths.stderr)
             ]);
             return jsonToolResult({
@@ -483,24 +484,8 @@ async function writeMcpTrace(env, value) {
     await fs.mkdir(path.dirname(tracePath), { recursive: true });
     await fs.appendFile(tracePath, `${JSON.stringify({ timestamp: new Date().toISOString(), ...value })}\n`, "utf8");
 }
-async function readTailIfExists(filePath, maxBytes = 4096) {
-    try {
-        const text = await fs.readFile(filePath, "utf8");
-        const bytes = Buffer.byteLength(text, "utf8");
-        if (bytes <= maxBytes) {
-            return { text, bytes, truncated: false };
-        }
-        return { text: text.slice(-maxBytes), bytes, truncated: true };
-    }
-    catch (error) {
-        if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
-            return { text: "", bytes: 0, truncated: false };
-        }
-        throw error;
-    }
-}
 async function readLatestJobDiagnostic(filePath) {
-    const tail = await readTailIfExists(filePath, 64 * 1024);
+    const tail = await readTextTailIfExists(filePath, 64 * 1024);
     if (!tail.text) {
         return undefined;
     }

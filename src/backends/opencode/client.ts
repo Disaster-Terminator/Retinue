@@ -84,13 +84,15 @@ export class OpenCodeClient {
   private async request<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
     const response = await this.fetch(method, path, body);
     const text = await response.text();
+    if (!response.ok) {
+      const parsed = parseJson(text);
+      const details = parsed.ok ? parsed.value : text;
+      const message = parsed.ok ? extractErrorMessage(parsed.value) : undefined;
+      throw new OpenCodeClientError(message ?? `OpenCode request failed with HTTP ${response.status}`, "http_error", response.status, path, details);
+    }
     const parsed = parseJson(text);
     if (!parsed.ok) {
       throw new OpenCodeClientError("OpenCode response was not valid JSON", "invalid_json", response.status, path, text);
-    }
-    if (!response.ok) {
-      const message = extractErrorMessage(parsed.value) ?? `OpenCode request failed with HTTP ${response.status}`;
-      throw new OpenCodeClientError(message, "http_error", response.status, path, parsed.value);
     }
     return parsed.value as T;
   }

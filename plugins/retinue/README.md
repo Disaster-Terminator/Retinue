@@ -34,4 +34,4 @@ The default deployment uses OpenCode `plan` and lets Retinue manage the local Op
 
 When `retinue_wait_agent` returns `running`, inspect the returned stdout/stderr tails and trace path before closing the child. Complex OpenCode `plan` jobs can stay in tool-call rounds for several minutes before producing final text.
 
-Backend-specific `opencode_*` and `claude_*` tools remain available for adapter debugging and runbook probes.
+Backend-specific `opencode_*` and `claude_*` tools are hidden by default. Set `RETINUE_EXPOSE_BACKEND_TOOLS=1` only for adapter debugging and runbook probes; product delegation should stay on the `retinue_*` tools above.

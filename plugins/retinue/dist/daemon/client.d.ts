@@ -3,10 +3,12 @@ export declare class DaemonClientError extends Error {
     readonly code?: string;
     readonly status: number;
     readonly path: string;
+    readonly details?: unknown;
     constructor(message: string, details: {
         code?: string;
         status: number;
         path: string;
+        details?: unknown;
     });
 }
 export declare class DaemonClient implements RetinueApi {

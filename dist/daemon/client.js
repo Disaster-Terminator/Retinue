@@ -3,12 +3,14 @@ export class DaemonClientError extends Error {
     code;
     status;
     path;
+    details;
     constructor(message, details) {
         super(message);
         this.name = "DaemonClientError";
         this.code = details.code;
         this.status = details.status;
         this.path = details.path;
+        this.details = details.details;
     }
 }
 export class DaemonClient {
@@ -58,11 +60,24 @@ export class DaemonClient {
         const text = await response.text();
         const parsed = parseJson(text);
         if (!response.ok) {
-            const error = extractDaemonError(parsed);
+            const error = parsed.ok ? extractDaemonError(parsed.value) : undefined;
             const message = error?.message ?? `Daemon request failed with HTTP ${response.status}`;
-            throw new DaemonClientError(message, { code: error?.code, status: response.status, path });
+            throw new DaemonClientError(message, {
+                code: error?.code,
+                status: response.status,
+                path,
+                details: parsed.ok ? parsed.value : text
+            });
         }
-        return parsed;
+        if (!parsed.ok) {
+            throw new DaemonClientError("Daemon response was not valid JSON", {
+                code: "invalid_json",
+                status: response.status,
+                path,
+                details: text
+            });
+        }
+        return parsed.value;
     }
 }
 function classifyTransportError(error) {
@@ -75,13 +90,13 @@ function classifyTransportError(error) {
 }
 function parseJson(text) {
     if (!text.trim()) {
-        return undefined;
+        return { ok: false };
     }
     try {
-        return JSON.parse(text);
+        return { ok: true, value: JSON.parse(text) };
     }
     catch {
-        return undefined;
+        return { ok: false };
     }
 }
 function extractDaemonError(value) {

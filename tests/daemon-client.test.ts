@@ -58,7 +58,23 @@ describe("DaemonClient errors", () => {
       message: "Daemon request failed with HTTP 502",
       code: undefined,
       status: 502,
-      path: "/v1/jobs/status"
+      path: "/v1/jobs/status",
+      details: "{"
+    });
+  });
+
+  it("rejects successful responses with invalid JSON", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{", { status: 200 })));
+
+    const client = new DaemonClient("http://daemon");
+
+    await expect(client.status("job_bad_json")).rejects.toMatchObject({
+      name: "DaemonClientError",
+      message: "Daemon response was not valid JSON",
+      code: "invalid_json",
+      status: 200,
+      path: "/v1/jobs/status",
+      details: "{"
     });
   });
 
