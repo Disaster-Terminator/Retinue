@@ -425,6 +425,44 @@ describe("MCP tools", () => {
     }
   });
 
+  it("serializes concurrent Retinue spawns before enforcing the MCP session slot limit", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-concurrent-slots-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    fakeOpenCode.setAutoAssistantResponses(false);
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.RETINUE_MAX_CONCURRENT_AGENTS = "3";
+
+      const spawns = await Promise.all(
+        ["concurrent-slot-1", "concurrent-slot-2", "concurrent-slot-3", "concurrent-slot-4"].map((taskName) =>
+          connection.client
+            .callTool({
+              name: "retinue_spawn_agent",
+              arguments: { cwd: tempDir, message: `retinue ${taskName}`, task_name: taskName }
+            })
+            .then(parseToolJson)
+        )
+      );
+
+      const evictions = spawns.filter((spawn) => typeof spawn.evictedJobId === "string");
+      expect(evictions).toHaveLength(1);
+
+      const list = parseToolJson(await connection.client.callTool({ name: "retinue_list_agents", arguments: {} }));
+      expect(list.maxAgents).toBe(3);
+      expect(list.agents).toHaveLength(3);
+      expect(list.agents.map((agent: { jobId: string }) => agent.jobId)).not.toContain(spawns[0].jobId);
+      expect(list.agents.map((agent: { status: string }) => agent.status)).toEqual(["running", "running", "running"]);
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      delete process.env.RETINUE_MAX_CONCURRENT_AGENTS;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("lists active Retinue agents in the current MCP session pool", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-list-"));
     const fakeOpenCode = await startFakeOpenCodeServer();
