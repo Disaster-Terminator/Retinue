@@ -114,6 +114,8 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
         ).dir,
         sessionId: started.sessionId,
         externalSessionId: started.externalSessionId,
+        externalServerUrl: started.externalServerUrl,
+        externalSessionDirectory: started.externalSessionDirectory,
         evictedJobId: evicted?.jobId
       });
     }

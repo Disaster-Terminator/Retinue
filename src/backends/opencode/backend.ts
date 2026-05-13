@@ -109,12 +109,6 @@ export class OpenCodeBackend implements AgentBackend {
     const target = await this.resolveTarget(options.cwd);
     const session = await target.client.createSession({ cwd: options.cwd, title: options.title ?? options.name });
     const baseline = await this.captureMessageBaseline(target.client, session.id);
-    await target.client.promptAsync(session.id, {
-      prompt: options.prompt,
-      model: options.model,
-      agent: options.agent,
-      tools: options.readOnly === true ? OPENCODE_READ_ONLY_TOOLS : undefined
-    });
     const now = new Date().toISOString();
     const meta: JobMeta = {
       schemaVersion: 1,
@@ -132,6 +126,7 @@ export class OpenCodeBackend implements AgentBackend {
       agent: options.agent,
       externalSessionId: session.id,
       externalServerUrl: target.baseUrl,
+      externalSessionDirectory: session.directory ?? session.cwd,
       externalMessageBaselineCount: baseline.messageCount,
       externalCompletedAssistantBaselineCount: baseline.completedAssistantCount,
       args: [],
@@ -139,7 +134,8 @@ export class OpenCodeBackend implements AgentBackend {
       updatedAt: now
     };
     await writeJsonAtomic(paths.meta, meta);
-    await this.writeJobTrace("opencode_job_prompt_submitted", meta, await this.inspectJob(meta));
+    const submitted = this.submitPromptAsync(target.client, session.id, meta, options);
+    await Promise.race([submitted, sleep(50)]);
     return meta;
   }
 
@@ -153,12 +149,6 @@ export class OpenCodeBackend implements AgentBackend {
     await fs.writeFile(paths.prompt, options.prompt, "utf8");
     const target = await this.targetForContinue(options);
     const baseline = await this.captureMessageBaseline(target.client, options.externalSessionId);
-    await target.client.promptAsync(options.externalSessionId, {
-      prompt: options.prompt,
-      model: options.model,
-      agent: options.agent,
-      tools: options.readOnly === true ? OPENCODE_READ_ONLY_TOOLS : undefined
-    });
     const now = new Date().toISOString();
     const meta: JobMeta = {
       schemaVersion: 1,
@@ -176,6 +166,7 @@ export class OpenCodeBackend implements AgentBackend {
       agent: options.agent,
       externalSessionId: options.externalSessionId,
       externalServerUrl: target.baseUrl,
+      externalSessionDirectory: options.cwd,
       externalMessageBaselineCount: baseline.messageCount,
       externalCompletedAssistantBaselineCount: baseline.completedAssistantCount,
       parentJobId: options.parentJobId,
@@ -185,7 +176,8 @@ export class OpenCodeBackend implements AgentBackend {
       updatedAt: now
     };
     await writeJsonAtomic(paths.meta, meta);
-    await this.writeJobTrace("opencode_job_prompt_submitted", meta, await this.inspectJob(meta));
+    const submitted = this.submitPromptAsync(target.client, options.externalSessionId, meta, options);
+    await Promise.race([submitted, sleep(50)]);
     return meta;
   }
 
@@ -472,6 +464,26 @@ export class OpenCodeBackend implements AgentBackend {
       promptSha256: meta.promptSha256,
       diagnostic
     });
+  }
+
+  private async submitPromptAsync(client: OpenCodeClient, sessionId: string, meta: JobMeta, options: AgentRunOptions): Promise<void> {
+    try {
+      await client.promptAsync(sessionId, {
+        prompt: options.prompt,
+        model: options.model,
+        agent: options.agent,
+        tools: options.readOnly === true ? OPENCODE_READ_ONLY_TOOLS : undefined
+      });
+      await this.writeJobTrace("opencode_job_prompt_submitted", meta, await this.inspectJob(meta));
+    } catch (error) {
+      const failed: JobMeta = { ...meta, status: "failed", updatedAt: new Date().toISOString() };
+      await writeJsonAtomic(getJobPaths(this.stateDir, meta.jobId).meta, failed);
+      await appendJobDiagnostic(this.stateDir, meta.jobId, {
+        event: "opencode_job_prompt_failed",
+        error: error instanceof Error ? error.message : String(error)
+      });
+      await this.writeJobTrace("opencode_job_prompt_failed", failed, await this.inspectJob(failed));
+    }
   }
 
   private clientForMeta(meta: JobMeta): OpenCodeClient {

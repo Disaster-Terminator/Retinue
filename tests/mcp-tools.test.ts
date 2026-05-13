@@ -289,7 +289,9 @@ describe("MCP tools", () => {
         backend: "opencode",
         status: "running",
         cwd: tempDir,
-        jobDir: path.join(tempDir, "jobs", spawn.jobId)
+        jobDir: path.join(tempDir, "jobs", spawn.jobId),
+        externalServerUrl: fakeOpenCode.url,
+        externalSessionDirectory: process.cwd()
       });
       expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({
         tools: {

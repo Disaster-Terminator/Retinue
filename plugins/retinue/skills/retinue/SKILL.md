@@ -39,7 +39,7 @@ Use these Retinue tools for normal Codex subagent work:
 - `retinue_close_agent`
 - `retinue_list_agents`
 
-When spawning read-only exploration work, pass an explicit absolute `cwd` and ask the child to include path evidence for file-existence claims. `retinue_spawn_agent` returns the effective `cwd` and job artifact directory; use those fields to catch workspace drift early. Pass `access_mode: "profile"` only for tasks where child-agent edits are intended and acceptable.
+When spawning read-only exploration work, pass an explicit absolute `cwd` and ask the child to include path evidence for file-existence claims. `retinue_spawn_agent` returns the requested `cwd`, OpenCode `externalSessionDirectory`, and job artifact directory; compare them to catch workspace drift early. Pass `access_mode: "profile"` only for tasks where child-agent edits are intended and acceptable.
 
 If `retinue_wait_agent` returns `running`, treat it as a workflow event, not a dead end. The response includes `stateDir`, `tracePath`, `jobDir`, `promptPath`, `stdoutPath`, `stderrPath`, and bounded stdout/stderr tails. Inspect the tail fields first; they usually contain recent backend diagnostics without requiring a separate filesystem read. Complex OpenCode `plan` jobs can spend several minutes in tool-call rounds before producing final text, so keep polling unless the task reaches a terminal state.
 

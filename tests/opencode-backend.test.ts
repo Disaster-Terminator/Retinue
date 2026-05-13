@@ -43,6 +43,7 @@ describe("OpenCodeBackend", () => {
       model: "local/test",
       agent: "build",
       externalServerUrl: server!.url,
+      externalSessionDirectory: process.cwd(),
       externalSessionId: expect.stringMatching(/^ses_/)
     });
     expect(started.promptPath).toMatch(/prompt\.md$/);
@@ -71,6 +72,29 @@ describe("OpenCodeBackend", () => {
         bash: false
       }
     });
+  });
+
+  it("returns a job handle before a slow OpenCode prompt_async call finishes", async () => {
+    server!.setPromptAsyncDelayMs(500);
+    const backend = createBackend();
+
+    const started = backend.run({
+      cwd: tempDir,
+      prompt: "slow prompt submission"
+    });
+
+    await expect(Promise.race([started.then(() => "started"), sleep(100).then(() => "timeout")])).resolves.toBe("started");
+    const meta = await started;
+    expect(meta).toMatchObject({ backend: "opencode", status: "running", cwd: tempDir });
+    await expect(fs.readFile(getJobPaths(tempDir, meta.jobId).meta, "utf8").then(JSON.parse)).resolves.toMatchObject({
+      backend: "opencode",
+      status: "running",
+      externalSessionId: meta.externalSessionId
+    });
+    expect(server!.promptRequests).toHaveLength(0);
+
+    await sleep(600);
+    expect(server!.promptRequests).toHaveLength(1);
   });
 
   it("keeps newly started jobs running until fake completion", async () => {
@@ -462,3 +486,7 @@ describe("OpenCodeBackend", () => {
     });
   }
 });
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

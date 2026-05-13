@@ -120,6 +120,8 @@ When a wait returns `running`, the response includes `stdoutTail`, `stderrTail`,
 
 Retinue reports OpenCode empty-output or incomplete assistant loops as `stalled` only after diagnostic thresholds are crossed. The default long stall threshold is 10 minutes; deployments can tune `RETINUE_OPENCODE_STALL_MS`, `RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS`, `RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS`, and `RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS`.
 
+`retinue_spawn_agent` returns both the requested `cwd` and OpenCode's `externalSessionDirectory`. If they differ, close the child and spawn again with the intended absolute directory before trusting repository-specific conclusions.
+
 ## Logs
 
 Retinue writes local diagnostics under `RETINUE_STATE_DIR`. If unset, the defaults are:
