@@ -6830,12 +6830,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs5, exportName) {
+    function addFormats(ajv, list, fs6, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs5[f]);
+        ajv.addFormat(f, fs6[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -6844,7 +6844,7 @@ var require_dist = __commonJS({
 });
 
 // src/mcp.ts
-import fs4 from "node:fs/promises";
+import fs5 from "node:fs/promises";
 import path3 from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21197,13 +21197,15 @@ var OpenCodeClient = class {
   async request(method, path4, body) {
     const response = await this.fetch(method, path4, body);
     const text = await response.text();
+    if (!response.ok) {
+      const parsed2 = parseJson(text);
+      const details = parsed2.ok ? parsed2.value : text;
+      const message = parsed2.ok ? extractErrorMessage(parsed2.value) : void 0;
+      throw new OpenCodeClientError(message ?? `OpenCode request failed with HTTP ${response.status}`, "http_error", response.status, path4, details);
+    }
     const parsed = parseJson(text);
     if (!parsed.ok) {
       throw new OpenCodeClientError("OpenCode response was not valid JSON", "invalid_json", response.status, path4, text);
-    }
-    if (!response.ok) {
-      const message = extractErrorMessage(parsed.value) ?? `OpenCode request failed with HTTP ${response.status}`;
-      throw new OpenCodeClientError(message, "http_error", response.status, path4, parsed.value);
     }
     return parsed.value;
   }
@@ -22544,12 +22546,14 @@ var DaemonClientError = class extends Error {
   code;
   status;
   path;
+  details;
   constructor(message, details) {
     super(message);
     this.name = "DaemonClientError";
     this.code = details.code;
     this.status = details.status;
     this.path = details.path;
+    this.details = details.details;
   }
 };
 var DaemonClient = class {
@@ -22598,11 +22602,24 @@ var DaemonClient = class {
     const text = await response.text();
     const parsed = parseJson3(text);
     if (!response.ok) {
-      const error2 = extractDaemonError(parsed);
+      const error2 = parsed.ok ? extractDaemonError(parsed.value) : void 0;
       const message = error2?.message ?? `Daemon request failed with HTTP ${response.status}`;
-      throw new DaemonClientError(message, { code: error2?.code, status: response.status, path: path4 });
+      throw new DaemonClientError(message, {
+        code: error2?.code,
+        status: response.status,
+        path: path4,
+        details: parsed.ok ? parsed.value : text
+      });
     }
-    return parsed;
+    if (!parsed.ok) {
+      throw new DaemonClientError("Daemon response was not valid JSON", {
+        code: "invalid_json",
+        status: response.status,
+        path: path4,
+        details: text
+      });
+    }
+    return parsed.value;
   }
 };
 function classifyTransportError(error2) {
@@ -22615,12 +22632,12 @@ function classifyTransportError(error2) {
 }
 function parseJson3(text) {
   if (!text.trim()) {
-    return void 0;
+    return { ok: false };
   }
   try {
-    return JSON.parse(text);
+    return { ok: true, value: JSON.parse(text) };
   } catch {
-    return void 0;
+    return { ok: false };
   }
 }
 function extractDaemonError(value) {
@@ -22711,10 +22728,70 @@ function isPidAlive2(pid) {
   }
 }
 
+// src/core/fileTail.ts
+import fs3 from "node:fs/promises";
+async function readTextTailIfExists(filePath, maxBytes) {
+  try {
+    const stats = await fs3.stat(filePath);
+    if (!stats.isFile() || stats.size <= 0) {
+      return { text: "", bytes: Math.max(0, stats.size), truncated: false };
+    }
+    const requestedBytes = Math.max(0, Math.floor(maxBytes));
+    if (requestedBytes <= 0) {
+      return { text: "", bytes: stats.size, truncated: true };
+    }
+    const readBytes = Math.min(stats.size, requestedBytes + 3);
+    const buffer = Buffer.alloc(readBytes);
+    const handle = await fs3.open(filePath, "r");
+    try {
+      await handle.read(buffer, 0, readBytes, stats.size - readBytes);
+    } finally {
+      await handle.close();
+    }
+    const decoded = trimLeadingReplacementCharacters(buffer.toString("utf8"));
+    const limited = limitUtf8Suffix(decoded, requestedBytes);
+    return {
+      text: limited.text,
+      bytes: stats.size,
+      truncated: stats.size > Buffer.byteLength(limited.text, "utf8")
+    };
+  } catch (error2) {
+    if (isMissingFile(error2)) {
+      return { text: "", bytes: 0, truncated: false };
+    }
+    throw error2;
+  }
+}
+function limitUtf8Suffix(text, maxBytes) {
+  const bytes = Buffer.byteLength(text, "utf8");
+  if (bytes <= maxBytes) {
+    return { text, truncated: false };
+  }
+  const chars = Array.from(text);
+  const suffix = [];
+  let usedBytes = 0;
+  for (let index = chars.length - 1; index >= 0; index -= 1) {
+    const char = chars[index];
+    const charBytes = Buffer.byteLength(char, "utf8");
+    if (usedBytes + charBytes > maxBytes) {
+      break;
+    }
+    suffix.push(char);
+    usedBytes += charBytes;
+  }
+  return { text: suffix.reverse().join(""), truncated: true };
+}
+function trimLeadingReplacementCharacters(text) {
+  return text.replace(/^\uFFFD+/, "");
+}
+function isMissingFile(error2) {
+  return typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === "ENOENT";
+}
+
 // src/core/retinue.ts
 import { spawn as spawn2 } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import fs3 from "node:fs/promises";
+import fs4 from "node:fs/promises";
 import { createHash as createHash3, randomUUID as randomUUID3 } from "node:crypto";
 import { finished } from "node:stream/promises";
 
@@ -22797,8 +22874,8 @@ var ClaudeRetinue = class {
     }
     const jobId = `job_${randomUUID3()}`;
     const paths = getJobPaths(this.stateDir, jobId);
-    await fs3.mkdir(paths.dir, { recursive: true });
-    await fs3.writeFile(paths.prompt, options.prompt, "utf8");
+    await fs4.mkdir(paths.dir, { recursive: true });
+    await fs4.writeFile(paths.prompt, options.prompt, "utf8");
     const claudeArgs = buildClaudeArgs(options);
     const args = [...this.claudePrefixArgs, ...claudeArgs];
     const stdout = createWriteStream(paths.stdout, { flags: "a" });
@@ -22859,7 +22936,7 @@ var ClaudeRetinue = class {
       await Promise.allSettled([finished(stdout), finished(stderr)]);
       const wasKilled = this.killedJobIds.has(jobId);
       const wasTimedOut = this.timedOutJobIds.has(jobId);
-      const parsedStdout = parseJsonOutput(await readTextIfExists(paths.stdout));
+      const parsedStdout = parseJsonOutput((await readTextTailIfExists(paths.stdout, 1024 * 1024)).text);
       const sessionId = extractSessionId(parsedStdout);
       const status = {
         status: forcedStatus ?? (wasTimedOut ? "timed_out" : wasKilled ? "killed" : exitCode === 0 ? "completed" : "failed"),
@@ -22941,14 +23018,12 @@ var ClaudeRetinue = class {
       };
     }
     const paths = getJobPaths(this.stateDir, jobId);
-    const [fullStdout, fullStderr, exitStatus] = await Promise.all([
-      readTextIfExists(paths.stdout),
-      readTextIfExists(paths.stderr),
+    const [stdout, stderr, exitStatus] = await Promise.all([
+      readTextTailIfExists(paths.stdout, 65536),
+      readTextTailIfExists(paths.stderr, 65536),
       readJsonIfExists(paths.exitStatus)
     ]);
-    const stdout = limitText(fullStdout, 65536);
-    const stderr = limitText(fullStderr, 65536);
-    const parsedStdout = parseJsonOutput(fullStdout);
+    const parsedStdout = parseJsonOutput(stdout.text);
     return {
       jobId,
       status: meta.status,
@@ -22956,8 +23031,8 @@ var ClaudeRetinue = class {
       stderr: stderr.text,
       stdoutPath: paths.stdout,
       stderrPath: paths.stderr,
-      stdoutBytes: Buffer.byteLength(fullStdout, "utf8"),
-      stderrBytes: Buffer.byteLength(fullStderr, "utf8"),
+      stdoutBytes: stdout.bytes,
+      stderrBytes: stderr.bytes,
       stdoutTruncated: stdout.truncated,
       stderrTruncated: stderr.truncated,
       sessionId: meta.sessionId ?? extractSessionId(parsedStdout),
@@ -22997,14 +23072,14 @@ var ClaudeRetinue = class {
     }
     const paths = getJobPaths(this.stateDir, jobId);
     const [stdout, stderr] = await Promise.all([
-      readTextIfExists(paths.stdout),
-      readTextIfExists(paths.stderr)
+      readTextTailIfExists(paths.stdout, options.stdoutTailBytes ?? 4096),
+      readTextTailIfExists(paths.stderr, options.stderrTailBytes ?? 4096)
     ]);
     return {
       jobId,
       status: meta.status,
-      stdoutTail: limitText(stdout, options.stdoutTailBytes ?? 4096).text,
-      stderrTail: limitText(stderr, options.stderrTailBytes ?? 4096).text,
+      stdoutTail: stdout.text,
+      stderrTail: stderr.text,
       stdoutPath: paths.stdout,
       stderrPath: paths.stderr
     };
@@ -23066,7 +23141,7 @@ var ClaudeRetinue = class {
       }
       const paths = getJobPaths(this.stateDir, jobId);
       removedTempFiles.push(...await listTempFiles2(paths.dir));
-      await fs3.rm(paths.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      await fs4.rm(paths.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
       removedJobIds.push(jobId);
     }
     return { removedJobIds, removedTempFiles };
@@ -23095,9 +23170,9 @@ var ClaudeRetinue = class {
   async readMeta(jobId) {
     const paths = getJobPaths(this.stateDir, jobId);
     try {
-      return normalizeMeta(JSON.parse(await fs3.readFile(paths.meta, "utf8")));
+      return normalizeMeta(JSON.parse(await fs4.readFile(paths.meta, "utf8")));
     } catch (error2) {
-      if (isMissingFile(error2)) {
+      if (isMissingFile2(error2)) {
         return { jobId, status: "not_found" };
       }
       return {
@@ -23127,17 +23202,17 @@ function normalizeMeta(meta) {
   };
 }
 async function writeJsonAtomic2(filePath, value) {
-  await fs3.mkdir(filePath.replace(/[\\/][^\\/]+$/, ""), { recursive: true });
+  await fs4.mkdir(filePath.replace(/[\\/][^\\/]+$/, ""), { recursive: true });
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID3()}.tmp`;
-  await fs3.writeFile(tempPath, `${JSON.stringify(value, null, 2)}
+  await fs4.writeFile(tempPath, `${JSON.stringify(value, null, 2)}
 `, "utf8");
-  await fs3.rename(tempPath, filePath);
+  await fs4.rename(tempPath, filePath);
 }
 async function readTextIfExists(filePath) {
   try {
-    return await fs3.readFile(filePath, "utf8");
+    return await fs4.readFile(filePath, "utf8");
   } catch (error2) {
-    if (isMissingFile(error2)) {
+    if (isMissingFile2(error2)) {
       return "";
     }
     throw error2;
@@ -23179,14 +23254,6 @@ function createPromptPreview2(prompt) {
 function sha2562(value) {
   return createHash3("sha256").update(value).digest("hex");
 }
-function limitText(text, maxBytes) {
-  const bytes = Buffer.byteLength(text, "utf8");
-  if (bytes <= maxBytes) {
-    return { text, truncated: false };
-  }
-  const suffix = text.slice(-maxBytes);
-  return { text: suffix, truncated: true };
-}
 function isPidAlive3(pid) {
   if (pid <= 0) {
     return false;
@@ -23201,7 +23268,7 @@ function isPidAlive3(pid) {
 function isProblem2(value) {
   return value.status === "not_found" || value.status === "corrupted";
 }
-function isMissingFile(error2) {
+function isMissingFile2(error2) {
   return typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === "ENOENT";
 }
 function sleep3(ms) {
@@ -23212,9 +23279,9 @@ function getJobsDir2(stateDir) {
 }
 async function readDirIfExists2(dirPath) {
   try {
-    return await fs3.readdir(dirPath, { withFileTypes: true });
+    return await fs4.readdir(dirPath, { withFileTypes: true });
   } catch (error2) {
-    if (isMissingFile(error2)) {
+    if (isMissingFile2(error2)) {
       return [];
     }
     throw error2;
@@ -23345,8 +23412,8 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
         });
         const paths = getJobPaths(stateDir, jobId);
         const [stdoutTail, stderrTail, diagnostic] = await Promise.all([
-          readTailIfExists(paths.stdout),
-          readTailIfExists(paths.stderr),
+          readTextTailIfExists(paths.stdout, 4096),
+          readTextTailIfExists(paths.stderr, 4096),
           readLatestJobDiagnostic(paths.stderr)
         ]);
         return jsonToolResult({
@@ -23737,9 +23804,9 @@ async function readConfiguredOpenCodeAccessMode(env) {
   }
   let parsed;
   try {
-    parsed = JSON.parse(await fs4.readFile(configPath, "utf8"));
+    parsed = JSON.parse(await fs5.readFile(configPath, "utf8"));
   } catch (error2) {
-    if (isMissingFile2(error2)) {
+    if (isMissingFile3(error2)) {
       return void 0;
     }
     throw new Error(`Failed to read Retinue config ${configPath}: ${error2 instanceof Error ? error2.message : String(error2)}`);
@@ -23767,33 +23834,18 @@ function readOpenCodeAccessModeFromEnv(env) {
   }
   return configured === "0" || configured === "false" || configured === "no" || configured === "off" ? "profile" : "read_only";
 }
-function isMissingFile2(error2) {
+function isMissingFile3(error2) {
   return typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === "ENOENT";
 }
 async function writeMcpTrace(env, value) {
   const stateDir = resolveStateDir({ explicitStateDir: env.RETINUE_STATE_DIR, env });
   const tracePath = getRetinueTracePath(stateDir);
-  await fs4.mkdir(path3.dirname(tracePath), { recursive: true });
-  await fs4.appendFile(tracePath, `${JSON.stringify({ timestamp: (/* @__PURE__ */ new Date()).toISOString(), ...value })}
+  await fs5.mkdir(path3.dirname(tracePath), { recursive: true });
+  await fs5.appendFile(tracePath, `${JSON.stringify({ timestamp: (/* @__PURE__ */ new Date()).toISOString(), ...value })}
 `, "utf8");
 }
-async function readTailIfExists(filePath, maxBytes = 4096) {
-  try {
-    const text = await fs4.readFile(filePath, "utf8");
-    const bytes = Buffer.byteLength(text, "utf8");
-    if (bytes <= maxBytes) {
-      return { text, bytes, truncated: false };
-    }
-    return { text: text.slice(-maxBytes), bytes, truncated: true };
-  } catch (error2) {
-    if (typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === "ENOENT") {
-      return { text: "", bytes: 0, truncated: false };
-    }
-    throw error2;
-  }
-}
 async function readLatestJobDiagnostic(filePath) {
-  const tail = await readTailIfExists(filePath, 64 * 1024);
+  const tail = await readTextTailIfExists(filePath, 64 * 1024);
   if (!tail.text) {
     return void 0;
   }
@@ -23929,7 +23981,7 @@ async function readRetinueJobBackendKind(jobId) {
     env: process.env
   });
   try {
-    const meta = JSON.parse(await fs4.readFile(getJobPaths(stateDir, jobId).meta, "utf8"));
+    const meta = JSON.parse(await fs5.readFile(getJobPaths(stateDir, jobId).meta, "utf8"));
     return meta.backend === "opencode" || meta.backend === "claude-code" ? meta.backend : void 0;
   } catch {
     return void 0;

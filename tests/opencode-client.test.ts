@@ -64,6 +64,19 @@ describe("OpenCodeClient", () => {
     await expect(client.getSession("missing")).rejects.toBeInstanceOf(OpenCodeClientError);
   });
 
+  it("preserves non-JSON HTTP failure bodies as HTTP errors", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("upstream unavailable", { status: 503 })));
+    const client = new OpenCodeClient("http://opencode");
+
+    await expect(client.health()).rejects.toMatchObject({
+      name: "OpenCodeClientError",
+      code: "http_error",
+      status: 503,
+      path: "/global/health",
+      details: "upstream unavailable"
+    });
+  });
+
   it("times out unresponsive requests", async () => {
     vi.stubGlobal(
       "fetch",

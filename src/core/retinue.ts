@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { finished } from "node:stream/promises";
 import { buildClaudeArgs } from "./claudeArgs.js";
+import { readTextTailIfExists } from "./fileTail.js";
 import { getJobPaths, resolveStateDir } from "./paths.js";
 import { killProcessTree } from "./processTree.js";
 import { isCleanupSafeStatus } from "./status.js";
@@ -131,7 +132,7 @@ export class ClaudeRetinue implements RetinueApi {
       await Promise.allSettled([finished(stdout), finished(stderr)]);
       const wasKilled = this.killedJobIds.has(jobId);
       const wasTimedOut = this.timedOutJobIds.has(jobId);
-      const parsedStdout = parseJsonOutput(await readTextIfExists(paths.stdout));
+      const parsedStdout = parseJsonOutput((await readTextTailIfExists(paths.stdout, 1024 * 1024)).text);
       const sessionId = extractSessionId(parsedStdout);
       const status: ExitStatus = {
         status: forcedStatus ?? (wasTimedOut ? "timed_out" : wasKilled ? "killed" : exitCode === 0 ? "completed" : "failed"),
@@ -224,14 +225,12 @@ export class ClaudeRetinue implements RetinueApi {
       };
     }
     const paths = getJobPaths(this.stateDir, jobId);
-    const [fullStdout, fullStderr, exitStatus] = await Promise.all([
-      readTextIfExists(paths.stdout),
-      readTextIfExists(paths.stderr),
+    const [stdout, stderr, exitStatus] = await Promise.all([
+      readTextTailIfExists(paths.stdout, 65536),
+      readTextTailIfExists(paths.stderr, 65536),
       readJsonIfExists<ExitStatus>(paths.exitStatus)
     ]);
-    const stdout = limitText(fullStdout, 65536);
-    const stderr = limitText(fullStderr, 65536);
-    const parsedStdout = parseJsonOutput(fullStdout);
+    const parsedStdout = parseJsonOutput(stdout.text);
 
     return {
       jobId,
@@ -240,8 +239,8 @@ export class ClaudeRetinue implements RetinueApi {
       stderr: stderr.text,
       stdoutPath: paths.stdout,
       stderrPath: paths.stderr,
-      stdoutBytes: Buffer.byteLength(fullStdout, "utf8"),
-      stderrBytes: Buffer.byteLength(fullStderr, "utf8"),
+      stdoutBytes: stdout.bytes,
+      stderrBytes: stderr.bytes,
       stdoutTruncated: stdout.truncated,
       stderrTruncated: stderr.truncated,
       sessionId: meta.sessionId ?? extractSessionId(parsedStdout),
@@ -286,15 +285,15 @@ export class ClaudeRetinue implements RetinueApi {
 
     const paths = getJobPaths(this.stateDir, jobId);
     const [stdout, stderr] = await Promise.all([
-      readTextIfExists(paths.stdout),
-      readTextIfExists(paths.stderr)
+      readTextTailIfExists(paths.stdout, options.stdoutTailBytes ?? 4096),
+      readTextTailIfExists(paths.stderr, options.stderrTailBytes ?? 4096)
     ]);
 
     return {
       jobId,
       status: meta.status,
-      stdoutTail: limitText(stdout, options.stdoutTailBytes ?? 4096).text,
-      stderrTail: limitText(stderr, options.stderrTailBytes ?? 4096).text,
+      stdoutTail: stdout.text,
+      stderrTail: stderr.text,
       stdoutPath: paths.stdout,
       stderrPath: paths.stderr
     };
@@ -495,15 +494,6 @@ function createPromptPreview(prompt: string): string {
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
-}
-
-function limitText(text: string, maxBytes: number): { text: string; truncated: boolean } {
-  const bytes = Buffer.byteLength(text, "utf8");
-  if (bytes <= maxBytes) {
-    return { text, truncated: false };
-  }
-  const suffix = text.slice(-maxBytes);
-  return { text: suffix, truncated: true };
 }
 
 function isPidAlive(pid: number): boolean {
