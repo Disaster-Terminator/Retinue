@@ -21479,21 +21479,21 @@ var OpenCodeBackend = class {
     }
   }
   async reconcileStatus(meta) {
-    if (!meta.externalSessionId || isTerminal2(meta.status) && meta.status !== "stalled") {
+    if (!meta.externalSessionId || isTerminal2(meta.status) && meta.status !== "stalled" && meta.status !== "killed") {
       return meta;
     }
     try {
       const client = this.clientForMeta(meta);
       const session = await client.getSession(meta.externalSessionId);
       let status = meta.status;
-      if (session.aborted === true) {
-        status = "killed";
-      } else if (session.state === "completed") {
+      if (session.state === "completed") {
         status = "completed";
       } else if (session.state === "failed") {
         status = "failed";
       } else if (await this.hasNewCompletedAssistantMessage(client, meta.externalSessionId, meta)) {
         status = "completed";
+      } else if (session.aborted === true) {
+        status = "killed";
       } else if (meta.status === "stalled") {
         status = "stalled";
       } else if (await this.isStalledOpenCodeJob(client, meta.externalSessionId, meta)) {
