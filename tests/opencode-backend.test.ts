@@ -396,7 +396,7 @@ describe("OpenCodeBackend", () => {
     expect(trace).not.toContain('"event":"opencode_job_stalled"');
   });
 
-  it("marks default incomplete assistant tool rounds as stalled before the long stall threshold", async () => {
+  it("keeps default incomplete assistant tool rounds running through realistic late-result windows", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
       baseUrl: server!.url,
@@ -416,10 +416,42 @@ describe("OpenCodeBackend", () => {
     const meta = JSON.parse(await fs.readFile(paths.meta, "utf8")) as typeof started;
     await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 120_000).toISOString() })}\n`, "utf8");
 
+    await expect(backend.wait({ jobId: started.jobId }, 1)).resolves.toMatchObject({ status: "running" });
+    server!.completeSessionWithFinalText(started.externalSessionId!, "late final result");
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "completed",
+      parsedStdout: { result: "late final result" }
+    });
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).not.toContain('"event":"opencode_job_stalled"');
+  });
+
+  it("marks default incomplete assistant tool rounds as stalled after the incomplete threshold", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "complex audit stops returning text" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source two");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source three");
+    server!.appendIncompleteAssistant(started.externalSessionId!, "still checking");
+
+    const paths = getJobPaths(tempDir, started.jobId);
+    const meta = JSON.parse(await fs.readFile(paths.meta, "utf8")) as typeof started;
+    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 181_000).toISOString() })}\n`, "utf8");
+
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"event":"opencode_job_stalled"');
-    expect(trace).toContain('"incompleteAssistantStallThresholdMs":60000');
+    expect(trace).toContain('"incompleteAssistantStallThresholdMs":180000');
   });
 
   it("marks a single stale running tool call as stalled after the incomplete assistant threshold", async () => {
@@ -430,7 +462,7 @@ describe("OpenCodeBackend", () => {
 
     const paths = getJobPaths(tempDir, started.jobId);
     const meta = JSON.parse(await fs.readFile(paths.meta, "utf8")) as typeof started;
-    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 120_000).toISOString() })}\n`, "utf8");
+    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 181_000).toISOString() })}\n`, "utf8");
 
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");

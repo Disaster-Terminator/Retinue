@@ -167,8 +167,8 @@ describe("Retinue Codex plugin guardrails", () => {
 
   it("keeps OpenCode incomplete-assistant stall detection conservative by default", () => {
     expect(opencodeBackendSource).toContain("const DEFAULT_STALL_MS = 10 * 60_000");
-    expect(opencodeBackendSource).toContain("const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = 60_000");
-    expect(opencodeBackendSource).not.toContain("const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = 90_000");
+    expect(opencodeBackendSource).toContain("const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = 3 * 60_000");
+    expect(opencodeBackendSource).not.toContain("const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = 60_000");
     expect(opencodeBackendSource).toContain("const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 2");
   });
 
