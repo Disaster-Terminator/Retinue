@@ -21277,12 +21277,6 @@ var OpenCodeBackend = class {
     const target = await this.resolveTarget(options.cwd);
     const session = await target.client.createSession({ cwd: options.cwd, title: options.title ?? options.name });
     const baseline = await this.captureMessageBaseline(target.client, session.id);
-    await target.client.promptAsync(session.id, {
-      prompt: options.prompt,
-      model: options.model,
-      agent: options.agent,
-      tools: options.readOnly === true ? OPENCODE_READ_ONLY_TOOLS : void 0
-    });
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const meta = {
       schemaVersion: 1,
@@ -21300,6 +21294,7 @@ var OpenCodeBackend = class {
       agent: options.agent,
       externalSessionId: session.id,
       externalServerUrl: target.baseUrl,
+      externalSessionDirectory: session.directory ?? session.cwd,
       externalMessageBaselineCount: baseline.messageCount,
       externalCompletedAssistantBaselineCount: baseline.completedAssistantCount,
       args: [],
@@ -21307,7 +21302,8 @@ var OpenCodeBackend = class {
       updatedAt: now
     };
     await writeJsonAtomic(paths.meta, meta);
-    await this.writeJobTrace("opencode_job_prompt_submitted", meta, await this.inspectJob(meta));
+    const submitted = this.submitPromptAsync(target.client, session.id, meta, options);
+    await Promise.race([submitted, sleep(50)]);
     return meta;
   }
   async continueJob(options) {
@@ -21320,12 +21316,6 @@ var OpenCodeBackend = class {
     await fs.writeFile(paths.prompt, options.prompt, "utf8");
     const target = await this.targetForContinue(options);
     const baseline = await this.captureMessageBaseline(target.client, options.externalSessionId);
-    await target.client.promptAsync(options.externalSessionId, {
-      prompt: options.prompt,
-      model: options.model,
-      agent: options.agent,
-      tools: options.readOnly === true ? OPENCODE_READ_ONLY_TOOLS : void 0
-    });
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const meta = {
       schemaVersion: 1,
@@ -21343,6 +21333,7 @@ var OpenCodeBackend = class {
       agent: options.agent,
       externalSessionId: options.externalSessionId,
       externalServerUrl: target.baseUrl,
+      externalSessionDirectory: options.cwd,
       externalMessageBaselineCount: baseline.messageCount,
       externalCompletedAssistantBaselineCount: baseline.completedAssistantCount,
       parentJobId: options.parentJobId,
@@ -21352,7 +21343,8 @@ var OpenCodeBackend = class {
       updatedAt: now
     };
     await writeJsonAtomic(paths.meta, meta);
-    await this.writeJobTrace("opencode_job_prompt_submitted", meta, await this.inspectJob(meta));
+    const submitted = this.submitPromptAsync(target.client, options.externalSessionId, meta, options);
+    await Promise.race([submitted, sleep(50)]);
     return meta;
   }
   async status(handle) {
@@ -21626,6 +21618,25 @@ var OpenCodeBackend = class {
       promptSha256: meta.promptSha256,
       diagnostic
     });
+  }
+  async submitPromptAsync(client, sessionId, meta, options) {
+    try {
+      await client.promptAsync(sessionId, {
+        prompt: options.prompt,
+        model: options.model,
+        agent: options.agent,
+        tools: options.readOnly === true ? OPENCODE_READ_ONLY_TOOLS : void 0
+      });
+      await this.writeJobTrace("opencode_job_prompt_submitted", meta, await this.inspectJob(meta));
+    } catch (error2) {
+      const failed = { ...meta, status: "failed", updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
+      await writeJsonAtomic(getJobPaths(this.stateDir, meta.jobId).meta, failed);
+      await appendJobDiagnostic(this.stateDir, meta.jobId, {
+        event: "opencode_job_prompt_failed",
+        error: error2 instanceof Error ? error2.message : String(error2)
+      });
+      await this.writeJobTrace("opencode_job_prompt_failed", failed, await this.inspectJob(failed));
+    }
   }
   clientForMeta(meta) {
     const baseUrl = meta.externalServerUrl?.replace(/\/+$/, "");
@@ -23150,6 +23161,8 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
         ).dir,
         sessionId: started.sessionId,
         externalSessionId: started.externalSessionId,
+        externalServerUrl: started.externalServerUrl,
+        externalSessionDirectory: started.externalSessionDirectory,
         evictedJobId: evicted?.jobId
       });
     }

@@ -100,6 +100,8 @@ Codex plugin installs read the default from the installation-scoped `retinue.con
 
 If a wait call returns `status: "running"`, keep the same `jobId` and call wait again. Do not spawn a replacement job only because one wait window elapsed.
 
+OpenCode `prompt_async` can spend time in upstream tool-call setup before the HTTP call returns. Retinue therefore persists job metadata and returns the `jobId` after creating the OpenCode session, while the prompt submission continues in the background if it does not complete immediately. If prompt submission later fails, the job moves to `failed` and writes `opencode_job_prompt_failed` diagnostics under the job directory and global trace.
+
 If OpenCode returns assistant rounds with no visible text, Retinue keeps them out of successful results. Empty `finish=stop` assistant rounds and long no-text tool-call loops become `stalled` with diagnostics so the caller can inspect logs or close the child agent. When OpenCode has already produced several tool-call rounds and the latest assistant round is still incomplete, Retinue uses a shorter incomplete-round stall threshold instead of waiting for the full long-loop threshold.
 
 ## Diagnostics

@@ -21,6 +21,7 @@ export interface FakeOpenCodeServer {
   sessionRequests: Array<Record<string, unknown>>;
   promptRequests: Array<Record<string, unknown>>;
   setAutoAssistantResponses(enabled: boolean): void;
+  setPromptAsyncDelayMs(ms: number): void;
   completeSession(sessionId: string): void;
   completeSessionByMessageOnly(sessionId: string): void;
   completeSessionWithFinalText(sessionId: string, text: string): void;
@@ -37,6 +38,7 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
   const promptRequests: Array<Record<string, unknown>> = [];
   const serverCwd = options.serverCwd ?? process.cwd();
   let autoAssistantResponses = true;
+  let promptAsyncDelayMs = 0;
   let nextSession = 1;
   let nextMessage = 1;
 
@@ -100,6 +102,9 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
     }
 
     if (request.method === "POST" && action === "prompt_async") {
+      if (promptAsyncDelayMs > 0) {
+        await sleep(promptAsyncDelayMs);
+      }
       const body = await readJson(request);
       promptRequests.push(body);
       const prompt =
@@ -146,6 +151,9 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
     promptRequests,
     setAutoAssistantResponses: (enabled: boolean) => {
       autoAssistantResponses = enabled;
+    },
+    setPromptAsyncDelayMs: (ms: number) => {
+      promptAsyncDelayMs = ms;
     },
     completeSession: (sessionId: string) => {
       const session = sessions.get(sessionId);
@@ -288,4 +296,8 @@ async function readJson(request: http.IncomingMessage): Promise<Record<string, u
   }
   const text = Buffer.concat(chunks).toString("utf8");
   return text.trim() ? (JSON.parse(text) as Record<string, unknown>) : {};
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

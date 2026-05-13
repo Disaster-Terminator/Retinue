@@ -43,6 +43,8 @@ The trace records OpenCode auto-serve events such as command resolution, port fa
 
 Job-level artifacts remain under `<stateDir>/jobs/<jobId>/`. When an OpenCode wait times out, Retinue also appends the same diagnostic snapshot to that job's `stderr.log` so E2E failures can be inspected from the job directory alone.
 
+`retinue_spawn_agent` returns after Retinue creates the OpenCode session and persists job metadata. If OpenCode `prompt_async` is slow to return, Retinue keeps submitting the prompt in the background instead of blocking the MCP spawn response. A later prompt-submission failure moves the job to `failed` and records `opencode_job_prompt_failed` diagnostics.
+
 The plugin MCP config starts the runtime shipped inside the plugin directory:
 
 ```json

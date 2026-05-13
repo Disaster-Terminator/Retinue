@@ -44,6 +44,7 @@ export interface JobMeta {
   sessionId?: string;
   externalSessionId?: string;
   externalServerUrl?: string;
+  externalSessionDirectory?: string;
   externalMessageId?: string;
   externalMessageBaselineCount?: number;
   externalCompletedAssistantBaselineCount?: number;

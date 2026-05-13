@@ -34,9 +34,10 @@ Retinue selects the backend from deployment configuration. The default Hermes in
 
 1. Spawn a child agent with `mcp_retinue_retinue_spawn_agent`.
 2. Include a concrete `message`, an explicit absolute `cwd` for repository/file work, and a useful `task_name`. Include `access_mode: "profile"` only when child-agent edits are intended and acceptable.
-3. Wait with `mcp_retinue_retinue_wait_agent`.
-4. If wait returns `running`, first inspect the returned `stdoutTail` and `stderrTail`; then use `stateDir`, `tracePath`, `jobDir`, `stdoutPath`, and `stderrPath` when deeper diagnosis is needed. Complex OpenCode `plan` jobs can spend several minutes in tool-call rounds before producing final text, so poll again unless the task reaches a terminal state.
-5. Close the job with `mcp_retinue_retinue_close_agent` when the result is terminal or the child should be stopped.
+3. Compare the returned `cwd` and `externalSessionDirectory`. Treat a mismatch as workspace drift and do not trust repository-specific conclusions until the job is closed and re-spawned with the correct directory.
+4. Wait with `mcp_retinue_retinue_wait_agent`.
+5. If wait returns `running`, first inspect the returned `stdoutTail` and `stderrTail`; then use `stateDir`, `tracePath`, `jobDir`, `stdoutPath`, and `stderrPath` when deeper diagnosis is needed. Complex OpenCode `plan` jobs can spend several minutes in tool-call rounds before producing final text, so poll again unless the task reaches a terminal state.
+6. Close the job with `mcp_retinue_retinue_close_agent` when the result is terminal or the child should be stopped.
 
 For read-only review tasks, require the child to state its working directory and use absolute paths for file-existence claims. Treat "file not found" or "missing documentation" conclusions as candidates until independently checked.
 
