@@ -14,7 +14,7 @@ pnpm run smoke:package
 pnpm run dev:sync-plugin-cache:all -- --apply
 ```
 
-Use `dev:sync-plugin-cache:all` only for Retinue. It syncs the installed Retinue cache for WSL and, when detectable from WSL, Windows. It does not install Retinue, uninstall Retinue, update marketplaces, or touch other plugin projects.
+Use `dev:sync-plugin-cache:all` only for Retinue. It syncs the installed Retinue cache for the current side and, when detectable, the other Windows/WSL side. It does not install Retinue, uninstall Retinue, update marketplaces, or touch other plugin projects.
 
 Existing Codex threads are not a plugin reload proof. After cache sync, the user may still need to restart the relevant Codex host and open a new thread.
 

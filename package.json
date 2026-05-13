@@ -57,7 +57,7 @@
     "verify:package": "pnpm pack --dry-run --json | node scripts/verify-package.mjs",
     "smoke:package": "node scripts/smoke-package-artifacts.mjs",
     "dev:sync-plugin-cache": "node scripts/sync-installed-plugin-cache.mjs",
-    "dev:sync-plugin-cache:all": "node scripts/sync-installed-plugin-cache.mjs --include-windows"
+    "dev:sync-plugin-cache:all": "node scripts/sync-installed-plugin-cache.mjs --include-windows --include-wsl"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.5",

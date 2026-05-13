@@ -35,7 +35,7 @@ pnpm run dev:sync-plugin-cache -- --apply
 
 Then restart the same Codex host and open a new thread. Do not uninstall/reinstall unless the cache sync fails or the marketplace/install state itself is the thing under test.
 
-When both WSL and Windows Codex need the same Retinue plugin bundle and you are running from WSL:
+When both WSL and Windows Codex need the same Retinue plugin bundle:
 
 ```bash
 pnpm run build
@@ -52,6 +52,7 @@ The sync script is intentionally dry-run by default. It discovers installed Reti
 $CODEX_HOME/plugins/cache
 ~/.codex/plugins/cache
 %USERPROFILE%\.codex\plugins\cache when --include-windows is used from WSL
+WSL ~/.codex/plugins/cache when --include-wsl is used from Windows
 ```
 
 Use explicit filters when needed:
@@ -64,7 +65,7 @@ pnpm run dev:sync-plugin-cache -- --marketplace retinue-local --version 0.1.0 --
 
 Windows Codex and WSL Codex have separate home directories, plugin caches, Node runtimes, and OpenCode installs. Sync only the side you are testing unless you intentionally use `dev:sync-plugin-cache:all`.
 
-For WSL CLI testing, run the sync script inside WSL and restart the WSL Codex session.
+For WSL CLI testing, run the sync script inside WSL and restart the WSL Codex session. If running the script from Windows, `dev:sync-plugin-cache:all` asks `wsl.exe` for the WSL Codex cache path and syncs it when available.
 
 For Windows Codex testing from WSL, run `pnpm run dev:sync-plugin-cache:all -- --apply`. The script detects the mounted Windows `%USERPROFILE%` through `cmd.exe` and syncs that cache root when available. If detection fails, pass the Windows cache root explicitly:
 

@@ -88,7 +88,7 @@ describe("package.json guardrails", () => {
     expect(scripts["verify:package"]).toBeTypeOf("string");
     expect(scripts["smoke:package"]).toBe("node scripts/smoke-package-artifacts.mjs");
     expect(scripts["dev:sync-plugin-cache"]).toBe("node scripts/sync-installed-plugin-cache.mjs");
-    expect(scripts["dev:sync-plugin-cache:all"]).toBe("node scripts/sync-installed-plugin-cache.mjs --include-windows");
+    expect(scripts["dev:sync-plugin-cache:all"]).toBe("node scripts/sync-installed-plugin-cache.mjs --include-windows --include-wsl");
     expect(scripts["check:generated"]).toBe("pnpm run build && git diff --exit-code -- dist plugins/retinue/dist");
 
     const realProbeScriptNames = Object.keys(scripts).filter((name) => name.startsWith("probe:real:"));
