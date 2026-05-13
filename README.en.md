@@ -174,7 +174,6 @@ Real OpenCode probe:
 ```bash
 RETINUE_REAL_OPENCODE_PROBE=1 \
 RETINUE_BACKEND=opencode \
-RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
 pnpm run probe:real:retinue-opencode
 ```
 
@@ -187,7 +186,9 @@ pnpm run probe:hermes-retinue
 ## Developer Docs
 
 - [Source install and development](docs/development/SOURCE_INSTALL.md)
-- [0.1.0 release plan](docs/release/0.1.0_RELEASE_PLAN.md)
+- [0.1.0 Release Notes](docs/release/v0.1.0_RELEASE_NOTES.md)
+- [0.1.0 Release Notes zh-CN](docs/release/v0.1.0_RELEASE_NOTES.zh-CN.md)
+- [0.1.0 Release Readiness](docs/release/0.1.0_RELEASE_PLAN.md)
 - [Docs index](docs/README.md)
 - [Long-Term Vision](docs/LONG_TERM_VISION.md)
 - [Project Boundary](docs/architecture/PROJECT_BOUNDARY.md)

@@ -2,13 +2,17 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { execFile } from "node:child_process";
 import { cp, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 
 const EXPECTED_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"];
+const execFileAsync = promisify(execFile);
 
 async function main() {
+  const cliResult = await smokeCli();
   const rootResult = await smokeMcpServer({
     label: "dist/mcp.js",
     command: process.execPath,
@@ -30,7 +34,7 @@ async function main() {
       `${JSON.stringify(
         {
           ok: true,
-          checks: [rootResult, pluginResult]
+          checks: [cliResult, rootResult, pluginResult]
         },
         null,
         2
@@ -39,6 +43,30 @@ async function main() {
   } finally {
     await rm(pluginCacheDir, { recursive: true, force: true });
   }
+}
+
+async function smokeCli() {
+  const cliPath = path.resolve("dist/cli.js");
+  try {
+    await execFileAsync(process.execPath, [cliPath, "daemon-health"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      timeout: 10_000
+    });
+  } catch (error) {
+    const stdout = typeof error === "object" && error !== null && "stdout" in error ? String(error.stdout) : "";
+    const parsed = parseJson(stdout);
+    if (parsed?.ok === false && parsed?.error?.code === "missing_daemon_target") {
+      return {
+        label: "dist/cli.js",
+        command: "daemon-health",
+        ok: true,
+        expectedFailureCode: parsed.error.code
+      };
+    }
+    throw error;
+  }
+  throw new Error("dist/cli.js daemon-health unexpectedly succeeded without a daemon target");
 }
 
 async function smokeMcpServer({ label, command, args, cwd }) {
@@ -78,6 +106,14 @@ async function smokeMcpServer({ label, command, args, cwd }) {
   } finally {
     await Promise.allSettled([client.close(), transport.close()]);
     await rm(stateDir, { recursive: true, force: true });
+  }
+}
+
+function parseJson(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
   }
 }
 

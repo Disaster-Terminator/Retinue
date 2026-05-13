@@ -116,7 +116,7 @@ This probe validates the OpenCode-first Retinue product surface:
 - `retinue_close_agent`
 - `retinue_list_agents`
 
-It intentionally does not pass a backend, profile, model, agent, or permission mode through the MCP tool arguments. Retinue uses the deployment-selected OpenCode server from `RETINUE_OPENCODE_BASE_URL`, and OpenCode uses its active profile.
+It intentionally does not pass a backend, profile, model, agent, or permission mode through the MCP tool arguments. Retinue uses the deployment-selected OpenCode path. By default this is Retinue-managed auto-serve; set `RETINUE_OPENCODE_BASE_URL` only when intentionally attaching to an externally managed OpenCode server. OpenCode uses its active profile.
 
 For local E2E, set `RETINUE_STATE_DIR` to a known directory. Retinue writes job artifacts under `<stateDir>/jobs/<jobId>/` and diagnostics under `<stateDir>/logs/retinue.jsonl`. The real MCP probe prints both `stateDir` and `tracePath` on success or failure. If `retinue_wait_agent` returns `running`, inspect the returned `stdoutTail` and `stderrTail` first; the response also includes `jobDir`, `promptPath`, `stdoutPath`, and `stderrPath` for deeper OpenCode session/message snapshots.
 
@@ -124,7 +124,6 @@ For local E2E, set `RETINUE_STATE_DIR` to a known directory. Retinue writes job 
 pnpm run build
 RETINUE_REAL_OPENCODE_PROBE=1 \
 RETINUE_BACKEND=opencode \
-RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
 RETINUE_OPENCODE_AGENT=plan \
 pnpm run probe:real:retinue-opencode
 ```
@@ -135,7 +134,6 @@ Slot-pool pressure probe:
 pnpm run build
 RETINUE_REAL_OPENCODE_SLOT_PROBE=1 \
 RETINUE_BACKEND=opencode \
-RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
 RETINUE_OPENCODE_AGENT=plan \
 pnpm run probe:real:retinue-opencode-slots
 ```

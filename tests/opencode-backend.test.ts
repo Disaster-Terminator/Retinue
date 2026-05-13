@@ -186,6 +186,26 @@ describe("OpenCodeBackend", () => {
     await expect(fs.readFile(getJobPaths(tempDir, started.jobId).stderr, "utf8")).resolves.toContain('"event":"opencode_job_stalled"');
   });
 
+  it("marks empty stop assistant rounds as stalled with diagnostics", async () => {
+    const backend = createBackend();
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "inspect docs and summarize" });
+    server!.appendEmptyStopAssistant(started.externalSessionId!);
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "stalled",
+      stdout: expect.stringContaining("empty assistant round"),
+      parsedStdout: { result: expect.stringContaining("empty assistant round") },
+      error: expect.stringContaining("empty assistant round")
+    });
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_job_stalled"');
+    expect(trace).toContain('"emptyAssistantRounds":1');
+    expect(trace).toContain('"lastAssistantPartTypes":["step-start","step-finish"]');
+  });
+
   it("recovers a stalled OpenCode job when the backend later produces a final result", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),

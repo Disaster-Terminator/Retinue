@@ -6,6 +6,7 @@ const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
 const DEFAULT_WAIT_POLL_MS = 250;
 const DEFAULT_STALL_MS = 10 * 60_000;
 const DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
+const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 1;
 export class OpenCodeBackend {
     kind = "opencode";
     client;
@@ -489,26 +490,32 @@ function computeStallDiagnostic(jobMessages, meta, env) {
         return undefined;
     }
     const roundThreshold = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS, DEFAULT_STALL_TOOL_CALL_ROUNDS);
+    const emptyAssistantThreshold = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS, DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS);
     const toolCallAssistantRounds = jobMessages.filter((message) => message.info?.role === "assistant" && isToolCallAssistantMessage(message)).length;
-    if (toolCallAssistantRounds < roundThreshold) {
+    const emptyAssistantRounds = jobMessages.filter((message) => message.info?.role === "assistant" && isEmptyStopAssistantMessage(message)).length;
+    if (toolCallAssistantRounds < roundThreshold && emptyAssistantRounds < emptyAssistantThreshold) {
         return undefined;
     }
     const startedAt = Date.parse(meta.createdAt);
     const durationMs = Number.isFinite(startedAt) ? Date.now() - startedAt : 0;
-    if (durationMs < thresholdMs) {
+    const emptyAssistantStalled = emptyAssistantRounds >= emptyAssistantThreshold;
+    if (!emptyAssistantStalled && durationMs < thresholdMs) {
         return undefined;
     }
     return {
         toolCallAssistantRounds,
+        emptyAssistantRounds,
         noCompletedAssistantDurationMs: Math.max(0, durationMs),
         stallThresholdMs: thresholdMs,
-        stallToolCallRoundThreshold: roundThreshold
+        stallToolCallRoundThreshold: roundThreshold,
+        stallEmptyAssistantRoundThreshold: emptyAssistantThreshold
     };
 }
 function createStallMessage(diagnostic) {
     const rounds = diagnostic.toolCallAssistantRounds ?? 0;
+    const emptyRounds = diagnostic.emptyAssistantRounds ?? 0;
     const durationMs = diagnostic.noCompletedAssistantDurationMs ?? 0;
-    return `OpenCode job stalled: observed ${rounds} tool-call assistant round(s) with no completed assistant text for ${durationMs}ms. Inspect Retinue trace/job diagnostics for message summaries.`;
+    return `OpenCode job stalled: observed ${rounds} tool-call assistant round(s) and ${emptyRounds} empty assistant round(s) with no completed assistant text for ${durationMs}ms. Inspect Retinue trace/job diagnostics for message summaries.`;
 }
 function parseOptionalNonNegativeInt(value, fallback) {
     if (!value) {
@@ -519,6 +526,16 @@ function parseOptionalNonNegativeInt(value, fallback) {
 }
 function hasToolPart(message) {
     return Array.isArray(message.parts) && message.parts.some((part) => part?.type === "tool");
+}
+function isEmptyStopAssistantMessage(message) {
+    if (message.info?.finish !== "stop") {
+        return false;
+    }
+    if (extractMessageText(message).length > 0) {
+        return false;
+    }
+    const partTypes = message.parts?.map((part) => part?.type ?? "unknown") ?? [];
+    return partTypes.length > 0 && partTypes.every((type) => type === "step-start" || type === "step-finish");
 }
 function extractMessageText(message) {
     if (!Array.isArray(message.parts)) {

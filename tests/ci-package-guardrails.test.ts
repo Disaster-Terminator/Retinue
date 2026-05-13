@@ -36,6 +36,7 @@ function resolvePluginMcpServer(pluginRoot: string, server: RetinueMcpServerConf
 const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
 const readmeZh = readFileSync("README.md", "utf8");
 const readmeEn = readFileSync("README.en.md", "utf8");
+const realOpenCodeMcpProbe = readFileSync("scripts/probe-retinue-opencode-mcp.mjs", "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   name?: string;
   private?: boolean;
@@ -73,7 +74,8 @@ describe("package.json guardrails", () => {
     expect(packageJson.bin).toMatchObject({
       retinue: "./dist/cli.js",
       "retinue-mcp": "./dist/mcp.js",
-      retinued: "./dist/daemon.js"
+      retinued: "./dist/daemon.js",
+      "retinue-daemon": "./dist/daemon.js"
     });
   });
 
@@ -87,6 +89,7 @@ describe("package.json guardrails", () => {
 
     expect(scripts["verify:package"]).toBeTypeOf("string");
     expect(scripts["smoke:package"]).toBe("node scripts/smoke-package-artifacts.mjs");
+    expect(scripts.prepublishOnly).toBe("pnpm run typecheck && pnpm test && pnpm run check:generated && pnpm run smoke:package && pnpm run verify:package");
     expect(scripts["dev:sync-plugin-cache"]).toBe("node scripts/sync-installed-plugin-cache.mjs");
     expect(scripts["dev:sync-plugin-cache:all"]).toBe("node scripts/sync-installed-plugin-cache.mjs --include-windows --include-wsl");
     expect(scripts["check:generated"]).toBe("pnpm run build && git diff --exit-code -- dist plugins/retinue/dist");
@@ -104,6 +107,13 @@ describe("package.json guardrails", () => {
     expect(scripts.test).not.toContain("probe:real:");
     expect(scripts.build).not.toContain("probe:real:");
     expect(scripts.typecheck).not.toContain("probe:real:");
+  });
+
+  it("keeps the product OpenCode real probe on the default auto-serve path", () => {
+    expect(realOpenCodeMcpProbe).toContain('process.env.RETINUE_OPENCODE_AUTO_SERVE = process.env.RETINUE_OPENCODE_AUTO_SERVE ?? "1"');
+    expect(realOpenCodeMcpProbe).toContain('process.env.RETINUE_OPENCODE_HOST = process.env.RETINUE_OPENCODE_HOST ?? "127.0.0.1"');
+    expect(realOpenCodeMcpProbe).toContain('process.env.RETINUE_OPENCODE_AGENT = process.env.RETINUE_OPENCODE_AGENT ?? "plan"');
+    expect(realOpenCodeMcpProbe).not.toContain("Missing RETINUE_OPENCODE_BASE_URL");
   });
 
   it("packages the Codex plugin surface", () => {

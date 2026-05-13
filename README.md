@@ -176,7 +176,6 @@ Hermes Agent 可以把 Retinue 当作 master-agent MCP 集成来用。Hermes 不
 ```bash
 RETINUE_REAL_OPENCODE_PROBE=1 \
 RETINUE_BACKEND=opencode \
-RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
 pnpm run probe:real:retinue-opencode
 ```
 
@@ -189,7 +188,9 @@ pnpm run probe:hermes-retinue
 ## 开发者文档
 
 - [源码安装和开发](docs/development/SOURCE_INSTALL.md)
-- [0.1.0 发布计划](docs/release/0.1.0_RELEASE_PLAN.md)
+- [0.1.0 Release Notes](docs/release/v0.1.0_RELEASE_NOTES.md)
+- [0.1.0 发布说明（中文）](docs/release/v0.1.0_RELEASE_NOTES.zh-CN.md)
+- [0.1.0 发布就绪记录](docs/release/0.1.0_RELEASE_PLAN.md)
 - [Docs Index](docs/README.md)
 - [Long-Term Vision](docs/LONG_TERM_VISION.md)
 - [Project Boundary](docs/architecture/PROJECT_BOUNDARY.md)

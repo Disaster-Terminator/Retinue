@@ -216,6 +216,22 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
         });
       }
     },
+    appendEmptyStopAssistant: (sessionId: string) => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.omitState = true;
+        session.messages.push({
+          info: {
+            id: `msg_${nextMessage++}`,
+            sessionID: session.id,
+            role: "assistant",
+            time: { completed: Date.now() },
+            finish: "stop"
+          },
+          parts: [{ type: "step-start" }, { type: "step-finish" }]
+        });
+      }
+    },
     completeSessionWithReasoningOnly: (sessionId: string) => {
       const session = sessions.get(sessionId);
       if (session) {
