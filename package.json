@@ -10,7 +10,7 @@
     "type": "git",
     "url": "git+https://github.com/Disaster-Terminator/Retinue.git"
   },
-  "license": "MIT",
+  "license": "Apache-2.0",
   "keywords": [
     "codex",
     "mcp",
