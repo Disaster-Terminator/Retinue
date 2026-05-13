@@ -202,7 +202,7 @@ async function startManagedOpenCodeServer(
       await writeRetinueTrace(options.stateDir, { event: "opencode_server_reused", baseUrl, source: "memory", cwd: options.cwd });
       return managed;
     }
-    const initial = await readOpenCodeHealth(baseUrl);
+    const initial = await readOpenCodeHealth(baseUrl, options.healthPollMs ?? DEFAULT_HEALTH_POLL_MS);
     if (initial.reachable) {
       occupiedPorts.push(port);
       await writeRetinueTrace(options.stateDir, { event: "opencode_server_port_occupied", host: resolution.host, port, baseUrl });
@@ -543,11 +543,11 @@ function normalizeServerCwd(cwd: string | undefined): string | undefined {
 async function waitForOpenCodeHealth(baseUrl: string, options: { timeoutMs: number; pollMs: number }): Promise<void> {
   const deadline = Date.now() + options.timeoutMs;
   for (;;) {
-    const health = await readOpenCodeHealth(baseUrl);
+    const health = await readOpenCodeHealth(baseUrl, Math.min(options.pollMs, Math.max(1, deadline - Date.now())));
     if (health.ok) {
       return;
     }
-    if (health.reachable) {
+    if (health.reachable && !health.timedOut) {
       throw new Error(`Port ${new URL(baseUrl).port} on ${new URL(baseUrl).hostname} is already in use by a non-OpenCode service`);
     }
     if (Date.now() >= deadline) {
@@ -557,25 +557,31 @@ async function waitForOpenCodeHealth(baseUrl: string, options: { timeoutMs: numb
   }
 }
 
-async function readOpenCodeHealth(baseUrl: string): Promise<{ ok: boolean; reachable: boolean }> {
-  let response: Response;
+async function readOpenCodeHealth(baseUrl: string, requestTimeoutMs = DEFAULT_HEALTH_POLL_MS): Promise<{ ok: boolean; reachable: boolean; timedOut?: boolean }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(1, requestTimeoutMs));
   try {
-    response = await fetch(`${baseUrl}/global/health`);
-  } catch {
-    return { ok: false, reachable: false };
-  }
-  const text = await response.text();
-  const parsed = parseJson(text);
-  if (!response.ok || typeof parsed !== "object" || parsed === null) {
+    const response = await fetch(`${baseUrl}/global/health`, { signal: controller.signal });
+    const text = await response.text();
+    const parsed = parseJson(text);
+    if (!response.ok || typeof parsed !== "object" || parsed === null) {
+      return { ok: false, reachable: true };
+    }
+    if ("healthy" in parsed && parsed.healthy === true) {
+      return { ok: true, reachable: true };
+    }
+    if ("status" in parsed && parsed.status === "ok") {
+      return { ok: true, reachable: true };
+    }
     return { ok: false, reachable: true };
+  } catch {
+    if (controller.signal.aborted) {
+      return { ok: false, reachable: true, timedOut: true };
+    }
+    return { ok: false, reachable: false };
+  } finally {
+    clearTimeout(timeout);
   }
-  if ("healthy" in parsed && parsed.healthy === true) {
-    return { ok: true, reachable: true };
-  }
-  if ("status" in parsed && parsed.status === "ok") {
-    return { ok: true, reachable: true };
-  }
-  return { ok: false, reachable: true };
 }
 
 function parseJson(text: string): unknown {

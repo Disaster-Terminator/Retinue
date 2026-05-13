@@ -14,6 +14,7 @@ const DEFAULT_STALL_MS = 10 * 60_000;
 const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = DEFAULT_STALL_MS;
 const DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
 const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 1;
+const DIAGNOSTIC_VALUE_PREVIEW_BYTES = 1000;
 export class OpenCodeBackend {
     kind = "opencode";
     client;
@@ -358,9 +359,11 @@ export class OpenCodeBackend {
             diagnostic.lastMessageInfoKeys = Object.keys(lastMessage?.info ?? {}).sort();
             diagnostic.lastMessagePartTypes = lastMessage?.parts?.map((part) => part.type ?? "unknown");
             diagnostic.lastMessageTextBytes = Buffer.byteLength(extractMessageText(lastMessage ?? {}), "utf8");
+            diagnostic.lastMessageError = diagnosticValuePreview(lastMessage?.info?.error);
             diagnostic.lastAssistantFinish = stringInfo(lastAssistant, "finish");
             diagnostic.lastAssistantPartTypes = lastAssistant?.parts?.map((part) => part.type ?? "unknown");
             diagnostic.lastAssistantTextBytes = Buffer.byteLength(latestAssistantMessageText(jobMessages), "utf8");
+            diagnostic.lastAssistantError = diagnosticValuePreview(lastAssistant?.info?.error);
             diagnostic.lastAssistantProviderID = stringInfo(lastAssistant, "providerID");
             diagnostic.lastAssistantModelID = stringInfo(lastAssistant, "modelID");
             diagnostic.lastAssistantAgent = stringInfo(lastAssistant, "agent");
@@ -372,7 +375,8 @@ export class OpenCodeBackend {
                 finish: stringInfo(message, "finish"),
                 partTypes: message.parts?.map((part) => part.type ?? "unknown") ?? [],
                 textBytes: Buffer.byteLength(extractMessageText(message), "utf8"),
-                completed: isCompletedAssistantMessage(message)
+                completed: isCompletedAssistantMessage(message),
+                messageError: diagnosticValuePreview(message.info?.error)
             }));
             Object.assign(diagnostic, computeStallDiagnostic(jobMessages, meta, this.env));
         }
@@ -456,6 +460,52 @@ async function writeRetinueTrace(stateDir, value) {
 }
 function asRecord(value) {
     return typeof value === "object" && value !== null ? value : { value };
+}
+function diagnosticValuePreview(value) {
+    if (value === undefined) {
+        return undefined;
+    }
+    const type = value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+    let text;
+    if (typeof value === "string") {
+        text = value;
+    }
+    else {
+        try {
+            text = JSON.stringify(value);
+        }
+        catch {
+            text = String(value);
+        }
+    }
+    const redacted = redactDiagnosticValue(text);
+    const bytes = Buffer.byteLength(redacted, "utf8");
+    if (bytes <= DIAGNOSTIC_VALUE_PREVIEW_BYTES) {
+        return { type, preview: redacted };
+    }
+    return {
+        type,
+        preview: truncateUtf8(redacted, DIAGNOSTIC_VALUE_PREVIEW_BYTES),
+        truncated: true
+    };
+}
+function redactDiagnosticValue(value) {
+    return value
+        .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]")
+        .replace(/sk-[A-Za-z0-9_-]{16,}/g, "sk-[REDACTED]");
+}
+function truncateUtf8(value, maxBytes) {
+    let bytes = 0;
+    let result = "";
+    for (const char of value) {
+        const charBytes = Buffer.byteLength(char, "utf8");
+        if (bytes + charBytes > maxBytes) {
+            break;
+        }
+        result += char;
+        bytes += charBytes;
+    }
+    return result;
 }
 function isTerminal(status) {
     return status === "completed" || status === "failed" || status === "killed" || status === "timed_out" || status === "stalled";

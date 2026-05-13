@@ -11,7 +11,7 @@ interface FakeSession {
   omitState?: boolean;
   failureReason?: string;
   messages: Array<{
-    info: { id: string; sessionID: string; role: string; time?: { completed?: number }; finish?: string };
+    info: { id: string; sessionID: string; role: string; time?: { completed?: number }; finish?: string; error?: unknown };
     parts: Array<{ type: string; text?: string }>;
   }>;
 }
@@ -27,6 +27,7 @@ export interface FakeOpenCodeServer {
   completeSessionWithFinalText(sessionId: string, text: string): void;
   completeSessionWithToolCallTextOnly(sessionId: string): void;
   appendToolCallAssistant(sessionId: string, text?: string): void;
+  appendErroredIncompleteAssistant(sessionId: string, error: unknown): void;
   completeSessionWithReasoningOnly(sessionId: string): void;
   failSession(sessionId: string, reason?: string): void;
   close(): Promise<void>;
@@ -221,6 +222,21 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
             { type: "tool", text: "tool call placeholder" },
             { type: "step-finish" }
           ]
+        });
+      }
+    },
+    appendErroredIncompleteAssistant: (sessionId: string, error: unknown) => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.omitState = true;
+        session.messages.push({
+          info: {
+            id: `msg_${nextMessage++}`,
+            sessionID: session.id,
+            role: "assistant",
+            error
+          },
+          parts: [{ type: "step-start" }, { type: "reasoning", text: "tool call failed before final answer" }]
         });
       }
     },

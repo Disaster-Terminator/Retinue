@@ -21250,6 +21250,7 @@ var DEFAULT_STALL_MS = 10 * 6e4;
 var DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = DEFAULT_STALL_MS;
 var DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
 var DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 1;
+var DIAGNOSTIC_VALUE_PREVIEW_BYTES = 1e3;
 var OpenCodeBackend = class {
   kind = "opencode";
   client;
@@ -21585,9 +21586,11 @@ var OpenCodeBackend = class {
       diagnostic.lastMessageInfoKeys = Object.keys(lastMessage?.info ?? {}).sort();
       diagnostic.lastMessagePartTypes = lastMessage?.parts?.map((part) => part.type ?? "unknown");
       diagnostic.lastMessageTextBytes = Buffer.byteLength(extractMessageText(lastMessage ?? {}), "utf8");
+      diagnostic.lastMessageError = diagnosticValuePreview(lastMessage?.info?.error);
       diagnostic.lastAssistantFinish = stringInfo(lastAssistant, "finish");
       diagnostic.lastAssistantPartTypes = lastAssistant?.parts?.map((part) => part.type ?? "unknown");
       diagnostic.lastAssistantTextBytes = Buffer.byteLength(latestAssistantMessageText(jobMessages), "utf8");
+      diagnostic.lastAssistantError = diagnosticValuePreview(lastAssistant?.info?.error);
       diagnostic.lastAssistantProviderID = stringInfo(lastAssistant, "providerID");
       diagnostic.lastAssistantModelID = stringInfo(lastAssistant, "modelID");
       diagnostic.lastAssistantAgent = stringInfo(lastAssistant, "agent");
@@ -21599,7 +21602,8 @@ var OpenCodeBackend = class {
         finish: stringInfo(message, "finish"),
         partTypes: message.parts?.map((part) => part.type ?? "unknown") ?? [],
         textBytes: Buffer.byteLength(extractMessageText(message), "utf8"),
-        completed: isCompletedAssistantMessage(message)
+        completed: isCompletedAssistantMessage(message),
+        messageError: diagnosticValuePreview(message.info?.error)
       }));
       Object.assign(diagnostic, computeStallDiagnostic(jobMessages, meta, this.env));
     } catch (error2) {
@@ -21679,6 +21683,48 @@ async function writeRetinueTrace(stateDir, value) {
 }
 function asRecord(value) {
   return typeof value === "object" && value !== null ? value : { value };
+}
+function diagnosticValuePreview(value) {
+  if (value === void 0) {
+    return void 0;
+  }
+  const type = value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+  let text;
+  if (typeof value === "string") {
+    text = value;
+  } else {
+    try {
+      text = JSON.stringify(value);
+    } catch {
+      text = String(value);
+    }
+  }
+  const redacted = redactDiagnosticValue(text);
+  const bytes = Buffer.byteLength(redacted, "utf8");
+  if (bytes <= DIAGNOSTIC_VALUE_PREVIEW_BYTES) {
+    return { type, preview: redacted };
+  }
+  return {
+    type,
+    preview: truncateUtf8(redacted, DIAGNOSTIC_VALUE_PREVIEW_BYTES),
+    truncated: true
+  };
+}
+function redactDiagnosticValue(value) {
+  return value.replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]").replace(/sk-[A-Za-z0-9_-]{16,}/g, "sk-[REDACTED]");
+}
+function truncateUtf8(value, maxBytes) {
+  let bytes = 0;
+  let result = "";
+  for (const char of value) {
+    const charBytes = Buffer.byteLength(char, "utf8");
+    if (bytes + charBytes > maxBytes) {
+      break;
+    }
+    result += char;
+    bytes += charBytes;
+  }
+  return result;
 }
 function isTerminal2(status) {
   return status === "completed" || status === "failed" || status === "killed" || status === "timed_out" || status === "stalled";
@@ -21963,7 +22009,7 @@ async function startManagedOpenCodeServer(resolution, options) {
       await writeRetinueTrace2(options.stateDir, { event: "opencode_server_reused", baseUrl, source: "memory", cwd: options.cwd });
       return managed;
     }
-    const initial = await readOpenCodeHealth(baseUrl);
+    const initial = await readOpenCodeHealth(baseUrl, options.healthPollMs ?? DEFAULT_HEALTH_POLL_MS);
     if (initial.reachable) {
       occupiedPorts.push(port);
       await writeRetinueTrace2(options.stateDir, { event: "opencode_server_port_occupied", host: resolution.host, port, baseUrl });
@@ -22273,11 +22319,11 @@ function normalizeServerCwd(cwd) {
 async function waitForOpenCodeHealth(baseUrl, options) {
   const deadline = Date.now() + options.timeoutMs;
   for (; ; ) {
-    const health = await readOpenCodeHealth(baseUrl);
+    const health = await readOpenCodeHealth(baseUrl, Math.min(options.pollMs, Math.max(1, deadline - Date.now())));
     if (health.ok) {
       return;
     }
-    if (health.reachable) {
+    if (health.reachable && !health.timedOut) {
       throw new Error(`Port ${new URL(baseUrl).port} on ${new URL(baseUrl).hostname} is already in use by a non-OpenCode service`);
     }
     if (Date.now() >= deadline) {
@@ -22286,25 +22332,31 @@ async function waitForOpenCodeHealth(baseUrl, options) {
     await sleep2(options.pollMs);
   }
 }
-async function readOpenCodeHealth(baseUrl) {
-  let response;
+async function readOpenCodeHealth(baseUrl, requestTimeoutMs = DEFAULT_HEALTH_POLL_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(1, requestTimeoutMs));
   try {
-    response = await fetch(`${baseUrl}/global/health`);
-  } catch {
-    return { ok: false, reachable: false };
-  }
-  const text = await response.text();
-  const parsed = parseJson2(text);
-  if (!response.ok || typeof parsed !== "object" || parsed === null) {
+    const response = await fetch(`${baseUrl}/global/health`, { signal: controller.signal });
+    const text = await response.text();
+    const parsed = parseJson2(text);
+    if (!response.ok || typeof parsed !== "object" || parsed === null) {
+      return { ok: false, reachable: true };
+    }
+    if ("healthy" in parsed && parsed.healthy === true) {
+      return { ok: true, reachable: true };
+    }
+    if ("status" in parsed && parsed.status === "ok") {
+      return { ok: true, reachable: true };
+    }
     return { ok: false, reachable: true };
+  } catch {
+    if (controller.signal.aborted) {
+      return { ok: false, reachable: true, timedOut: true };
+    }
+    return { ok: false, reachable: false };
+  } finally {
+    clearTimeout(timeout);
   }
-  if ("healthy" in parsed && parsed.healthy === true) {
-    return { ok: true, reachable: true };
-  }
-  if ("status" in parsed && parsed.status === "ok") {
-    return { ok: true, reachable: true };
-  }
-  return { ok: false, reachable: true };
 }
 function parseJson2(text) {
   try {
