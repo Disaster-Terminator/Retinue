@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+
+if [ "${RETINUE_SKIP_GIT_HOOKS:-}" = "1" ]; then
+  exit 0
+fi
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "Retinue pre-push: pnpm is not on PATH; refusing to skip local gate silently." >&2
+  echo "Install pnpm or set RETINUE_SKIP_GIT_HOOKS=1 for an explicit bypass." >&2
+  exit 1
+fi
+
+echo "Retinue pre-push: running local deterministic gate..."
+pnpm run gate:local
