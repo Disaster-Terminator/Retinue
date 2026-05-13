@@ -84,6 +84,8 @@ When `RETINUE_OPENCODE_PORT` is explicit, Retinue does not silently fall back to
 
 MCP hosts commonly enforce their own per-tool timeout. Retinue therefore clamps `retinue_wait_agent` and `opencode_wait` calls to a host-safe maximum of 90 seconds by default. Complex OpenCode tasks should be polled with repeated wait calls; set `RETINUE_MCP_WAIT_MAX_MS` only when the host timeout is known to be higher.
 
+Retinue's local HTTP clients also apply a 30-second transport timeout to OpenCode and daemon requests. Set `RETINUE_HTTP_TIMEOUT_MS` when a deployment needs a different local request ceiling; set it to `0` only when another layer already enforces a reliable timeout.
+
 Product `retinue_spawn_agent` calls are read-only by default on the OpenCode backend. In read-only mode, Retinue sends `tools: { edit: false, write: false, apply_patch: false, bash: false }` with `prompt_async`, so local OpenCode profiles that allow edits do not leak write access into child-agent review tasks.
 
 Codex plugin installs read the default from the installation-scoped `retinue.config.json` beside the plugin bootstrap. The shipped default is:
@@ -102,7 +104,7 @@ If a wait call returns `status: "running"`, keep the same `jobId` and call wait 
 
 OpenCode `prompt_async` can spend time in upstream tool-call setup before the HTTP call returns. Retinue therefore persists job metadata and returns the `jobId` after creating the OpenCode session, while the prompt submission continues in the background if it does not complete immediately. If prompt submission later fails, the job moves to `failed` and writes `opencode_job_prompt_failed` diagnostics under the job directory and global trace.
 
-If OpenCode returns assistant rounds with no visible text, Retinue keeps them out of successful results. Empty `finish=stop` assistant rounds and long no-text tool-call loops become `stalled` with diagnostics so the caller can inspect logs or close the child agent. When OpenCode has already produced several tool-call rounds and the latest assistant round is still incomplete, Retinue uses a shorter incomplete-round stall threshold instead of waiting for the full long-loop threshold.
+If OpenCode returns assistant rounds with no visible text, Retinue keeps them out of successful results. Repeated empty `finish=stop` assistant rounds and long no-text tool-call loops become `stalled` with diagnostics so the caller can inspect logs or close the child agent. When OpenCode has already produced several tool-call rounds and the latest assistant round is still incomplete, Retinue uses a shorter 60-second incomplete-round stall threshold instead of waiting for the full long-loop threshold.
 
 ## Diagnostics
 

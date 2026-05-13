@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { buildDaemonReadyPayload } from "../src/daemon.js";
+import { assertDaemonHostAllowed, buildDaemonReadyPayload } from "../src/daemon.js";
 
 describe("daemon package entrypoint", () => {
   it("exposes retinue-daemon as a package binary", async () => {
@@ -28,5 +28,12 @@ describe("daemon package entrypoint", () => {
       startedAt: "2026-05-04T00:00:00.000Z",
       version: "0.1.0"
     });
+  });
+
+  it("rejects non-loopback daemon hosts unless explicitly allowed", () => {
+    expect(() => assertDaemonHostAllowed("127.0.0.1", {})).not.toThrow();
+    expect(() => assertDaemonHostAllowed("localhost", {})).not.toThrow();
+    expect(() => assertDaemonHostAllowed("0.0.0.0", {})).toThrow(/non-loopback/i);
+    expect(() => assertDaemonHostAllowed("0.0.0.0", { RETINUE_DAEMON_ALLOW_NON_LOOPBACK: "1" })).not.toThrow();
   });
 });

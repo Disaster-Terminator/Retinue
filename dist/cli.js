@@ -2,6 +2,7 @@
 import { ClaudeRetinue } from "./core/retinue.js";
 import { DaemonClient } from "./daemon/client.js";
 import { readDaemonDiscovery } from "./daemon/discovery.js";
+import { resolveHttpTimeoutMs } from "./core/http.js";
 import { resolveStateDir } from "./core/paths.js";
 import { OpenCodeBackend } from "./backends/opencode/backend.js";
 import { OpenCodeClient } from "./backends/opencode/client.js";
@@ -157,7 +158,7 @@ async function createOpenCodeBackend(flags) {
     return new OpenCodeBackend({
         target: async (cwd) => {
             const target = await ensureOpenCodeServer(resolution, { stateDir, cwd });
-            return { client: new OpenCodeClient(target.baseUrl), baseUrl: target.baseUrl };
+            return { client: new OpenCodeClient(target.baseUrl, { timeoutMs: resolveHttpTimeoutMs(env) }), baseUrl: target.baseUrl };
         },
         stateDir,
         env: process.env
@@ -293,7 +294,7 @@ function extractGlobalFlags(args) {
 async function createRetinueFromEnv(global) {
     const daemonUrl = global.daemonUrl ?? (global.discoverDaemon ? await discoverDaemonUrl() : undefined);
     if (daemonUrl) {
-        return new DaemonClient(daemonUrl);
+        return new DaemonClient(daemonUrl, { timeoutMs: resolveHttpTimeoutMs(process.env) });
     }
     return new ClaudeRetinue({
         stateDir: process.env.RETINUE_STATE_DIR,

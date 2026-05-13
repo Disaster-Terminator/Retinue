@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from "../../core/http.js";
+
 export interface OpenCodeSession {
   id: string;
   title?: string;
@@ -36,9 +38,11 @@ export class OpenCodeClientError extends Error {
 
 export class OpenCodeClient {
   private readonly baseUrl: string;
+  private readonly timeoutMs: number;
 
-  constructor(baseUrl: string) {
+  constructor(baseUrl: string, options: { timeoutMs?: number } = {}) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
+    this.timeoutMs = options.timeoutMs ?? 30_000;
   }
 
   health(): Promise<unknown> {
@@ -105,11 +109,11 @@ export class OpenCodeClient {
   private async fetch(method: "GET" | "POST", path: string, body?: unknown): Promise<Response> {
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}${path}`, {
+      response = await fetchWithTimeout(`${this.baseUrl}${path}`, {
         method,
         headers: method === "POST" ? { "content-type": "application/json" } : undefined,
         body: method === "POST" ? JSON.stringify(body ?? {}) : undefined
-      });
+      }, this.timeoutMs);
     } catch (error) {
       throw new OpenCodeClientError(error instanceof Error ? error.message : String(error), "transport_error", 0, path);
     }

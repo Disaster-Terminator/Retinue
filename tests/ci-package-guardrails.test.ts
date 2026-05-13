@@ -167,19 +167,23 @@ describe("Retinue Codex plugin guardrails", () => {
 
   it("keeps OpenCode incomplete-assistant stall detection conservative by default", () => {
     expect(opencodeBackendSource).toContain("const DEFAULT_STALL_MS = 10 * 60_000");
-    expect(opencodeBackendSource).toContain("const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = DEFAULT_STALL_MS");
+    expect(opencodeBackendSource).toContain("const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = 60_000");
     expect(opencodeBackendSource).not.toContain("const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = 90_000");
+    expect(opencodeBackendSource).toContain("const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 2");
   });
 
   it("declares a plugin manifest with skill and MCP surfaces", () => {
     const manifest = JSON.parse(readFileSync("plugins/retinue/.codex-plugin/plugin.json", "utf8")) as {
       name?: string;
+      license?: string;
       skills?: string;
       mcpServers?: string;
       interface?: { displayName?: string };
     };
+    const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { license?: string };
 
     expect(manifest.name).toBe("retinue");
+    expect(manifest.license).toBe(pkg.license);
     expect(manifest.skills).toBe("./skills/");
     expect(manifest.mcpServers).toBe("./.mcp.json");
     expect(manifest.interface?.displayName).toBe("Retinue");

@@ -11,8 +11,10 @@ import { OpenCodeClient } from "./backends/opencode/client.js";
 import { ensureOpenCodeServer, resolveOpenCodeServerFromEnv } from "./backends/opencode/serverManager.js";
 import { DaemonClient } from "./daemon/client.js";
 import { readDaemonDiscoverySync } from "./daemon/discovery.js";
+import { resolveHttpTimeoutMs } from "./core/http.js";
 import { getJobPaths, getRetinueTracePath, resolveStateDir } from "./core/paths.js";
 import { ClaudeRetinue } from "./core/retinue.js";
+import { isActivePoolStatus } from "./core/status.js";
 import type { AgentBackendKind, JobMeta, JobProblemStatus, JobStatusResult, RetinueApi, WaitResult } from "./core/types.js";
 import type { AgentBackend, AgentContinueOptions, AgentHandle, AgentRunOptions } from "./backends/types.js";
 
@@ -426,7 +428,7 @@ function opencodeRunSchema() {
 }
 
 async function createOpenCodeBackend(args: { opencodeBaseUrl?: string }): Promise<OpenCodeBackend> {
-  const env = {
+  const env: NodeJS.ProcessEnv = {
     ...process.env,
     RETINUE_OPENCODE_BASE_URL: args.opencodeBaseUrl ?? process.env.RETINUE_OPENCODE_BASE_URL
   };
@@ -435,7 +437,7 @@ async function createOpenCodeBackend(args: { opencodeBaseUrl?: string }): Promis
   return new OpenCodeBackend({
     target: async (cwd) => {
       const target = await ensureOpenCodeServer(resolution, { stateDir, cwd });
-      return { client: new OpenCodeClient(target.baseUrl), baseUrl: target.baseUrl };
+      return { client: new OpenCodeClient(target.baseUrl, { timeoutMs: resolveHttpTimeoutMs(env) }), baseUrl: target.baseUrl };
     },
     stateDir,
     env: process.env
@@ -631,10 +633,6 @@ function isMissingFile(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
-function isActivePoolStatus(status: JobMeta["status"]): boolean {
-  return status === "running" || status === "stalled" || status === "orphaned" || status === "abandoned";
-}
-
 async function writeMcpTrace(env: NodeJS.ProcessEnv, value: Record<string, unknown>): Promise<void> {
   const stateDir = resolveStateDir({ explicitStateDir: env.RETINUE_STATE_DIR, env });
   const tracePath = getRetinueTracePath(stateDir);
@@ -748,14 +746,14 @@ export function createMcpRetinueFromEnv(
   env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env
 ): RetinueApi {
   if (env.RETINUE_DAEMON_URL) {
-    return new DaemonClient(env.RETINUE_DAEMON_URL);
+    return new DaemonClient(env.RETINUE_DAEMON_URL, { timeoutMs: resolveHttpTimeoutMs(env) });
   }
   if (env.RETINUE_DAEMON_DISCOVERY === "1") {
     const stateDir = resolveStateDir({
       explicitStateDir: env.RETINUE_STATE_DIR,
       env
     });
-    return new DaemonClient(readDaemonDiscoverySync(stateDir).url);
+    return new DaemonClient(readDaemonDiscoverySync(stateDir).url, { timeoutMs: resolveHttpTimeoutMs(env) });
   }
 
   return new ClaudeRetinue({

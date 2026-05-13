@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ClaudeRetinue } from "../../src/core/retinue.js";
 import { getJobPaths } from "../../src/core/paths.js";
+import type { JobMeta, JobStatus } from "../../src/core/types.js";
 
 const fixturePath = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -67,6 +68,34 @@ describe("ClaudeRetinue kill and cleanup", () => {
     await slow.kill(running.jobId);
   });
 
+  it("preserves uncertain jobs during cleanup", async () => {
+    const retinue = new ClaudeRetinue({
+      stateDir: tempDir,
+      claudeCommand: process.execPath,
+      claudePrefixArgs: [fixturePath]
+    });
+    const completed = await retinue.run({ cwd: tempDir, prompt: "done" });
+    await retinue.wait(completed.jobId, { timeoutMs: 5000 });
+    const orphaned = await writeJobMeta(tempDir, "job_orphaned_cleanup", "orphaned");
+    const abandoned = await writeJobMeta(tempDir, "job_abandoned_cleanup", "abandoned");
+    const stalled = await writeJobMeta(tempDir, "job_stalled_cleanup", "stalled");
+    const corruptedDir = getJobPaths(tempDir, "job_corrupted_cleanup").dir;
+    await fs.mkdir(corruptedDir, { recursive: true });
+    await fs.writeFile(path.join(corruptedDir, "meta.json"), "{", "utf8");
+
+    const cleanup = await retinue.cleanup({ olderThanMs: 0 });
+
+    expect(cleanup.removedJobIds).toContain(completed.jobId);
+    expect(cleanup.removedJobIds).not.toContain(orphaned.jobId);
+    expect(cleanup.removedJobIds).not.toContain(abandoned.jobId);
+    expect(cleanup.removedJobIds).not.toContain(stalled.jobId);
+    expect(cleanup.removedJobIds).not.toContain("job_corrupted_cleanup");
+    await expect(fs.stat(getJobPaths(tempDir, orphaned.jobId).dir)).resolves.toBeTruthy();
+    await expect(fs.stat(getJobPaths(tempDir, abandoned.jobId).dir)).resolves.toBeTruthy();
+    await expect(fs.stat(getJobPaths(tempDir, stalled.jobId).dir)).resolves.toBeTruthy();
+    await expect(fs.stat(corruptedDir)).resolves.toBeTruthy();
+  });
+
   it("reports temp files removed with terminal jobs and preserves running temp files", async () => {
     const fast = new ClaudeRetinue({
       stateDir: tempDir,
@@ -101,3 +130,25 @@ describe("ClaudeRetinue kill and cleanup", () => {
     }
   });
 });
+
+async function writeJobMeta(stateDir: string, jobId: string, status: JobStatus): Promise<JobMeta> {
+  const paths = getJobPaths(stateDir, jobId);
+  await fs.mkdir(paths.dir, { recursive: true });
+  const now = new Date().toISOString();
+  const meta: JobMeta = {
+    schemaVersion: 1,
+    backend: "claude-code",
+    jobId,
+    pid: -1,
+    status,
+    cwd: stateDir,
+    promptPath: paths.prompt,
+    promptPreview: status,
+    promptSha256: status,
+    args: [],
+    createdAt: now,
+    updatedAt: now
+  };
+  await fs.writeFile(paths.meta, `${JSON.stringify(meta, null, 2)}\n`, "utf8");
+  return meta;
+}

@@ -11,7 +11,10 @@ export declare class DaemonClientError extends Error {
 }
 export declare class DaemonClient implements RetinueApi {
     private readonly baseUrl;
-    constructor(baseUrl: string);
+    private readonly timeoutMs;
+    constructor(baseUrl: string, options?: {
+        timeoutMs?: number;
+    });
     run(options: RunOptions): Promise<JobMeta>;
     status(jobId: string): Promise<JobStatusResult>;
     wait(jobId: string, options?: WaitOptions): Promise<WaitResult>;

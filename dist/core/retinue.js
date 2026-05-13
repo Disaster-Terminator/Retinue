@@ -6,6 +6,7 @@ import { finished } from "node:stream/promises";
 import { buildClaudeArgs } from "./claudeArgs.js";
 import { getJobPaths, resolveStateDir } from "./paths.js";
 import { killProcessTree } from "./processTree.js";
+import { isCleanupSafeStatus } from "./status.js";
 export class ClaudeRetinue {
     stateDir;
     claudeCommand;
@@ -293,7 +294,7 @@ export class ClaudeRetinue {
             if (isProblem(meta)) {
                 continue;
             }
-            if (meta.status === "running") {
+            if (!isCleanupSafeStatus(meta.status)) {
                 continue;
             }
             const updatedAt = Date.parse(meta.updatedAt);

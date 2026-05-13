@@ -28,7 +28,10 @@ export declare class OpenCodeClientError extends Error {
 }
 export declare class OpenCodeClient {
     private readonly baseUrl;
-    constructor(baseUrl: string);
+    private readonly timeoutMs;
+    constructor(baseUrl: string, options?: {
+        timeoutMs?: number;
+    });
     health(): Promise<unknown>;
     createSession(options?: {
         cwd?: string;

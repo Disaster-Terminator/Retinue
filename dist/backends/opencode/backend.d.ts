@@ -19,6 +19,7 @@ export declare class OpenCodeBackend implements AgentBackend {
     private readonly resolveTarget;
     private readonly stateDir;
     private readonly env?;
+    private readonly httpTimeoutMs;
     constructor(options: OpenCodeBackendOptions);
     run(options: AgentRunOptions): Promise<JobMeta>;
     continueJob(options: AgentContinueOptions): Promise<JobMeta>;

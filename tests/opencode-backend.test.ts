@@ -5,6 +5,7 @@ import path from "node:path";
 import { OpenCodeBackend } from "../src/backends/opencode/backend.js";
 import { OpenCodeClient } from "../src/backends/opencode/client.js";
 import { getJobPaths, getRetinueTracePath } from "../src/core/paths.js";
+import type { JobMeta, JobStatus } from "../src/core/types.js";
 import { startFakeOpenCodeServer, type FakeOpenCodeServer } from "./fixtures/fake-opencode-server.js";
 
 describe("OpenCodeBackend", () => {
@@ -247,7 +248,14 @@ describe("OpenCodeBackend", () => {
   });
 
   it("marks empty stop assistant rounds as stalled with diagnostics", async () => {
-    const backend = createBackend();
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS: "1"
+      } as NodeJS.ProcessEnv
+    });
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "inspect docs and summarize" });
     server!.appendEmptyStopAssistant(started.externalSessionId!);
@@ -327,7 +335,7 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"messageError"');
   });
 
-  it("keeps default incomplete assistant tool rounds running before the long stall threshold", async () => {
+  it("keeps default incomplete assistant tool rounds running before the incomplete stall threshold", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
       baseUrl: server!.url,
@@ -345,7 +353,7 @@ describe("OpenCodeBackend", () => {
 
     const paths = getJobPaths(tempDir, started.jobId);
     const meta = JSON.parse(await fs.readFile(paths.meta, "utf8")) as typeof started;
-    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 120_000).toISOString() })}\n`, "utf8");
+    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 30_000).toISOString() })}\n`, "utf8");
 
     await expect(backend.wait({ jobId: started.jobId }, 1)).resolves.toMatchObject({ status: "running" });
     await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "running" });
@@ -353,6 +361,32 @@ describe("OpenCodeBackend", () => {
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"event":"opencode_job_wait_timeout"');
     expect(trace).not.toContain('"event":"opencode_job_stalled"');
+  });
+
+  it("marks default incomplete assistant tool rounds as stalled before the long stall threshold", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "complex audit stops returning text" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source two");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source three");
+    server!.appendIncompleteAssistant(started.externalSessionId!, "still checking");
+
+    const paths = getJobPaths(tempDir, started.jobId);
+    const meta = JSON.parse(await fs.readFile(paths.meta, "utf8")) as typeof started;
+    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 120_000).toISOString() })}\n`, "utf8");
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_job_stalled"');
+    expect(trace).toContain('"incompleteAssistantStallThresholdMs":60000');
   });
 
   it("recovers a stalled OpenCode job when the backend later produces a final result", async () => {
@@ -528,6 +562,26 @@ describe("OpenCodeBackend", () => {
     await expect(fs.stat(getJobPaths(tempDir, running.jobId).dir)).resolves.toBeTruthy();
   });
 
+  it("preserves uncertain OpenCode jobs during cleanup", async () => {
+    const backend = createBackend();
+    const completed = await backend.run({ cwd: tempDir, prompt: "done" });
+    server!.completeSession(completed.externalSessionId!);
+    await backend.result({ jobId: completed.jobId });
+    const stalled = await writeOpenCodeJobMeta(tempDir, "job_opencode_stalled_cleanup", "stalled");
+    const orphaned = await writeOpenCodeJobMeta(tempDir, "job_opencode_orphaned_cleanup", "orphaned");
+    const abandoned = await writeOpenCodeJobMeta(tempDir, "job_opencode_abandoned_cleanup", "abandoned");
+
+    const cleanup = await backend.cleanup({ olderThanMs: 0 });
+
+    expect(cleanup.removedJobIds).toContain(completed.jobId);
+    expect(cleanup.removedJobIds).not.toContain(stalled.jobId);
+    expect(cleanup.removedJobIds).not.toContain(orphaned.jobId);
+    expect(cleanup.removedJobIds).not.toContain(abandoned.jobId);
+    await expect(fs.stat(getJobPaths(tempDir, stalled.jobId).dir)).resolves.toBeTruthy();
+    await expect(fs.stat(getJobPaths(tempDir, orphaned.jobId).dir)).resolves.toBeTruthy();
+    await expect(fs.stat(getJobPaths(tempDir, abandoned.jobId).dir)).resolves.toBeTruthy();
+  });
+
   function createBackend(): OpenCodeBackend {
     return new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
@@ -539,4 +593,28 @@ describe("OpenCodeBackend", () => {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function writeOpenCodeJobMeta(stateDir: string, jobId: string, status: JobStatus): Promise<JobMeta> {
+  const paths = getJobPaths(stateDir, jobId);
+  await fs.mkdir(paths.dir, { recursive: true });
+  const now = new Date().toISOString();
+  const meta: JobMeta = {
+    schemaVersion: 1,
+    backend: "opencode",
+    jobId,
+    pid: -1,
+    status,
+    cwd: stateDir,
+    promptPath: paths.prompt,
+    promptPreview: status,
+    promptSha256: status,
+    externalSessionId: `ses_${jobId}`,
+    externalServerUrl: "http://127.0.0.1:1",
+    args: [],
+    createdAt: now,
+    updatedAt: now
+  };
+  await fs.writeFile(paths.meta, `${JSON.stringify(meta, null, 2)}\n`, "utf8");
+  return meta;
 }

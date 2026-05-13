@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
+import { resolveHttpTimeoutMs } from "../../core/http.js";
 import { getJobPaths, getRetinueTracePath, resolveStateDir } from "../../core/paths.js";
+import { isCleanupSafeStatus } from "../../core/status.js";
 import { OpenCodeClient, OpenCodeClientError } from "./client.js";
 const OPENCODE_READ_ONLY_TOOLS = {
     edit: false,
@@ -11,9 +13,9 @@ const OPENCODE_READ_ONLY_TOOLS = {
 const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
 const DEFAULT_WAIT_POLL_MS = 250;
 const DEFAULT_STALL_MS = 10 * 60_000;
-const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = DEFAULT_STALL_MS;
+const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = 60_000;
 const DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
-const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 1;
+const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 2;
 const DIAGNOSTIC_VALUE_PREVIEW_BYTES = 1000;
 export class OpenCodeBackend {
     kind = "opencode";
@@ -22,6 +24,7 @@ export class OpenCodeBackend {
     resolveTarget;
     stateDir;
     env;
+    httpTimeoutMs;
     constructor(options) {
         this.client = options.client;
         this.baseUrl = options.baseUrl?.replace(/\/+$/, "");
@@ -35,6 +38,7 @@ export class OpenCodeBackend {
                 });
         this.stateDir = resolveStateDir({ explicitStateDir: options.stateDir, env: options.env });
         this.env = options.env;
+        this.httpTimeoutMs = resolveHttpTimeoutMs(options.env);
     }
     async run(options) {
         const jobId = `job_${randomUUID()}`;
@@ -223,7 +227,7 @@ export class OpenCodeBackend {
                 continue;
             }
             const meta = await this.readMeta(entry.name);
-            if (isProblem(meta) || meta.backend !== "opencode" || meta.status === "running") {
+            if (isProblem(meta) || meta.backend !== "opencode" || !isCleanupSafeStatus(meta.status)) {
                 continue;
             }
             const updatedAt = Date.parse(meta.updatedAt);
@@ -428,7 +432,7 @@ export class OpenCodeBackend {
     clientForMeta(meta) {
         const baseUrl = meta.externalServerUrl?.replace(/\/+$/, "");
         if (baseUrl && baseUrl !== this.baseUrl) {
-            return new OpenCodeClient(baseUrl);
+            return new OpenCodeClient(baseUrl, { timeoutMs: this.httpTimeoutMs });
         }
         if (!this.client) {
             throw new Error("OpenCode backend client is not configured");
@@ -440,7 +444,7 @@ export class OpenCodeBackend {
             const parent = await this.readMeta(options.parentJobId);
             if (!isProblem(parent) && parent.externalServerUrl) {
                 const baseUrl = parent.externalServerUrl.replace(/\/+$/, "");
-                return { client: new OpenCodeClient(baseUrl), baseUrl };
+                return { client: new OpenCodeClient(baseUrl, { timeoutMs: this.httpTimeoutMs }), baseUrl };
             }
         }
         return this.resolveTarget(options.cwd);
