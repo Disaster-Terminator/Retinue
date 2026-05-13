@@ -46,6 +46,7 @@ export interface JobMeta {
     externalCompletedAssistantBaselineCount?: number;
     model?: string;
     agent?: string;
+    readOnly?: boolean;
     title?: string;
     runtimeTimeoutMs?: number;
     args: string[];

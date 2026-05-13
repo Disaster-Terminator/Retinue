@@ -21293,6 +21293,7 @@ var OpenCodeBackend = class {
       title: options.title,
       model: options.model,
       agent: options.agent,
+      readOnly: options.readOnly === true,
       externalSessionId: session.id,
       externalServerUrl: target.baseUrl,
       externalSessionDirectory: session.directory ?? session.cwd,
@@ -21332,6 +21333,7 @@ var OpenCodeBackend = class {
       title: options.title,
       model: options.model,
       agent: options.agent,
+      readOnly: options.readOnly === true,
       externalSessionId: options.externalSessionId,
       externalServerUrl: target.baseUrl,
       externalSessionDirectory: options.cwd,
@@ -21599,6 +21601,9 @@ var OpenCodeBackend = class {
       diagnostic.lastAssistantMode = stringInfo(lastAssistant, "mode");
       diagnostic.lastAssistantCost = numberInfo(lastAssistant, "cost");
       diagnostic.lastAssistantTokens = lastAssistant?.info?.tokens;
+      diagnostic.patchPartCount = countPatchParts(jobMessages);
+      diagnostic.readOnlyPatchPartCount = meta.readOnly === true ? diagnostic.patchPartCount : 0;
+      diagnostic.readOnlyWriteIntent = (diagnostic.readOnlyPatchPartCount ?? 0) > 0;
       diagnostic.messageSummaries = jobMessages.map((message) => ({
         role: message.info?.role,
         finish: stringInfo(message, "finish"),
@@ -21793,6 +21798,9 @@ function isFinalAssistantTextMessage(message) {
 }
 function isToolCallAssistantMessage(message) {
   return message.info?.finish === "tool-calls" || hasToolPart(message);
+}
+function countPatchParts(messages) {
+  return messages.reduce((count, message) => count + (message.parts?.filter((part) => part?.type === "patch").length ?? 0), 0);
 }
 function computeStallDiagnostic(jobMessages, meta, env) {
   if (jobMessages.some(isCompletedAssistantMessage)) {

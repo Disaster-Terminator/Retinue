@@ -74,6 +74,20 @@ describe("OpenCodeBackend", () => {
     });
   });
 
+  it("flags patch parts as write intent when a read-only OpenCode job emits them", async () => {
+    const backend = createBackend();
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
+    server!.appendPatchAssistant(started.externalSessionId!);
+
+    await expect(backend.wait({ jobId: started.jobId }, 1)).resolves.toMatchObject({ status: "running" });
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"patchPartCount":1');
+    expect(trace).toContain('"readOnlyPatchPartCount":1');
+    expect(trace).toContain('"readOnlyWriteIntent":true');
+    expect(trace).toContain('"type":"patch"');
+  });
+
   it("returns a job handle before a slow OpenCode prompt_async call finishes", async () => {
     server!.setPromptAsyncDelayMs(500);
     const backend = createBackend();
