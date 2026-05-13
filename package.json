@@ -56,6 +56,7 @@
     "check:generated": "pnpm run build && git diff --exit-code -- dist plugins/retinue/dist",
     "verify:package": "pnpm pack --dry-run --json | node scripts/verify-package.mjs",
     "smoke:package": "node scripts/smoke-package-artifacts.mjs",
+    "prepublishOnly": "pnpm run typecheck && pnpm test && pnpm run check:generated && pnpm run smoke:package && pnpm run verify:package",
     "dev:sync-plugin-cache": "node scripts/sync-installed-plugin-cache.mjs",
     "dev:sync-plugin-cache:all": "node scripts/sync-installed-plugin-cache.mjs --include-windows --include-wsl"
   },

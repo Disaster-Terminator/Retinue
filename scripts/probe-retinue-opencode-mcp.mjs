@@ -13,12 +13,12 @@ async function main() {
   if (process.env[OPT_IN_ENV] !== "1") {
     throw new Error(`Manual probe blocked. Set ${OPT_IN_ENV}=1 to run this script.`);
   }
-  if (!process.env.RETINUE_OPENCODE_BASE_URL) {
-    throw new Error("Missing RETINUE_OPENCODE_BASE_URL.");
-  }
   const stateDir = await ensureStateDir(process.env.RETINUE_STATE_DIR);
   process.env.RETINUE_BACKEND = "opencode";
   process.env.RETINUE_STATE_DIR = stateDir;
+  process.env.RETINUE_OPENCODE_AUTO_SERVE = process.env.RETINUE_OPENCODE_AUTO_SERVE ?? "1";
+  process.env.RETINUE_OPENCODE_HOST = process.env.RETINUE_OPENCODE_HOST ?? "127.0.0.1";
+  process.env.RETINUE_OPENCODE_AGENT = process.env.RETINUE_OPENCODE_AGENT ?? "plan";
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "retinue-opencode-real-probe", version: "0.1.0" });
@@ -62,6 +62,8 @@ async function main() {
         {
           ok: true,
           retinueBackend: process.env.RETINUE_BACKEND,
+          mode: process.env.RETINUE_OPENCODE_BASE_URL ? "attach" : "auto-serve",
+          baseUrl: process.env.RETINUE_OPENCODE_BASE_URL,
           backend: spawn.backend,
           task_name: spawn.task_name,
           jobId: spawn.jobId,
@@ -97,15 +99,19 @@ function parseToolJson(result) {
   return JSON.parse(text);
 }
 
-main().catch((error) => {
-  const stateDir = process.env.RETINUE_STATE_DIR;
-  process.stderr.write(
-    `${JSON.stringify({
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-      stateDir,
-      tracePath: stateDir ? path.join(stateDir, "logs", "retinue.jsonl") : undefined
-    })}\n`
-  );
-  process.exitCode = 1;
-});
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    const stateDir = process.env.RETINUE_STATE_DIR;
+    process.stderr.write(
+      `${JSON.stringify({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+        stateDir,
+        tracePath: stateDir ? path.join(stateDir, "logs", "retinue.jsonl") : undefined
+      })}\n`
+    );
+    process.exit(1);
+  });

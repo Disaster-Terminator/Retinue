@@ -10,7 +10,8 @@ Run these before merging ordinary code or docs changes:
 ```bash
 pnpm run typecheck
 pnpm test
-pnpm run build
+pnpm run check:generated
+pnpm run smoke:package
 pnpm run verify:package
 ```
 
@@ -24,6 +25,11 @@ Use the runbooks only when validating real local agent runtimes:
 - [Real Claude Code Probes](runbooks/REAL_CLAUDE_PROBES.md)
 - [Real OpenCode Probes](runbooks/REAL_OPENCODE_PROBES.md)
 
+The release OpenCode slot probe is:
+
+```bash
+RETINUE_REAL_OPENCODE_SLOT_PROBE=1 RETINUE_MAX_CONCURRENT_AGENTS=1 pnpm run probe:real:retinue-opencode-slots
+```
+
 Do not record API keys, provider secrets, tokens, or account credentials. Record only backend
 metadata, job/session ids, non-secret provider/model metadata, and observed results.
-

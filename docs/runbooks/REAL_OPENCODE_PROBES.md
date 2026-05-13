@@ -4,7 +4,18 @@ This probe is **manual-only** and **opt-in**. It is not part of default CI or de
 
 Real OpenCode probes may consume provider/model quota depending on your local OpenCode configuration.
 
-## Manual probe script
+## Product MCP probe
+
+Use this probe for the default Retinue product path. It exercises Retinue MCP tools with OpenCode auto-serve enabled unless the deployment explicitly sets `RETINUE_OPENCODE_BASE_URL`.
+
+```bash
+RETINUE_REAL_OPENCODE_PROBE=1 \
+pnpm run probe:real:retinue-opencode
+```
+
+Set `RETINUE_OPENCODE_BASE_URL` only when intentionally validating attach mode against an externally managed OpenCode server.
+
+## Low-level OpenCode HTTP probe
 
 Script path:
 
@@ -14,7 +25,7 @@ The script is blocked unless you explicitly opt in with:
 
 - `RETINUE_REAL_OPENCODE_PROBE=1`
 
-It accepts a loopback OpenCode server URL from either:
+The low-level HTTP script accepts a loopback OpenCode server URL from either:
 
 - `RETINUE_OPENCODE_BASE_URL`, or
 - CLI flag: `--base-url`
