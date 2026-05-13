@@ -61,6 +61,29 @@ describe("OpenCode server manager", () => {
     });
   });
 
+  it("rejects managed OpenCode server binds to non-loopback hosts by default", () => {
+    expect(() =>
+      resolveOpenCodeServerFromEnv({
+        RETINUE_OPENCODE_AUTO_SERVE: "1",
+        RETINUE_OPENCODE_HOST: "0.0.0.0"
+      })
+    ).toThrow(/Refusing to bind managed OpenCode server to a non-loopback host/);
+  });
+
+  it("allows managed OpenCode server non-loopback binds only with explicit override", () => {
+    expect(
+      resolveOpenCodeServerFromEnv({
+        RETINUE_OPENCODE_AUTO_SERVE: "1",
+        RETINUE_OPENCODE_HOST: "0.0.0.0",
+        RETINUE_OPENCODE_ALLOW_NON_LOOPBACK: "1"
+      })
+    ).toMatchObject({
+      mode: "serve",
+      host: "0.0.0.0",
+      args: ["serve", "--hostname", "0.0.0.0", "--port", "4096"]
+    });
+  });
+
   it("diagnoses stale legacy supervisor env without treating it as Retinue config", () => {
     expect(() =>
       resolveOpenCodeServerFromEnv({

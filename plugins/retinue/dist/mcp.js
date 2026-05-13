@@ -21140,7 +21140,7 @@ function isCleanupSafeStatus(status) {
   return status === "completed" || status === "failed" || status === "killed" || status === "timed_out";
 }
 function isActivePoolStatus(status) {
-  return status === "running" || status === "stalled" || status === "orphaned" || status === "abandoned";
+  return status === "running" || status === "orphaned" || status === "abandoned";
 }
 
 // src/backends/opencode/client.ts
@@ -22002,6 +22002,7 @@ function resolveOpenCodeServer(config2) {
     throw new Error("OpenCode server target missing: provide RETINUE_OPENCODE_BASE_URL or enable RETINUE_OPENCODE_AUTO_SERVE=1");
   }
   const host = config2.host ?? DEFAULT_OPENCODE_HOST;
+  assertOpenCodeHostAllowed(host, config2);
   const port = config2.port ?? DEFAULT_OPENCODE_PORT;
   const fallbackPorts = config2.fallbackPorts ?? (config2.port === void 0 ? DEFAULT_OPENCODE_FALLBACK_PORTS : []);
   return {
@@ -22022,8 +22023,20 @@ function resolveOpenCodeServerFromEnv(env) {
     autoServe: env.RETINUE_OPENCODE_AUTO_SERVE === "1",
     host: env.RETINUE_OPENCODE_HOST,
     port: parseOptionalPort(env.RETINUE_OPENCODE_PORT),
-    fallbackPorts: parseOptionalPorts(env.RETINUE_OPENCODE_FALLBACK_PORTS)
+    fallbackPorts: parseOptionalPorts(env.RETINUE_OPENCODE_FALLBACK_PORTS),
+    allowNonLoopbackHost: env.RETINUE_OPENCODE_ALLOW_NON_LOOPBACK === "1"
   });
+}
+function assertOpenCodeHostAllowed(host, config2 = {}) {
+  if (host === "127.0.0.1" || host === "localhost") {
+    return;
+  }
+  if (config2.allowNonLoopbackHost === true) {
+    return;
+  }
+  throw new Error(
+    "Refusing to bind managed OpenCode server to a non-loopback host. Set RETINUE_OPENCODE_ALLOW_NON_LOOPBACK=1 to override."
+  );
 }
 function assertNoStaleSupervisorOpenCodeEnv(env) {
   const hasRetinueOpenCodeTarget = Boolean(env.RETINUE_OPENCODE_BASE_URL?.trim()) || env.RETINUE_OPENCODE_AUTO_SERVE === "1";

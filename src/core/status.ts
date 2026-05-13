@@ -5,5 +5,5 @@ export function isCleanupSafeStatus(status: JobStatus): boolean {
 }
 
 export function isActivePoolStatus(status: JobStatus): boolean {
-  return status === "running" || status === "stalled" || status === "orphaned" || status === "abandoned";
+  return status === "running" || status === "orphaned" || status === "abandoned";
 }
