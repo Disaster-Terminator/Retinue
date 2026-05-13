@@ -21280,7 +21280,8 @@ var OPENCODE_READ_ONLY_TOOLS = {
   edit: false,
   write: false,
   apply_patch: false,
-  bash: false
+  bash: false,
+  task: false
 };
 var DEFAULT_WAIT_TIMEOUT_MS = 3e4;
 var DEFAULT_WAIT_POLL_MS = 250;

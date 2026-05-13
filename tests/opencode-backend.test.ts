@@ -70,7 +70,8 @@ describe("OpenCodeBackend", () => {
         edit: false,
         write: false,
         apply_patch: false,
-        bash: false
+        bash: false,
+        task: false
       }
     });
   });
