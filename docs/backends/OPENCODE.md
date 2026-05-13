@@ -27,6 +27,8 @@ RETINUE_OPENCODE_HOST=127.0.0.1
 
 Retinue prefers `127.0.0.1:4096` and tries local fallback ports `4097` through `4127` when the preferred port is occupied by an external service. A running OpenCode server from another environment is treated as external unless the deployment sets `RETINUE_OPENCODE_BASE_URL`.
 
+Managed OpenCode auto-serve binds to loopback only by default. `RETINUE_OPENCODE_HOST=0.0.0.0` or another non-loopback host is rejected unless `RETINUE_OPENCODE_ALLOW_NON_LOOPBACK=1` is set for an explicitly isolated environment. Retinue does not add authentication to the OpenCode server it starts.
+
 Explicit attach remains available:
 
 ```text
@@ -104,7 +106,7 @@ If a wait call returns `status: "running"`, keep the same `jobId` and call wait 
 
 OpenCode `prompt_async` can spend time in upstream tool-call setup before the HTTP call returns. Retinue therefore persists job metadata and returns the `jobId` after creating the OpenCode session, while the prompt submission continues in the background if it does not complete immediately. If prompt submission fails immediately, the spawn response returns the updated `failed` job. If prompt submission later fails after the spawn response has returned, the job moves to `failed` and writes `opencode_job_prompt_failed` diagnostics under the job directory and global trace.
 
-If OpenCode returns assistant rounds with no visible text, Retinue keeps them out of successful results. Repeated empty `finish=stop` assistant rounds and long no-text tool-call loops become `stalled` with diagnostics so the caller can inspect logs or close the child agent. When the latest assistant round is still incomplete, Retinue uses a shorter 60-second incomplete-round stall threshold instead of waiting for the full long-loop threshold. If a read-only job emits a patch part, Retinue treats that as write intent, marks the job `stalled`, and returns a diagnostic result instead of trusting the child output.
+If OpenCode returns assistant rounds with no visible text, Retinue keeps them out of successful results. Repeated empty `finish=stop` assistant rounds and long no-text tool-call loops become `stalled` with diagnostics so the caller can inspect logs or close the child agent. When the latest assistant round is still incomplete, Retinue uses a shorter 60-second incomplete-round stall threshold instead of waiting for the full long-loop threshold. If a read-only job emits a patch part, Retinue treats that as write intent, marks the job `stalled`, and returns a diagnostic result instead of trusting the child output. `stalled` jobs are attention-required terminal jobs for MCP slot accounting: they do not occupy Retinue's active child-agent pool, but cleanup still preserves their artifacts until the caller explicitly closes or removes them.
 
 ## Diagnostics
 

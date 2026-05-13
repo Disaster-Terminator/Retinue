@@ -29,6 +29,8 @@ curl -fsSL https://opencode.ai/install | bash
 
 Retinue auto-serve looks for the installed `opencode` command through the inherited `PATH` and common default locations. On Windows, `%USERPROFILE%\.opencode\bin\opencode` is treated as the primary fallback, followed by package-manager shims.
 
+Managed OpenCode auto-serve binds to loopback only by default. Keep `RETINUE_OPENCODE_HOST=127.0.0.1` for normal plugin deployments. Non-loopback hosts such as `0.0.0.0` are rejected unless `RETINUE_OPENCODE_ALLOW_NON_LOOPBACK=1` is set for an explicitly isolated environment, because Retinue does not add authentication to the OpenCode server it starts.
+
 ## Local Diagnostics
 
 Retinue writes local diagnostic events to:

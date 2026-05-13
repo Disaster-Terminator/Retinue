@@ -569,6 +569,44 @@ describe("MCP tools", () => {
     }
   });
 
+  it("removes stalled Retinue agents from the active MCP session pool", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-stalled-pool-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    fakeOpenCode.setAutoAssistantResponses(false);
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+
+      const spawn = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue stalled pool", task_name: "stalled-pool" }
+        })
+      );
+      fakeOpenCode.appendPatchAssistant(spawn.externalSessionId);
+
+      const wait = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_wait_agent",
+          arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
+        })
+      );
+      expect(wait).toMatchObject({
+        jobId: spawn.jobId,
+        status: "stalled"
+      });
+
+      const list = parseToolJson(await connection.client.callTool({ name: "retinue_list_agents", arguments: {} }));
+      expect(list.agents.map((agent: { jobId: string }) => agent.jobId)).not.toContain(spawn.jobId);
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("removes closed Retinue agents from the MCP session pool", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-close-pool-"));
     const fakeOpenCode = await startFakeOpenCodeServer();

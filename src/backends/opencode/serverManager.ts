@@ -31,6 +31,7 @@ export interface OpenCodeServerConfig {
   host?: string;
   port?: number;
   fallbackPorts?: number[];
+  allowNonLoopbackHost?: boolean;
 }
 
 export type OpenCodeServerResolution =
@@ -82,6 +83,7 @@ export function resolveOpenCodeServer(config: OpenCodeServerConfig): OpenCodeSer
     throw new Error("OpenCode server target missing: provide RETINUE_OPENCODE_BASE_URL or enable RETINUE_OPENCODE_AUTO_SERVE=1");
   }
   const host = config.host ?? DEFAULT_OPENCODE_HOST;
+  assertOpenCodeHostAllowed(host, config);
   const port = config.port ?? DEFAULT_OPENCODE_PORT;
   const fallbackPorts = config.fallbackPorts ?? (config.port === undefined ? DEFAULT_OPENCODE_FALLBACK_PORTS : []);
   return {
@@ -103,8 +105,21 @@ export function resolveOpenCodeServerFromEnv(env: NodeJS.ProcessEnv | Record<str
     autoServe: env.RETINUE_OPENCODE_AUTO_SERVE === "1",
     host: env.RETINUE_OPENCODE_HOST,
     port: parseOptionalPort(env.RETINUE_OPENCODE_PORT),
-    fallbackPorts: parseOptionalPorts(env.RETINUE_OPENCODE_FALLBACK_PORTS)
+    fallbackPorts: parseOptionalPorts(env.RETINUE_OPENCODE_FALLBACK_PORTS),
+    allowNonLoopbackHost: env.RETINUE_OPENCODE_ALLOW_NON_LOOPBACK === "1"
   });
+}
+
+export function assertOpenCodeHostAllowed(host: string, config: Pick<OpenCodeServerConfig, "allowNonLoopbackHost"> = {}): void {
+  if (host === "127.0.0.1" || host === "localhost") {
+    return;
+  }
+  if (config.allowNonLoopbackHost === true) {
+    return;
+  }
+  throw new Error(
+    "Refusing to bind managed OpenCode server to a non-loopback host. Set RETINUE_OPENCODE_ALLOW_NON_LOOPBACK=1 to override."
+  );
 }
 
 function assertNoStaleSupervisorOpenCodeEnv(env: NodeJS.ProcessEnv | Record<string, string | undefined>): void {
