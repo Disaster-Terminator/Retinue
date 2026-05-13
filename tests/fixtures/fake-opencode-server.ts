@@ -22,6 +22,7 @@ export interface FakeOpenCodeServer {
   promptRequests: Array<Record<string, unknown>>;
   setAutoAssistantResponses(enabled: boolean): void;
   setPromptAsyncDelayMs(ms: number): void;
+  setPromptAsyncFailure(status: number, body: unknown): void;
   completeSession(sessionId: string): void;
   completeSessionByMessageOnly(sessionId: string): void;
   completeSessionWithFinalText(sessionId: string, text: string): void;
@@ -41,6 +42,7 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
   const serverCwd = options.serverCwd ?? process.cwd();
   let autoAssistantResponses = true;
   let promptAsyncDelayMs = 0;
+  let promptAsyncFailure: { status: number; body: unknown } | undefined;
   let nextSession = 1;
   let nextMessage = 1;
 
@@ -107,6 +109,10 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
       if (promptAsyncDelayMs > 0) {
         await sleep(promptAsyncDelayMs);
       }
+      if (promptAsyncFailure) {
+        writeJson(response, promptAsyncFailure.status, promptAsyncFailure.body);
+        return;
+      }
       const body = await readJson(request);
       promptRequests.push(body);
       const prompt =
@@ -156,6 +162,9 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
     },
     setPromptAsyncDelayMs: (ms: number) => {
       promptAsyncDelayMs = ms;
+    },
+    setPromptAsyncFailure: (status: number, body: unknown) => {
+      promptAsyncFailure = { status, body };
     },
     completeSession: (sessionId: string) => {
       const session = sessions.get(sessionId);

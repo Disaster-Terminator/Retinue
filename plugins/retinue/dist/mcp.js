@@ -7383,15 +7383,15 @@ var ParseStatus = class _ParseStatus {
       this.value = "aborted";
   }
   static mergeArray(status, results) {
-    const arrayValue = [];
+    const arrayValue2 = [];
     for (const s of results) {
       if (s.status === "aborted")
         return INVALID;
       if (s.status === "dirty")
         status.dirty();
-      arrayValue.push(s.value);
+      arrayValue2.push(s.value);
     }
-    return { status: status.value, value: arrayValue };
+    return { status: status.value, value: arrayValue2 };
   }
   static async mergeObjectAsync(status, pairs) {
     const syncPairs = [];
@@ -21344,7 +21344,7 @@ var OpenCodeBackend = class {
     await writeJsonAtomic(paths.meta, meta);
     const submitted = this.submitPromptAsync(target.client, session.id, meta, options);
     await Promise.race([submitted, sleep(50)]);
-    return meta;
+    return this.readCurrentMetaOrFallback(jobId, meta);
   }
   async continueJob(options) {
     if (!options.externalSessionId) {
@@ -21386,7 +21386,7 @@ var OpenCodeBackend = class {
     await writeJsonAtomic(paths.meta, meta);
     const submitted = this.submitPromptAsync(target.client, options.externalSessionId, meta, options);
     await Promise.race([submitted, sleep(50)]);
-    return meta;
+    return this.readCurrentMetaOrFallback(jobId, meta);
   }
   async status(handle) {
     const meta = await this.readMeta(handle.jobId);
@@ -21519,6 +21519,10 @@ var OpenCodeBackend = class {
       }
       return { jobId, status: "corrupted", error: error2 instanceof Error ? error2.message : String(error2) };
     }
+  }
+  async readCurrentMetaOrFallback(jobId, fallback) {
+    const current = await this.readMeta(jobId);
+    return isProblem(current) ? fallback : current;
   }
   async reconcileStatus(meta) {
     if (!meta.externalSessionId || isTerminal2(meta.status) && meta.status !== "stalled" && meta.status !== "killed") {
@@ -21844,6 +21848,14 @@ function computeStallDiagnostic(jobMessages, meta, env) {
   if (jobMessages.some(isCompletedAssistantMessage)) {
     return void 0;
   }
+  const patchPartCount = countPatchParts(jobMessages);
+  if (meta.readOnly === true && patchPartCount > 0) {
+    return {
+      patchPartCount,
+      readOnlyPatchPartCount: patchPartCount,
+      readOnlyWriteIntent: true
+    };
+  }
   const thresholdMs = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_MS, DEFAULT_STALL_MS);
   if (thresholdMs <= 0) {
     return void 0;
@@ -21861,7 +21873,7 @@ function computeStallDiagnostic(jobMessages, meta, env) {
   const startedAt = Date.parse(meta.createdAt);
   const durationMs = Number.isFinite(startedAt) ? Date.now() - startedAt : 0;
   const emptyAssistantStalled = emptyAssistantRounds >= emptyAssistantThreshold;
-  const incompleteAssistantStalled = incompleteAssistantRound && toolCallAssistantRounds >= roundThreshold && durationMs >= incompleteThresholdMs;
+  const incompleteAssistantStalled = incompleteAssistantRound && durationMs >= incompleteThresholdMs;
   if (!emptyAssistantStalled && !incompleteAssistantStalled && durationMs < thresholdMs) {
     return void 0;
   }
@@ -21877,6 +21889,9 @@ function computeStallDiagnostic(jobMessages, meta, env) {
   };
 }
 function createStallMessage(diagnostic) {
+  if (diagnostic.readOnlyWriteIntent === true) {
+    return `OpenCode read-only job emitted patch/write intent; Retinue did not treat the child result as trusted output. Inspect Retinue trace/job diagnostics for message summaries.`;
+  }
   const rounds = diagnostic.toolCallAssistantRounds ?? 0;
   const emptyRounds = diagnostic.emptyAssistantRounds ?? 0;
   const durationMs = diagnostic.noCompletedAssistantDurationMs ?? 0;
@@ -23316,7 +23331,11 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
           env: process.env
         });
         const paths = getJobPaths(stateDir, jobId);
-        const [stdoutTail, stderrTail] = await Promise.all([readTailIfExists(paths.stdout), readTailIfExists(paths.stderr)]);
+        const [stdoutTail, stderrTail, diagnostic] = await Promise.all([
+          readTailIfExists(paths.stdout),
+          readTailIfExists(paths.stderr),
+          readLatestJobDiagnostic(paths.stderr)
+        ]);
         return jsonToolResult({
           task_name: isJobMeta(status) ? status.name : void 0,
           jobId,
@@ -23338,6 +23357,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
           stderrTailBytes: stderrTail.bytes,
           stdoutTailTruncated: stdoutTail.truncated,
           stderrTailTruncated: stderrTail.truncated,
+          diagnostic,
           tracePath: getRetinueTracePath(stateDir),
           requestedTimeoutMs: timeoutMs,
           effectiveTimeoutMs
@@ -23758,6 +23778,108 @@ async function readTailIfExists(filePath, maxBytes = 4096) {
     }
     throw error2;
   }
+}
+async function readLatestJobDiagnostic(filePath) {
+  const tail = await readTailIfExists(filePath, 64 * 1024);
+  if (!tail.text) {
+    return void 0;
+  }
+  const lines = tail.text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).reverse();
+  for (const line of lines) {
+    try {
+      const parsed = JSON.parse(line);
+      const summary = summarizeJobDiagnostic(parsed);
+      if (summary) {
+        return summary;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return void 0;
+}
+function summarizeJobDiagnostic(value) {
+  if (!isRecord(value)) {
+    return void 0;
+  }
+  const diagnostic = isRecord(value.diagnostic) ? value.diagnostic : void 0;
+  if (!diagnostic) {
+    return void 0;
+  }
+  const event = typeof value.event === "string" ? value.event : void 0;
+  const readOnlyWriteIntent = diagnostic.readOnlyWriteIntent === true;
+  return compactRecord({
+    event,
+    backend: "opencode",
+    status: event === "opencode_job_stalled" ? "stalled" : event === "opencode_job_prompt_failed" ? "failed" : "running",
+    message: createDiagnosticSummaryMessage(event, diagnostic),
+    sessionId: stringValue(diagnostic.sessionId),
+    sessionDirectory: stringValue(diagnostic.sessionDirectory),
+    sessionPath: stringValue(diagnostic.sessionPath),
+    sessionAborted: booleanValue(diagnostic.sessionAborted),
+    baselineMessageCount: numberValue(diagnostic.baselineMessageCount),
+    baselineCompletedAssistantCount: numberValue(diagnostic.baselineCompletedAssistantCount),
+    messageCount: numberValue(diagnostic.messageCount),
+    jobMessageCount: numberValue(diagnostic.jobMessageCount),
+    completedAssistantCount: numberValue(diagnostic.completedAssistantCount),
+    jobCompletedAssistantCount: numberValue(diagnostic.jobCompletedAssistantCount),
+    lastMessageRole: stringValue(diagnostic.lastMessageRole),
+    lastMessageFinish: stringValue(diagnostic.lastMessageFinish),
+    lastMessagePartTypes: stringArrayValue(diagnostic.lastMessagePartTypes),
+    lastMessagePartSummaries: arrayValue(diagnostic.lastMessagePartSummaries),
+    lastAssistantFinish: stringValue(diagnostic.lastAssistantFinish),
+    lastAssistantPartTypes: stringArrayValue(diagnostic.lastAssistantPartTypes),
+    lastAssistantPartSummaries: arrayValue(diagnostic.lastAssistantPartSummaries),
+    lastAssistantProviderID: stringValue(diagnostic.lastAssistantProviderID),
+    lastAssistantModelID: stringValue(diagnostic.lastAssistantModelID),
+    lastAssistantAgent: stringValue(diagnostic.lastAssistantAgent),
+    lastAssistantMode: stringValue(diagnostic.lastAssistantMode),
+    patchPartCount: numberValue(diagnostic.patchPartCount),
+    readOnlyPatchPartCount: numberValue(diagnostic.readOnlyPatchPartCount),
+    readOnlyWriteIntent,
+    toolCallAssistantRounds: numberValue(diagnostic.toolCallAssistantRounds),
+    emptyAssistantRounds: numberValue(diagnostic.emptyAssistantRounds),
+    incompleteAssistantRound: booleanValue(diagnostic.incompleteAssistantRound),
+    noCompletedAssistantDurationMs: numberValue(diagnostic.noCompletedAssistantDurationMs),
+    stateStatus: stringValue(diagnostic.stateStatus),
+    sessionState: diagnostic.sessionState
+  });
+}
+function createDiagnosticSummaryMessage(event, diagnostic) {
+  if (diagnostic.readOnlyWriteIntent === true) {
+    return "OpenCode read-only job emitted patch/write intent; treat the child output as untrusted and inspect diagnostics.";
+  }
+  if (event === "opencode_job_stalled") {
+    return "OpenCode job was classified as stalled by Retinue stall rules.";
+  }
+  if (event === "opencode_job_prompt_failed") {
+    return "OpenCode prompt submission failed before the child job became usable.";
+  }
+  const rounds = numberValue(diagnostic.toolCallAssistantRounds) ?? 0;
+  const emptyRounds = numberValue(diagnostic.emptyAssistantRounds) ?? 0;
+  const incomplete = diagnostic.incompleteAssistantRound === true;
+  return `OpenCode job is still running after wait timeout; toolCallAssistantRounds=${rounds}, emptyAssistantRounds=${emptyRounds}, incompleteAssistantRound=${incomplete}.`;
+}
+function compactRecord(record2) {
+  return Object.fromEntries(Object.entries(record2).filter(([, value]) => value !== void 0));
+}
+function isRecord(value) {
+  return typeof value === "object" && value !== null;
+}
+function stringValue(value) {
+  return typeof value === "string" ? value : void 0;
+}
+function numberValue(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : void 0;
+}
+function booleanValue(value) {
+  return typeof value === "boolean" ? value : void 0;
+}
+function arrayValue(value) {
+  return Array.isArray(value) ? value : void 0;
+}
+function stringArrayValue(value) {
+  return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : void 0;
 }
 async function createRetinueBackend(retinue) {
   return createRetinueBackendByKind(readRetinueBackendKindFromEnv(), retinue);
