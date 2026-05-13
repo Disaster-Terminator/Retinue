@@ -225,6 +225,9 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"event":"opencode_job_stalled"');
     expect(trace).toContain('"toStatus":"stalled"');
     expect(trace).toContain('"toolCallAssistantRounds":3');
+    expect(trace).toContain('"lastMessagePartSummaries"');
+    expect(trace).toContain('"tool":"task"');
+    expect(trace).toContain('"stateStatus":"completed"');
     expect(trace).toContain('"noCompletedAssistantDurationMs"');
     await expect(fs.readFile(getJobPaths(tempDir, started.jobId).stderr, "utf8")).resolves.toContain('"event":"opencode_job_stalled"');
   });
