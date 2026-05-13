@@ -8,9 +8,40 @@ const OPENCODE_READ_ONLY_TOOLS = {
     edit: false,
     write: false,
     apply_patch: false,
-    bash: false,
     task: false
 };
+const OPENCODE_READ_ONLY_PERMISSION = [
+    { permission: "read", pattern: "*", action: "allow" },
+    { permission: "glob", pattern: "*", action: "allow" },
+    { permission: "grep", pattern: "*", action: "allow" },
+    { permission: "list", pattern: "*", action: "allow" },
+    { permission: "todoread", pattern: "*", action: "allow" },
+    { permission: "todowrite", pattern: "*", action: "allow" },
+    { permission: "webfetch", pattern: "*", action: "allow" },
+    { permission: "lsp", pattern: "*", action: "allow" },
+    { permission: "question", pattern: "*", action: "deny" },
+    { permission: "edit", pattern: "*", action: "deny" },
+    { permission: "write", pattern: "*", action: "deny" },
+    { permission: "task", pattern: "*", action: "deny" },
+    { permission: "external_directory", pattern: "*", action: "deny" },
+    { permission: "doom_loop", pattern: "*", action: "deny" },
+    { permission: "bash", pattern: "*", action: "deny" },
+    { permission: "bash", pattern: "pwd", action: "allow" },
+    { permission: "bash", pattern: "ls *", action: "allow" },
+    { permission: "bash", pattern: "dir *", action: "allow" },
+    { permission: "bash", pattern: "git status*", action: "allow" },
+    { permission: "bash", pattern: "git show*", action: "allow" },
+    { permission: "bash", pattern: "git diff*", action: "allow" },
+    { permission: "bash", pattern: "git log*", action: "allow" },
+    { permission: "bash", pattern: "git grep*", action: "allow" },
+    { permission: "bash", pattern: "git blame*", action: "allow" },
+    { permission: "bash", pattern: "git branch*", action: "allow" },
+    { permission: "bash", pattern: "git rev-parse*", action: "allow" },
+    { permission: "bash", pattern: "git ls-files*", action: "allow" },
+    { permission: "bash", pattern: "git describe*", action: "allow" },
+    { permission: "bash", pattern: "git cat-file*", action: "allow" },
+    { permission: "bash", pattern: "git merge-base*", action: "allow" }
+];
 const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
 const DEFAULT_WAIT_POLL_MS = 250;
 const DEFAULT_STALL_MS = 10 * 60_000;
@@ -47,7 +78,11 @@ export class OpenCodeBackend {
         await fs.mkdir(paths.dir, { recursive: true });
         await fs.writeFile(paths.prompt, options.prompt, "utf8");
         const target = await this.resolveTarget(options.cwd);
-        const session = await target.client.createSession({ cwd: options.cwd, title: options.title ?? options.name });
+        const session = await target.client.createSession({
+            cwd: options.cwd,
+            title: options.title ?? options.name,
+            permission: options.readOnly === true ? OPENCODE_READ_ONLY_PERMISSION : undefined
+        });
         const baseline = await this.captureMessageBaseline(target.client, session.id);
         const now = new Date().toISOString();
         const meta = {

@@ -23,6 +23,12 @@ export interface OpenCodeMessage {
   [key: string]: unknown;
 }
 
+export interface OpenCodePermissionRule {
+  permission: string;
+  pattern: string;
+  action: "allow" | "deny" | "ask";
+}
+
 export class OpenCodeClientError extends Error {
   constructor(
     message: string,
@@ -49,9 +55,10 @@ export class OpenCodeClient {
     return this.request("GET", "/global/health");
   }
 
-  createSession(options: { cwd?: string; title?: string } = {}): Promise<OpenCodeSession> {
+  createSession(options: { cwd?: string; title?: string; permission?: OpenCodePermissionRule[] } = {}): Promise<OpenCodeSession> {
     return this.request("POST", "/session", {
       title: options.title,
+      permission: options.permission,
       directory: options.cwd
     });
   }

@@ -56,7 +56,7 @@ describe("OpenCodeBackend", () => {
     });
   });
 
-  it("can force OpenCode prompt permissions into a read-only tool set", async () => {
+  it("creates read-only OpenCode sessions with tool disables and non-interactive permissions", async () => {
     const backend = createBackend();
 
     await backend.run({
@@ -65,12 +65,25 @@ describe("OpenCodeBackend", () => {
       readOnly: true
     });
 
+    expect(server!.sessionRequests.at(-1)).toMatchObject({
+      permission: expect.arrayContaining([
+        { permission: "edit", pattern: "*", action: "deny" },
+        { permission: "write", pattern: "*", action: "deny" },
+        { permission: "task", pattern: "*", action: "deny" },
+        { permission: "question", pattern: "*", action: "deny" },
+        { permission: "external_directory", pattern: "*", action: "deny" },
+        { permission: "doom_loop", pattern: "*", action: "deny" },
+        { permission: "bash", pattern: "*", action: "deny" },
+        { permission: "bash", pattern: "git show*", action: "allow" },
+        { permission: "bash", pattern: "git diff*", action: "allow" },
+        { permission: "bash", pattern: "git status*", action: "allow" }
+      ])
+    });
     expect(server!.promptRequests.at(-1)).toMatchObject({
       tools: {
         edit: false,
         write: false,
         apply_patch: false,
-        bash: false,
         task: false
       }
     });
