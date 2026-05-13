@@ -10,8 +10,10 @@ import { OpenCodeClient } from "./backends/opencode/client.js";
 import { ensureOpenCodeServer, resolveOpenCodeServerFromEnv } from "./backends/opencode/serverManager.js";
 import { DaemonClient } from "./daemon/client.js";
 import { readDaemonDiscoverySync } from "./daemon/discovery.js";
+import { resolveHttpTimeoutMs } from "./core/http.js";
 import { getJobPaths, getRetinueTracePath, resolveStateDir } from "./core/paths.js";
 import { ClaudeRetinue } from "./core/retinue.js";
+import { isActivePoolStatus } from "./core/status.js";
 export const CLAUDE_TOOL_NAMES = [
     "claude_run",
     "claude_status",
@@ -314,7 +316,7 @@ async function createOpenCodeBackend(args) {
     return new OpenCodeBackend({
         target: async (cwd) => {
             const target = await ensureOpenCodeServer(resolution, { stateDir, cwd });
-            return { client: new OpenCodeClient(target.baseUrl), baseUrl: target.baseUrl };
+            return { client: new OpenCodeClient(target.baseUrl, { timeoutMs: resolveHttpTimeoutMs(env) }), baseUrl: target.baseUrl };
         },
         stateDir,
         env: process.env
@@ -470,9 +472,6 @@ function readOpenCodeAccessModeFromEnv(env) {
 function isMissingFile(error) {
     return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
-function isActivePoolStatus(status) {
-    return status === "running" || status === "stalled" || status === "orphaned" || status === "abandoned";
-}
 async function writeMcpTrace(env, value) {
     const stateDir = resolveStateDir({ explicitStateDir: env.RETINUE_STATE_DIR, env });
     const tracePath = getRetinueTracePath(stateDir);
@@ -571,14 +570,14 @@ function isJobMeta(value) {
 }
 export function createMcpRetinueFromEnv(env = process.env) {
     if (env.RETINUE_DAEMON_URL) {
-        return new DaemonClient(env.RETINUE_DAEMON_URL);
+        return new DaemonClient(env.RETINUE_DAEMON_URL, { timeoutMs: resolveHttpTimeoutMs(env) });
     }
     if (env.RETINUE_DAEMON_DISCOVERY === "1") {
         const stateDir = resolveStateDir({
             explicitStateDir: env.RETINUE_STATE_DIR,
             env
         });
-        return new DaemonClient(readDaemonDiscoverySync(stateDir).url);
+        return new DaemonClient(readDaemonDiscoverySync(stateDir).url, { timeoutMs: resolveHttpTimeoutMs(env) });
     }
     return new ClaudeRetinue({
         stateDir: env.RETINUE_STATE_DIR,

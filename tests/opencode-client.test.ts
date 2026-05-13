@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { OpenCodeClient, OpenCodeClientError } from "../src/backends/opencode/client.js";
 import { startFakeOpenCodeServer, type FakeOpenCodeServer } from "./fixtures/fake-opencode-server.js";
 
@@ -6,6 +6,7 @@ describe("OpenCodeClient", () => {
   let server: FakeOpenCodeServer | undefined;
 
   afterEach(async () => {
+    vi.unstubAllGlobals();
     if (server) {
       await server.close();
       server = undefined;
@@ -61,5 +62,25 @@ describe("OpenCodeClient", () => {
       path: "/session/missing"
     });
     await expect(client.getSession("missing")).rejects.toBeInstanceOf(OpenCodeClientError);
+  });
+
+  it("times out unresponsive requests", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (_url: string, init?: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+          })
+      )
+    );
+    const client = new OpenCodeClient("http://opencode", { timeoutMs: 5 });
+
+    await expect(client.health()).rejects.toMatchObject({
+      name: "OpenCodeClientError",
+      code: "transport_error",
+      status: 0,
+      path: "/global/health"
+    });
   });
 });

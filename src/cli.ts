@@ -3,6 +3,7 @@
 import { ClaudeRetinue } from "./core/retinue.js";
 import { DaemonClient } from "./daemon/client.js";
 import { readDaemonDiscovery } from "./daemon/discovery.js";
+import { resolveHttpTimeoutMs } from "./core/http.js";
 import { resolveStateDir } from "./core/paths.js";
 import { OpenCodeBackend } from "./backends/opencode/backend.js";
 import { OpenCodeClient } from "./backends/opencode/client.js";
@@ -171,7 +172,7 @@ async function main(): Promise<void> {
 }
 
 async function createOpenCodeBackend(flags: Record<string, string | undefined>): Promise<OpenCodeBackend> {
-  const env = {
+  const env: NodeJS.ProcessEnv = {
     ...process.env,
     RETINUE_OPENCODE_BASE_URL: flags["opencode-base-url"] ?? process.env.RETINUE_OPENCODE_BASE_URL
   };
@@ -180,7 +181,7 @@ async function createOpenCodeBackend(flags: Record<string, string | undefined>):
   return new OpenCodeBackend({
     target: async (cwd) => {
       const target = await ensureOpenCodeServer(resolution, { stateDir, cwd });
-      return { client: new OpenCodeClient(target.baseUrl), baseUrl: target.baseUrl };
+      return { client: new OpenCodeClient(target.baseUrl, { timeoutMs: resolveHttpTimeoutMs(env) }), baseUrl: target.baseUrl };
     },
     stateDir,
     env: process.env
@@ -325,7 +326,7 @@ function extractGlobalFlags(args: string[]): { args: string[]; daemonUrl?: strin
 async function createRetinueFromEnv(global: { daemonUrl?: string; discoverDaemon: boolean }): Promise<RetinueApi> {
   const daemonUrl = global.daemonUrl ?? (global.discoverDaemon ? await discoverDaemonUrl() : undefined);
   if (daemonUrl) {
-    return new DaemonClient(daemonUrl);
+    return new DaemonClient(daemonUrl, { timeoutMs: resolveHttpTimeoutMs(process.env) });
   }
 
   return new ClaudeRetinue({

@@ -9,7 +9,7 @@
   },
   "homepage": "https://github.com/Disaster-Terminator/Retinue",
   "repository": "https://github.com/Disaster-Terminator/Retinue",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "keywords": ["codex", "mcp", "opencode", "claude-code", "subagents"],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",

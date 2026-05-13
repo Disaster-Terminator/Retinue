@@ -1,3 +1,4 @@
+import { fetchWithTimeout, resolveHttpTimeoutMs } from "../core/http.js";
 export class DaemonClientError extends Error {
     code;
     status;
@@ -12,8 +13,10 @@ export class DaemonClientError extends Error {
 }
 export class DaemonClient {
     baseUrl;
-    constructor(baseUrl) {
+    timeoutMs;
+    constructor(baseUrl, options = {}) {
         this.baseUrl = baseUrl.replace(/\/+$/, "");
+        this.timeoutMs = options.timeoutMs ?? resolveHttpTimeoutMs();
     }
     run(options) {
         return this.post("/v1/jobs/run", options);
@@ -42,11 +45,11 @@ export class DaemonClient {
     async post(path, body) {
         let response;
         try {
-            response = await fetch(`${this.baseUrl}${path}`, {
+            response = await fetchWithTimeout(`${this.baseUrl}${path}`, {
                 method: "POST",
                 headers: { "content-type": "application/json" },
                 body: JSON.stringify(body)
-            });
+            }, this.timeoutMs);
         }
         catch (error) {
             const transport = classifyTransportError(error);

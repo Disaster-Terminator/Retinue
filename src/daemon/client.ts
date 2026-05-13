@@ -13,6 +13,7 @@ import type {
   WaitOptions,
   WaitResult
 } from "../core/types.js";
+import { fetchWithTimeout, resolveHttpTimeoutMs } from "../core/http.js";
 
 export class DaemonClientError extends Error {
   readonly code?: string;
@@ -30,9 +31,11 @@ export class DaemonClientError extends Error {
 
 export class DaemonClient implements RetinueApi {
   private readonly baseUrl: string;
+  private readonly timeoutMs: number;
 
-  constructor(baseUrl: string) {
+  constructor(baseUrl: string, options: { timeoutMs?: number } = {}) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
+    this.timeoutMs = options.timeoutMs ?? resolveHttpTimeoutMs();
   }
 
   run(options: RunOptions): Promise<JobMeta> {
@@ -70,11 +73,11 @@ export class DaemonClient implements RetinueApi {
   private async post<T>(path: string, body: unknown): Promise<T> {
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}${path}`, {
+      response = await fetchWithTimeout(`${this.baseUrl}${path}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body)
-      });
+      }, this.timeoutMs);
     } catch (error) {
       const transport = classifyTransportError(error);
       throw new DaemonClientError(transport.message, { code: transport.code, status: 0, path });

@@ -21064,6 +21064,32 @@ var StdioServerTransport = class {
 import fs from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 
+// src/core/http.ts
+var DEFAULT_HTTP_TIMEOUT_MS = 3e4;
+function resolveHttpTimeoutMs(env = process.env) {
+  const value = env.RETINUE_HTTP_TIMEOUT_MS;
+  if (!value?.trim()) {
+    return DEFAULT_HTTP_TIMEOUT_MS;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : DEFAULT_HTTP_TIMEOUT_MS;
+}
+async function fetchWithTimeout(url, init = {}, timeoutMs = DEFAULT_HTTP_TIMEOUT_MS) {
+  if (timeoutMs <= 0) {
+    return fetch(url, init);
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: init.signal ?? controller.signal
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 // src/core/paths.ts
 import path from "node:path";
 import os from "node:os";
@@ -21109,6 +21135,14 @@ function getOpenCodeServerLockPath(stateDir) {
   return path.join(stateDir, "opencode-server.lock");
 }
 
+// src/core/status.ts
+function isCleanupSafeStatus(status) {
+  return status === "completed" || status === "failed" || status === "killed" || status === "timed_out";
+}
+function isActivePoolStatus(status) {
+  return status === "running" || status === "stalled" || status === "orphaned" || status === "abandoned";
+}
+
 // src/backends/opencode/client.ts
 var OpenCodeClientError = class extends Error {
   constructor(message, code, status, path4, details) {
@@ -21126,8 +21160,10 @@ var OpenCodeClientError = class extends Error {
 };
 var OpenCodeClient = class {
   baseUrl;
-  constructor(baseUrl) {
+  timeoutMs;
+  constructor(baseUrl, options = {}) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
+    this.timeoutMs = options.timeoutMs ?? 3e4;
   }
   health() {
     return this.request("GET", "/global/health");
@@ -21184,11 +21220,11 @@ var OpenCodeClient = class {
   async fetch(method, path4, body) {
     let response;
     try {
-      response = await fetch(`${this.baseUrl}${path4}`, {
+      response = await fetchWithTimeout(`${this.baseUrl}${path4}`, {
         method,
         headers: method === "POST" ? { "content-type": "application/json" } : void 0,
         body: method === "POST" ? JSON.stringify(body ?? {}) : void 0
-      });
+      }, this.timeoutMs);
     } catch (error2) {
       throw new OpenCodeClientError(error2 instanceof Error ? error2.message : String(error2), "transport_error", 0, path4);
     }
@@ -21247,9 +21283,9 @@ var OPENCODE_READ_ONLY_TOOLS = {
 var DEFAULT_WAIT_TIMEOUT_MS = 3e4;
 var DEFAULT_WAIT_POLL_MS = 250;
 var DEFAULT_STALL_MS = 10 * 6e4;
-var DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = DEFAULT_STALL_MS;
+var DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = 6e4;
 var DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
-var DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 1;
+var DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 2;
 var DIAGNOSTIC_VALUE_PREVIEW_BYTES = 1e3;
 var OpenCodeBackend = class {
   kind = "opencode";
@@ -21258,6 +21294,7 @@ var OpenCodeBackend = class {
   resolveTarget;
   stateDir;
   env;
+  httpTimeoutMs;
   constructor(options) {
     this.client = options.client;
     this.baseUrl = options.baseUrl?.replace(/\/+$/, "");
@@ -21269,6 +21306,7 @@ var OpenCodeBackend = class {
     });
     this.stateDir = resolveStateDir({ explicitStateDir: options.stateDir, env: options.env });
     this.env = options.env;
+    this.httpTimeoutMs = resolveHttpTimeoutMs(options.env);
   }
   async run(options) {
     const jobId = `job_${randomUUID()}`;
@@ -21458,7 +21496,7 @@ var OpenCodeBackend = class {
         continue;
       }
       const meta = await this.readMeta(entry.name);
-      if (isProblem(meta) || meta.backend !== "opencode" || meta.status === "running") {
+      if (isProblem(meta) || meta.backend !== "opencode" || !isCleanupSafeStatus(meta.status)) {
         continue;
       }
       const updatedAt = Date.parse(meta.updatedAt);
@@ -21653,7 +21691,7 @@ var OpenCodeBackend = class {
   clientForMeta(meta) {
     const baseUrl = meta.externalServerUrl?.replace(/\/+$/, "");
     if (baseUrl && baseUrl !== this.baseUrl) {
-      return new OpenCodeClient(baseUrl);
+      return new OpenCodeClient(baseUrl, { timeoutMs: this.httpTimeoutMs });
     }
     if (!this.client) {
       throw new Error("OpenCode backend client is not configured");
@@ -21665,7 +21703,7 @@ var OpenCodeBackend = class {
       const parent = await this.readMeta(options.parentJobId);
       if (!isProblem(parent) && parent.externalServerUrl) {
         const baseUrl = parent.externalServerUrl.replace(/\/+$/, "");
-        return { client: new OpenCodeClient(baseUrl), baseUrl };
+        return { client: new OpenCodeClient(baseUrl, { timeoutMs: this.httpTimeoutMs }), baseUrl };
       }
     }
     return this.resolveTarget(options.cwd);
@@ -22488,8 +22526,10 @@ var DaemonClientError = class extends Error {
 };
 var DaemonClient = class {
   baseUrl;
-  constructor(baseUrl) {
+  timeoutMs;
+  constructor(baseUrl, options = {}) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
+    this.timeoutMs = options.timeoutMs ?? resolveHttpTimeoutMs();
   }
   run(options) {
     return this.post("/v1/jobs/run", options);
@@ -22518,11 +22558,11 @@ var DaemonClient = class {
   async post(path4, body) {
     let response;
     try {
-      response = await fetch(`${this.baseUrl}${path4}`, {
+      response = await fetchWithTimeout(`${this.baseUrl}${path4}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body)
-      });
+      }, this.timeoutMs);
     } catch (error2) {
       const transport = classifyTransportError(error2);
       throw new DaemonClientError(transport.message, { code: transport.code, status: 0, path: path4 });
@@ -22989,7 +23029,7 @@ var ClaudeRetinue = class {
       if (isProblem2(meta)) {
         continue;
       }
-      if (meta.status === "running") {
+      if (!isCleanupSafeStatus(meta.status)) {
         continue;
       }
       const updatedAt = Date.parse(meta.updatedAt);
@@ -23545,7 +23585,7 @@ async function createOpenCodeBackend(args) {
   return new OpenCodeBackend({
     target: async (cwd) => {
       const target = await ensureOpenCodeServer(resolution, { stateDir, cwd });
-      return { client: new OpenCodeClient(target.baseUrl), baseUrl: target.baseUrl };
+      return { client: new OpenCodeClient(target.baseUrl, { timeoutMs: resolveHttpTimeoutMs(env) }), baseUrl: target.baseUrl };
     },
     stateDir,
     env: process.env
@@ -23697,9 +23737,6 @@ function readOpenCodeAccessModeFromEnv(env) {
 function isMissingFile2(error2) {
   return typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === "ENOENT";
 }
-function isActivePoolStatus(status) {
-  return status === "running" || status === "stalled" || status === "orphaned" || status === "abandoned";
-}
 async function writeMcpTrace(env, value) {
   const stateDir = resolveStateDir({ explicitStateDir: env.RETINUE_STATE_DIR, env });
   const tracePath = getRetinueTracePath(stateDir);
@@ -23797,14 +23834,14 @@ function isJobMeta(value) {
 }
 function createMcpRetinueFromEnv(env = process.env) {
   if (env.RETINUE_DAEMON_URL) {
-    return new DaemonClient(env.RETINUE_DAEMON_URL);
+    return new DaemonClient(env.RETINUE_DAEMON_URL, { timeoutMs: resolveHttpTimeoutMs(env) });
   }
   if (env.RETINUE_DAEMON_DISCOVERY === "1") {
     const stateDir = resolveStateDir({
       explicitStateDir: env.RETINUE_STATE_DIR,
       env
     });
-    return new DaemonClient(readDaemonDiscoverySync(stateDir).url);
+    return new DaemonClient(readDaemonDiscoverySync(stateDir).url, { timeoutMs: resolveHttpTimeoutMs(env) });
   }
   return new ClaudeRetinue({
     stateDir: env.RETINUE_STATE_DIR,

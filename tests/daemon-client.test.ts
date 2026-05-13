@@ -100,4 +100,26 @@ describe("DaemonClient errors", () => {
       path: "/v1/jobs/status"
     });
   });
+
+  it("times out unresponsive daemon requests", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (_url: string, init?: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+          })
+      )
+    );
+
+    const client = new DaemonClient("http://daemon", { timeoutMs: 5 });
+
+    await expect(client.status("job_slow")).rejects.toMatchObject({
+      name: "DaemonClientError",
+      message: "Daemon request timed out or was aborted",
+      code: "transport_aborted",
+      status: 0,
+      path: "/v1/jobs/status"
+    });
+  });
 });

@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
+import { resolveHttpTimeoutMs } from "../../core/http.js";
 import { getJobPaths, getRetinueTracePath, resolveStateDir } from "../../core/paths.js";
+import { isCleanupSafeStatus } from "../../core/status.js";
 import type { CleanupOptions, CleanupResult, JobMeta, JobProblem, JobResult, JobStatusResult, RetinueOptions } from "../../core/types.js";
 import type { AgentBackend, AgentContinueOptions, AgentHandle, AgentRunOptions } from "../types.js";
 import { OpenCodeClient, OpenCodeClientError, type OpenCodeMessage } from "./client.js";
@@ -25,9 +27,9 @@ const OPENCODE_READ_ONLY_TOOLS: Record<string, boolean> = {
 const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
 const DEFAULT_WAIT_POLL_MS = 250;
 const DEFAULT_STALL_MS = 10 * 60_000;
-const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = DEFAULT_STALL_MS;
+const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = 60_000;
 const DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
-const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 1;
+const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 2;
 const DIAGNOSTIC_VALUE_PREVIEW_BYTES = 1000;
 
 interface DiagnosticValuePreview {
@@ -108,6 +110,7 @@ export class OpenCodeBackend implements AgentBackend {
   private readonly resolveTarget: (cwd: string | undefined) => Promise<OpenCodeBackendTarget>;
   private readonly stateDir: string;
   private readonly env?: RetinueOptions["env"];
+  private readonly httpTimeoutMs: number;
 
   constructor(options: OpenCodeBackendOptions) {
     this.client = options.client;
@@ -122,6 +125,7 @@ export class OpenCodeBackend implements AgentBackend {
       });
     this.stateDir = resolveStateDir({ explicitStateDir: options.stateDir, env: options.env });
     this.env = options.env;
+    this.httpTimeoutMs = resolveHttpTimeoutMs(options.env);
   }
 
   async run(options: AgentRunOptions): Promise<JobMeta> {
@@ -319,7 +323,7 @@ export class OpenCodeBackend implements AgentBackend {
         continue;
       }
       const meta = await this.readMeta(entry.name);
-      if (isProblem(meta) || meta.backend !== "opencode" || meta.status === "running") {
+      if (isProblem(meta) || meta.backend !== "opencode" || !isCleanupSafeStatus(meta.status)) {
         continue;
       }
       const updatedAt = Date.parse(meta.updatedAt);
@@ -524,7 +528,7 @@ export class OpenCodeBackend implements AgentBackend {
   private clientForMeta(meta: JobMeta): OpenCodeClient {
     const baseUrl = meta.externalServerUrl?.replace(/\/+$/, "");
     if (baseUrl && baseUrl !== this.baseUrl) {
-      return new OpenCodeClient(baseUrl);
+      return new OpenCodeClient(baseUrl, { timeoutMs: this.httpTimeoutMs });
     }
     if (!this.client) {
       throw new Error("OpenCode backend client is not configured");
@@ -537,7 +541,7 @@ export class OpenCodeBackend implements AgentBackend {
       const parent = await this.readMeta(options.parentJobId);
       if (!isProblem(parent) && parent.externalServerUrl) {
         const baseUrl = parent.externalServerUrl.replace(/\/+$/, "");
-        return { client: new OpenCodeClient(baseUrl), baseUrl };
+        return { client: new OpenCodeClient(baseUrl, { timeoutMs: this.httpTimeoutMs }), baseUrl };
       }
     }
     return this.resolveTarget(options.cwd);

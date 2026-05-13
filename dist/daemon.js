@@ -7,6 +7,7 @@ async function main() {
     const flags = parseFlags(process.argv.slice(2));
     const host = flags.host ?? process.env.RETINUE_DAEMON_HOST ?? "127.0.0.1";
     const port = flags.port ? Number(flags.port) : Number(process.env.RETINUE_DAEMON_PORT ?? "27777");
+    assertDaemonHostAllowed(host, process.env);
     if (!Number.isInteger(port) || port < 0 || port > 65535) {
         throw new Error(`Invalid --port: ${String(flags.port ?? process.env.RETINUE_DAEMON_PORT)}`);
     }
@@ -30,6 +31,15 @@ async function main() {
         version: ready.version
     });
     process.stdout.write(`${JSON.stringify(ready)}\n`);
+}
+export function assertDaemonHostAllowed(host, env = process.env) {
+    if (host === "127.0.0.1" || host === "localhost") {
+        return;
+    }
+    if (env.RETINUE_DAEMON_ALLOW_NON_LOOPBACK === "1") {
+        return;
+    }
+    throw new Error("Refusing to bind unauthenticated Retinue daemon to a non-loopback host. Set RETINUE_DAEMON_ALLOW_NON_LOOPBACK=1 to override.");
 }
 export function buildDaemonReadyPayload(options) {
     return {

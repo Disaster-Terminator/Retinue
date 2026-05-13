@@ -71,6 +71,8 @@ The `mcpServers` wrapper is required for Codex plugin MCP discovery. The explici
 
 The default plugin path manages the local OpenCode server lifecycle. It prefers `127.0.0.1:4096` and tries fallback ports `4097` through `4127` when earlier ports are occupied by external services. Set `RETINUE_OPENCODE_BASE_URL` only for deployments that intentionally attach to an externally managed OpenCode server.
 
+Retinue HTTP calls to the local daemon or OpenCode server have a 30-second timeout by default. Set `RETINUE_HTTP_TIMEOUT_MS` to tune this for unusual local runtimes, or `0` to disable the client-side timeout.
+
 The Codex plugin also ships an installation-scoped `retinue.config.json` beside the bootstrap:
 
 ```json
@@ -105,6 +107,8 @@ codex mcp add retinue \
 ```
 
 The npm path installs runtime only. It does not install the Retinue skill; the plugin marketplace remains the preferred user path.
+
+`retinued` binds to loopback addresses only by default because the daemon API is unauthenticated local control-plane traffic. Use `--host 127.0.0.1` or `--host localhost` for normal deployments. `RETINUE_DAEMON_ALLOW_NON_LOOPBACK=1` exists only for explicitly isolated environments that intentionally expose the daemon host.
 
 ## Hermes Agent Runtime Path
 
