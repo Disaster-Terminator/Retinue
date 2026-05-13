@@ -28,12 +28,12 @@ Hermes registers Retinue MCP tools with the `mcp_retinue_` prefix:
 - `mcp_retinue_retinue_close_agent`
 - `mcp_retinue_retinue_list_agents`
 
-Retinue selects the backend from deployment configuration. The default Hermes integration uses OpenCode with the `plan` agent and Retinue-managed OpenCode server lifecycle. Each Retinue MCP server session keeps up to 3 active child agents by default. A spawn beyond the limit closes the oldest active child and returns `evictedJobId`; deployments can tune this with `RETINUE_MAX_CONCURRENT_AGENTS`. Do not pass backend, model, provider, profile, permission, or OpenCode server choices in tool arguments.
+Retinue selects the backend from deployment configuration. The default Hermes integration uses OpenCode with the `plan` agent, a prompt-level read-only override for `edit`, `write`, `apply_patch`, and `bash`, and Retinue-managed OpenCode server lifecycle. Set `RETINUE_OPENCODE_ACCESS_MODE=profile` or the older `RETINUE_OPENCODE_READ_ONLY=0` only when child-agent writes are intentionally acceptable. A single spawn may pass `access_mode: "profile"` for the same purpose. Each Retinue MCP server session keeps up to 3 active child agents by default. A spawn beyond the limit closes the oldest active child and returns `evictedJobId`; deployments can tune this with `RETINUE_MAX_CONCURRENT_AGENTS`. Do not pass backend, model, provider, profile, or OpenCode server choices in tool arguments.
 
 ## Procedure
 
 1. Spawn a child agent with `mcp_retinue_retinue_spawn_agent`.
-2. Include a concrete `message`, an explicit absolute `cwd` for repository/file work, and a useful `task_name`.
+2. Include a concrete `message`, an explicit absolute `cwd` for repository/file work, and a useful `task_name`. Include `access_mode: "profile"` only when child-agent edits are intended and acceptable.
 3. Wait with `mcp_retinue_retinue_wait_agent`.
 4. If wait returns `running`, first inspect the returned `stdoutTail` and `stderrTail`; then use `stateDir`, `tracePath`, `jobDir`, `stdoutPath`, and `stderrPath` when deeper diagnosis is needed. Complex OpenCode `plan` jobs can spend several minutes in tool-call rounds before producing final text, so poll again unless the task reaches a terminal state.
 5. Close the job with `mcp_retinue_retinue_close_agent` when the result is terminal or the child should be stopped.

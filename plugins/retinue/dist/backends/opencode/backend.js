@@ -2,6 +2,12 @@ import fs from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { getJobPaths, getRetinueTracePath, resolveStateDir } from "../../core/paths.js";
 import { OpenCodeClient, OpenCodeClientError } from "./client.js";
+const OPENCODE_READ_ONLY_TOOLS = {
+    edit: false,
+    write: false,
+    apply_patch: false,
+    bash: false
+};
 const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
 const DEFAULT_WAIT_POLL_MS = 250;
 const DEFAULT_STALL_MS = 10 * 60_000;
@@ -40,7 +46,8 @@ export class OpenCodeBackend {
         await target.client.promptAsync(session.id, {
             prompt: options.prompt,
             model: options.model,
-            agent: options.agent
+            agent: options.agent,
+            tools: options.readOnly === true ? OPENCODE_READ_ONLY_TOOLS : undefined
         });
         const now = new Date().toISOString();
         const meta = {
@@ -82,7 +89,8 @@ export class OpenCodeBackend {
         await target.client.promptAsync(options.externalSessionId, {
             prompt: options.prompt,
             model: options.model,
-            agent: options.agent
+            agent: options.agent,
+            tools: options.readOnly === true ? OPENCODE_READ_ONLY_TOOLS : undefined
         });
         const now = new Date().toISOString();
         const meta = {

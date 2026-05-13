@@ -40,6 +40,7 @@ export declare class OpenCodeClient {
         prompt: string;
         model?: string;
         agent?: string;
+        tools?: Record<string, boolean>;
     }): Promise<void>;
     messages(sessionId: string): Promise<OpenCodeMessage[]>;
     abort(sessionId: string): Promise<unknown>;

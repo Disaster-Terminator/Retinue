@@ -84,6 +84,20 @@ When `RETINUE_OPENCODE_PORT` is explicit, Retinue does not silently fall back to
 
 MCP hosts commonly enforce their own per-tool timeout. Retinue therefore clamps `retinue_wait_agent` and `opencode_wait` calls to a host-safe maximum of 90 seconds by default. Complex OpenCode tasks should be polled with repeated wait calls; set `RETINUE_MCP_WAIT_MAX_MS` only when the host timeout is known to be higher.
 
+Product `retinue_spawn_agent` calls are read-only by default on the OpenCode backend. In read-only mode, Retinue sends `tools: { edit: false, write: false, apply_patch: false, bash: false }` with `prompt_async`, so local OpenCode profiles that allow edits do not leak write access into child-agent review tasks.
+
+Codex plugin installs read the default from the installation-scoped `retinue.config.json` beside the plugin bootstrap. The shipped default is:
+
+```json
+{
+  "opencode": {
+    "defaultAccessMode": "read_only"
+  }
+}
+```
+
+`retinue_spawn_agent` can override the default for one child with `access_mode: "read_only"` or `access_mode: "profile"`. `profile` means Retinue does not send the prompt-level tool deny list and the child follows the active OpenCode profile. Hermes and custom MCP deployments can set `RETINUE_OPENCODE_ACCESS_MODE=profile`, or the older `RETINUE_OPENCODE_READ_ONLY=0`, when profile-level write capability is intentionally acceptable.
+
 If a wait call returns `status: "running"`, keep the same `jobId` and call wait again. Do not spawn a replacement job only because one wait window elapsed.
 
 If OpenCode returns assistant rounds with no visible text, Retinue keeps them out of successful results. Empty `finish=stop` assistant rounds and long no-text tool-call loops become `stalled` with diagnostics so the caller can inspect logs or close the child agent. When OpenCode has already produced several tool-call rounds and the latest assistant round is still incomplete, Retinue uses a shorter incomplete-round stall threshold instead of waiting for the full long-loop threshold.

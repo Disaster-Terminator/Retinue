@@ -16,6 +16,12 @@ export interface OpenCodeBackendTarget {
   client: OpenCodeClient;
   baseUrl: string;
 }
+const OPENCODE_READ_ONLY_TOOLS: Record<string, boolean> = {
+  edit: false,
+  write: false,
+  apply_patch: false,
+  bash: false
+};
 const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
 const DEFAULT_WAIT_POLL_MS = 250;
 const DEFAULT_STALL_MS = 10 * 60_000;
@@ -106,7 +112,8 @@ export class OpenCodeBackend implements AgentBackend {
     await target.client.promptAsync(session.id, {
       prompt: options.prompt,
       model: options.model,
-      agent: options.agent
+      agent: options.agent,
+      tools: options.readOnly === true ? OPENCODE_READ_ONLY_TOOLS : undefined
     });
     const now = new Date().toISOString();
     const meta: JobMeta = {
@@ -149,7 +156,8 @@ export class OpenCodeBackend implements AgentBackend {
     await target.client.promptAsync(options.externalSessionId, {
       prompt: options.prompt,
       model: options.model,
-      agent: options.agent
+      agent: options.agent,
+      tools: options.readOnly === true ? OPENCODE_READ_ONLY_TOOLS : undefined
     });
     const now = new Date().toISOString();
     const meta: JobMeta = {

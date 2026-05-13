@@ -36,6 +36,7 @@ export class OpenCodeClient {
         return this.requestVoid("POST", `/session/${encodeURIComponent(sessionId)}/prompt_async`, {
             model: formatModelOverride(options.model),
             agent: options.agent,
+            tools: options.tools,
             parts: [{ type: "text", text: options.prompt }]
         });
     }

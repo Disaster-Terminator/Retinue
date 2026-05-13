@@ -106,8 +106,11 @@ This means:
 
 - Codex calls Retinue and does not choose the concrete backend.
 - Retinue manages the OpenCode server lifecycle by default. It prefers `127.0.0.1:4096` and tries `4097` through `4127` when earlier ports are occupied by external services.
-- OpenCode uses the active local profile for provider, model, login, permissions, plugins, and skills.
-- `plan` is the 0.1.0 safety default. A future Retinue config file will allow deployments to choose `build` without exposing that choice as a per-call tool argument.
+- OpenCode uses the active local profile for provider, model, login, plugins, and skills.
+- `plan` is the 0.1.0 default agent. Retinue product spawns are read-only by default: Retinue sends an OpenCode prompt-level override denying `edit`, `write`, `apply_patch`, and `bash` even when the local OpenCode profile allows them.
+- Codex plugin installs read their default access mode from the installation-scoped `retinue.config.json` shipped with the plugin. It defaults to `{ "opencode": { "defaultAccessMode": "read_only" } }`.
+- `retinue_spawn_agent` can override that default per child with `access_mode: "read_only"` or `access_mode: "profile"`. Use `"profile"` only when the child is intentionally allowed to follow the active OpenCode profile, including write-capable tools if that profile allows them.
+- Hermes and custom MCP deployments can keep using environment configuration. `RETINUE_OPENCODE_ACCESS_MODE=profile` or the older `RETINUE_OPENCODE_READ_ONLY=0` selects profile permissions when child-agent writes are intentionally acceptable.
 - `retinue_wait_agent` keeps each MCP wait call inside a host-safe window, 90 seconds by default. Long jobs should be polled by calling wait again; deployments can tune the cap with `RETINUE_MCP_WAIT_MAX_MS`.
 - Each Retinue MCP server session keeps up to 3 active child agents by default, matching the Codex v2 shape of "4 threads including root." The 4th active spawn closes the oldest still-running child and returns `evictedJobId`; deployments can tune this with `RETINUE_MAX_CONCURRENT_AGENTS`.
 

@@ -60,10 +60,11 @@ export class OpenCodeClient {
     return this.request("GET", `/session/${encodeURIComponent(sessionId)}`);
   }
 
-  promptAsync(sessionId: string, options: { prompt: string; model?: string; agent?: string }): Promise<void> {
+  promptAsync(sessionId: string, options: { prompt: string; model?: string; agent?: string; tools?: Record<string, boolean> }): Promise<void> {
     return this.requestVoid("POST", `/session/${encodeURIComponent(sessionId)}/prompt_async`, {
       model: formatModelOverride(options.model),
       agent: options.agent,
+      tools: options.tools,
       parts: [{ type: "text", text: options.prompt }]
     });
   }

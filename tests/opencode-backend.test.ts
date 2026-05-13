@@ -54,6 +54,25 @@ describe("OpenCodeBackend", () => {
     });
   });
 
+  it("can force OpenCode prompt permissions into a read-only tool set", async () => {
+    const backend = createBackend();
+
+    await backend.run({
+      cwd: tempDir,
+      prompt: "inspect only",
+      readOnly: true
+    });
+
+    expect(server!.promptRequests.at(-1)).toMatchObject({
+      tools: {
+        edit: false,
+        write: false,
+        apply_patch: false,
+        bash: false
+      }
+    });
+  });
+
   it("keeps newly started jobs running until fake completion", async () => {
     const backend = createBackend();
     const started = await backend.run({ cwd: tempDir, prompt: "result please" });
