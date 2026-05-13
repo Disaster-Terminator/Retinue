@@ -102,9 +102,9 @@ Codex plugin installs read the default from the installation-scoped `retinue.con
 
 If a wait call returns `status: "running"`, keep the same `jobId` and call wait again. Do not spawn a replacement job only because one wait window elapsed.
 
-OpenCode `prompt_async` can spend time in upstream tool-call setup before the HTTP call returns. Retinue therefore persists job metadata and returns the `jobId` after creating the OpenCode session, while the prompt submission continues in the background if it does not complete immediately. If prompt submission later fails, the job moves to `failed` and writes `opencode_job_prompt_failed` diagnostics under the job directory and global trace.
+OpenCode `prompt_async` can spend time in upstream tool-call setup before the HTTP call returns. Retinue therefore persists job metadata and returns the `jobId` after creating the OpenCode session, while the prompt submission continues in the background if it does not complete immediately. If prompt submission fails immediately, the spawn response returns the updated `failed` job. If prompt submission later fails after the spawn response has returned, the job moves to `failed` and writes `opencode_job_prompt_failed` diagnostics under the job directory and global trace.
 
-If OpenCode returns assistant rounds with no visible text, Retinue keeps them out of successful results. Repeated empty `finish=stop` assistant rounds and long no-text tool-call loops become `stalled` with diagnostics so the caller can inspect logs or close the child agent. When OpenCode has already produced several tool-call rounds and the latest assistant round is still incomplete, Retinue uses a shorter 60-second incomplete-round stall threshold instead of waiting for the full long-loop threshold.
+If OpenCode returns assistant rounds with no visible text, Retinue keeps them out of successful results. Repeated empty `finish=stop` assistant rounds and long no-text tool-call loops become `stalled` with diagnostics so the caller can inspect logs or close the child agent. When the latest assistant round is still incomplete, Retinue uses a shorter 60-second incomplete-round stall threshold instead of waiting for the full long-loop threshold. If a read-only job emits a patch part, Retinue treats that as write intent, marks the job `stalled`, and returns a diagnostic result instead of trusting the child output.
 
 ## Diagnostics
 
@@ -119,7 +119,7 @@ Retinue writes OpenCode backend diagnostics to the Retinue state directory:
 
 If `RETINUE_STATE_DIR` is unset, Linux/WSL/macOS defaults to `$XDG_STATE_HOME/retinue` or `$HOME/.local/state/retinue`; Windows defaults to `%LOCALAPPDATA%\retinue`.
 
-When `retinue_wait_agent` returns `running`, its response includes `tracePath`. Use that path to inspect recent OpenCode message summaries, selected model/provider metadata, server URL, and stall diagnostics.
+When `retinue_wait_agent` returns `running`, its response includes a compact `diagnostic` object plus `tracePath`. Use `diagnostic` for the immediate decision, then inspect the trace path for full OpenCode message summaries, selected model/provider metadata, server URL, and stall diagnostics.
 
 ## Current Status
 

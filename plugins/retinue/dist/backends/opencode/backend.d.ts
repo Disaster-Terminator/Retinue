@@ -32,6 +32,7 @@ export declare class OpenCodeBackend implements AgentBackend {
     }>;
     cleanup(options?: CleanupOptions): Promise<CleanupResult>;
     private readMeta;
+    private readCurrentMetaOrFallback;
     private reconcileStatus;
     private captureMessageBaseline;
     private hasNewCompletedAssistantMessage;

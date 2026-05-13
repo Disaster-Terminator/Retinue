@@ -75,14 +75,20 @@ describe("OpenCodeBackend", () => {
     });
   });
 
-  it("flags patch parts as write intent when a read-only OpenCode job emits them", async () => {
+  it("stalls read-only OpenCode jobs that emit patch parts", async () => {
     const backend = createBackend();
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
     server!.appendPatchAssistant(started.externalSessionId!);
 
-    await expect(backend.wait({ jobId: started.jobId }, 1)).resolves.toMatchObject({ status: "running" });
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "stalled",
+      parsedStdout: { result: expect.stringContaining("OpenCode read-only job emitted patch/write intent") },
+      error: expect.stringContaining("OpenCode read-only job emitted patch/write intent")
+    });
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_job_stalled"');
     expect(trace).toContain('"patchPartCount":1');
     expect(trace).toContain('"readOnlyPatchPartCount":1');
     expect(trace).toContain('"readOnlyWriteIntent":true');
@@ -110,6 +116,19 @@ describe("OpenCodeBackend", () => {
 
     await sleep(600);
     expect(server!.promptRequests).toHaveLength(1);
+  });
+
+  it("returns failed from run when OpenCode prompt_async fails immediately", async () => {
+    server!.setPromptAsyncFailure(500, { error: { message: "prompt submit broke" } });
+    const backend = createBackend();
+
+    const started = await backend.run({ cwd: tempDir, prompt: "will fail before submission" });
+
+    expect(started).toMatchObject({ backend: "opencode", status: "failed" });
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "failed" });
+    const stderr = await fs.readFile(getJobPaths(tempDir, started.jobId).stderr, "utf8");
+    expect(stderr).toContain("opencode_job_prompt_failed");
+    expect(stderr).toContain("prompt submit broke");
   });
 
   it("keeps newly started jobs running until fake completion", async () => {
@@ -387,6 +406,24 @@ describe("OpenCodeBackend", () => {
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"event":"opencode_job_stalled"');
     expect(trace).toContain('"incompleteAssistantStallThresholdMs":60000');
+  });
+
+  it("marks a single stale running tool call as stalled after the incomplete assistant threshold", async () => {
+    const backend = createBackend();
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "tool call never returns" });
+    server!.appendIncompleteAssistant(started.externalSessionId!, "waiting for a tool");
+
+    const paths = getJobPaths(tempDir, started.jobId);
+    const meta = JSON.parse(await fs.readFile(paths.meta, "utf8")) as typeof started;
+    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 120_000).toISOString() })}\n`, "utf8");
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_job_stalled"');
+    expect(trace).toContain('"incompleteAssistantRound":true');
+    expect(trace).toContain('"lastAssistantPartSummaries"');
+    expect(trace).toContain('"stateStatus":"running"');
   });
 
   it("recovers a stalled OpenCode job when the backend later produces a final result", async () => {

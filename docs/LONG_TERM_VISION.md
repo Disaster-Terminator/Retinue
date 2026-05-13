@@ -2,7 +2,9 @@
 
 Retinue 的长期目标不是发明一套新的子代理协议，而是学习 Codex 原生 spawn 的产品语义，把本机外部 agent runtime 包装成 Codex 可以使用的子代理执行面。
 
-参考基准：2026-05-06 已同步并阅读 `G:\repository\codex` 的 `upstream/main`，基准提交为 `ebd9ec05b4`。该版本的 Codex 多代理工具面以 `spawn_agent`、`wait_agent`、`send_message`、`followup_task`、`list_agents`、`close_agent` 为核心。
+参考基准：2026-05-13 已同步并阅读 `/home/raystorm/projects/codex` 的 `openai/codex` `main`，基准提交为 `5ab7e6b4c6`。该版本的 Codex 多代理工具面以 `spawn_agent`、`wait_agent`、`send_message`、`followup_task`、`list_agents`、`close_agent` 为核心。
+
+Codex 原生 spawn 是线程树协作模型：子代理是 Codex runtime 内的 child thread，可以 fork 上下文、继承执行策略和环境，并通过 mailbox/agent path 协作。Retinue 的定位不同：它是外部本地 agent runtime bridge，把 OpenCode 或 Claude Code 包装成可 spawn、wait、close 的 job lifecycle。Retinue 应该学习 Codex 的产品语义，但不能承诺等价替代 Codex native `spawn_agent`。
 
 ## Product Shape
 

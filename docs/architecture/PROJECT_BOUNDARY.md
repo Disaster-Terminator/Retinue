@@ -4,6 +4,8 @@
 
 Retinue is a local subagent execution surface for Codex-like clients. It runs external coding agents such as Claude Code and OpenCode, returns job handles, and preserves enough local state for later status, wait, result, continue, termination, and cleanup operations.
 
+Retinue is not a native Codex `spawn_agent` replacement. Codex native spawn creates child threads inside the Codex runtime tree, while Retinue bridges to external local agent runtimes and exposes their lifecycle as jobs.
+
 It is not a model router, provider switcher, replacement agent client, or PAL wrapper. Each backend calls or attaches to the locally installed agent runtime and lets that runtime own provider, model, quota, proxy, login, and runtime policy.
 
 Retinue exists to provide lifecycle semantics that a one-shot MCP tool cannot provide:

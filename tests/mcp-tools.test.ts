@@ -426,6 +426,15 @@ describe("MCP tools", () => {
       expect(wait.stderrTail).toContain('"event":"opencode_job_wait_timeout"');
       expect(wait.stderrTail).toContain('"jobMessageCount"');
       expect(wait.stderrTailBytes).toBeGreaterThan(0);
+      expect(wait.diagnostic).toMatchObject({
+        event: "opencode_job_wait_timeout",
+        backend: "opencode",
+        status: "running",
+        jobMessageCount: 1,
+        lastMessagePartTypes: ["text"],
+        readOnlyWriteIntent: false
+      });
+      expect(wait.diagnostic.message).toContain("OpenCode job is still running");
     } finally {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;

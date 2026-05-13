@@ -118,7 +118,11 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
                 env: process.env
             });
             const paths = getJobPaths(stateDir, jobId);
-            const [stdoutTail, stderrTail] = await Promise.all([readTailIfExists(paths.stdout), readTailIfExists(paths.stderr)]);
+            const [stdoutTail, stderrTail, diagnostic] = await Promise.all([
+                readTailIfExists(paths.stdout),
+                readTailIfExists(paths.stderr),
+                readLatestJobDiagnostic(paths.stderr)
+            ]);
             return jsonToolResult({
                 task_name: isJobMeta(status) ? status.name : undefined,
                 jobId,
@@ -140,6 +144,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
                 stderrTailBytes: stderrTail.bytes,
                 stdoutTailTruncated: stdoutTail.truncated,
                 stderrTailTruncated: stderrTail.truncated,
+                diagnostic,
                 tracePath: getRetinueTracePath(stateDir),
                 requestedTimeoutMs: timeoutMs,
                 effectiveTimeoutMs
@@ -493,6 +498,113 @@ async function readTailIfExists(filePath, maxBytes = 4096) {
         }
         throw error;
     }
+}
+async function readLatestJobDiagnostic(filePath) {
+    const tail = await readTailIfExists(filePath, 64 * 1024);
+    if (!tail.text) {
+        return undefined;
+    }
+    const lines = tail.text
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .reverse();
+    for (const line of lines) {
+        try {
+            const parsed = JSON.parse(line);
+            const summary = summarizeJobDiagnostic(parsed);
+            if (summary) {
+                return summary;
+            }
+        }
+        catch {
+            continue;
+        }
+    }
+    return undefined;
+}
+function summarizeJobDiagnostic(value) {
+    if (!isRecord(value)) {
+        return undefined;
+    }
+    const diagnostic = isRecord(value.diagnostic) ? value.diagnostic : undefined;
+    if (!diagnostic) {
+        return undefined;
+    }
+    const event = typeof value.event === "string" ? value.event : undefined;
+    const readOnlyWriteIntent = diagnostic.readOnlyWriteIntent === true;
+    return compactRecord({
+        event,
+        backend: "opencode",
+        status: event === "opencode_job_stalled" ? "stalled" : event === "opencode_job_prompt_failed" ? "failed" : "running",
+        message: createDiagnosticSummaryMessage(event, diagnostic),
+        sessionId: stringValue(diagnostic.sessionId),
+        sessionDirectory: stringValue(diagnostic.sessionDirectory),
+        sessionPath: stringValue(diagnostic.sessionPath),
+        sessionAborted: booleanValue(diagnostic.sessionAborted),
+        baselineMessageCount: numberValue(diagnostic.baselineMessageCount),
+        baselineCompletedAssistantCount: numberValue(diagnostic.baselineCompletedAssistantCount),
+        messageCount: numberValue(diagnostic.messageCount),
+        jobMessageCount: numberValue(diagnostic.jobMessageCount),
+        completedAssistantCount: numberValue(diagnostic.completedAssistantCount),
+        jobCompletedAssistantCount: numberValue(diagnostic.jobCompletedAssistantCount),
+        lastMessageRole: stringValue(diagnostic.lastMessageRole),
+        lastMessageFinish: stringValue(diagnostic.lastMessageFinish),
+        lastMessagePartTypes: stringArrayValue(diagnostic.lastMessagePartTypes),
+        lastMessagePartSummaries: arrayValue(diagnostic.lastMessagePartSummaries),
+        lastAssistantFinish: stringValue(diagnostic.lastAssistantFinish),
+        lastAssistantPartTypes: stringArrayValue(diagnostic.lastAssistantPartTypes),
+        lastAssistantPartSummaries: arrayValue(diagnostic.lastAssistantPartSummaries),
+        lastAssistantProviderID: stringValue(diagnostic.lastAssistantProviderID),
+        lastAssistantModelID: stringValue(diagnostic.lastAssistantModelID),
+        lastAssistantAgent: stringValue(diagnostic.lastAssistantAgent),
+        lastAssistantMode: stringValue(diagnostic.lastAssistantMode),
+        patchPartCount: numberValue(diagnostic.patchPartCount),
+        readOnlyPatchPartCount: numberValue(diagnostic.readOnlyPatchPartCount),
+        readOnlyWriteIntent,
+        toolCallAssistantRounds: numberValue(diagnostic.toolCallAssistantRounds),
+        emptyAssistantRounds: numberValue(diagnostic.emptyAssistantRounds),
+        incompleteAssistantRound: booleanValue(diagnostic.incompleteAssistantRound),
+        noCompletedAssistantDurationMs: numberValue(diagnostic.noCompletedAssistantDurationMs),
+        stateStatus: stringValue(diagnostic.stateStatus),
+        sessionState: diagnostic.sessionState
+    });
+}
+function createDiagnosticSummaryMessage(event, diagnostic) {
+    if (diagnostic.readOnlyWriteIntent === true) {
+        return "OpenCode read-only job emitted patch/write intent; treat the child output as untrusted and inspect diagnostics.";
+    }
+    if (event === "opencode_job_stalled") {
+        return "OpenCode job was classified as stalled by Retinue stall rules.";
+    }
+    if (event === "opencode_job_prompt_failed") {
+        return "OpenCode prompt submission failed before the child job became usable.";
+    }
+    const rounds = numberValue(diagnostic.toolCallAssistantRounds) ?? 0;
+    const emptyRounds = numberValue(diagnostic.emptyAssistantRounds) ?? 0;
+    const incomplete = diagnostic.incompleteAssistantRound === true;
+    return `OpenCode job is still running after wait timeout; toolCallAssistantRounds=${rounds}, emptyAssistantRounds=${emptyRounds}, incompleteAssistantRound=${incomplete}.`;
+}
+function compactRecord(record) {
+    return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== undefined));
+}
+function isRecord(value) {
+    return typeof value === "object" && value !== null;
+}
+function stringValue(value) {
+    return typeof value === "string" ? value : undefined;
+}
+function numberValue(value) {
+    return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+function booleanValue(value) {
+    return typeof value === "boolean" ? value : undefined;
+}
+function arrayValue(value) {
+    return Array.isArray(value) ? value : undefined;
+}
+function stringArrayValue(value) {
+    return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined;
 }
 async function createRetinueBackend(retinue) {
     return createRetinueBackendByKind(readRetinueBackendKindFromEnv(), retinue);

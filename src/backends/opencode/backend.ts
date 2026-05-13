@@ -165,7 +165,7 @@ export class OpenCodeBackend implements AgentBackend {
     await writeJsonAtomic(paths.meta, meta);
     const submitted = this.submitPromptAsync(target.client, session.id, meta, options);
     await Promise.race([submitted, sleep(50)]);
-    return meta;
+    return this.readCurrentMetaOrFallback(jobId, meta);
   }
 
   async continueJob(options: AgentContinueOptions): Promise<JobMeta> {
@@ -208,7 +208,7 @@ export class OpenCodeBackend implements AgentBackend {
     await writeJsonAtomic(paths.meta, meta);
     const submitted = this.submitPromptAsync(target.client, options.externalSessionId, meta, options);
     await Promise.race([submitted, sleep(50)]);
-    return meta;
+    return this.readCurrentMetaOrFallback(jobId, meta);
   }
 
   async status(handle: AgentHandle): Promise<JobStatusResult> {
@@ -348,6 +348,11 @@ export class OpenCodeBackend implements AgentBackend {
       }
       return { jobId, status: "corrupted", error: error instanceof Error ? error.message : String(error) };
     }
+  }
+
+  private async readCurrentMetaOrFallback(jobId: string, fallback: JobMeta): Promise<JobMeta> {
+    const current = await this.readMeta(jobId);
+    return isProblem(current) ? fallback : current;
   }
 
   private async reconcileStatus(meta: JobMeta): Promise<JobMeta | JobProblem> {
@@ -711,6 +716,14 @@ function computeStallDiagnostic(
   if (jobMessages.some(isCompletedAssistantMessage)) {
     return undefined;
   }
+  const patchPartCount = countPatchParts(jobMessages);
+  if (meta.readOnly === true && patchPartCount > 0) {
+    return {
+      patchPartCount,
+      readOnlyPatchPartCount: patchPartCount,
+      readOnlyWriteIntent: true
+    };
+  }
   const thresholdMs = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_MS, DEFAULT_STALL_MS);
   if (thresholdMs <= 0) {
     return undefined;
@@ -728,7 +741,7 @@ function computeStallDiagnostic(
   const startedAt = Date.parse(meta.createdAt);
   const durationMs = Number.isFinite(startedAt) ? Date.now() - startedAt : 0;
   const emptyAssistantStalled = emptyAssistantRounds >= emptyAssistantThreshold;
-  const incompleteAssistantStalled = incompleteAssistantRound && toolCallAssistantRounds >= roundThreshold && durationMs >= incompleteThresholdMs;
+  const incompleteAssistantStalled = incompleteAssistantRound && durationMs >= incompleteThresholdMs;
   if (!emptyAssistantStalled && !incompleteAssistantStalled && durationMs < thresholdMs) {
     return undefined;
   }
@@ -745,6 +758,9 @@ function computeStallDiagnostic(
 }
 
 function createStallMessage(diagnostic: OpenCodeJobDiagnostic): string {
+  if (diagnostic.readOnlyWriteIntent === true) {
+    return `OpenCode read-only job emitted patch/write intent; Retinue did not treat the child result as trusted output. Inspect Retinue trace/job diagnostics for message summaries.`;
+  }
   const rounds = diagnostic.toolCallAssistantRounds ?? 0;
   const emptyRounds = diagnostic.emptyAssistantRounds ?? 0;
   const durationMs = diagnostic.noCompletedAssistantDurationMs ?? 0;
