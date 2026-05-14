@@ -4,6 +4,7 @@ import { resolveHttpTimeoutMs } from "../../core/http.js";
 import { getJobPaths, getRetinueTracePath, resolveStateDir } from "../../core/paths.js";
 import { isCleanupSafeStatus } from "../../core/status.js";
 import { OpenCodeClient, OpenCodeClientError } from "./client.js";
+import { scheduleManagedOpenCodeServerIdleShutdown } from "./serverManager.js";
 const OPENCODE_READ_ONLY_TOOLS = {
     edit: false,
     write: false,
@@ -46,6 +47,7 @@ const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
 const DEFAULT_WAIT_POLL_MS = 250;
 const DEFAULT_STALL_MS = 10 * 60_000;
 const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = DEFAULT_STALL_MS;
+const DEFAULT_SERVER_IDLE_MS = 30_000;
 const DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
 const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 2;
 const DIAGNOSTIC_VALUE_PREVIEW_BYTES = 1000;
@@ -57,6 +59,7 @@ export class OpenCodeBackend {
     stateDir;
     env;
     httpTimeoutMs;
+    onServerIdle;
     constructor(options) {
         this.client = options.client;
         this.baseUrl = options.baseUrl?.replace(/\/+$/, "");
@@ -71,6 +74,13 @@ export class OpenCodeBackend {
         this.stateDir = resolveStateDir({ explicitStateDir: options.stateDir, env: options.env });
         this.env = options.env;
         this.httpTimeoutMs = resolveHttpTimeoutMs(options.env);
+        this.onServerIdle =
+            options.onServerIdle ??
+                ((baseUrl, cwd) => scheduleManagedOpenCodeServerIdleShutdown(baseUrl, {
+                    stateDir: this.stateDir,
+                    cwd,
+                    delayMs: resolveServerIdleMs(this.env)
+                }));
     }
     async run(options) {
         const jobId = `job_${randomUUID()}`;
@@ -228,11 +238,13 @@ export class OpenCodeBackend {
             return;
         }
         await this.clientForMeta(meta).abort(meta.externalSessionId);
-        await writeJsonAtomic(getJobPaths(this.stateDir, handle.jobId).meta, {
+        const updated = {
             ...meta,
             status: "killed",
             updatedAt: new Date().toISOString()
-        });
+        };
+        await writeJsonAtomic(getJobPaths(this.stateDir, handle.jobId).meta, updated);
+        await this.maybeScheduleServerIdleShutdown(updated);
     }
     async wait(handle, timeoutMs = DEFAULT_WAIT_TIMEOUT_MS) {
         const deadline = Date.now() + Math.max(0, timeoutMs);
@@ -343,6 +355,9 @@ export class OpenCodeBackend {
                     diagnostic
                 });
             }
+            if (isTerminal(status)) {
+                await this.maybeScheduleServerIdleShutdown(updated);
+            }
             return updated;
         }
         catch (error) {
@@ -437,6 +452,30 @@ export class OpenCodeBackend {
         }
         return diagnostic;
     }
+    async maybeScheduleServerIdleShutdown(meta) {
+        if (!meta.externalServerUrl) {
+            return;
+        }
+        if (await this.hasRunningJobsForServer(meta.externalServerUrl)) {
+            return;
+        }
+        this.onServerIdle(meta.externalServerUrl, meta.cwd);
+    }
+    async hasRunningJobsForServer(baseUrl) {
+        for (const entry of await readDirIfExists(getJobsDir(this.stateDir))) {
+            if (!entry.isDirectory()) {
+                continue;
+            }
+            const meta = await this.readMeta(entry.name);
+            if (isProblem(meta) || meta.backend !== "opencode") {
+                continue;
+            }
+            if (meta.status === "running" && meta.externalServerUrl === baseUrl) {
+                return true;
+            }
+        }
+        return false;
+    }
     async writeJobTrace(event, meta, diagnostic, extra = {}) {
         await writeRetinueTrace(this.stateDir, {
             event,
@@ -467,6 +506,7 @@ export class OpenCodeBackend {
                 error: error instanceof Error ? error.message : String(error)
             });
             await this.writeJobTrace("opencode_job_prompt_failed", failed, await this.inspectJob(failed));
+            await this.maybeScheduleServerIdleShutdown(failed);
         }
     }
     clientForMeta(meta) {
@@ -690,6 +730,9 @@ function parseOptionalNonNegativeInt(value, fallback) {
     }
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : fallback;
+}
+function resolveServerIdleMs(env) {
+    return parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_SERVER_IDLE_MS, DEFAULT_SERVER_IDLE_MS);
 }
 function hasToolPart(message) {
     return Array.isArray(message.parts) && message.parts.some((part) => part?.type === "tool");

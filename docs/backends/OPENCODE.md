@@ -29,6 +29,8 @@ Retinue prefers `127.0.0.1:4096` and tries local fallback ports `4097` through `
 
 Managed OpenCode auto-serve binds to loopback only by default. `RETINUE_OPENCODE_HOST=0.0.0.0` or another non-loopback host is rejected unless `RETINUE_OPENCODE_ALLOW_NON_LOOPBACK=1` is set for an explicitly isolated environment. Retinue does not add authentication to the OpenCode server it starts.
 
+Retinue-managed OpenCode servers are not intended to live forever. After the last job using a managed server becomes terminal, Retinue schedules an idle shutdown; the default grace period is 30 seconds and can be changed with `RETINUE_OPENCODE_SERVER_IDLE_MS`. Shutdown uses process-tree termination so OpenCode helper processes such as language servers do not keep repository folders locked after the top-level `opencode serve` process exits. The trace records `opencode_server_idle_shutdown_scheduled`, `opencode_server_stopped`, or `opencode_server_stop_failed` for lifecycle debugging.
+
 Explicit attach remains available:
 
 ```text
@@ -80,6 +82,7 @@ RETINUE_OPENCODE_AUTO_SERVE=1
 RETINUE_OPENCODE_COMMAND=opencode
 RETINUE_OPENCODE_HOST=127.0.0.1
 RETINUE_OPENCODE_PORT=4096
+RETINUE_OPENCODE_SERVER_IDLE_MS=30000
 ```
 
 When `RETINUE_OPENCODE_PORT` is explicit, Retinue does not silently fall back to another port.

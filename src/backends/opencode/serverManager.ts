@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { getOpenCodeServerDiscoveryPath, getOpenCodeServerLockPath, getRetinueTracePath } from "../../core/paths.js";
+import { killProcessTree } from "../../core/processTree.js";
 
 const DEFAULT_OPENCODE_HOST = "127.0.0.1";
 const DEFAULT_OPENCODE_PORT = 4096;
@@ -11,6 +12,7 @@ const DEFAULT_HEALTH_TIMEOUT_MS = 10_000;
 const DEFAULT_HEALTH_POLL_MS = 250;
 const DEFAULT_LOCK_TIMEOUT_MS = 10_000;
 const managedServers = new Map<string, OpenCodeServerTarget>();
+const managedServerIdleTimers = new Map<string, NodeJS.Timeout>();
 const WINDOWS_EXECUTABLE_EXTENSIONS = [".EXE", ".CMD", ".BAT", ""];
 
 class OpenCodeStartupError extends Error {
@@ -48,6 +50,9 @@ export interface OpenCodeServerTarget {
 type RetinueTraceEvent =
   | { event: "opencode_server_reused"; baseUrl: string; source: "memory" | "discovery"; cwd?: string }
   | { event: "opencode_server_port_occupied"; host: string; port: number; baseUrl: string }
+  | { event: "opencode_server_idle_shutdown_scheduled"; baseUrl: string; delayMs: number; cwd?: string }
+  | { event: "opencode_server_stopped"; baseUrl: string; pid?: number; reason: "idle" | "startup_failed" | "process_exit"; cwd?: string }
+  | { event: "opencode_server_stop_failed"; baseUrl: string; pid?: number; reason: "idle" | "startup_failed" | "process_exit"; error: string; cwd?: string }
   | {
       event: "opencode_server_spawn";
       requestedCommand: string;
@@ -246,13 +251,11 @@ async function startManagedOpenCodeServer(
     });
     const startupFailure = waitForStartupFailure(child, resolution.command);
     const cleanup = () => {
-      try {
-        if (!child.killed && child.exitCode === null) {
-          child.kill();
-        }
-      } catch {
-        // Treat a never-started or already-exited process as gone.
-      }
+      void stopChildProcessTree(baseUrl, child, {
+        stateDir: options.stateDir,
+        cwd: options.cwd,
+        reason: "process_exit"
+      });
     };
     process.once("exit", cleanup);
 
@@ -265,7 +268,11 @@ async function startManagedOpenCodeServer(
         startupFailure
       ]);
     } catch (error) {
-      cleanup();
+      await stopChildProcessTree(baseUrl, child, {
+        stateDir: options.stateDir,
+        cwd: options.cwd,
+        reason: "startup_failed"
+      });
       process.removeListener("exit", cleanup);
       const message = error instanceof Error ? error.message : String(error);
       await writeRetinueTrace(options.stateDir, {
@@ -293,6 +300,7 @@ async function startManagedOpenCodeServer(
       cwd: options.cwd
     });
     managedServers.set(baseUrl, target);
+    cancelManagedOpenCodeServerIdleShutdown(baseUrl);
     if (options.stateDir && child.pid) {
       await writeOpenCodeServerDiscovery(options.stateDir, {
         baseUrl,
@@ -304,6 +312,7 @@ async function startManagedOpenCodeServer(
     }
     child.once("exit", () => {
       managedServers.delete(baseUrl);
+      cancelManagedOpenCodeServerIdleShutdown(baseUrl);
       process.removeListener("exit", cleanup);
       if (options.stateDir && child.pid) {
         void removeDiscoveryIfMatches(options.stateDir, child.pid, options.cwd);
@@ -317,6 +326,91 @@ async function startManagedOpenCodeServer(
       occupiedPorts.length === ports.length ? "are already in use by non-OpenCode services" : "were unavailable"
     }${startupFailures.length > 0 ? `. Startup failures: ${startupFailures.join("; ")}` : ""}`
   );
+}
+
+export function scheduleManagedOpenCodeServerIdleShutdown(
+  baseUrl: string,
+  options: { stateDir?: string; cwd?: string; delayMs?: number; reason?: "idle" } = {}
+): void {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const managed = managedServers.get(normalizedBaseUrl);
+  if (!managed?.child) {
+    return;
+  }
+
+  const delayMs = Math.max(0, options.delayMs ?? 0);
+  cancelManagedOpenCodeServerIdleShutdown(normalizedBaseUrl);
+  const timer = setTimeout(() => {
+    managedServerIdleTimers.delete(normalizedBaseUrl);
+    void stopManagedOpenCodeServer(normalizedBaseUrl, {
+      stateDir: options.stateDir,
+      cwd: options.cwd ?? managed.cwd,
+      reason: options.reason ?? "idle"
+    });
+  }, delayMs);
+  timer.unref?.();
+  managedServerIdleTimers.set(normalizedBaseUrl, timer);
+  void writeRetinueTrace(options.stateDir, {
+    event: "opencode_server_idle_shutdown_scheduled",
+    baseUrl: normalizedBaseUrl,
+    delayMs,
+    cwd: options.cwd ?? managed.cwd
+  });
+}
+
+function cancelManagedOpenCodeServerIdleShutdown(baseUrl: string): void {
+  const timer = managedServerIdleTimers.get(baseUrl);
+  if (!timer) {
+    return;
+  }
+  clearTimeout(timer);
+  managedServerIdleTimers.delete(baseUrl);
+}
+
+async function stopManagedOpenCodeServer(
+  baseUrl: string,
+  options: { stateDir?: string; cwd?: string; reason: "idle" | "startup_failed" | "process_exit" }
+): Promise<boolean> {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const managed = managedServers.get(normalizedBaseUrl);
+  if (!managed?.child) {
+    return false;
+  }
+  await stopChildProcessTree(normalizedBaseUrl, managed.child, options);
+  managedServers.delete(normalizedBaseUrl);
+  if (options.stateDir && managed.child.pid) {
+    await removeDiscoveryIfMatches(options.stateDir, managed.child.pid, options.cwd ?? managed.cwd);
+  }
+  return true;
+}
+
+async function stopChildProcessTree(
+  baseUrl: string,
+  child: ChildProcess,
+  options: { stateDir?: string; cwd?: string; reason: "idle" | "startup_failed" | "process_exit" }
+): Promise<void> {
+  const pid = child.pid;
+  try {
+    if (pid && child.exitCode === null) {
+      await killProcessTree(pid);
+    }
+    await writeRetinueTrace(options.stateDir, {
+      event: "opencode_server_stopped",
+      baseUrl,
+      pid,
+      reason: options.reason,
+      cwd: options.cwd
+    });
+  } catch (error) {
+    await writeRetinueTrace(options.stateDir, {
+      event: "opencode_server_stop_failed",
+      baseUrl,
+      pid,
+      reason: options.reason,
+      error: error instanceof Error ? error.message : String(error),
+      cwd: options.cwd
+    });
+  }
 }
 
 async function writeRetinueTrace(stateDir: string | undefined, event: RetinueTraceEvent): Promise<void> {

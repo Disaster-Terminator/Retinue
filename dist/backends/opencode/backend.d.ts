@@ -7,6 +7,7 @@ export interface OpenCodeBackendOptions {
     target?: (cwd: string | undefined) => Promise<OpenCodeBackendTarget>;
     stateDir?: string;
     env?: RetinueOptions["env"];
+    onServerIdle?: (baseUrl: string, cwd: string | undefined) => void;
 }
 export interface OpenCodeBackendTarget {
     client: OpenCodeClient;
@@ -20,6 +21,7 @@ export declare class OpenCodeBackend implements AgentBackend {
     private readonly stateDir;
     private readonly env?;
     private readonly httpTimeoutMs;
+    private readonly onServerIdle;
     constructor(options: OpenCodeBackendOptions);
     run(options: AgentRunOptions): Promise<JobMeta>;
     continueJob(options: AgentContinueOptions): Promise<JobMeta>;
@@ -38,6 +40,8 @@ export declare class OpenCodeBackend implements AgentBackend {
     private hasNewCompletedAssistantMessage;
     private isStalledOpenCodeJob;
     private inspectJob;
+    private maybeScheduleServerIdleShutdown;
+    private hasRunningJobsForServer;
     private writeJobTrace;
     private submitPromptAsync;
     private clientForMeta;
