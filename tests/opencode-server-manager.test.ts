@@ -10,7 +10,8 @@ import {
   ensureOpenCodeServer,
   resolveOpenCodeCommandForSpawn,
   resolveOpenCodeServer,
-  resolveOpenCodeServerFromEnv
+  resolveOpenCodeServerFromEnv,
+  scheduleManagedOpenCodeServerIdleShutdown
 } from "../src/backends/opencode/serverManager.js";
 
 describe("OpenCode server manager", () => {
@@ -237,6 +238,42 @@ describe("OpenCode server manager", () => {
     }
   });
 
+  it("stops managed OpenCode servers after an idle shutdown grace period", async () => {
+    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-state-"));
+    const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-project-"));
+    const port = await freePort();
+    const command = await writeFakeOpenCodeCommandWithSessions();
+    let target: Awaited<ReturnType<typeof ensureOpenCodeServer>> | undefined;
+    try {
+      target = await ensureOpenCodeServer(
+        {
+          mode: "serve",
+          command,
+          args: buildServeArgs({ host: "127.0.0.1", port }),
+          host: "127.0.0.1",
+          port,
+          fallbackPorts: []
+        },
+        { stateDir, cwd: projectDir, healthTimeoutMs: 5000, healthPollMs: 50 }
+      );
+
+      scheduleManagedOpenCodeServerIdleShutdown(target.baseUrl, {
+        stateDir,
+        cwd: projectDir,
+        delayMs: 10
+      });
+
+      await waitForUnreachable(target.baseUrl);
+      const trace = await fs.readFile(getRetinueTracePath(stateDir), "utf8");
+      expect(trace).toContain('"event":"opencode_server_idle_shutdown_scheduled"');
+      expect(trace).toContain('"event":"opencode_server_stopped"');
+    } finally {
+      target?.child?.kill();
+      await fs.rm(stateDir, { recursive: true, force: true });
+      await fs.rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("reuses a Retinue-managed OpenCode server recorded in state discovery", async () => {
     const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-discovery-"));
     const managed = await startHealthServer(JSON.stringify({ healthy: true, version: "managed" }));
@@ -411,6 +448,21 @@ function rejectAfter(ms: number, message: string): Promise<never> {
   return new Promise((_, reject) => {
     setTimeout(() => reject(new Error(message)), ms);
   });
+}
+
+async function waitForUnreachable(baseUrl: string): Promise<void> {
+  const deadline = Date.now() + 5000;
+  for (;;) {
+    try {
+      await fetch(`${baseUrl}/global/health`);
+    } catch {
+      return;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`Expected OpenCode server at ${baseUrl} to stop`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
 }
 
 async function writeFakeOpenCodeCommand(): Promise<string> {

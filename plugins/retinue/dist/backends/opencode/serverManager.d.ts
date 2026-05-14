@@ -49,3 +49,9 @@ export declare function ensureOpenCodeServer(resolution: OpenCodeServerResolutio
     lockTimeoutMs?: number;
     cwd?: string;
 }): Promise<OpenCodeServerTarget>;
+export declare function scheduleManagedOpenCodeServerIdleShutdown(baseUrl: string, options?: {
+    stateDir?: string;
+    cwd?: string;
+    delayMs?: number;
+    reason?: "idle";
+}): void;

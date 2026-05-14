@@ -21061,8 +21061,8 @@ var StdioServerTransport = class {
 };
 
 // src/backends/opencode/backend.ts
-import fs from "node:fs/promises";
-import { createHash, randomUUID } from "node:crypto";
+import fs2 from "node:fs/promises";
+import { createHash as createHash2, randomUUID as randomUUID2 } from "node:crypto";
 
 // src/core/http.ts
 var DEFAULT_HTTP_TIMEOUT_MS = 3e4;
@@ -21276,6 +21276,675 @@ function formatModelOverride(model) {
   };
 }
 
+// src/backends/opencode/serverManager.ts
+import { spawn } from "node:child_process";
+import fs from "node:fs/promises";
+import path2 from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+
+// src/core/processTree.ts
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+var execFileAsync = promisify(execFile);
+async function killProcessTree(pid, signal = "SIGTERM") {
+  if (pid <= 0) {
+    return;
+  }
+  if (process.platform === "win32") {
+    try {
+      await execFileAsync("taskkill", ["/PID", String(pid), "/T", "/F"]);
+    } catch {
+    }
+    return;
+  }
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    try {
+      process.kill(pid, signal);
+    } catch {
+    }
+  }
+}
+
+// src/backends/opencode/serverManager.ts
+var DEFAULT_OPENCODE_HOST = "127.0.0.1";
+var DEFAULT_OPENCODE_PORT = 4096;
+var DEFAULT_OPENCODE_FALLBACK_PORTS = buildPortRange(4097, 4127);
+var DEFAULT_HEALTH_TIMEOUT_MS = 1e4;
+var DEFAULT_HEALTH_POLL_MS = 250;
+var DEFAULT_LOCK_TIMEOUT_MS = 1e4;
+var managedServers = /* @__PURE__ */ new Map();
+var managedServerIdleTimers = /* @__PURE__ */ new Map();
+var WINDOWS_EXECUTABLE_EXTENSIONS = [".EXE", ".CMD", ".BAT", ""];
+var OpenCodeStartupError = class extends Error {
+  constructor(message, kind) {
+    super(message);
+    this.kind = kind;
+    this.name = "OpenCodeStartupError";
+  }
+  kind;
+};
+function resolveOpenCodeServer(config2) {
+  if (config2.baseUrl?.trim()) {
+    return { mode: "attach", baseUrl: normalizeBaseUrl(config2.baseUrl) };
+  }
+  if (!config2.autoServe) {
+    throw new Error("OpenCode server target missing: provide RETINUE_OPENCODE_BASE_URL or enable RETINUE_OPENCODE_AUTO_SERVE=1");
+  }
+  const host = config2.host ?? DEFAULT_OPENCODE_HOST;
+  assertOpenCodeHostAllowed(host, config2);
+  const port = config2.port ?? DEFAULT_OPENCODE_PORT;
+  const fallbackPorts = config2.fallbackPorts ?? (config2.port === void 0 ? DEFAULT_OPENCODE_FALLBACK_PORTS : []);
+  return {
+    mode: "serve",
+    command: config2.command ?? "opencode",
+    args: [...config2.prefixArgs ?? [], ...buildServeArgs({ host, port })],
+    host,
+    port,
+    fallbackPorts
+  };
+}
+function resolveOpenCodeServerFromEnv(env) {
+  assertNoStaleSupervisorOpenCodeEnv(env);
+  return resolveOpenCodeServer({
+    baseUrl: env.RETINUE_OPENCODE_BASE_URL,
+    command: env.RETINUE_OPENCODE_COMMAND,
+    prefixArgs: parsePrefixArgs(env.RETINUE_OPENCODE_PREFIX_ARGS),
+    autoServe: env.RETINUE_OPENCODE_AUTO_SERVE === "1",
+    host: env.RETINUE_OPENCODE_HOST,
+    port: parseOptionalPort(env.RETINUE_OPENCODE_PORT),
+    fallbackPorts: parseOptionalPorts(env.RETINUE_OPENCODE_FALLBACK_PORTS),
+    allowNonLoopbackHost: env.RETINUE_OPENCODE_ALLOW_NON_LOOPBACK === "1"
+  });
+}
+function assertOpenCodeHostAllowed(host, config2 = {}) {
+  if (host === "127.0.0.1" || host === "localhost") {
+    return;
+  }
+  if (config2.allowNonLoopbackHost === true) {
+    return;
+  }
+  throw new Error(
+    "Refusing to bind managed OpenCode server to a non-loopback host. Set RETINUE_OPENCODE_ALLOW_NON_LOOPBACK=1 to override."
+  );
+}
+function assertNoStaleSupervisorOpenCodeEnv(env) {
+  const hasRetinueOpenCodeTarget = Boolean(env.RETINUE_OPENCODE_BASE_URL?.trim()) || env.RETINUE_OPENCODE_AUTO_SERVE === "1";
+  if (hasRetinueOpenCodeTarget) {
+    return;
+  }
+  const legacyKeys = [
+    "SUPERVISOR_RETINUE_BACKEND",
+    "SUPERVISOR_OPENCODE_BASE_URL",
+    "SUPERVISOR_OPENCODE_AUTO_SERVE",
+    "SUPERVISOR_OPENCODE_HOST",
+    "SUPERVISOR_OPENCODE_PORT",
+    "SUPERVISOR_OPENCODE_AGENT"
+  ].filter((key) => Boolean(env[key]));
+  if (legacyKeys.length === 0) {
+    return;
+  }
+  throw new Error(
+    `OpenCode server target missing: Retinue received legacy SUPERVISOR_* environment (${legacyKeys.join(
+      ", "
+    )}) but no RETINUE_OPENCODE_BASE_URL or RETINUE_OPENCODE_AUTO_SERVE=1. Reload or restart the MCP host so it reads the current Retinue env config.`
+  );
+}
+function buildServeArgs(options) {
+  return ["serve", "--hostname", options.host, "--port", String(options.port)];
+}
+async function resolveOpenCodeCommandForSpawn(command, options = {}) {
+  const platform = options.platform ?? process.platform;
+  const env = options.env ?? process.env;
+  const exists = options.exists ?? fileExists;
+  if (command !== "opencode") {
+    return { command, shell: shouldUseShellForCommand(platform, command) };
+  }
+  for (const candidate of buildOpenCodeCommandCandidates(platform, env)) {
+    if (await exists(candidate)) {
+      return { command: candidate, shell: shouldUseShellForCommand(platform, candidate) };
+    }
+  }
+  return { command, shell: shouldUseShellForCommand(platform, command) };
+}
+async function ensureOpenCodeServer(resolution, options = {}) {
+  if (resolution.mode === "attach") {
+    return { baseUrl: resolution.baseUrl, started: false };
+  }
+  const cwd = normalizeServerCwd(options.cwd);
+  const discovered = options.stateDir ? await readReusableDiscovery(options.stateDir, cwd) : void 0;
+  if (discovered) {
+    await writeRetinueTrace(options.stateDir, { event: "opencode_server_reused", baseUrl: discovered.baseUrl, source: "discovery", cwd });
+    return discovered;
+  }
+  const lock = options.stateDir ? await acquireOpenCodeServerLock(options.stateDir, options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS, cwd) : void 0;
+  try {
+    const discoveredAfterLock = options.stateDir ? await readReusableDiscovery(options.stateDir, cwd) : void 0;
+    if (discoveredAfterLock) {
+      await writeRetinueTrace(options.stateDir, { event: "opencode_server_reused", baseUrl: discoveredAfterLock.baseUrl, source: "discovery", cwd });
+      return discoveredAfterLock;
+    }
+    return await startManagedOpenCodeServer(resolution, { ...options, cwd });
+  } finally {
+    await lock?.release();
+  }
+}
+async function startManagedOpenCodeServer(resolution, options) {
+  const ports = [resolution.port, ...resolution.fallbackPorts];
+  const occupiedPorts = [];
+  const startupFailures = [];
+  for (const [index, port] of ports.entries()) {
+    const baseUrl = `http://${resolution.host}:${port}`;
+    const managed = managedServers.get(baseUrl);
+    if (managed?.child && managed.child.exitCode === null && managed.cwd === options.cwd) {
+      await writeRetinueTrace(options.stateDir, { event: "opencode_server_reused", baseUrl, source: "memory", cwd: options.cwd });
+      return managed;
+    }
+    const initial = await readOpenCodeHealth(baseUrl, options.healthPollMs ?? DEFAULT_HEALTH_POLL_MS);
+    if (initial.reachable) {
+      occupiedPorts.push(port);
+      await writeRetinueTrace(options.stateDir, { event: "opencode_server_port_occupied", host: resolution.host, port, baseUrl });
+      continue;
+    }
+    const prefixArgs = resolution.args.slice(0, -buildServeArgs({ host: resolution.host, port: resolution.port }).length);
+    const spawnCommand = await resolveOpenCodeCommandForSpawn(resolution.command);
+    const args = [...prefixArgs, ...buildServeArgs({ host: resolution.host, port })];
+    await writeRetinueTrace(options.stateDir, {
+      event: "opencode_server_spawn",
+      requestedCommand: resolution.command,
+      resolvedCommand: spawnCommand.command,
+      shell: spawnCommand.shell,
+      host: resolution.host,
+      port,
+      baseUrl,
+      args,
+      cwd: options.cwd
+    });
+    const child = spawn(spawnCommand.command, args, {
+      stdio: "ignore",
+      shell: spawnCommand.shell,
+      windowsHide: true,
+      cwd: options.cwd
+    });
+    const startupFailure = waitForStartupFailure(child, resolution.command);
+    const cleanup = () => {
+      void stopChildProcessTree(baseUrl, child, {
+        stateDir: options.stateDir,
+        cwd: options.cwd,
+        reason: "process_exit"
+      });
+    };
+    process.once("exit", cleanup);
+    try {
+      await Promise.race([
+        waitForOpenCodeHealth(baseUrl, {
+          timeoutMs: options.healthTimeoutMs ?? DEFAULT_HEALTH_TIMEOUT_MS,
+          pollMs: options.healthPollMs ?? DEFAULT_HEALTH_POLL_MS
+        }),
+        startupFailure
+      ]);
+    } catch (error2) {
+      await stopChildProcessTree(baseUrl, child, {
+        stateDir: options.stateDir,
+        cwd: options.cwd,
+        reason: "startup_failed"
+      });
+      process.removeListener("exit", cleanup);
+      const message = error2 instanceof Error ? error2.message : String(error2);
+      await writeRetinueTrace(options.stateDir, {
+        event: "opencode_server_start_failed",
+        requestedCommand: resolution.command,
+        resolvedCommand: spawnCommand.command,
+        baseUrl,
+        error: message,
+        cwd: options.cwd
+      });
+      if (error2 instanceof OpenCodeStartupError && error2.kind === "early-exit" && index < ports.length - 1) {
+        startupFailures.push(`${baseUrl}: ${message}`);
+        continue;
+      }
+      throw error2;
+    }
+    const target = { baseUrl, started: true, child, cwd: options.cwd };
+    await writeRetinueTrace(options.stateDir, {
+      event: "opencode_server_ready",
+      requestedCommand: resolution.command,
+      resolvedCommand: spawnCommand.command,
+      pid: child.pid,
+      baseUrl,
+      cwd: options.cwd
+    });
+    managedServers.set(baseUrl, target);
+    cancelManagedOpenCodeServerIdleShutdown(baseUrl);
+    if (options.stateDir && child.pid) {
+      await writeOpenCodeServerDiscovery(options.stateDir, {
+        baseUrl,
+        pid: child.pid,
+        startedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        version: "0.1.0",
+        cwd: options.cwd
+      });
+    }
+    child.once("exit", () => {
+      managedServers.delete(baseUrl);
+      cancelManagedOpenCodeServerIdleShutdown(baseUrl);
+      process.removeListener("exit", cleanup);
+      if (options.stateDir && child.pid) {
+        void removeDiscoveryIfMatches(options.stateDir, child.pid, options.cwd);
+      }
+    });
+    return target;
+  }
+  throw new Error(
+    `OpenCode auto-serve could not start because candidate port${ports.length === 1 ? "" : "s"} ${ports.join(", ")} on ${resolution.host} ${occupiedPorts.length === ports.length ? "are already in use by non-OpenCode services" : "were unavailable"}${startupFailures.length > 0 ? `. Startup failures: ${startupFailures.join("; ")}` : ""}`
+  );
+}
+function scheduleManagedOpenCodeServerIdleShutdown(baseUrl, options = {}) {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const managed = managedServers.get(normalizedBaseUrl);
+  if (!managed?.child) {
+    return;
+  }
+  const delayMs = Math.max(0, options.delayMs ?? 0);
+  cancelManagedOpenCodeServerIdleShutdown(normalizedBaseUrl);
+  const timer = setTimeout(() => {
+    managedServerIdleTimers.delete(normalizedBaseUrl);
+    void stopManagedOpenCodeServer(normalizedBaseUrl, {
+      stateDir: options.stateDir,
+      cwd: options.cwd ?? managed.cwd,
+      reason: options.reason ?? "idle"
+    });
+  }, delayMs);
+  timer.unref?.();
+  managedServerIdleTimers.set(normalizedBaseUrl, timer);
+  void writeRetinueTrace(options.stateDir, {
+    event: "opencode_server_idle_shutdown_scheduled",
+    baseUrl: normalizedBaseUrl,
+    delayMs,
+    cwd: options.cwd ?? managed.cwd
+  });
+}
+function cancelManagedOpenCodeServerIdleShutdown(baseUrl) {
+  const timer = managedServerIdleTimers.get(baseUrl);
+  if (!timer) {
+    return;
+  }
+  clearTimeout(timer);
+  managedServerIdleTimers.delete(baseUrl);
+}
+async function stopManagedOpenCodeServer(baseUrl, options) {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const managed = managedServers.get(normalizedBaseUrl);
+  if (!managed?.child) {
+    return false;
+  }
+  await stopChildProcessTree(normalizedBaseUrl, managed.child, options);
+  managedServers.delete(normalizedBaseUrl);
+  if (options.stateDir && managed.child.pid) {
+    await removeDiscoveryIfMatches(options.stateDir, managed.child.pid, options.cwd ?? managed.cwd);
+  }
+  return true;
+}
+async function stopChildProcessTree(baseUrl, child, options) {
+  const pid = child.pid;
+  try {
+    if (pid && child.exitCode === null) {
+      await killProcessTree(pid);
+    }
+    await writeRetinueTrace(options.stateDir, {
+      event: "opencode_server_stopped",
+      baseUrl,
+      pid,
+      reason: options.reason,
+      cwd: options.cwd
+    });
+  } catch (error2) {
+    await writeRetinueTrace(options.stateDir, {
+      event: "opencode_server_stop_failed",
+      baseUrl,
+      pid,
+      reason: options.reason,
+      error: error2 instanceof Error ? error2.message : String(error2),
+      cwd: options.cwd
+    });
+  }
+}
+async function writeRetinueTrace(stateDir, event) {
+  if (!stateDir) {
+    return;
+  }
+  const tracePath = getRetinueTracePath(stateDir);
+  try {
+    await fs.mkdir(path2.dirname(tracePath), { recursive: true });
+    await fs.appendFile(tracePath, `${JSON.stringify({ time: (/* @__PURE__ */ new Date()).toISOString(), pid: process.pid, ...event })}
+`, "utf8");
+  } catch {
+  }
+}
+function waitForStartupFailure(child, command) {
+  return new Promise((_, reject) => {
+    child.once("error", (error2) => {
+      reject(new OpenCodeStartupError(`Failed to start OpenCode server command "${command}": ${error2.message}`, "spawn-error"));
+    });
+    child.once("exit", (code, signal) => {
+      reject(new OpenCodeStartupError(`OpenCode server command "${command}" exited before becoming healthy: ${formatExit(code, signal)}`, "early-exit"));
+    });
+  });
+}
+function shouldUseShellForCommand(platform, command) {
+  return platform === "win32" && /\.(?:cmd|bat)$/i.test(command);
+}
+async function fileExists(candidate) {
+  try {
+    await fs.access(candidate);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function buildOpenCodeCommandCandidates(platform, env) {
+  const candidates = [];
+  const seen = /* @__PURE__ */ new Set();
+  const add = (candidate) => {
+    if (!candidate || seen.has(candidate)) {
+      return;
+    }
+    seen.add(candidate);
+    candidates.push(candidate);
+  };
+  if (platform === "win32") {
+    for (const directory of getPathEntries(env, ";")) {
+      for (const extension of WINDOWS_EXECUTABLE_EXTENSIONS) {
+        add(path2.win32.join(directory, `opencode${extension}`));
+      }
+    }
+    for (const directory of getWindowsOpenCodeFallbackDirectories(env)) {
+      for (const extension of WINDOWS_EXECUTABLE_EXTENSIONS) {
+        add(path2.win32.join(directory, `opencode${extension}`));
+      }
+    }
+    return candidates;
+  }
+  for (const directory of getPathEntries(env, ":")) {
+    add(path2.join(directory, "opencode"));
+  }
+  for (const directory of getPosixOpenCodeFallbackDirectories(env)) {
+    add(path2.join(directory, "opencode"));
+  }
+  return candidates;
+}
+function getPathEntries(env, delimiter) {
+  const value = env.PATH ?? env.Path ?? env.path ?? "";
+  return value.split(delimiter).map((entry) => entry.trim()).filter(Boolean);
+}
+function getWindowsOpenCodeFallbackDirectories(env) {
+  const userProfile = env.USERPROFILE;
+  const localAppData = env.LOCALAPPDATA;
+  const appData = env.APPDATA;
+  return [
+    userProfile ? path2.win32.join(userProfile, ".opencode", "bin") : void 0,
+    userProfile ? path2.win32.join(userProfile, ".local", "pnpm-global") : void 0,
+    localAppData ? path2.win32.join(localAppData, "pnpm") : void 0,
+    appData ? path2.win32.join(appData, "npm") : void 0,
+    userProfile ? path2.win32.join(userProfile, "AppData", "Local", "pnpm") : void 0,
+    userProfile ? path2.win32.join(userProfile, ".bun", "bin") : void 0
+  ].filter((entry) => Boolean(entry));
+}
+function getPosixOpenCodeFallbackDirectories(env) {
+  const home = env.HOME;
+  return [home ? path2.join(home, ".opencode", "bin") : void 0].filter((entry) => Boolean(entry));
+}
+function formatExit(code, signal) {
+  if (code !== null) {
+    return `exit code ${code}`;
+  }
+  if (signal !== null) {
+    return `signal ${signal}`;
+  }
+  return "unknown exit";
+}
+async function readReusableDiscovery(stateDir, cwd) {
+  let discovery;
+  try {
+    discovery = normalizeOpenCodeServerDiscovery(JSON.parse(await fs.readFile(getScopedOpenCodeServerDiscoveryPath(stateDir, cwd), "utf8")));
+  } catch {
+    return void 0;
+  }
+  if (normalizeServerCwd(discovery.cwd) !== cwd) {
+    return void 0;
+  }
+  if (!isPidAlive(discovery.pid)) {
+    await removeDiscoveryIfMatches(stateDir, discovery.pid, cwd);
+    return void 0;
+  }
+  const health = await readOpenCodeHealth(discovery.baseUrl);
+  if (!health.ok) {
+    await removeDiscoveryIfMatches(stateDir, discovery.pid, cwd);
+    return void 0;
+  }
+  return { baseUrl: discovery.baseUrl, started: false, cwd };
+}
+async function writeOpenCodeServerDiscovery(stateDir, value) {
+  const filePath = getScopedOpenCodeServerDiscoveryPath(stateDir, normalizeServerCwd(value.cwd));
+  await fs.mkdir(path2.dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
+  await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}
+`, "utf8");
+  await fs.rename(tempPath, filePath);
+}
+async function removeDiscoveryIfMatches(stateDir, pid, cwd) {
+  try {
+    const filePath = getScopedOpenCodeServerDiscoveryPath(stateDir, cwd);
+    const parsed = JSON.parse(await fs.readFile(filePath, "utf8"));
+    if (parsed.pid === pid) {
+      await fs.rm(filePath, { force: true });
+    }
+  } catch {
+  }
+}
+async function acquireOpenCodeServerLock(stateDir, timeoutMs, cwd) {
+  const lockPath = getScopedOpenCodeServerLockPath(stateDir, cwd);
+  const deadline = Date.now() + timeoutMs;
+  await fs.mkdir(path2.dirname(lockPath), { recursive: true });
+  for (; ; ) {
+    try {
+      const handle = await fs.open(lockPath, "wx");
+      await handle.writeFile(`${JSON.stringify({ pid: process.pid, createdAt: (/* @__PURE__ */ new Date()).toISOString() })}
+`, "utf8");
+      await handle.close();
+      return {
+        release: async () => {
+          await fs.rm(lockPath, { force: true });
+        }
+      };
+    } catch (error2) {
+      if (!isFileExistsError(error2)) {
+        throw error2;
+      }
+      await removeStaleLock(lockPath);
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting for OpenCode server startup lock at ${lockPath}`);
+      }
+      await sleep(DEFAULT_HEALTH_POLL_MS);
+    }
+  }
+}
+async function removeStaleLock(lockPath) {
+  try {
+    const parsed = JSON.parse(await fs.readFile(lockPath, "utf8"));
+    if (typeof parsed.pid === "number" && Number.isInteger(parsed.pid) && !isPidAlive(parsed.pid)) {
+      await fs.rm(lockPath, { force: true });
+    }
+  } catch {
+    await fs.rm(lockPath, { force: true });
+  }
+}
+function normalizeOpenCodeServerDiscovery(value) {
+  if (typeof value.baseUrl !== "string" || !value.baseUrl) {
+    throw new Error("Invalid OpenCode server discovery: missing baseUrl");
+  }
+  const baseUrl = normalizeBaseUrl(value.baseUrl);
+  if (typeof value.pid !== "number" || !Number.isInteger(value.pid)) {
+    throw new Error("Invalid OpenCode server discovery: missing pid");
+  }
+  if (typeof value.startedAt !== "string" || !value.startedAt) {
+    throw new Error("Invalid OpenCode server discovery: missing startedAt");
+  }
+  if (typeof value.version !== "string" || !value.version) {
+    throw new Error("Invalid OpenCode server discovery: missing version");
+  }
+  return {
+    baseUrl,
+    pid: value.pid,
+    startedAt: value.startedAt,
+    version: value.version,
+    cwd: typeof value.cwd === "string" && value.cwd ? value.cwd : void 0
+  };
+}
+function getScopedOpenCodeServerDiscoveryPath(stateDir, cwd) {
+  if (!cwd) {
+    return getOpenCodeServerDiscoveryPath(stateDir);
+  }
+  return path2.join(path2.dirname(getOpenCodeServerDiscoveryPath(stateDir)), `opencode-server-${hashCwd(cwd)}.json`);
+}
+function getScopedOpenCodeServerLockPath(stateDir, cwd) {
+  if (!cwd) {
+    return getOpenCodeServerLockPath(stateDir);
+  }
+  return path2.join(path2.dirname(getOpenCodeServerLockPath(stateDir)), `opencode-server-${hashCwd(cwd)}.lock`);
+}
+function hashCwd(cwd) {
+  return createHash("sha256").update(cwd).digest("hex").slice(0, 16);
+}
+function normalizeServerCwd(cwd) {
+  if (!cwd?.trim()) {
+    return void 0;
+  }
+  return path2.resolve(cwd);
+}
+async function waitForOpenCodeHealth(baseUrl, options) {
+  const deadline = Date.now() + options.timeoutMs;
+  for (; ; ) {
+    const health = await readOpenCodeHealth(baseUrl, Math.min(options.pollMs, Math.max(1, deadline - Date.now())));
+    if (health.ok) {
+      return;
+    }
+    if (health.reachable && !health.timedOut) {
+      throw new Error(`Port ${new URL(baseUrl).port} on ${new URL(baseUrl).hostname} is already in use by a non-OpenCode service`);
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for OpenCode server at ${baseUrl}`);
+    }
+    await sleep(options.pollMs);
+  }
+}
+async function readOpenCodeHealth(baseUrl, requestTimeoutMs = DEFAULT_HEALTH_POLL_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(1, requestTimeoutMs));
+  try {
+    const response = await fetch(`${baseUrl}/global/health`, { signal: controller.signal });
+    const text = await response.text();
+    const parsed = parseJson2(text);
+    if (!response.ok || typeof parsed !== "object" || parsed === null) {
+      return { ok: false, reachable: true };
+    }
+    if ("healthy" in parsed && parsed.healthy === true) {
+      return { ok: true, reachable: true };
+    }
+    if ("status" in parsed && parsed.status === "ok") {
+      return { ok: true, reachable: true };
+    }
+    return { ok: false, reachable: true };
+  } catch {
+    if (controller.signal.aborted) {
+      return { ok: false, reachable: true, timedOut: true };
+    }
+    return { ok: false, reachable: false };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+function parseJson2(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return void 0;
+  }
+}
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+function isPidAlive(pid) {
+  if (pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function isFileExistsError(error2) {
+  return typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === "EEXIST";
+}
+function normalizeBaseUrl(value) {
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("Invalid OpenCode server URL");
+  }
+  if (parsed.protocol !== "http:") {
+    throw new Error("OpenCode server URL must use http");
+  }
+  if (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost") {
+    throw new Error("OpenCode server URL must be loopback");
+  }
+  return parsed.origin;
+}
+function parseOptionalPort(value) {
+  if (!value) {
+    return void 0;
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
+    throw new Error("RETINUE_OPENCODE_PORT must be a port between 0 and 65535");
+  }
+  return parsed;
+}
+function parseOptionalPorts(value) {
+  if (!value?.trim()) {
+    return void 0;
+  }
+  return value.split(",").map((entry) => parseRequiredPort(entry.trim()));
+}
+function buildPortRange(start, endInclusive) {
+  const ports = [];
+  for (let port = start; port <= endInclusive; port += 1) {
+    ports.push(port);
+  }
+  return ports;
+}
+function parsePrefixArgs(value) {
+  if (!value?.trim()) {
+    return void 0;
+  }
+  const trimmed = value.trim();
+  if (trimmed.startsWith("[")) {
+    return JSON.parse(trimmed);
+  }
+  return [trimmed];
+}
+function parseRequiredPort(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
+    throw new Error("RETINUE_OPENCODE_FALLBACK_PORTS must contain ports between 0 and 65535");
+  }
+  return parsed;
+}
+
 // src/backends/opencode/backend.ts
 var OPENCODE_READ_ONLY_TOOLS = {
   edit: false,
@@ -21319,6 +21988,7 @@ var DEFAULT_WAIT_TIMEOUT_MS = 3e4;
 var DEFAULT_WAIT_POLL_MS = 250;
 var DEFAULT_STALL_MS = 10 * 6e4;
 var DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = DEFAULT_STALL_MS;
+var DEFAULT_SERVER_IDLE_MS = 3e4;
 var DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
 var DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 2;
 var DIAGNOSTIC_VALUE_PREVIEW_BYTES = 1e3;
@@ -21330,6 +22000,7 @@ var OpenCodeBackend = class {
   stateDir;
   env;
   httpTimeoutMs;
+  onServerIdle;
   constructor(options) {
     this.client = options.client;
     this.baseUrl = options.baseUrl?.replace(/\/+$/, "");
@@ -21342,12 +22013,17 @@ var OpenCodeBackend = class {
     this.stateDir = resolveStateDir({ explicitStateDir: options.stateDir, env: options.env });
     this.env = options.env;
     this.httpTimeoutMs = resolveHttpTimeoutMs(options.env);
+    this.onServerIdle = options.onServerIdle ?? ((baseUrl, cwd) => scheduleManagedOpenCodeServerIdleShutdown(baseUrl, {
+      stateDir: this.stateDir,
+      cwd,
+      delayMs: resolveServerIdleMs(this.env)
+    }));
   }
   async run(options) {
-    const jobId = `job_${randomUUID()}`;
+    const jobId = `job_${randomUUID2()}`;
     const paths = getJobPaths(this.stateDir, jobId);
-    await fs.mkdir(paths.dir, { recursive: true });
-    await fs.writeFile(paths.prompt, options.prompt, "utf8");
+    await fs2.mkdir(paths.dir, { recursive: true });
+    await fs2.writeFile(paths.prompt, options.prompt, "utf8");
     const target = await this.resolveTarget(options.cwd);
     const session = await target.client.createSession({
       cwd: options.cwd,
@@ -21382,17 +22058,17 @@ var OpenCodeBackend = class {
     };
     await writeJsonAtomic(paths.meta, meta);
     const submitted = this.submitPromptAsync(target.client, session.id, meta, options);
-    await Promise.race([submitted, sleep(50)]);
+    await Promise.race([submitted, sleep2(50)]);
     return this.readCurrentMetaOrFallback(jobId, meta);
   }
   async continueJob(options) {
     if (!options.externalSessionId) {
       return this.run(options);
     }
-    const jobId = `job_${randomUUID()}`;
+    const jobId = `job_${randomUUID2()}`;
     const paths = getJobPaths(this.stateDir, jobId);
-    await fs.mkdir(paths.dir, { recursive: true });
-    await fs.writeFile(paths.prompt, options.prompt, "utf8");
+    await fs2.mkdir(paths.dir, { recursive: true });
+    await fs2.writeFile(paths.prompt, options.prompt, "utf8");
     const target = await this.targetForContinue(options);
     const baseline = await this.captureMessageBaseline(target.client, options.externalSessionId);
     const now = (/* @__PURE__ */ new Date()).toISOString();
@@ -21424,7 +22100,7 @@ var OpenCodeBackend = class {
     };
     await writeJsonAtomic(paths.meta, meta);
     const submitted = this.submitPromptAsync(target.client, options.externalSessionId, meta, options);
-    await Promise.race([submitted, sleep(50)]);
+    await Promise.race([submitted, sleep2(50)]);
     return this.readCurrentMetaOrFallback(jobId, meta);
   }
   async status(handle) {
@@ -21449,8 +22125,8 @@ var OpenCodeBackend = class {
     const diagnostic = await this.inspectJob(meta);
     if (meta.status === "stalled") {
       const stderr = createStallMessage(diagnostic);
-      await fs.writeFile(paths.stdout, stderr, "utf8");
-      await fs.appendFile(paths.stderr, `${stderr}
+      await fs2.writeFile(paths.stdout, stderr, "utf8");
+      await fs2.appendFile(paths.stderr, `${stderr}
 `, "utf8");
       await this.writeJobTrace("opencode_job_result_read", meta, diagnostic);
       await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_result_read", diagnostic });
@@ -21471,7 +22147,7 @@ var OpenCodeBackend = class {
       };
     }
     const text = meta.externalMessageBaselineCount === void 0 ? latestAssistantMessageText(messages) : latestAssistantMessageText(jobMessages);
-    await fs.writeFile(paths.stdout, text, "utf8");
+    await fs2.writeFile(paths.stdout, text, "utf8");
     diagnostic.selectedAssistantTextBytes = Buffer.byteLength(text, "utf8");
     diagnostic.selectedAssistantSha256 = sha256(text);
     if (process.env.RETINUE_TRACE_TEXT_PREVIEW === "1") {
@@ -21500,11 +22176,13 @@ var OpenCodeBackend = class {
       return;
     }
     await this.clientForMeta(meta).abort(meta.externalSessionId);
-    await writeJsonAtomic(getJobPaths(this.stateDir, handle.jobId).meta, {
+    const updated = {
       ...meta,
       status: "killed",
       updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-    });
+    };
+    await writeJsonAtomic(getJobPaths(this.stateDir, handle.jobId).meta, updated);
+    await this.maybeScheduleServerIdleShutdown(updated);
   }
   async wait(handle, timeoutMs = DEFAULT_WAIT_TIMEOUT_MS) {
     const deadline = Date.now() + Math.max(0, timeoutMs);
@@ -21522,7 +22200,7 @@ var OpenCodeBackend = class {
         }
         return { jobId: handle.jobId, status: "running" };
       }
-      await sleep(DEFAULT_WAIT_POLL_MS);
+      await sleep2(DEFAULT_WAIT_POLL_MS);
     }
   }
   async cleanup(options = {}) {
@@ -21544,14 +22222,14 @@ var OpenCodeBackend = class {
       }
       const paths = getJobPaths(this.stateDir, entry.name);
       removedTempFiles.push(...await listTempFiles(paths.dir));
-      await fs.rm(paths.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      await fs2.rm(paths.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
       removedJobIds.push(entry.name);
     }
     return { removedJobIds, removedTempFiles };
   }
   async readMeta(jobId) {
     try {
-      return JSON.parse(await fs.readFile(getJobPaths(this.stateDir, jobId).meta, "utf8"));
+      return JSON.parse(await fs2.readFile(getJobPaths(this.stateDir, jobId).meta, "utf8"));
     } catch (error2) {
       if (typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === "ENOENT") {
         return { jobId, status: "not_found" };
@@ -21607,6 +22285,9 @@ var OpenCodeBackend = class {
           toStatus: status,
           diagnostic
         });
+      }
+      if (isTerminal2(status)) {
+        await this.maybeScheduleServerIdleShutdown(updated);
       }
       return updated;
     } catch (error2) {
@@ -21700,8 +22381,32 @@ var OpenCodeBackend = class {
     }
     return diagnostic;
   }
+  async maybeScheduleServerIdleShutdown(meta) {
+    if (!meta.externalServerUrl) {
+      return;
+    }
+    if (await this.hasRunningJobsForServer(meta.externalServerUrl)) {
+      return;
+    }
+    this.onServerIdle(meta.externalServerUrl, meta.cwd);
+  }
+  async hasRunningJobsForServer(baseUrl) {
+    for (const entry of await readDirIfExists(getJobsDir(this.stateDir))) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const meta = await this.readMeta(entry.name);
+      if (isProblem(meta) || meta.backend !== "opencode") {
+        continue;
+      }
+      if (meta.status === "running" && meta.externalServerUrl === baseUrl) {
+        return true;
+      }
+    }
+    return false;
+  }
   async writeJobTrace(event, meta, diagnostic, extra = {}) {
-    await writeRetinueTrace(this.stateDir, {
+    await writeRetinueTrace2(this.stateDir, {
       event,
       backend: "opencode",
       jobId: meta.jobId,
@@ -21729,6 +22434,7 @@ var OpenCodeBackend = class {
         error: error2 instanceof Error ? error2.message : String(error2)
       });
       await this.writeJobTrace("opencode_job_prompt_failed", failed, await this.inspectJob(failed));
+      await this.maybeScheduleServerIdleShutdown(failed);
     }
   }
   clientForMeta(meta) {
@@ -21755,17 +22461,17 @@ var OpenCodeBackend = class {
 async function appendJobDiagnostic(stateDir, jobId, value) {
   const paths = getJobPaths(stateDir, jobId);
   try {
-    await fs.mkdir(paths.dir, { recursive: true });
-    await fs.appendFile(paths.stderr, `${JSON.stringify({ time: (/* @__PURE__ */ new Date()).toISOString(), ...asRecord(value) })}
+    await fs2.mkdir(paths.dir, { recursive: true });
+    await fs2.appendFile(paths.stderr, `${JSON.stringify({ time: (/* @__PURE__ */ new Date()).toISOString(), ...asRecord(value) })}
 `, "utf8");
   } catch {
   }
 }
-async function writeRetinueTrace(stateDir, value) {
+async function writeRetinueTrace2(stateDir, value) {
   const tracePath = getRetinueTracePath(stateDir);
   try {
-    await fs.mkdir(tracePath.replace(/[\\/][^\\/]+$/, ""), { recursive: true });
-    await fs.appendFile(tracePath, `${JSON.stringify({ time: (/* @__PURE__ */ new Date()).toISOString(), pid: process.pid, ...asRecord(value) })}
+    await fs2.mkdir(tracePath.replace(/[\\/][^\\/]+$/, ""), { recursive: true });
+    await fs2.appendFile(tracePath, `${JSON.stringify({ time: (/* @__PURE__ */ new Date()).toISOString(), pid: process.pid, ...asRecord(value) })}
 `, "utf8");
   } catch {
   }
@@ -21842,7 +22548,7 @@ function truncateUtf8(value, maxBytes) {
 function isTerminal2(status) {
   return status === "completed" || status === "failed" || status === "killed" || status === "timed_out" || status === "stalled";
 }
-function sleep(ms) {
+function sleep2(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 function isProblem(value) {
@@ -21943,6 +22649,9 @@ function parseOptionalNonNegativeInt(value, fallback) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : fallback;
 }
+function resolveServerIdleMs(env) {
+  return parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_SERVER_IDLE_MS, DEFAULT_SERVER_IDLE_MS);
+}
 function hasToolPart(message) {
   return Array.isArray(message.parts) && message.parts.some((part) => part?.type === "tool");
 }
@@ -21981,25 +22690,25 @@ function numberInfo(message, key) {
   return typeof value === "number" ? value : void 0;
 }
 async function writeJsonAtomic(filePath, value) {
-  await fs.mkdir(filePath.replace(/[\\/][^\\/]+$/, ""), { recursive: true });
-  const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
-  await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}
+  await fs2.mkdir(filePath.replace(/[\\/][^\\/]+$/, ""), { recursive: true });
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID2()}.tmp`;
+  await fs2.writeFile(tempPath, `${JSON.stringify(value, null, 2)}
 `, "utf8");
-  await fs.rename(tempPath, filePath);
+  await fs2.rename(tempPath, filePath);
 }
 function createPromptPreview(prompt) {
   const normalized = prompt.replace(/\s+/g, " ").trim();
   return normalized.length > 120 ? `${normalized.slice(0, 117)}...` : normalized;
 }
 function sha256(value) {
-  return createHash("sha256").update(value).digest("hex");
+  return createHash2("sha256").update(value).digest("hex");
 }
 function getJobsDir(stateDir) {
   return getJobPaths(stateDir, "placeholder").dir.replace(/[\\/]placeholder$/, "");
 }
 async function readDirIfExists(dirPath) {
   try {
-    return await fs.readdir(dirPath, { withFileTypes: true });
+    return await fs2.readdir(dirPath, { withFileTypes: true });
   } catch (error2) {
     if (typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === "ENOENT") {
       return [];
@@ -22010,572 +22719,6 @@ async function readDirIfExists(dirPath) {
 async function listTempFiles(dirPath) {
   const entries = await readDirIfExists(dirPath);
   return entries.filter((entry) => entry.isFile() && entry.name.endsWith(".tmp")).map((entry) => `${dirPath}${dirPath.includes("\\") ? "\\" : "/"}${entry.name}`);
-}
-
-// src/backends/opencode/serverManager.ts
-import { spawn } from "node:child_process";
-import fs2 from "node:fs/promises";
-import path2 from "node:path";
-import { createHash as createHash2, randomUUID as randomUUID2 } from "node:crypto";
-var DEFAULT_OPENCODE_HOST = "127.0.0.1";
-var DEFAULT_OPENCODE_PORT = 4096;
-var DEFAULT_OPENCODE_FALLBACK_PORTS = buildPortRange(4097, 4127);
-var DEFAULT_HEALTH_TIMEOUT_MS = 1e4;
-var DEFAULT_HEALTH_POLL_MS = 250;
-var DEFAULT_LOCK_TIMEOUT_MS = 1e4;
-var managedServers = /* @__PURE__ */ new Map();
-var WINDOWS_EXECUTABLE_EXTENSIONS = [".EXE", ".CMD", ".BAT", ""];
-var OpenCodeStartupError = class extends Error {
-  constructor(message, kind) {
-    super(message);
-    this.kind = kind;
-    this.name = "OpenCodeStartupError";
-  }
-  kind;
-};
-function resolveOpenCodeServer(config2) {
-  if (config2.baseUrl?.trim()) {
-    return { mode: "attach", baseUrl: normalizeBaseUrl(config2.baseUrl) };
-  }
-  if (!config2.autoServe) {
-    throw new Error("OpenCode server target missing: provide RETINUE_OPENCODE_BASE_URL or enable RETINUE_OPENCODE_AUTO_SERVE=1");
-  }
-  const host = config2.host ?? DEFAULT_OPENCODE_HOST;
-  assertOpenCodeHostAllowed(host, config2);
-  const port = config2.port ?? DEFAULT_OPENCODE_PORT;
-  const fallbackPorts = config2.fallbackPorts ?? (config2.port === void 0 ? DEFAULT_OPENCODE_FALLBACK_PORTS : []);
-  return {
-    mode: "serve",
-    command: config2.command ?? "opencode",
-    args: [...config2.prefixArgs ?? [], ...buildServeArgs({ host, port })],
-    host,
-    port,
-    fallbackPorts
-  };
-}
-function resolveOpenCodeServerFromEnv(env) {
-  assertNoStaleSupervisorOpenCodeEnv(env);
-  return resolveOpenCodeServer({
-    baseUrl: env.RETINUE_OPENCODE_BASE_URL,
-    command: env.RETINUE_OPENCODE_COMMAND,
-    prefixArgs: parsePrefixArgs(env.RETINUE_OPENCODE_PREFIX_ARGS),
-    autoServe: env.RETINUE_OPENCODE_AUTO_SERVE === "1",
-    host: env.RETINUE_OPENCODE_HOST,
-    port: parseOptionalPort(env.RETINUE_OPENCODE_PORT),
-    fallbackPorts: parseOptionalPorts(env.RETINUE_OPENCODE_FALLBACK_PORTS),
-    allowNonLoopbackHost: env.RETINUE_OPENCODE_ALLOW_NON_LOOPBACK === "1"
-  });
-}
-function assertOpenCodeHostAllowed(host, config2 = {}) {
-  if (host === "127.0.0.1" || host === "localhost") {
-    return;
-  }
-  if (config2.allowNonLoopbackHost === true) {
-    return;
-  }
-  throw new Error(
-    "Refusing to bind managed OpenCode server to a non-loopback host. Set RETINUE_OPENCODE_ALLOW_NON_LOOPBACK=1 to override."
-  );
-}
-function assertNoStaleSupervisorOpenCodeEnv(env) {
-  const hasRetinueOpenCodeTarget = Boolean(env.RETINUE_OPENCODE_BASE_URL?.trim()) || env.RETINUE_OPENCODE_AUTO_SERVE === "1";
-  if (hasRetinueOpenCodeTarget) {
-    return;
-  }
-  const legacyKeys = [
-    "SUPERVISOR_RETINUE_BACKEND",
-    "SUPERVISOR_OPENCODE_BASE_URL",
-    "SUPERVISOR_OPENCODE_AUTO_SERVE",
-    "SUPERVISOR_OPENCODE_HOST",
-    "SUPERVISOR_OPENCODE_PORT",
-    "SUPERVISOR_OPENCODE_AGENT"
-  ].filter((key) => Boolean(env[key]));
-  if (legacyKeys.length === 0) {
-    return;
-  }
-  throw new Error(
-    `OpenCode server target missing: Retinue received legacy SUPERVISOR_* environment (${legacyKeys.join(
-      ", "
-    )}) but no RETINUE_OPENCODE_BASE_URL or RETINUE_OPENCODE_AUTO_SERVE=1. Reload or restart the MCP host so it reads the current Retinue env config.`
-  );
-}
-function buildServeArgs(options) {
-  return ["serve", "--hostname", options.host, "--port", String(options.port)];
-}
-async function resolveOpenCodeCommandForSpawn(command, options = {}) {
-  const platform = options.platform ?? process.platform;
-  const env = options.env ?? process.env;
-  const exists = options.exists ?? fileExists;
-  if (command !== "opencode") {
-    return { command, shell: shouldUseShellForCommand(platform, command) };
-  }
-  for (const candidate of buildOpenCodeCommandCandidates(platform, env)) {
-    if (await exists(candidate)) {
-      return { command: candidate, shell: shouldUseShellForCommand(platform, candidate) };
-    }
-  }
-  return { command, shell: shouldUseShellForCommand(platform, command) };
-}
-async function ensureOpenCodeServer(resolution, options = {}) {
-  if (resolution.mode === "attach") {
-    return { baseUrl: resolution.baseUrl, started: false };
-  }
-  const cwd = normalizeServerCwd(options.cwd);
-  const discovered = options.stateDir ? await readReusableDiscovery(options.stateDir, cwd) : void 0;
-  if (discovered) {
-    await writeRetinueTrace2(options.stateDir, { event: "opencode_server_reused", baseUrl: discovered.baseUrl, source: "discovery", cwd });
-    return discovered;
-  }
-  const lock = options.stateDir ? await acquireOpenCodeServerLock(options.stateDir, options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS, cwd) : void 0;
-  try {
-    const discoveredAfterLock = options.stateDir ? await readReusableDiscovery(options.stateDir, cwd) : void 0;
-    if (discoveredAfterLock) {
-      await writeRetinueTrace2(options.stateDir, { event: "opencode_server_reused", baseUrl: discoveredAfterLock.baseUrl, source: "discovery", cwd });
-      return discoveredAfterLock;
-    }
-    return await startManagedOpenCodeServer(resolution, { ...options, cwd });
-  } finally {
-    await lock?.release();
-  }
-}
-async function startManagedOpenCodeServer(resolution, options) {
-  const ports = [resolution.port, ...resolution.fallbackPorts];
-  const occupiedPorts = [];
-  const startupFailures = [];
-  for (const [index, port] of ports.entries()) {
-    const baseUrl = `http://${resolution.host}:${port}`;
-    const managed = managedServers.get(baseUrl);
-    if (managed?.child && managed.child.exitCode === null && managed.cwd === options.cwd) {
-      await writeRetinueTrace2(options.stateDir, { event: "opencode_server_reused", baseUrl, source: "memory", cwd: options.cwd });
-      return managed;
-    }
-    const initial = await readOpenCodeHealth(baseUrl, options.healthPollMs ?? DEFAULT_HEALTH_POLL_MS);
-    if (initial.reachable) {
-      occupiedPorts.push(port);
-      await writeRetinueTrace2(options.stateDir, { event: "opencode_server_port_occupied", host: resolution.host, port, baseUrl });
-      continue;
-    }
-    const prefixArgs = resolution.args.slice(0, -buildServeArgs({ host: resolution.host, port: resolution.port }).length);
-    const spawnCommand = await resolveOpenCodeCommandForSpawn(resolution.command);
-    const args = [...prefixArgs, ...buildServeArgs({ host: resolution.host, port })];
-    await writeRetinueTrace2(options.stateDir, {
-      event: "opencode_server_spawn",
-      requestedCommand: resolution.command,
-      resolvedCommand: spawnCommand.command,
-      shell: spawnCommand.shell,
-      host: resolution.host,
-      port,
-      baseUrl,
-      args,
-      cwd: options.cwd
-    });
-    const child = spawn(spawnCommand.command, args, {
-      stdio: "ignore",
-      shell: spawnCommand.shell,
-      windowsHide: true,
-      cwd: options.cwd
-    });
-    const startupFailure = waitForStartupFailure(child, resolution.command);
-    const cleanup = () => {
-      try {
-        if (!child.killed && child.exitCode === null) {
-          child.kill();
-        }
-      } catch {
-      }
-    };
-    process.once("exit", cleanup);
-    try {
-      await Promise.race([
-        waitForOpenCodeHealth(baseUrl, {
-          timeoutMs: options.healthTimeoutMs ?? DEFAULT_HEALTH_TIMEOUT_MS,
-          pollMs: options.healthPollMs ?? DEFAULT_HEALTH_POLL_MS
-        }),
-        startupFailure
-      ]);
-    } catch (error2) {
-      cleanup();
-      process.removeListener("exit", cleanup);
-      const message = error2 instanceof Error ? error2.message : String(error2);
-      await writeRetinueTrace2(options.stateDir, {
-        event: "opencode_server_start_failed",
-        requestedCommand: resolution.command,
-        resolvedCommand: spawnCommand.command,
-        baseUrl,
-        error: message,
-        cwd: options.cwd
-      });
-      if (error2 instanceof OpenCodeStartupError && error2.kind === "early-exit" && index < ports.length - 1) {
-        startupFailures.push(`${baseUrl}: ${message}`);
-        continue;
-      }
-      throw error2;
-    }
-    const target = { baseUrl, started: true, child, cwd: options.cwd };
-    await writeRetinueTrace2(options.stateDir, {
-      event: "opencode_server_ready",
-      requestedCommand: resolution.command,
-      resolvedCommand: spawnCommand.command,
-      pid: child.pid,
-      baseUrl,
-      cwd: options.cwd
-    });
-    managedServers.set(baseUrl, target);
-    if (options.stateDir && child.pid) {
-      await writeOpenCodeServerDiscovery(options.stateDir, {
-        baseUrl,
-        pid: child.pid,
-        startedAt: (/* @__PURE__ */ new Date()).toISOString(),
-        version: "0.1.0",
-        cwd: options.cwd
-      });
-    }
-    child.once("exit", () => {
-      managedServers.delete(baseUrl);
-      process.removeListener("exit", cleanup);
-      if (options.stateDir && child.pid) {
-        void removeDiscoveryIfMatches(options.stateDir, child.pid, options.cwd);
-      }
-    });
-    return target;
-  }
-  throw new Error(
-    `OpenCode auto-serve could not start because candidate port${ports.length === 1 ? "" : "s"} ${ports.join(", ")} on ${resolution.host} ${occupiedPorts.length === ports.length ? "are already in use by non-OpenCode services" : "were unavailable"}${startupFailures.length > 0 ? `. Startup failures: ${startupFailures.join("; ")}` : ""}`
-  );
-}
-async function writeRetinueTrace2(stateDir, event) {
-  if (!stateDir) {
-    return;
-  }
-  const tracePath = getRetinueTracePath(stateDir);
-  try {
-    await fs2.mkdir(path2.dirname(tracePath), { recursive: true });
-    await fs2.appendFile(tracePath, `${JSON.stringify({ time: (/* @__PURE__ */ new Date()).toISOString(), pid: process.pid, ...event })}
-`, "utf8");
-  } catch {
-  }
-}
-function waitForStartupFailure(child, command) {
-  return new Promise((_, reject) => {
-    child.once("error", (error2) => {
-      reject(new OpenCodeStartupError(`Failed to start OpenCode server command "${command}": ${error2.message}`, "spawn-error"));
-    });
-    child.once("exit", (code, signal) => {
-      reject(new OpenCodeStartupError(`OpenCode server command "${command}" exited before becoming healthy: ${formatExit(code, signal)}`, "early-exit"));
-    });
-  });
-}
-function shouldUseShellForCommand(platform, command) {
-  return platform === "win32" && /\.(?:cmd|bat)$/i.test(command);
-}
-async function fileExists(candidate) {
-  try {
-    await fs2.access(candidate);
-    return true;
-  } catch {
-    return false;
-  }
-}
-function buildOpenCodeCommandCandidates(platform, env) {
-  const candidates = [];
-  const seen = /* @__PURE__ */ new Set();
-  const add = (candidate) => {
-    if (!candidate || seen.has(candidate)) {
-      return;
-    }
-    seen.add(candidate);
-    candidates.push(candidate);
-  };
-  if (platform === "win32") {
-    for (const directory of getPathEntries(env, ";")) {
-      for (const extension of WINDOWS_EXECUTABLE_EXTENSIONS) {
-        add(path2.win32.join(directory, `opencode${extension}`));
-      }
-    }
-    for (const directory of getWindowsOpenCodeFallbackDirectories(env)) {
-      for (const extension of WINDOWS_EXECUTABLE_EXTENSIONS) {
-        add(path2.win32.join(directory, `opencode${extension}`));
-      }
-    }
-    return candidates;
-  }
-  for (const directory of getPathEntries(env, ":")) {
-    add(path2.join(directory, "opencode"));
-  }
-  for (const directory of getPosixOpenCodeFallbackDirectories(env)) {
-    add(path2.join(directory, "opencode"));
-  }
-  return candidates;
-}
-function getPathEntries(env, delimiter) {
-  const value = env.PATH ?? env.Path ?? env.path ?? "";
-  return value.split(delimiter).map((entry) => entry.trim()).filter(Boolean);
-}
-function getWindowsOpenCodeFallbackDirectories(env) {
-  const userProfile = env.USERPROFILE;
-  const localAppData = env.LOCALAPPDATA;
-  const appData = env.APPDATA;
-  return [
-    userProfile ? path2.win32.join(userProfile, ".opencode", "bin") : void 0,
-    userProfile ? path2.win32.join(userProfile, ".local", "pnpm-global") : void 0,
-    localAppData ? path2.win32.join(localAppData, "pnpm") : void 0,
-    appData ? path2.win32.join(appData, "npm") : void 0,
-    userProfile ? path2.win32.join(userProfile, "AppData", "Local", "pnpm") : void 0,
-    userProfile ? path2.win32.join(userProfile, ".bun", "bin") : void 0
-  ].filter((entry) => Boolean(entry));
-}
-function getPosixOpenCodeFallbackDirectories(env) {
-  const home = env.HOME;
-  return [home ? path2.join(home, ".opencode", "bin") : void 0].filter((entry) => Boolean(entry));
-}
-function formatExit(code, signal) {
-  if (code !== null) {
-    return `exit code ${code}`;
-  }
-  if (signal !== null) {
-    return `signal ${signal}`;
-  }
-  return "unknown exit";
-}
-async function readReusableDiscovery(stateDir, cwd) {
-  let discovery;
-  try {
-    discovery = normalizeOpenCodeServerDiscovery(JSON.parse(await fs2.readFile(getScopedOpenCodeServerDiscoveryPath(stateDir, cwd), "utf8")));
-  } catch {
-    return void 0;
-  }
-  if (normalizeServerCwd(discovery.cwd) !== cwd) {
-    return void 0;
-  }
-  if (!isPidAlive(discovery.pid)) {
-    await removeDiscoveryIfMatches(stateDir, discovery.pid, cwd);
-    return void 0;
-  }
-  const health = await readOpenCodeHealth(discovery.baseUrl);
-  if (!health.ok) {
-    await removeDiscoveryIfMatches(stateDir, discovery.pid, cwd);
-    return void 0;
-  }
-  return { baseUrl: discovery.baseUrl, started: false, cwd };
-}
-async function writeOpenCodeServerDiscovery(stateDir, value) {
-  const filePath = getScopedOpenCodeServerDiscoveryPath(stateDir, normalizeServerCwd(value.cwd));
-  await fs2.mkdir(path2.dirname(filePath), { recursive: true });
-  const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID2()}.tmp`;
-  await fs2.writeFile(tempPath, `${JSON.stringify(value, null, 2)}
-`, "utf8");
-  await fs2.rename(tempPath, filePath);
-}
-async function removeDiscoveryIfMatches(stateDir, pid, cwd) {
-  try {
-    const filePath = getScopedOpenCodeServerDiscoveryPath(stateDir, cwd);
-    const parsed = JSON.parse(await fs2.readFile(filePath, "utf8"));
-    if (parsed.pid === pid) {
-      await fs2.rm(filePath, { force: true });
-    }
-  } catch {
-  }
-}
-async function acquireOpenCodeServerLock(stateDir, timeoutMs, cwd) {
-  const lockPath = getScopedOpenCodeServerLockPath(stateDir, cwd);
-  const deadline = Date.now() + timeoutMs;
-  await fs2.mkdir(path2.dirname(lockPath), { recursive: true });
-  for (; ; ) {
-    try {
-      const handle = await fs2.open(lockPath, "wx");
-      await handle.writeFile(`${JSON.stringify({ pid: process.pid, createdAt: (/* @__PURE__ */ new Date()).toISOString() })}
-`, "utf8");
-      await handle.close();
-      return {
-        release: async () => {
-          await fs2.rm(lockPath, { force: true });
-        }
-      };
-    } catch (error2) {
-      if (!isFileExistsError(error2)) {
-        throw error2;
-      }
-      await removeStaleLock(lockPath);
-      if (Date.now() >= deadline) {
-        throw new Error(`Timed out waiting for OpenCode server startup lock at ${lockPath}`);
-      }
-      await sleep2(DEFAULT_HEALTH_POLL_MS);
-    }
-  }
-}
-async function removeStaleLock(lockPath) {
-  try {
-    const parsed = JSON.parse(await fs2.readFile(lockPath, "utf8"));
-    if (typeof parsed.pid === "number" && Number.isInteger(parsed.pid) && !isPidAlive(parsed.pid)) {
-      await fs2.rm(lockPath, { force: true });
-    }
-  } catch {
-    await fs2.rm(lockPath, { force: true });
-  }
-}
-function normalizeOpenCodeServerDiscovery(value) {
-  if (typeof value.baseUrl !== "string" || !value.baseUrl) {
-    throw new Error("Invalid OpenCode server discovery: missing baseUrl");
-  }
-  const baseUrl = normalizeBaseUrl(value.baseUrl);
-  if (typeof value.pid !== "number" || !Number.isInteger(value.pid)) {
-    throw new Error("Invalid OpenCode server discovery: missing pid");
-  }
-  if (typeof value.startedAt !== "string" || !value.startedAt) {
-    throw new Error("Invalid OpenCode server discovery: missing startedAt");
-  }
-  if (typeof value.version !== "string" || !value.version) {
-    throw new Error("Invalid OpenCode server discovery: missing version");
-  }
-  return {
-    baseUrl,
-    pid: value.pid,
-    startedAt: value.startedAt,
-    version: value.version,
-    cwd: typeof value.cwd === "string" && value.cwd ? value.cwd : void 0
-  };
-}
-function getScopedOpenCodeServerDiscoveryPath(stateDir, cwd) {
-  if (!cwd) {
-    return getOpenCodeServerDiscoveryPath(stateDir);
-  }
-  return path2.join(path2.dirname(getOpenCodeServerDiscoveryPath(stateDir)), `opencode-server-${hashCwd(cwd)}.json`);
-}
-function getScopedOpenCodeServerLockPath(stateDir, cwd) {
-  if (!cwd) {
-    return getOpenCodeServerLockPath(stateDir);
-  }
-  return path2.join(path2.dirname(getOpenCodeServerLockPath(stateDir)), `opencode-server-${hashCwd(cwd)}.lock`);
-}
-function hashCwd(cwd) {
-  return createHash2("sha256").update(cwd).digest("hex").slice(0, 16);
-}
-function normalizeServerCwd(cwd) {
-  if (!cwd?.trim()) {
-    return void 0;
-  }
-  return path2.resolve(cwd);
-}
-async function waitForOpenCodeHealth(baseUrl, options) {
-  const deadline = Date.now() + options.timeoutMs;
-  for (; ; ) {
-    const health = await readOpenCodeHealth(baseUrl, Math.min(options.pollMs, Math.max(1, deadline - Date.now())));
-    if (health.ok) {
-      return;
-    }
-    if (health.reachable && !health.timedOut) {
-      throw new Error(`Port ${new URL(baseUrl).port} on ${new URL(baseUrl).hostname} is already in use by a non-OpenCode service`);
-    }
-    if (Date.now() >= deadline) {
-      throw new Error(`Timed out waiting for OpenCode server at ${baseUrl}`);
-    }
-    await sleep2(options.pollMs);
-  }
-}
-async function readOpenCodeHealth(baseUrl, requestTimeoutMs = DEFAULT_HEALTH_POLL_MS) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Math.max(1, requestTimeoutMs));
-  try {
-    const response = await fetch(`${baseUrl}/global/health`, { signal: controller.signal });
-    const text = await response.text();
-    const parsed = parseJson2(text);
-    if (!response.ok || typeof parsed !== "object" || parsed === null) {
-      return { ok: false, reachable: true };
-    }
-    if ("healthy" in parsed && parsed.healthy === true) {
-      return { ok: true, reachable: true };
-    }
-    if ("status" in parsed && parsed.status === "ok") {
-      return { ok: true, reachable: true };
-    }
-    return { ok: false, reachable: true };
-  } catch {
-    if (controller.signal.aborted) {
-      return { ok: false, reachable: true, timedOut: true };
-    }
-    return { ok: false, reachable: false };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-function parseJson2(text) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return void 0;
-  }
-}
-function sleep2(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-function isPidAlive(pid) {
-  if (pid <= 0) {
-    return false;
-  }
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-function isFileExistsError(error2) {
-  return typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === "EEXIST";
-}
-function normalizeBaseUrl(value) {
-  let parsed;
-  try {
-    parsed = new URL(value);
-  } catch {
-    throw new Error("Invalid OpenCode server URL");
-  }
-  if (parsed.protocol !== "http:") {
-    throw new Error("OpenCode server URL must use http");
-  }
-  if (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost") {
-    throw new Error("OpenCode server URL must be loopback");
-  }
-  return parsed.origin;
-}
-function parseOptionalPort(value) {
-  if (!value) {
-    return void 0;
-  }
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
-    throw new Error("RETINUE_OPENCODE_PORT must be a port between 0 and 65535");
-  }
-  return parsed;
-}
-function parseOptionalPorts(value) {
-  if (!value?.trim()) {
-    return void 0;
-  }
-  return value.split(",").map((entry) => parseRequiredPort(entry.trim()));
-}
-function buildPortRange(start, endInclusive) {
-  const ports = [];
-  for (let port = start; port <= endInclusive; port += 1) {
-    ports.push(port);
-  }
-  return ports;
-}
-function parsePrefixArgs(value) {
-  if (!value?.trim()) {
-    return void 0;
-  }
-  const trimmed = value.trim();
-  if (trimmed.startsWith("[")) {
-    return JSON.parse(trimmed);
-  }
-  return [trimmed];
-}
-function parseRequiredPort(value) {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
-    throw new Error("RETINUE_OPENCODE_FALLBACK_PORTS must contain ports between 0 and 65535");
-  }
-  return parsed;
 }
 
 // src/daemon/client.ts
@@ -22856,31 +22999,6 @@ function validatePermissionMode(value) {
     return value;
   }
   throw new Error(`Unsupported permissionMode: ${String(value)}`);
-}
-
-// src/core/processTree.ts
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-var execFileAsync = promisify(execFile);
-async function killProcessTree(pid, signal = "SIGTERM") {
-  if (pid <= 0) {
-    return;
-  }
-  if (process.platform === "win32") {
-    try {
-      await execFileAsync("taskkill", ["/PID", String(pid), "/T", "/F"]);
-    } catch {
-    }
-    return;
-  }
-  try {
-    process.kill(-pid, signal);
-  } catch {
-    try {
-      process.kill(pid, signal);
-    } catch {
-    }
-  }
 }
 
 // src/core/retinue.ts

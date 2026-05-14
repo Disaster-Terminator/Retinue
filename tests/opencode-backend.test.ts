@@ -171,6 +171,42 @@ describe("OpenCodeBackend", () => {
     await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "completed" });
   });
 
+  it("schedules OpenCode server idle shutdown after the last running job becomes terminal", async () => {
+    const idleShutdowns: Array<{ baseUrl: string; cwd?: string }> = [];
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      onServerIdle: (baseUrl, cwd) => idleShutdowns.push({ baseUrl, cwd })
+    });
+    const started = await backend.run({ cwd: tempDir, prompt: "finish and release server" });
+    server!.completeSession(started.externalSessionId!);
+
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "completed" });
+
+    expect(idleShutdowns).toEqual([{ baseUrl: server!.url, cwd: tempDir }]);
+  });
+
+  it("keeps the OpenCode server alive while another job is still running", async () => {
+    const idleShutdowns: Array<{ baseUrl: string; cwd?: string }> = [];
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      onServerIdle: (baseUrl, cwd) => idleShutdowns.push({ baseUrl, cwd })
+    });
+    const first = await backend.run({ cwd: tempDir, prompt: "first" });
+    const second = await backend.run({ cwd: tempDir, prompt: "second" });
+
+    server!.completeSession(first.externalSessionId!);
+    await expect(backend.status({ jobId: first.jobId })).resolves.toMatchObject({ status: "completed" });
+    expect(idleShutdowns).toEqual([]);
+
+    server!.completeSession(second.externalSessionId!);
+    await expect(backend.status({ jobId: second.jobId })).resolves.toMatchObject({ status: "completed" });
+    expect(idleShutdowns).toEqual([{ baseUrl: server!.url, cwd: tempDir }]);
+  });
+
   it("records completed wait and result diagnostics for real E2E debugging", async () => {
     const backend = createBackend();
     const started = await backend.run({ cwd: tempDir, prompt: "diagnose me" });

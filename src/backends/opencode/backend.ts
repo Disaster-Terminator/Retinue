@@ -6,6 +6,7 @@ import { isCleanupSafeStatus } from "../../core/status.js";
 import type { CleanupOptions, CleanupResult, JobMeta, JobProblem, JobResult, JobStatusResult, RetinueOptions } from "../../core/types.js";
 import type { AgentBackend, AgentContinueOptions, AgentHandle, AgentRunOptions } from "../types.js";
 import { OpenCodeClient, OpenCodeClientError, type OpenCodeMessage, type OpenCodePermissionRule } from "./client.js";
+import { scheduleManagedOpenCodeServerIdleShutdown } from "./serverManager.js";
 
 export interface OpenCodeBackendOptions {
   client?: OpenCodeClient;
@@ -13,6 +14,7 @@ export interface OpenCodeBackendOptions {
   target?: (cwd: string | undefined) => Promise<OpenCodeBackendTarget>;
   stateDir?: string;
   env?: RetinueOptions["env"];
+  onServerIdle?: (baseUrl: string, cwd: string | undefined) => void;
 }
 export interface OpenCodeBackendTarget {
   client: OpenCodeClient;
@@ -60,6 +62,7 @@ const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
 const DEFAULT_WAIT_POLL_MS = 250;
 const DEFAULT_STALL_MS = 10 * 60_000;
 const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = DEFAULT_STALL_MS;
+const DEFAULT_SERVER_IDLE_MS = 30_000;
 const DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
 const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 2;
 const DIAGNOSTIC_VALUE_PREVIEW_BYTES = 1000;
@@ -143,6 +146,7 @@ export class OpenCodeBackend implements AgentBackend {
   private readonly stateDir: string;
   private readonly env?: RetinueOptions["env"];
   private readonly httpTimeoutMs: number;
+  private readonly onServerIdle: (baseUrl: string, cwd: string | undefined) => void;
 
   constructor(options: OpenCodeBackendOptions) {
     this.client = options.client;
@@ -158,6 +162,14 @@ export class OpenCodeBackend implements AgentBackend {
     this.stateDir = resolveStateDir({ explicitStateDir: options.stateDir, env: options.env });
     this.env = options.env;
     this.httpTimeoutMs = resolveHttpTimeoutMs(options.env);
+    this.onServerIdle =
+      options.onServerIdle ??
+      ((baseUrl, cwd) =>
+        scheduleManagedOpenCodeServerIdleShutdown(baseUrl, {
+          stateDir: this.stateDir,
+          cwd,
+          delayMs: resolveServerIdleMs(this.env)
+        }));
   }
 
   async run(options: AgentRunOptions): Promise<JobMeta> {
@@ -321,11 +333,13 @@ export class OpenCodeBackend implements AgentBackend {
       return;
     }
     await this.clientForMeta(meta).abort(meta.externalSessionId);
-    await writeJsonAtomic(getJobPaths(this.stateDir, handle.jobId).meta, {
+    const updated: JobMeta = {
       ...meta,
       status: "killed",
       updatedAt: new Date().toISOString()
-    });
+    };
+    await writeJsonAtomic(getJobPaths(this.stateDir, handle.jobId).meta, updated);
+    await this.maybeScheduleServerIdleShutdown(updated);
   }
 
   async wait(handle: AgentHandle, timeoutMs = DEFAULT_WAIT_TIMEOUT_MS): Promise<{ jobId: string; status: JobStatusResult["status"] }> {
@@ -436,6 +450,9 @@ export class OpenCodeBackend implements AgentBackend {
           diagnostic
         });
       }
+      if (isTerminal(status)) {
+        await this.maybeScheduleServerIdleShutdown(updated);
+      }
       return updated;
     } catch (error) {
       if (error instanceof OpenCodeClientError && error.status === 404) {
@@ -533,6 +550,32 @@ export class OpenCodeBackend implements AgentBackend {
     return diagnostic;
   }
 
+  private async maybeScheduleServerIdleShutdown(meta: JobMeta): Promise<void> {
+    if (!meta.externalServerUrl) {
+      return;
+    }
+    if (await this.hasRunningJobsForServer(meta.externalServerUrl)) {
+      return;
+    }
+    this.onServerIdle(meta.externalServerUrl, meta.cwd);
+  }
+
+  private async hasRunningJobsForServer(baseUrl: string): Promise<boolean> {
+    for (const entry of await readDirIfExists(getJobsDir(this.stateDir))) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const meta = await this.readMeta(entry.name);
+      if (isProblem(meta) || meta.backend !== "opencode") {
+        continue;
+      }
+      if (meta.status === "running" && meta.externalServerUrl === baseUrl) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private async writeJobTrace(event: string, meta: JobMeta, diagnostic: OpenCodeJobDiagnostic, extra: Record<string, unknown> = {}): Promise<void> {
     await writeRetinueTrace(this.stateDir, {
       event,
@@ -563,6 +606,7 @@ export class OpenCodeBackend implements AgentBackend {
         error: error instanceof Error ? error.message : String(error)
       });
       await this.writeJobTrace("opencode_job_prompt_failed", failed, await this.inspectJob(failed));
+      await this.maybeScheduleServerIdleShutdown(failed);
     }
   }
 
@@ -809,6 +853,10 @@ function parseOptionalNonNegativeInt(value: string | undefined, fallback: number
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : fallback;
+}
+
+function resolveServerIdleMs(env?: RetinueOptions["env"]): number {
+  return parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_SERVER_IDLE_MS, DEFAULT_SERVER_IDLE_MS);
 }
 
 function hasToolPart(message: OpenCodeMessage): boolean {
