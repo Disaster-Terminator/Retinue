@@ -295,6 +295,7 @@ describe("MCP tools", () => {
       });
       expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({
         tools: {
+          bash: false,
           edit: false,
           write: false,
           apply_patch: false,

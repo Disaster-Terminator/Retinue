@@ -172,8 +172,19 @@ describe("Retinue Codex plugin guardrails", () => {
   it("keeps OpenCode incomplete-assistant stall detection conservative by default", () => {
     expect(opencodeBackendSource).toContain("const DEFAULT_STALL_MS = 10 * 60_000");
     expect(opencodeBackendSource).toContain("const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = DEFAULT_STALL_MS");
+    expect(opencodeBackendSource).toContain("const DEFAULT_BLANK_ASSISTANT_STALL_MS = DEFAULT_STALL_MS");
+    expect(opencodeBackendSource).toContain("const DEFAULT_ZERO_PROGRESS_ASSISTANT_STALL_MS = DEFAULT_STALL_MS");
     expect(opencodeBackendSource).not.toContain("const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = 60_000");
+    expect(opencodeBackendSource).not.toContain("const DEFAULT_ZERO_PROGRESS_ASSISTANT_STALL_MS = 90_000");
     expect(opencodeBackendSource).toContain("const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 2");
+  });
+
+  it("keeps default OpenCode read-only prompts from inheriting profile shell access", () => {
+    expect(opencodeBackendSource).toContain("const OPENCODE_READ_ONLY_TOOLS: Record<string, boolean> = {");
+    expect(opencodeBackendSource).toContain("bash: false");
+    expect(opencodeBackendSource).toContain("edit: false");
+    expect(opencodeBackendSource).toContain("write: false");
+    expect(opencodeBackendSource).toContain("task: false");
   });
 
   it("declares a plugin manifest with skill and MCP surfaces", () => {

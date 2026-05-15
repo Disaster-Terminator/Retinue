@@ -81,6 +81,7 @@ describe("OpenCodeBackend", () => {
     });
     expect(server!.promptRequests.at(-1)).toMatchObject({
       tools: {
+        bash: false,
         edit: false,
         write: false,
         apply_patch: false,
@@ -406,6 +407,36 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"lastAssistantModelID":"semantic-router"');
     expect(trace).toContain('"lastAssistantPartTypes":["step-start","reasoning"]');
     expect(trace).toContain('"textBytes":0');
+  });
+
+  it("keeps default zero-progress placeholders running through realistic late-result windows", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "complex audit pauses after many tools" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source two");
+    server!.appendZeroProgressReasoningAssistant(started.externalSessionId!);
+
+    const paths = getJobPaths(tempDir, started.jobId);
+    const meta = JSON.parse(await fs.readFile(paths.meta, "utf8")) as typeof started;
+    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 181_000).toISOString() })}\n`, "utf8");
+
+    await expect(backend.wait({ jobId: started.jobId }, 1)).resolves.toMatchObject({ status: "running" });
+    server!.completeSessionWithFinalText(started.externalSessionId!, "late zero-progress recovery");
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "completed",
+      parsedStdout: { result: "late zero-progress recovery" }
+    });
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_job_wait_timeout"');
+    expect(trace).not.toContain('"event":"opencode_job_stalled"');
   });
 
   it("marks stuck read tool calls as stalled without shortening generic long-tool windows", async () => {
