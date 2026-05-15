@@ -144,8 +144,19 @@ interface OpenCodeJobDiagnostic {
   stallToolCallRoundThreshold?: number;
   stallEmptyAssistantRoundThreshold?: number;
   incompleteAssistantRound?: boolean;
+  stallReason?: OpenCodeStallReason;
+  stallSummary?: string;
   error?: string;
 }
+
+type OpenCodeStallReason =
+  | "read_only_write_intent"
+  | "provider_blank_assistant"
+  | "provider_zero_progress"
+  | "read_tool_stalled"
+  | "incomplete_assistant_round"
+  | "backend_no_final_text"
+  | "tool_loop_no_completion";
 
 export class OpenCodeBackend implements AgentBackend {
   readonly kind = "opencode" as const;
@@ -810,7 +821,9 @@ function computeStallDiagnostic(
     return {
       patchPartCount,
       readOnlyPatchPartCount: patchPartCount,
-      readOnlyWriteIntent: true
+      readOnlyWriteIntent: true,
+      stallReason: "read_only_write_intent",
+      stallSummary: "OpenCode read-only job emitted patch/write intent."
     };
   }
   const thresholdMs = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_MS, DEFAULT_STALL_MS);
@@ -860,7 +873,7 @@ function computeStallDiagnostic(
   ) {
     return undefined;
   }
-  return {
+  const diagnostic = {
     toolCallAssistantRounds,
     emptyAssistantRounds,
     blankAssistantRounds,
@@ -874,7 +887,18 @@ function computeStallDiagnostic(
     incompleteAssistantStallThresholdMs: incompleteThresholdMs,
     stallToolCallRoundThreshold: roundThreshold,
     stallEmptyAssistantRoundThreshold: emptyAssistantThreshold,
-    incompleteAssistantRound
+    incompleteAssistantRound,
+    stallReason: selectStallReason({
+      emptyAssistantStalled,
+      blankAssistantStalled,
+      zeroProgressAssistantStalled,
+      readToolStalled,
+      incompleteAssistantStalled
+    })
+  };
+  return {
+    ...diagnostic,
+    stallSummary: createStallSummary(diagnostic)
   };
 }
 
@@ -898,6 +922,53 @@ function createStallMessage(diagnostic: OpenCodeJobDiagnostic): string {
     return `OpenCode job stalled: observed ${runningReadToolParts} running read tool call(s) with no completed assistant text for ${durationMs}ms. The OpenCode tool executor may be stuck; inspect Retinue trace/job diagnostics for call IDs and message summaries.`;
   }
   return `OpenCode job stalled: observed ${rounds} tool-call assistant round(s) and ${emptyRounds} empty assistant round(s) with no completed assistant text for ${durationMs}ms. Inspect Retinue trace/job diagnostics for message summaries.`;
+}
+
+function selectStallReason(stalled: {
+  emptyAssistantStalled: boolean;
+  blankAssistantStalled: boolean;
+  zeroProgressAssistantStalled: boolean;
+  readToolStalled: boolean;
+  incompleteAssistantStalled: boolean;
+}): OpenCodeStallReason {
+  if (stalled.blankAssistantStalled) {
+    return "provider_blank_assistant";
+  }
+  if (stalled.zeroProgressAssistantStalled) {
+    return "provider_zero_progress";
+  }
+  if (stalled.readToolStalled) {
+    return "read_tool_stalled";
+  }
+  if (stalled.incompleteAssistantStalled) {
+    return "incomplete_assistant_round";
+  }
+  if (stalled.emptyAssistantStalled) {
+    return "backend_no_final_text";
+  }
+  return "tool_loop_no_completion";
+}
+
+function createStallSummary(diagnostic: Partial<OpenCodeJobDiagnostic>): string {
+  const durationMs = diagnostic.noCompletedAssistantDurationMs ?? 0;
+  switch (diagnostic.stallReason) {
+    case "read_only_write_intent":
+      return "OpenCode read-only job emitted patch/write intent.";
+    case "provider_blank_assistant":
+      return `OpenCode provider/router produced blank assistant output for ${durationMs}ms.`;
+    case "provider_zero_progress":
+      return `OpenCode provider/router produced zero-progress assistant output for ${durationMs}ms.`;
+    case "read_tool_stalled":
+      return `OpenCode tool executor left read tool call(s) running for ${durationMs}ms.`;
+    case "incomplete_assistant_round":
+      return `OpenCode left the latest assistant round incomplete for ${durationMs}ms.`;
+    case "backend_no_final_text":
+      return `OpenCode produced assistant rounds with no final text for ${durationMs}ms.`;
+    case "tool_loop_no_completion":
+      return `OpenCode ran repeated tool-call assistant rounds with no final text for ${durationMs}ms.`;
+    default:
+      return `OpenCode job stalled with no completed assistant text for ${durationMs}ms.`;
+  }
 }
 
 function parseOptionalNonNegativeInt(value: string | undefined, fallback: number): number {

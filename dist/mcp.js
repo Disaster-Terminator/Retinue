@@ -151,12 +151,18 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
                 effectiveTimeoutMs
             });
         }
-        const result = await backend.result({ jobId });
+        const stateDir = resolveStateDir({
+            explicitStateDir: process.env.RETINUE_STATE_DIR,
+            env: process.env
+        });
+        const paths = getJobPaths(stateDir, jobId);
+        const [result, diagnostic] = await Promise.all([backend.result({ jobId }), readLatestJobDiagnostic(paths.stderr)]);
         return jsonToolResult({
             task_name: isJobMeta(status) ? status.name : undefined,
             jobId,
             status: responseStatus,
-            result
+            result,
+            diagnostic
         });
     });
     server.registerTool("retinue_close_agent", {
@@ -547,6 +553,8 @@ function summarizeJobDiagnostic(value) {
         patchPartCount: numberValue(diagnostic.patchPartCount),
         readOnlyPatchPartCount: numberValue(diagnostic.readOnlyPatchPartCount),
         readOnlyWriteIntent,
+        stallReason: stringValue(diagnostic.stallReason),
+        stallSummary: stringValue(diagnostic.stallSummary),
         toolCallAssistantRounds: numberValue(diagnostic.toolCallAssistantRounds),
         emptyAssistantRounds: numberValue(diagnostic.emptyAssistantRounds),
         blankAssistantRounds: numberValue(diagnostic.blankAssistantRounds),
@@ -559,6 +567,10 @@ function summarizeJobDiagnostic(value) {
     });
 }
 function createDiagnosticSummaryMessage(event, diagnostic) {
+    const stallSummary = stringValue(diagnostic.stallSummary);
+    if (stallSummary) {
+        return stallSummary;
+    }
     if (diagnostic.readOnlyWriteIntent === true) {
         return "OpenCode read-only job emitted patch/write intent; treat the child output as untrusted and inspect diagnostics.";
     }

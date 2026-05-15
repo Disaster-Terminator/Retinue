@@ -111,6 +111,8 @@ OpenCode `prompt_async` can spend time in upstream tool-call setup before the HT
 
 If OpenCode returns assistant rounds with no visible text, Retinue keeps them out of successful results. Repeated empty `finish=stop` assistant rounds and long no-text tool-call loops become `stalled` with diagnostics so the caller can inspect logs or close the child agent. When the latest assistant round is still incomplete, the default incomplete-round stall window matches the long no-text threshold; this leaves room for OpenCode plan agents that continue thinking after tool use and later emit a final text answer. Deployments that need a faster probe-specific cutoff can set `RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS`. If a read-only job emits a patch part, Retinue treats that as write intent, marks the job `stalled`, and returns a diagnostic result instead of trusting the child output. `stalled` jobs are attention-required terminal jobs for MCP slot accounting: they do not occupy Retinue's active child-agent pool, but cleanup still preserves their artifacts until the caller explicitly closes or removes them.
 
+Stall diagnostics include a compact `stallReason` and `stallSummary` when Retinue can classify the failure. Current reason values are `read_only_write_intent`, `provider_blank_assistant`, `provider_zero_progress`, `read_tool_stalled`, `incomplete_assistant_round`, `backend_no_final_text`, and `tool_loop_no_completion`. These are backend-observation labels, not provider-specific configuration; for example, `provider_zero_progress` can describe any OpenCode provider or model router that produces zero useful assistant text after tool calls.
+
 ## Diagnostics
 
 Retinue writes OpenCode backend diagnostics to the Retinue state directory:
@@ -124,7 +126,7 @@ Retinue writes OpenCode backend diagnostics to the Retinue state directory:
 
 If `RETINUE_STATE_DIR` is unset, Linux/WSL/macOS defaults to `$XDG_STATE_HOME/retinue` or `$HOME/.local/state/retinue`; Windows defaults to `%LOCALAPPDATA%\retinue`.
 
-When `retinue_wait_agent` returns `running`, its response includes a compact `diagnostic` object plus `tracePath`. Use `diagnostic` for the immediate decision, then inspect the trace path for full OpenCode message summaries, selected model/provider metadata, server URL, and stall diagnostics.
+When `retinue_wait_agent` returns `running` or `stalled`, its response includes a compact `diagnostic` object plus `tracePath` or job artifact paths where available. Use `diagnostic` for the immediate decision, then inspect the trace path for full OpenCode message summaries, selected model/provider metadata, server URL, and stall diagnostics.
 
 ## Raw Adapter Surfaces
 
