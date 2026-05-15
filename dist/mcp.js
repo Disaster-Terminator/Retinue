@@ -549,6 +549,9 @@ function summarizeJobDiagnostic(value) {
         readOnlyWriteIntent,
         toolCallAssistantRounds: numberValue(diagnostic.toolCallAssistantRounds),
         emptyAssistantRounds: numberValue(diagnostic.emptyAssistantRounds),
+        blankAssistantRounds: numberValue(diagnostic.blankAssistantRounds),
+        zeroProgressAssistantRounds: numberValue(diagnostic.zeroProgressAssistantRounds),
+        runningReadToolParts: numberValue(diagnostic.runningReadToolParts),
         incompleteAssistantRound: booleanValue(diagnostic.incompleteAssistantRound),
         noCompletedAssistantDurationMs: numberValue(diagnostic.noCompletedAssistantDurationMs),
         stateStatus: stringValue(diagnostic.stateStatus),
@@ -567,8 +570,11 @@ function createDiagnosticSummaryMessage(event, diagnostic) {
     }
     const rounds = numberValue(diagnostic.toolCallAssistantRounds) ?? 0;
     const emptyRounds = numberValue(diagnostic.emptyAssistantRounds) ?? 0;
+    const blankRounds = numberValue(diagnostic.blankAssistantRounds) ?? 0;
+    const zeroProgressRounds = numberValue(diagnostic.zeroProgressAssistantRounds) ?? 0;
+    const runningReadToolParts = numberValue(diagnostic.runningReadToolParts) ?? 0;
     const incomplete = diagnostic.incompleteAssistantRound === true;
-    return `OpenCode job is still running after wait timeout; toolCallAssistantRounds=${rounds}, emptyAssistantRounds=${emptyRounds}, incompleteAssistantRound=${incomplete}.`;
+    return `OpenCode job is still running after wait timeout; toolCallAssistantRounds=${rounds}, emptyAssistantRounds=${emptyRounds}, blankAssistantRounds=${blankRounds}, zeroProgressAssistantRounds=${zeroProgressRounds}, runningReadToolParts=${runningReadToolParts}, incompleteAssistantRound=${incomplete}.`;
 }
 function compactRecord(record) {
     return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== undefined));

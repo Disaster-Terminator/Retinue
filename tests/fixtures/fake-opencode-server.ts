@@ -28,6 +28,10 @@ export interface FakeOpenCodeServer {
   completeSessionWithFinalText(sessionId: string, text: string): void;
   completeSessionWithToolCallTextOnly(sessionId: string): void;
   appendToolCallAssistant(sessionId: string, text?: string): void;
+  appendRunningReadToolAssistant(sessionId: string): void;
+  appendBlankAssistant(sessionId: string): void;
+  appendZeroProgressReasoningAssistant(sessionId: string): void;
+  appendIncompleteAssistant(sessionId: string, text?: string): void;
   appendPatchAssistant(sessionId: string): void;
   appendErroredIncompleteAssistant(sessionId: string, error: unknown): void;
   completeSessionWithReasoningOnly(sessionId: string): void;
@@ -232,6 +236,67 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
             { type: "tool", text: "tool call placeholder", tool: "task", callID: `call_${nextMessage}`, state: { status: "completed" } },
             { type: "step-finish" }
           ]
+        });
+      }
+    },
+    appendRunningReadToolAssistant: (sessionId: string) => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.omitState = true;
+        session.messages.push({
+          info: {
+            id: `msg_${nextMessage++}`,
+            sessionID: session.id,
+            role: "assistant",
+            providerID: "litellm",
+            modelID: "semantic-router",
+            agent: "plan",
+            mode: "plan"
+          },
+          parts: [
+            { type: "step-start" },
+            { type: "reasoning", text: "Need to inspect a few files." },
+            { type: "tool", text: "read placeholder", tool: "read", callID: `call_${nextMessage}`, state: { status: "running" } },
+            { type: "tool", text: "read placeholder", tool: "read", callID: `call_${nextMessage + 1}`, state: { status: "error" } }
+          ]
+        });
+      }
+    },
+    appendBlankAssistant: (sessionId: string) => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.omitState = true;
+        session.messages.push({
+          info: {
+            id: `msg_${nextMessage++}`,
+            sessionID: session.id,
+            role: "assistant",
+            providerID: "litellm",
+            modelID: "semantic-router",
+            agent: "plan",
+            mode: "plan",
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
+          },
+          parts: []
+        });
+      }
+    },
+    appendZeroProgressReasoningAssistant: (sessionId: string) => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.omitState = true;
+        session.messages.push({
+          info: {
+            id: `msg_${nextMessage++}`,
+            sessionID: session.id,
+            role: "assistant",
+            providerID: "litellm",
+            modelID: "semantic-router",
+            agent: "plan",
+            mode: "plan",
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
+          },
+          parts: [{ type: "step-start" }, { type: "reasoning", text: "" }]
         });
       }
     },

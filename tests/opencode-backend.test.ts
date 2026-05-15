@@ -343,6 +343,98 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"lastAssistantPartTypes":["step-start","step-finish"]');
   });
 
+  it("marks blank provider assistant placeholders as stalled with diagnostics", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "provider is unavailable" });
+    server!.appendBlankAssistant(started.externalSessionId!);
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "stalled",
+      stdout: expect.stringContaining("blank assistant placeholder"),
+      parsedStdout: { result: expect.stringContaining("blank assistant placeholder") },
+      error: expect.stringContaining("blank assistant placeholder")
+    });
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_job_stalled"');
+    expect(trace).toContain('"blankAssistantRounds":1');
+    expect(trace).toContain('"lastAssistantProviderID":"litellm"');
+    expect(trace).toContain('"lastAssistantModelID":"semantic-router"');
+    expect(trace).toContain('"lastAssistantPartTypes":[]');
+  });
+
+  it("marks zero-progress reasoning placeholders as stalled with diagnostics", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "risk review keeps thinking without output" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source two");
+    server!.appendZeroProgressReasoningAssistant(started.externalSessionId!);
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "stalled",
+      stdout: expect.stringContaining("zero-progress assistant placeholder"),
+      parsedStdout: { result: expect.stringContaining("zero-progress assistant placeholder") },
+      error: expect.stringContaining("zero-progress assistant placeholder")
+    });
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_job_stalled"');
+    expect(trace).toContain('"zeroProgressAssistantRounds":1');
+    expect(trace).toContain('"lastAssistantProviderID":"litellm"');
+    expect(trace).toContain('"lastAssistantModelID":"semantic-router"');
+    expect(trace).toContain('"lastAssistantPartTypes":["step-start","reasoning"]');
+    expect(trace).toContain('"textBytes":0');
+  });
+
+  it("marks stuck read tool calls as stalled without shortening generic long-tool windows", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "risk review gets stuck reading files" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
+    server!.appendRunningReadToolAssistant(started.externalSessionId!);
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "stalled",
+      stdout: expect.stringContaining("running read tool call"),
+      parsedStdout: { result: expect.stringContaining("running read tool call") },
+      error: expect.stringContaining("running read tool call")
+    });
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_job_stalled"');
+    expect(trace).toContain('"runningReadToolParts":1');
+    expect(trace).toContain('"lastAssistantProviderID":"litellm"');
+    expect(trace).toContain('"lastAssistantModelID":"semantic-router"');
+    expect(trace).toContain('"tool":"read"');
+    expect(trace).toContain('"stateStatus":"running"');
+  });
+
   it("marks incomplete assistant tool rounds as stalled before the long-duration threshold", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),

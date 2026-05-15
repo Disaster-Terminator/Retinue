@@ -442,6 +442,9 @@ describe("MCP tools", () => {
         readOnlyWriteIntent: false
       });
       expect(wait.diagnostic.message).toContain("OpenCode job is still running");
+      expect(wait.diagnostic.message).toContain("blankAssistantRounds=0");
+      expect(wait.diagnostic.message).toContain("zeroProgressAssistantRounds=0");
+      expect(wait.diagnostic.message).toContain("runningReadToolParts=0");
     } finally {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
