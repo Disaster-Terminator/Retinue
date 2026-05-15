@@ -85,7 +85,7 @@ RETINUE_OPENCODE_PORT=4096
 RETINUE_OPENCODE_SERVER_IDLE_MS=30000
 ```
 
-When `RETINUE_OPENCODE_PORT` is explicit, Retinue does not silently fall back to another port.
+When `RETINUE_OPENCODE_PORT` is explicit, Retinue does not silently fall back to another port. Set it to a concrete loopback port in the `1..65535` range; `0` is rejected because Retinue cannot discover the random port that `opencode serve --port 0` would bind.
 
 MCP hosts commonly enforce their own per-tool timeout. Retinue therefore clamps `retinue_wait_agent` and `opencode_wait` calls to a host-safe maximum of 90 seconds by default. Complex OpenCode tasks should be polled with repeated wait calls; set `RETINUE_MCP_WAIT_MAX_MS` only when the host timeout is known to be higher.
 

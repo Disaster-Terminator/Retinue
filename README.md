@@ -40,7 +40,7 @@ Retinue 是本地子代理执行面，不是模型网关，也不是 provider ro
 
 - 不选择或切换模型供应商。
 - 不接管 Claude Code / OpenCode 的登录、配额、代理、模型默认值或运行策略。
-- 不把 prompt 放进进程 argv。
+- 不把 prompt 放进子代理进程 argv；CLI 调试场景请避免在敏感 prompt 上使用 `--prompt`。
 - 不在默认 `status` 响应里返回完整 prompt。
 - 不把自己扩展成通用进程管理器或云端队列。
 

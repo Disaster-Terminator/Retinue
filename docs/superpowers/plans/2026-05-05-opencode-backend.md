@@ -1,5 +1,7 @@
 # OpenCode Backend Implementation Plan
 
+> Historical implementation plan. Current release behavior is documented in `docs/backends/OPENCODE.md`; `RETINUE_OPENCODE_PORT` now defaults to a concrete local port and rejects `0` because Retinue cannot discover OpenCode's randomly assigned port.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add an OpenCode backend to retinue without breaking the frozen Claude Code backend.
@@ -269,7 +271,7 @@ Tests should cover:
 ```ts
 expect(resolveOpenCodeServer({ baseUrl: "http://127.0.0.1:4096" })).toMatchObject({ mode: "attach" });
 expect(resolveOpenCodeServer({ autoServe: false })).toThrow();
-expect(buildServeArgs({ host: "127.0.0.1", port: 0 })).toEqual(["serve", "--hostname", "127.0.0.1", "--port", "0"]);
+expect(buildServeArgs({ host: "127.0.0.1", port: 4096 })).toEqual(["serve", "--hostname", "127.0.0.1", "--port", "4096"]);
 ```
 
 - [ ] **Step 2: Run tests to verify failure**
@@ -290,7 +292,7 @@ Support:
 - `RETINUE_OPENCODE_COMMAND`, default `opencode`
 - `RETINUE_OPENCODE_AUTO_SERVE=1`
 - `RETINUE_OPENCODE_HOST`, default `127.0.0.1`
-- `RETINUE_OPENCODE_PORT`, default `0`
+- `RETINUE_OPENCODE_PORT`, default `4096`
 
 Do not auto-serve unless explicitly enabled.
 

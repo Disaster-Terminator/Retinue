@@ -117,6 +117,16 @@ describe("CLI", () => {
     expect(parsed.error.code).toBe("missing_daemon_target");
   });
 
+  it("rejects invalid numeric CLI flags before dispatching commands", async () => {
+    const env = cliEnv(tempDir);
+    const failing = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "wait", "job_missing", "--timeout-ms", "abc"], { env }).catch(
+      (error: { stderr: string; code: number }) => error
+    );
+
+    expect(failing.code).toBe(1);
+    expect(failing.stderr).toContain("--timeout-ms must be a non-negative finite number");
+  });
+
   it("returns structured unreachable failure for daemon health", async () => {
     const env = cliEnv(tempDir);
     const failing = await execFileAsync(

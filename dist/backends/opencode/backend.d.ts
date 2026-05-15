@@ -38,6 +38,7 @@ export declare class OpenCodeBackend implements AgentBackend {
     private reconcileStatus;
     private captureMessageBaseline;
     private hasNewCompletedAssistantMessage;
+    private hasReadOnlyWriteIntent;
     private isStalledOpenCodeJob;
     private inspectJob;
     private maybeScheduleServerIdleShutdown;

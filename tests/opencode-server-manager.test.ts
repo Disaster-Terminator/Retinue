@@ -40,7 +40,16 @@ describe("OpenCode server manager", () => {
   });
 
   it("builds explicit opencode serve args", () => {
-    expect(buildServeArgs({ host: "127.0.0.1", port: 0 })).toEqual(["serve", "--hostname", "127.0.0.1", "--port", "0"]);
+    expect(buildServeArgs({ host: "127.0.0.1", port: 4096 })).toEqual(["serve", "--hostname", "127.0.0.1", "--port", "4096"]);
+  });
+
+  it("rejects OpenCode auto-serve port 0 because the selected random port cannot be discovered", () => {
+    expect(() =>
+      resolveOpenCodeServerFromEnv({
+        RETINUE_OPENCODE_AUTO_SERVE: "1",
+        RETINUE_OPENCODE_PORT: "0"
+      })
+    ).toThrow("RETINUE_OPENCODE_PORT must be a port between 1 and 65535");
   });
 
   it("resolves opt-in serve from env", () => {
