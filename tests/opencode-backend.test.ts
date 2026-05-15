@@ -92,6 +92,7 @@ describe("OpenCodeBackend", () => {
     const submittedPrompt = extractPromptText(server!.promptRequests.at(-1));
     expect(submittedPrompt).toContain("Retinue read-only child agent");
     expect(submittedPrompt).toContain("Use only OpenCode read, grep, and glob tools");
+    expect(submittedPrompt).toContain("read only a small set of targeted files");
     expect(submittedPrompt).toContain("Do not call bash");
     expect(submittedPrompt).toContain("inspect only");
   });
@@ -462,9 +463,9 @@ describe("OpenCodeBackend", () => {
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
       status: "stalled",
-      stdout: expect.stringContaining("running read tool call"),
-      parsedStdout: { result: expect.stringContaining("running read tool call") },
-      error: expect.stringContaining("running read tool call")
+      stdout: expect.stringContaining("pending/running read tool call"),
+      parsedStdout: { result: expect.stringContaining("pending/running read tool call") },
+      error: expect.stringContaining("pending/running read tool call")
     });
 
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
@@ -475,6 +476,33 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"lastAssistantModelID":"semantic-router"');
     expect(trace).toContain('"tool":"read"');
     expect(trace).toContain('"stateStatus":"running"');
+  });
+
+  it("marks pending read tool calls as stalled with read-tool diagnostics", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "risk review leaves read pending" });
+    server!.appendPendingReadToolAssistant(started.externalSessionId!);
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "stalled",
+      stdout: expect.stringContaining("pending/running read tool call"),
+      parsedStdout: { result: expect.stringContaining("pending/running read tool call") },
+      error: expect.stringContaining("pending/running read tool call")
+    });
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"stallReason":"read_tool_stalled"');
+    expect(trace).toContain('"runningReadToolParts":1');
+    expect(trace).toContain('"stateStatus":"pending"');
   });
 
   it("marks incomplete assistant tool rounds as stalled before the long-duration threshold", async () => {

@@ -32,6 +32,7 @@ const OPENCODE_READ_ONLY_PROMPT_CONTRACT = [
   "- Use only OpenCode read, grep, and glob tools plus plain-text reasoning.",
   "- Do not call bash, edit, write, apply_patch, task, or nested agents.",
   "- Do not attempt shell commands, file writes, patches, or interactive approvals.",
+  "- For broad audits, start with grep/glob and read only a small set of targeted files; avoid bulk-reading large generated, cache, log, or backup directories.",
   "- If the task needs shell or write access, say that the read-only boundary prevents that part and provide the best file-based answer you can.",
   "- Always finish with a concise textual result; do not stop after tool calls without a final answer."
 ].join("\n");
@@ -928,7 +929,7 @@ function createStallMessage(diagnostic: OpenCodeJobDiagnostic): string {
     return `OpenCode job stalled: observed ${zeroProgressRounds} zero-progress assistant placeholder(s) with no completed assistant text for ${durationMs}ms. The OpenCode provider or model router may be unavailable or stuck after tool calls; inspect Retinue trace/job diagnostics for provider, model, and message summaries.`;
   }
   if (runningReadToolParts > 0) {
-    return `OpenCode job stalled: observed ${runningReadToolParts} running read tool call(s) with no completed assistant text for ${durationMs}ms. The OpenCode tool executor may be stuck; inspect Retinue trace/job diagnostics for call IDs and message summaries.`;
+    return `OpenCode job stalled: observed ${runningReadToolParts} pending/running read tool call(s) with no completed assistant text for ${durationMs}ms. The OpenCode tool executor may be stuck; inspect Retinue trace/job diagnostics for call IDs and message summaries.`;
   }
   return `OpenCode job stalled: observed ${rounds} tool-call assistant round(s) and ${emptyRounds} empty assistant round(s) with no completed assistant text for ${durationMs}ms. Inspect Retinue trace/job diagnostics for message summaries.`;
 }
@@ -998,8 +999,12 @@ function hasToolPart(message: OpenCodeMessage): boolean {
 
 function countRunningReadToolParts(message: OpenCodeMessage): number {
   return (
-    summarizeMessageParts(message)?.filter((part) => part.type === "tool" && part.tool === "read" && part.stateStatus === "running").length ?? 0
+    summarizeMessageParts(message)?.filter((part) => part.type === "tool" && part.tool === "read" && isActiveToolState(part.stateStatus)).length ?? 0
   );
+}
+
+function isActiveToolState(status: string | undefined): boolean {
+  return status === "pending" || status === "running";
 }
 
 function isEmptyStopAssistantMessage(message: OpenCodeMessage): boolean {
