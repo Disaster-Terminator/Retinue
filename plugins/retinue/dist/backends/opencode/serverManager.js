@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { getOpenCodeServerDiscoveryPath, getOpenCodeServerLockPath, getRetinueTracePath } from "../../core/paths.js";
+import { getJobPaths, getOpenCodeServerDiscoveryPath, getOpenCodeServerLockPath, getRetinueTracePath } from "../../core/paths.js";
 import { killProcessTree } from "../../core/processTree.js";
 const DEFAULT_OPENCODE_HOST = "127.0.0.1";
 const DEFAULT_OPENCODE_PORT = 4096;
@@ -264,11 +264,23 @@ export function scheduleManagedOpenCodeServerIdleShutdown(baseUrl, options = {})
     cancelManagedOpenCodeServerIdleShutdown(normalizedBaseUrl);
     const timer = setTimeout(() => {
         managedServerIdleTimers.delete(normalizedBaseUrl);
-        void stopManagedOpenCodeServer(normalizedBaseUrl, {
-            stateDir: options.stateDir,
-            cwd: options.cwd ?? managed.cwd,
-            reason: options.reason ?? "idle"
-        });
+        void (async () => {
+            const cwd = options.cwd ?? managed.cwd;
+            if (await hasRunningOpenCodeJobsForServer(options.stateDir, normalizedBaseUrl)) {
+                await writeRetinueTrace(options.stateDir, {
+                    event: "opencode_server_idle_shutdown_skipped",
+                    baseUrl: normalizedBaseUrl,
+                    reason: "running_jobs",
+                    cwd
+                });
+                return;
+            }
+            await stopManagedOpenCodeServer(normalizedBaseUrl, {
+                stateDir: options.stateDir,
+                cwd,
+                reason: options.reason ?? "idle"
+            });
+        })();
     }, delayMs);
     timer.unref?.();
     managedServerIdleTimers.set(normalizedBaseUrl, timer);
@@ -299,6 +311,27 @@ async function stopManagedOpenCodeServer(baseUrl, options) {
         await removeDiscoveryIfMatches(options.stateDir, managed.child.pid, options.cwd ?? managed.cwd);
     }
     return true;
+}
+async function hasRunningOpenCodeJobsForServer(stateDir, baseUrl) {
+    if (!stateDir) {
+        return false;
+    }
+    const jobsDir = getJobPaths(stateDir, "placeholder").dir.replace(/[\\/]placeholder$/, "");
+    for (const entry of await readDirIfExists(jobsDir)) {
+        if (!entry.isDirectory()) {
+            continue;
+        }
+        try {
+            const meta = JSON.parse(await fs.readFile(path.join(jobsDir, entry.name, "meta.json"), "utf8"));
+            if (meta.backend === "opencode" && meta.status === "running" && normalizeBaseUrl(meta.externalServerUrl ?? "") === baseUrl) {
+                return true;
+            }
+        }
+        catch {
+            // Corrupted job metadata should not keep managed servers alive forever.
+        }
+    }
+    return false;
 }
 async function stopChildProcessTree(baseUrl, child, options) {
     const pid = child.pid;
@@ -626,6 +659,17 @@ function isPidAlive(pid) {
 }
 function isFileExistsError(error) {
     return typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST";
+}
+async function readDirIfExists(dirPath) {
+    try {
+        return await fs.readdir(dirPath, { withFileTypes: true });
+    }
+    catch (error) {
+        if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
+            return [];
+        }
+        throw error;
+    }
 }
 function normalizeBaseUrl(value) {
     let parsed;
