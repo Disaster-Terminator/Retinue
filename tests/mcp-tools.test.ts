@@ -302,6 +302,11 @@ describe("MCP tools", () => {
           task: false
         }
       });
+      const submittedPrompt = extractOpenCodePromptText(fakeOpenCode.promptRequests.at(-1));
+      expect(submittedPrompt).toContain("Retinue read-only child agent");
+      expect(submittedPrompt).toContain("Use only OpenCode read, grep, and glob tools");
+      expect(submittedPrompt).toContain("Do not call bash");
+      expect(submittedPrompt).toContain("retinue mcp");
       expect(fakeOpenCode.sessionRequests.at(-1)).toMatchObject({
         permission: expect.arrayContaining([
           { permission: "doom_loop", pattern: "*", action: "deny" },
@@ -321,7 +326,7 @@ describe("MCP tools", () => {
         task_name: "smoke",
         jobId: spawn.jobId,
         status: "completed",
-        result: { parsedStdout: { result: "fake result: retinue mcp" } }
+        result: { parsedStdout: { result: expect.stringContaining("retinue mcp") } }
       });
 
       const close = parseToolJson(
@@ -353,6 +358,7 @@ describe("MCP tools", () => {
       });
 
       expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
+      expect(extractOpenCodePromptText(fakeOpenCode.promptRequests.at(-1))).toBe("retinue profile access");
     } finally {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
@@ -731,7 +737,7 @@ describe("MCP tools", () => {
         task_name: "bound-opencode",
         jobId: spawn.jobId,
         status: "completed",
-        result: { parsedStdout: { result: "fake result: retinue bound opencode" } }
+        result: { parsedStdout: { result: expect.stringContaining("retinue bound opencode") } }
       });
 
       const close = parseToolJson(
@@ -1070,6 +1076,15 @@ function assertAbsentFields(
     expect(Object.keys(schema.properties ?? {}), `${toolName} must not expose ${field}`).not.toContain(field);
     expect(schema.required ?? [], `${toolName} must not require ${field}`).not.toContain(field);
   }
+}
+
+function extractOpenCodePromptText(request: Record<string, unknown> | undefined): string {
+  const parts = Array.isArray(request?.parts) ? request.parts : [];
+  const first = parts[0];
+  if (typeof first === "object" && first !== null && "text" in first) {
+    return String((first as { text?: unknown }).text ?? "");
+  }
+  return "";
 }
 
 function getToolSchema(

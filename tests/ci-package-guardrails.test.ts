@@ -185,6 +185,9 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(opencodeBackendSource).toContain("edit: false");
     expect(opencodeBackendSource).toContain("write: false");
     expect(opencodeBackendSource).toContain("task: false");
+    expect(opencodeBackendSource).toContain("Retinue read-only child agent contract");
+    expect(opencodeBackendSource).toContain("Use only OpenCode read, grep, and glob tools");
+    expect(opencodeBackendSource).toContain("Do not call bash");
   });
 
   it("declares a plugin manifest with skill and MCP surfaces", () => {

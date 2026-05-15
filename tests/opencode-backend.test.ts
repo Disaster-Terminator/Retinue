@@ -49,6 +49,7 @@ describe("OpenCodeBackend", () => {
     });
     expect(started.promptPath).toMatch(/prompt\.md$/);
     await expect(fs.readFile(started.promptPath, "utf8")).resolves.toBe("hello");
+    expect(extractPromptText(server!.promptRequests.at(-1))).toBe("hello");
 
     await expect(fs.readFile(getJobPaths(tempDir, started.jobId).meta, "utf8").then(JSON.parse)).resolves.toMatchObject({
       backend: "opencode",
@@ -88,6 +89,11 @@ describe("OpenCodeBackend", () => {
         task: false
       }
     });
+    const submittedPrompt = extractPromptText(server!.promptRequests.at(-1));
+    expect(submittedPrompt).toContain("Retinue read-only child agent");
+    expect(submittedPrompt).toContain("Use only OpenCode read, grep, and glob tools");
+    expect(submittedPrompt).toContain("Do not call bash");
+    expect(submittedPrompt).toContain("inspect only");
   });
 
   it("stalls read-only OpenCode jobs that emit patch parts", async () => {
@@ -872,4 +878,13 @@ async function writeOpenCodeJobMeta(stateDir: string, jobId: string, status: Job
   };
   await fs.writeFile(paths.meta, `${JSON.stringify(meta, null, 2)}\n`, "utf8");
   return meta;
+}
+
+function extractPromptText(request: Record<string, unknown> | undefined): string {
+  const parts = Array.isArray(request?.parts) ? request.parts : [];
+  const first = parts[0];
+  if (typeof first === "object" && first !== null && "text" in first) {
+    return String((first as { text?: unknown }).text ?? "");
+  }
+  return "";
 }
