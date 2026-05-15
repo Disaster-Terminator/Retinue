@@ -137,10 +137,7 @@ Before tagging a release, build and verify:
 
 ```bash
 pnpm install
-pnpm run typecheck
-pnpm run check:generated
-pnpm test
-pnpm run verify:package
+pnpm run gate:release
 ```
 
 `verify:package` checks that package contents include the plugin manifest, MCP config, skill, required docs, npm runtime files, and plugin-local runtime files.

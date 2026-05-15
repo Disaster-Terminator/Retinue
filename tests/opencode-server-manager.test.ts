@@ -313,6 +313,71 @@ describe("OpenCode server manager", () => {
     }
   });
 
+  it("reuses a discovered managed OpenCode server when the health probe briefly times out", async () => {
+    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-slow-discovery-"));
+    const managed = await startHealthServer(JSON.stringify({ healthy: true, version: "managed" }), 500);
+    const baseUrl = `http://127.0.0.1:${managed.port}`;
+
+    try {
+      await fs.writeFile(
+        getOpenCodeServerDiscoveryPath(stateDir),
+        `${JSON.stringify(
+          {
+            baseUrl,
+            pid: process.pid,
+            startedAt: new Date().toISOString(),
+            version: "0.1.0"
+          },
+          null,
+          2
+        )}\n`,
+        "utf8"
+      );
+
+      await expect(
+        ensureOpenCodeServer(
+          {
+            mode: "serve",
+            command: "retinue-missing-opencode-command",
+            args: buildServeArgs({ host: "127.0.0.1", port: managed.port }),
+            host: "127.0.0.1",
+            port: managed.port,
+            fallbackPorts: []
+          },
+          { stateDir }
+        )
+      ).resolves.toMatchObject({ baseUrl, started: false });
+    } finally {
+      await Promise.allSettled([managed.close(), fs.rm(stateDir, { recursive: true, force: true })]);
+    }
+  });
+
+  it("does not remove a fresh partially-written startup lock", async () => {
+    const port = await freePort();
+    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-fresh-lock-"));
+
+    try {
+      await fs.mkdir(path.dirname(getOpenCodeServerDiscoveryPath(stateDir)), { recursive: true });
+      await fs.writeFile(path.join(path.dirname(getOpenCodeServerDiscoveryPath(stateDir)), "opencode-server.lock"), "", "utf8");
+
+      await expect(
+        ensureOpenCodeServer(
+          {
+            mode: "serve",
+            command: "retinue-missing-opencode-command",
+            args: buildServeArgs({ host: "127.0.0.1", port }),
+            host: "127.0.0.1",
+            port,
+            fallbackPorts: []
+          },
+          { stateDir, lockTimeoutMs: 50 }
+        )
+      ).rejects.toThrow(/Timed out waiting for OpenCode server startup lock/);
+    } finally {
+      await fs.rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
   it("reports a missing OpenCode command without crashing the MCP process", async () => {
     const port = await freePort();
     const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-trace-"));
@@ -423,10 +488,12 @@ describe("OpenCode server manager", () => {
   });
 });
 
-async function startHealthServer(body: string): Promise<{ port: number; close(): Promise<void> }> {
+async function startHealthServer(body: string, delayMs = 0): Promise<{ port: number; close(): Promise<void> }> {
   const server = http.createServer((_request, response) => {
-    response.statusCode = 200;
-    response.end(body);
+    setTimeout(() => {
+      response.statusCode = 200;
+      response.end(body);
+    }, delayMs);
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address() as AddressInfo;

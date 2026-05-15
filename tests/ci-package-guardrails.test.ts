@@ -93,8 +93,9 @@ describe("package.json guardrails", () => {
     expect(scripts["verify:package"]).toBeTypeOf("string");
     expect(scripts["smoke:package"]).toBe("node scripts/smoke-package-artifacts.mjs");
     expect(scripts["gate:commit"]).toBe("pnpm run typecheck");
-    expect(scripts["gate:local"]).toBe("pnpm run typecheck && pnpm test && pnpm run check:generated && pnpm run smoke:package && pnpm run verify:package");
-    expect(scripts.prepublishOnly).toBe("pnpm run gate:local");
+    expect(scripts["gate:local"]).toBe("pnpm run typecheck && pnpm test && pnpm run smoke:package && pnpm run verify:package");
+    expect(scripts["gate:release"]).toBe("pnpm run typecheck && pnpm test && pnpm run check:generated && pnpm run smoke:package && pnpm run verify:package");
+    expect(scripts.prepublishOnly).toBe("pnpm run gate:release");
     expect(scripts["dev:sync-plugin-cache"]).toBe("node scripts/sync-installed-plugin-cache.mjs");
     expect(scripts["dev:sync-plugin-cache:all"]).toBe("node scripts/sync-installed-plugin-cache.mjs --include-windows --include-wsl");
     expect(scripts["dev:install-hooks"]).toBe("node scripts/install-git-hooks.mjs");
