@@ -4,7 +4,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
-import { getOpenCodeServerDiscoveryPath, getRetinueTracePath } from "../src/core/paths.js";
+import { getJobPaths, getOpenCodeServerDiscoveryPath, getRetinueTracePath } from "../src/core/paths.js";
 import {
   buildServeArgs,
   ensureOpenCodeServer,
@@ -334,6 +334,45 @@ describe("OpenCode server manager", () => {
     }
   });
 
+  it("does not stop a reused managed OpenCode server when a new running job appears before the idle timer fires", async () => {
+    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-state-"));
+    const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-project-"));
+    const port = await freePort();
+    const command = await writeFakeOpenCodeCommandWithSessions();
+    let target: Awaited<ReturnType<typeof ensureOpenCodeServer>> | undefined;
+    try {
+      target = await ensureOpenCodeServer(
+        {
+          mode: "serve",
+          command,
+          args: buildServeArgs({ host: "127.0.0.1", port }),
+          host: "127.0.0.1",
+          port,
+          fallbackPorts: []
+        },
+        { stateDir, cwd: projectDir, healthTimeoutMs: 5000, healthPollMs: 50 }
+      );
+
+      scheduleManagedOpenCodeServerIdleShutdown(target.baseUrl, {
+        stateDir,
+        cwd: projectDir,
+        delayMs: 20
+      });
+      await writeOpenCodeRunningJob(stateDir, "job_running_reused_server", target.baseUrl, projectDir);
+      await sleep(80);
+
+      await expect(fetch(`${target.baseUrl}/global/health`).then((response) => response.ok)).resolves.toBe(true);
+      const trace = await fs.readFile(getRetinueTracePath(stateDir), "utf8");
+      expect(trace).toContain('"event":"opencode_server_idle_shutdown_scheduled"');
+      expect(trace).toContain('"event":"opencode_server_idle_shutdown_skipped"');
+      expect(trace).not.toContain('"event":"opencode_server_stopped"');
+    } finally {
+      target?.child?.kill();
+      await fs.rm(stateDir, { recursive: true, force: true });
+      await fs.rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("reuses a Retinue-managed OpenCode server recorded in state discovery", async () => {
     const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-discovery-"));
     const managed = await startHealthServer(JSON.stringify({ healthy: true, version: "managed" }));
@@ -577,6 +616,10 @@ function rejectAfter(ms: number, message: string): Promise<never> {
   });
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function waitForUnreachable(baseUrl: string): Promise<void> {
   const deadline = Date.now() + 5000;
   for (;;) {
@@ -590,6 +633,35 @@ async function waitForUnreachable(baseUrl: string): Promise<void> {
     }
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
+}
+
+async function writeOpenCodeRunningJob(stateDir: string, jobId: string, baseUrl: string, cwd: string): Promise<void> {
+  const paths = getJobPaths(stateDir, jobId);
+  await fs.mkdir(paths.dir, { recursive: true });
+  const now = new Date().toISOString();
+  await fs.writeFile(
+    paths.meta,
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        backend: "opencode",
+        jobId,
+        pid: -1,
+        status: "running",
+        cwd,
+        promptPath: paths.prompt,
+        promptPreview: "running",
+        promptSha256: "running",
+        externalServerUrl: baseUrl,
+        args: [],
+        createdAt: now,
+        updatedAt: now
+      },
+      null,
+      2
+    )}\n`,
+    "utf8"
+  );
 }
 
 async function writeFakeOpenCodeCommand(): Promise<string> {

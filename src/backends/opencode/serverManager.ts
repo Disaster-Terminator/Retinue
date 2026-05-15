@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { getOpenCodeServerDiscoveryPath, getOpenCodeServerLockPath, getRetinueTracePath } from "../../core/paths.js";
+import { getJobPaths, getOpenCodeServerDiscoveryPath, getOpenCodeServerLockPath, getRetinueTracePath } from "../../core/paths.js";
 import { killProcessTree } from "../../core/processTree.js";
 
 const DEFAULT_OPENCODE_HOST = "127.0.0.1";
@@ -60,6 +60,7 @@ type RetinueTraceEvent =
   | { event: "opencode_server_attach_unreachable"; baseUrl: string; cwd?: string; fallbackBaseUrl?: string }
   | { event: "opencode_server_port_occupied"; host: string; port: number; baseUrl: string }
   | { event: "opencode_server_idle_shutdown_scheduled"; baseUrl: string; delayMs: number; cwd?: string }
+  | { event: "opencode_server_idle_shutdown_skipped"; baseUrl: string; reason: "running_jobs"; cwd?: string }
   | { event: "opencode_server_stopped"; baseUrl: string; pid?: number; reason: "idle" | "startup_failed" | "process_exit"; cwd?: string }
   | { event: "opencode_server_stop_failed"; baseUrl: string; pid?: number; reason: "idle" | "startup_failed" | "process_exit"; error: string; cwd?: string }
   | {
@@ -375,11 +376,23 @@ export function scheduleManagedOpenCodeServerIdleShutdown(
   cancelManagedOpenCodeServerIdleShutdown(normalizedBaseUrl);
   const timer = setTimeout(() => {
     managedServerIdleTimers.delete(normalizedBaseUrl);
-    void stopManagedOpenCodeServer(normalizedBaseUrl, {
-      stateDir: options.stateDir,
-      cwd: options.cwd ?? managed.cwd,
-      reason: options.reason ?? "idle"
-    });
+    void (async () => {
+      const cwd = options.cwd ?? managed.cwd;
+      if (await hasRunningOpenCodeJobsForServer(options.stateDir, normalizedBaseUrl)) {
+        await writeRetinueTrace(options.stateDir, {
+          event: "opencode_server_idle_shutdown_skipped",
+          baseUrl: normalizedBaseUrl,
+          reason: "running_jobs",
+          cwd
+        });
+        return;
+      }
+      await stopManagedOpenCodeServer(normalizedBaseUrl, {
+        stateDir: options.stateDir,
+        cwd,
+        reason: options.reason ?? "idle"
+      });
+    })();
   }, delayMs);
   timer.unref?.();
   managedServerIdleTimers.set(normalizedBaseUrl, timer);
@@ -415,6 +428,31 @@ async function stopManagedOpenCodeServer(
     await removeDiscoveryIfMatches(options.stateDir, managed.child.pid, options.cwd ?? managed.cwd);
   }
   return true;
+}
+
+async function hasRunningOpenCodeJobsForServer(stateDir: string | undefined, baseUrl: string): Promise<boolean> {
+  if (!stateDir) {
+    return false;
+  }
+  const jobsDir = getJobPaths(stateDir, "placeholder").dir.replace(/[\\/]placeholder$/, "");
+  for (const entry of await readDirIfExists(jobsDir)) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    try {
+      const meta = JSON.parse(await fs.readFile(path.join(jobsDir, entry.name, "meta.json"), "utf8")) as {
+        backend?: string;
+        status?: string;
+        externalServerUrl?: string;
+      };
+      if (meta.backend === "opencode" && meta.status === "running" && normalizeBaseUrl(meta.externalServerUrl ?? "") === baseUrl) {
+        return true;
+      }
+    } catch {
+      // Corrupted job metadata should not keep managed servers alive forever.
+    }
+  }
+  return false;
 }
 
 async function stopChildProcessTree(
@@ -762,6 +800,17 @@ function isPidAlive(pid: number): boolean {
 
 function isFileExistsError(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST";
+}
+
+async function readDirIfExists(dirPath: string) {
+  try {
+    return await fs.readdir(dirPath, { withFileTypes: true });
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
 }
 
 function normalizeBaseUrl(value: string): string {

@@ -21574,11 +21574,23 @@ function scheduleManagedOpenCodeServerIdleShutdown(baseUrl, options = {}) {
   cancelManagedOpenCodeServerIdleShutdown(normalizedBaseUrl);
   const timer = setTimeout(() => {
     managedServerIdleTimers.delete(normalizedBaseUrl);
-    void stopManagedOpenCodeServer(normalizedBaseUrl, {
-      stateDir: options.stateDir,
-      cwd: options.cwd ?? managed.cwd,
-      reason: options.reason ?? "idle"
-    });
+    void (async () => {
+      const cwd = options.cwd ?? managed.cwd;
+      if (await hasRunningOpenCodeJobsForServer(options.stateDir, normalizedBaseUrl)) {
+        await writeRetinueTrace(options.stateDir, {
+          event: "opencode_server_idle_shutdown_skipped",
+          baseUrl: normalizedBaseUrl,
+          reason: "running_jobs",
+          cwd
+        });
+        return;
+      }
+      await stopManagedOpenCodeServer(normalizedBaseUrl, {
+        stateDir: options.stateDir,
+        cwd,
+        reason: options.reason ?? "idle"
+      });
+    })();
   }, delayMs);
   timer.unref?.();
   managedServerIdleTimers.set(normalizedBaseUrl, timer);
@@ -21609,6 +21621,25 @@ async function stopManagedOpenCodeServer(baseUrl, options) {
     await removeDiscoveryIfMatches(options.stateDir, managed.child.pid, options.cwd ?? managed.cwd);
   }
   return true;
+}
+async function hasRunningOpenCodeJobsForServer(stateDir, baseUrl) {
+  if (!stateDir) {
+    return false;
+  }
+  const jobsDir = getJobPaths(stateDir, "placeholder").dir.replace(/[\\/]placeholder$/, "");
+  for (const entry of await readDirIfExists(jobsDir)) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    try {
+      const meta = JSON.parse(await fs.readFile(path2.join(jobsDir, entry.name, "meta.json"), "utf8"));
+      if (meta.backend === "opencode" && meta.status === "running" && normalizeBaseUrl(meta.externalServerUrl ?? "") === baseUrl) {
+        return true;
+      }
+    } catch {
+    }
+  }
+  return false;
 }
 async function stopChildProcessTree(baseUrl, child, options) {
   const pid = child.pid;
@@ -21921,6 +21952,16 @@ function isPidAlive(pid) {
 }
 function isFileExistsError(error2) {
   return typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === "EEXIST";
+}
+async function readDirIfExists(dirPath) {
+  try {
+    return await fs.readdir(dirPath, { withFileTypes: true });
+  } catch (error2) {
+    if (typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === "ENOENT") {
+      return [];
+    }
+    throw error2;
+  }
 }
 function normalizeBaseUrl(value) {
   let parsed;
@@ -22253,7 +22294,7 @@ var OpenCodeBackend = class {
     const removedJobIds = [];
     const removedTempFiles = [];
     const now = Date.now();
-    for (const entry of await readDirIfExists(getJobsDir(this.stateDir))) {
+    for (const entry of await readDirIfExists2(getJobsDir(this.stateDir))) {
       if (!entry.isDirectory()) {
         continue;
       }
@@ -22436,7 +22477,7 @@ var OpenCodeBackend = class {
     this.onServerIdle(meta.externalServerUrl, meta.cwd);
   }
   async hasRunningJobsForServer(baseUrl) {
-    for (const entry of await readDirIfExists(getJobsDir(this.stateDir))) {
+    for (const entry of await readDirIfExists2(getJobsDir(this.stateDir))) {
       if (!entry.isDirectory()) {
         continue;
       }
@@ -22874,7 +22915,7 @@ function sha256(value) {
 function getJobsDir(stateDir) {
   return getJobPaths(stateDir, "placeholder").dir.replace(/[\\/]placeholder$/, "");
 }
-async function readDirIfExists(dirPath) {
+async function readDirIfExists2(dirPath) {
   try {
     return await fs2.readdir(dirPath, { withFileTypes: true });
   } catch (error2) {
@@ -22885,7 +22926,7 @@ async function readDirIfExists(dirPath) {
   }
 }
 async function listTempFiles(dirPath) {
-  const entries = await readDirIfExists(dirPath);
+  const entries = await readDirIfExists2(dirPath);
   return entries.filter((entry) => entry.isFile() && entry.name.endsWith(".tmp")).map((entry) => `${dirPath}${dirPath.includes("\\") ? "\\" : "/"}${entry.name}`);
 }
 
@@ -23444,7 +23485,7 @@ var ClaudeRetinue = class {
     const jobsDir = getJobsDir2(this.stateDir);
     const removedJobIds = [];
     const removedTempFiles = [];
-    const entries = await readDirIfExists2(jobsDir);
+    const entries = await readDirIfExists3(jobsDir);
     const now = Date.now();
     for (const entry of entries) {
       if (!entry.isDirectory()) {
@@ -23474,7 +23515,7 @@ var ClaudeRetinue = class {
       return this.processes.size;
     }
     const jobsDir = getJobsDir2(this.stateDir);
-    const entries = await readDirIfExists2(jobsDir);
+    const entries = await readDirIfExists3(jobsDir);
     const activeJobIds = /* @__PURE__ */ new Set();
     for (const entry of entries) {
       if (!entry.isDirectory()) {
@@ -23600,7 +23641,7 @@ function sleep3(ms) {
 function getJobsDir2(stateDir) {
   return getJobPaths(stateDir, "placeholder").dir.replace(/[\\/]placeholder$/, "");
 }
-async function readDirIfExists2(dirPath) {
+async function readDirIfExists3(dirPath) {
   try {
     return await fs4.readdir(dirPath, { withFileTypes: true });
   } catch (error2) {
@@ -23611,7 +23652,7 @@ async function readDirIfExists2(dirPath) {
   }
 }
 async function listTempFiles2(dirPath) {
-  const entries = await readDirIfExists2(dirPath);
+  const entries = await readDirIfExists3(dirPath);
   return entries.filter((entry) => entry.isFile() && entry.name.endsWith(".tmp")).map((entry) => `${dirPath}${dirPath.includes("\\") ? "\\" : "/"}${entry.name}`);
 }
 function waitWithTimeout(promise, timeoutMs) {
