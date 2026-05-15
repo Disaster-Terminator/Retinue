@@ -22033,6 +22033,7 @@ var OPENCODE_READ_ONLY_PROMPT_CONTRACT = [
   "- Do not call bash, edit, write, apply_patch, task, or nested agents.",
   "- Do not attempt shell commands, file writes, patches, or interactive approvals.",
   "- For broad audits, start with grep/glob and read only a small set of targeted files; avoid bulk-reading large generated, cache, log, or backup directories.",
+  "- Use read serially: do not issue multiple read calls in one assistant turn, and stop reading once you have enough evidence to answer.",
   "- If the task needs shell or write access, say that the read-only boundary prevents that part and provide the best file-based answer you can.",
   "- Always finish with a concise textual result; do not stop after tool calls without a final answer."
 ].join("\n");
