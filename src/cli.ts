@@ -49,7 +49,7 @@ async function main(): Promise<void> {
       const [jobId, ...rest] = args;
       const flags = parseFlags(rest);
       const backend = await createOpenCodeBackend(flags);
-      const waited = await backend.wait({ jobId: required(jobId, "jobId") }, flags["timeout-ms"] ? Number(flags["timeout-ms"]) : undefined);
+      const waited = await backend.wait({ jobId: required(jobId, "jobId") }, parseOptionalNonNegativeNumber(flags, "timeout-ms"));
       writeJson(waited);
       return;
     }
@@ -86,7 +86,7 @@ async function main(): Promise<void> {
       const flags = parseFlags(args);
       writeJson(
         await (await createOpenCodeBackend(flags)).cleanup({
-          olderThanMs: flags["older-than-ms"] ? Number(flags["older-than-ms"]) : undefined
+          olderThanMs: parseOptionalNonNegativeNumber(flags, "older-than-ms")
         })
       );
       return;
@@ -101,9 +101,9 @@ async function main(): Promise<void> {
           prompt,
           name: flags.name,
           resume: flags.resume,
-          maxTurns: flags["max-turns"] ? Number(flags["max-turns"]) : undefined,
+          maxTurns: parseOptionalNonNegativeNumber(flags, "max-turns"),
           permissionMode: flags["permission-mode"] as never,
-          timeoutMs: flags["timeout-ms"] ? Number(flags["timeout-ms"]) : undefined
+          timeoutMs: parseOptionalNonNegativeNumber(flags, "timeout-ms")
         })
       );
       return;
@@ -117,7 +117,7 @@ async function main(): Promise<void> {
       const flags = parseFlags(rest);
       writeJson(
         await retinue.wait(required(jobId, "jobId"), {
-          timeoutMs: flags["timeout-ms"] ? Number(flags["timeout-ms"]) : undefined
+          timeoutMs: parseOptionalNonNegativeNumber(flags, "timeout-ms")
         })
       );
       return;
@@ -135,9 +135,9 @@ async function main(): Promise<void> {
           jobId: flags["job-id"],
           sessionId: flags["session-id"],
           name: flags.name,
-          maxTurns: flags["max-turns"] ? Number(flags["max-turns"]) : undefined,
+          maxTurns: parseOptionalNonNegativeNumber(flags, "max-turns"),
           permissionMode: flags["permission-mode"] as never,
-          timeoutMs: flags["timeout-ms"] ? Number(flags["timeout-ms"]) : undefined
+          timeoutMs: parseOptionalNonNegativeNumber(flags, "timeout-ms")
         })
       );
       return;
@@ -147,8 +147,8 @@ async function main(): Promise<void> {
       const flags = parseFlags(rest);
       writeJson(
         await retinue.peek(required(jobId, "jobId"), {
-          stdoutTailBytes: flags["stdout-tail-bytes"] ? Number(flags["stdout-tail-bytes"]) : undefined,
-          stderrTailBytes: flags["stderr-tail-bytes"] ? Number(flags["stderr-tail-bytes"]) : undefined
+          stdoutTailBytes: parseOptionalNonNegativeNumber(flags, "stdout-tail-bytes"),
+          stderrTailBytes: parseOptionalNonNegativeNumber(flags, "stderr-tail-bytes")
         })
       );
       return;
@@ -161,7 +161,7 @@ async function main(): Promise<void> {
       const flags = parseFlags(args);
       writeJson(
         await retinue.cleanup({
-          olderThanMs: flags["older-than-ms"] ? Number(flags["older-than-ms"]) : undefined
+          olderThanMs: parseOptionalNonNegativeNumber(flags, "older-than-ms")
         })
       );
       return;
@@ -364,6 +364,18 @@ function parseOptionalNumber(value: string | undefined): number | undefined {
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseOptionalNonNegativeNumber(flags: Record<string, string | undefined>, name: string): number | undefined {
+  if (!(name in flags)) {
+    return undefined;
+  }
+  const value = flags[name];
+  const parsed = value === undefined || value.startsWith("--") ? Number.NaN : Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(`--${name} must be a non-negative finite number`);
+  }
+  return parsed;
 }
 
 function required(value: string | undefined, name: string): string {

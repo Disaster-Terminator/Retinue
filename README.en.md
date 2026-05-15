@@ -41,7 +41,7 @@ Retinue is a local subagent execution surface. It is not a model gateway or prov
 
 - It does not select or switch model providers.
 - It does not own Claude Code or OpenCode login, quota, proxy, model defaults, or runtime policy.
-- It does not put prompts into process argv.
+- It does not put prompts into child-agent process argv; avoid CLI `--prompt` for sensitive debugging prompts.
 - It does not return full prompts from default `status` responses.
 - It does not try to become a general process manager or cloud queue.
 

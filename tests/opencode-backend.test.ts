@@ -118,6 +118,20 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"type":"patch"');
   });
 
+  it("does not trust read-only OpenCode jobs that emit patch parts before final text", async () => {
+    const backend = createBackend();
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
+    server!.appendPatchAssistant(started.externalSessionId!);
+    server!.completeSessionWithFinalText(started.externalSessionId!, "final review");
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "stalled",
+      error: expect.stringContaining("OpenCode read-only job emitted patch/write intent")
+    });
+  });
+
   it("returns a job handle before a slow OpenCode prompt_async call finishes", async () => {
     server!.setPromptAsyncDelayMs(500);
     const backend = createBackend();

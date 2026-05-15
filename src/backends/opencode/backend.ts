@@ -444,7 +444,9 @@ export class OpenCodeBackend implements AgentBackend {
       const client = this.clientForMeta(meta);
       const session = await client.getSession(meta.externalSessionId);
       let status = meta.status;
-      if (session.state === "completed") {
+      if (await this.hasReadOnlyWriteIntent(client, meta.externalSessionId, meta)) {
+        status = "stalled";
+      } else if (session.state === "completed") {
         status = "completed";
       } else if (session.state === "failed") {
         status = "failed";
@@ -511,6 +513,14 @@ export class OpenCodeBackend implements AgentBackend {
       return false;
     }
     return countCompletedAssistantMessages(messages) > (meta.externalCompletedAssistantBaselineCount ?? 0);
+  }
+
+  private async hasReadOnlyWriteIntent(client: OpenCodeClient, sessionId: string, meta: JobMeta): Promise<boolean> {
+    if (meta.readOnly !== true) {
+      return false;
+    }
+    const messages = await client.messages(sessionId);
+    return countPatchParts(selectMessagesForMeta(messages, meta)) > 0;
   }
 
   private async isStalledOpenCodeJob(client: OpenCodeClient, sessionId: string, meta: JobMeta): Promise<boolean> {
@@ -824,9 +834,6 @@ function computeStallDiagnostic(
   meta: JobMeta,
   env: RetinueOptions["env"] | undefined
 ): Partial<OpenCodeJobDiagnostic> | undefined {
-  if (jobMessages.some(isCompletedAssistantMessage)) {
-    return undefined;
-  }
   const patchPartCount = countPatchParts(jobMessages);
   if (meta.readOnly === true && patchPartCount > 0) {
     return {
@@ -836,6 +843,9 @@ function computeStallDiagnostic(
       stallReason: "read_only_write_intent",
       stallSummary: "OpenCode read-only job emitted patch/write intent."
     };
+  }
+  if (jobMessages.some(isCompletedAssistantMessage)) {
+    return undefined;
   }
   const thresholdMs = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_MS, DEFAULT_STALL_MS);
   if (thresholdMs <= 0) {

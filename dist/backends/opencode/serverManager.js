@@ -692,8 +692,8 @@ function parseOptionalPort(value) {
         return undefined;
     }
     const parsed = Number(value);
-    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
-        throw new Error("RETINUE_OPENCODE_PORT must be a port between 0 and 65535");
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+        throw new Error("RETINUE_OPENCODE_PORT must be a port between 1 and 65535");
     }
     return parsed;
 }
@@ -722,8 +722,8 @@ function parsePrefixArgs(value) {
 }
 function parseRequiredPort(value) {
     const parsed = Number(value);
-    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
-        throw new Error("RETINUE_OPENCODE_FALLBACK_PORTS must contain ports between 0 and 65535");
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+        throw new Error("RETINUE_OPENCODE_FALLBACK_PORTS must contain ports between 1 and 65535");
     }
     return parsed;
 }

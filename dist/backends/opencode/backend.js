@@ -326,7 +326,10 @@ export class OpenCodeBackend {
             const client = this.clientForMeta(meta);
             const session = await client.getSession(meta.externalSessionId);
             let status = meta.status;
-            if (session.state === "completed") {
+            if (await this.hasReadOnlyWriteIntent(client, meta.externalSessionId, meta)) {
+                status = "stalled";
+            }
+            else if (session.state === "completed") {
                 status = "completed";
             }
             else if (session.state === "failed") {
@@ -398,6 +401,13 @@ export class OpenCodeBackend {
             return false;
         }
         return countCompletedAssistantMessages(messages) > (meta.externalCompletedAssistantBaselineCount ?? 0);
+    }
+    async hasReadOnlyWriteIntent(client, sessionId, meta) {
+        if (meta.readOnly !== true) {
+            return false;
+        }
+        const messages = await client.messages(sessionId);
+        return countPatchParts(selectMessagesForMeta(messages, meta)) > 0;
     }
     async isStalledOpenCodeJob(client, sessionId, meta) {
         const messages = await client.messages(sessionId);
@@ -686,9 +696,6 @@ function countPatchParts(messages) {
     return messages.reduce((count, message) => count + (message.parts?.filter((part) => part?.type === "patch").length ?? 0), 0);
 }
 function computeStallDiagnostic(jobMessages, meta, env) {
-    if (jobMessages.some(isCompletedAssistantMessage)) {
-        return undefined;
-    }
     const patchPartCount = countPatchParts(jobMessages);
     if (meta.readOnly === true && patchPartCount > 0) {
         return {
@@ -698,6 +705,9 @@ function computeStallDiagnostic(jobMessages, meta, env) {
             stallReason: "read_only_write_intent",
             stallSummary: "OpenCode read-only job emitted patch/write intent."
         };
+    }
+    if (jobMessages.some(isCompletedAssistantMessage)) {
+        return undefined;
     }
     const thresholdMs = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_MS, DEFAULT_STALL_MS);
     if (thresholdMs <= 0) {

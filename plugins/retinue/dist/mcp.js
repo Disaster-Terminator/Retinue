@@ -21983,8 +21983,8 @@ function parseOptionalPort(value) {
     return void 0;
   }
   const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
-    throw new Error("RETINUE_OPENCODE_PORT must be a port between 0 and 65535");
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+    throw new Error("RETINUE_OPENCODE_PORT must be a port between 1 and 65535");
   }
   return parsed;
 }
@@ -22013,8 +22013,8 @@ function parsePrefixArgs(value) {
 }
 function parseRequiredPort(value) {
   const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
-    throw new Error("RETINUE_OPENCODE_FALLBACK_PORTS must contain ports between 0 and 65535");
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+    throw new Error("RETINUE_OPENCODE_FALLBACK_PORTS must contain ports between 1 and 65535");
   }
   return parsed;
 }
@@ -22337,7 +22337,9 @@ var OpenCodeBackend = class {
       const client = this.clientForMeta(meta);
       const session = await client.getSession(meta.externalSessionId);
       let status = meta.status;
-      if (session.state === "completed") {
+      if (await this.hasReadOnlyWriteIntent(client, meta.externalSessionId, meta)) {
+        status = "stalled";
+      } else if (session.state === "completed") {
         status = "completed";
       } else if (session.state === "failed") {
         status = "failed";
@@ -22402,6 +22404,13 @@ var OpenCodeBackend = class {
       return false;
     }
     return countCompletedAssistantMessages(messages) > (meta.externalCompletedAssistantBaselineCount ?? 0);
+  }
+  async hasReadOnlyWriteIntent(client, sessionId, meta) {
+    if (meta.readOnly !== true) {
+      return false;
+    }
+    const messages = await client.messages(sessionId);
+    return countPatchParts(selectMessagesForMeta(messages, meta)) > 0;
   }
   async isStalledOpenCodeJob(client, sessionId, meta) {
     const messages = await client.messages(sessionId);
@@ -22678,9 +22687,6 @@ function countPatchParts(messages) {
   return messages.reduce((count, message) => count + (message.parts?.filter((part) => part?.type === "patch").length ?? 0), 0);
 }
 function computeStallDiagnostic(jobMessages, meta, env) {
-  if (jobMessages.some(isCompletedAssistantMessage)) {
-    return void 0;
-  }
   const patchPartCount = countPatchParts(jobMessages);
   if (meta.readOnly === true && patchPartCount > 0) {
     return {
@@ -22690,6 +22696,9 @@ function computeStallDiagnostic(jobMessages, meta, env) {
       stallReason: "read_only_write_intent",
       stallSummary: "OpenCode read-only job emitted patch/write intent."
     };
+  }
+  if (jobMessages.some(isCompletedAssistantMessage)) {
+    return void 0;
   }
   const thresholdMs = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_MS, DEFAULT_STALL_MS);
   if (thresholdMs <= 0) {
