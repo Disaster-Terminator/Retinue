@@ -62,6 +62,66 @@ describe("OpenCode server manager", () => {
     });
   });
 
+  it("keeps explicit attach but prepares auto-serve fallback when both are configured", () => {
+    const resolution = resolveOpenCodeServerFromEnv({
+      RETINUE_OPENCODE_BASE_URL: "http://127.0.0.1:4097",
+      RETINUE_OPENCODE_AUTO_SERVE: "1",
+      RETINUE_OPENCODE_COMMAND: "opencode-test",
+      RETINUE_OPENCODE_HOST: "127.0.0.1",
+      RETINUE_OPENCODE_PORT: "4096",
+      RETINUE_OPENCODE_FALLBACK_PORTS: "4098"
+    });
+
+    expect(resolution).toEqual({
+      mode: "attach",
+      baseUrl: "http://127.0.0.1:4097",
+      fallbackServe: {
+        mode: "serve",
+        command: "opencode-test",
+        args: ["serve", "--hostname", "127.0.0.1", "--port", "4096"],
+        host: "127.0.0.1",
+        port: 4096,
+        fallbackPorts: [4098]
+      }
+    });
+  });
+
+  it("falls back to managed auto-serve when an explicit attach URL is unreachable and auto-serve is enabled", async () => {
+    const attachPort = await freePort();
+    const servePort = await freePort();
+    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-attach-fallback-"));
+    const command = await writeFakeOpenCodeCommand();
+    let target: Awaited<ReturnType<typeof ensureOpenCodeServer>> | undefined;
+    try {
+      target = await ensureOpenCodeServer(
+        {
+          mode: "attach",
+          baseUrl: `http://127.0.0.1:${attachPort}`,
+          fallbackServe: {
+            mode: "serve",
+            command,
+            args: buildServeArgs({ host: "127.0.0.1", port: servePort }),
+            host: "127.0.0.1",
+            port: servePort,
+            fallbackPorts: []
+          }
+        },
+        { stateDir, healthTimeoutMs: 5000, healthPollMs: 50 }
+      );
+
+      expect(target.baseUrl).toBe(`http://127.0.0.1:${servePort}`);
+      expect(target.started).toBe(true);
+      const trace = await fs.readFile(getRetinueTracePath(stateDir), "utf8");
+      expect(trace).toContain('"event":"opencode_server_attach_unreachable"');
+      expect(trace).toContain(`"baseUrl":"http://127.0.0.1:${attachPort}"`);
+      expect(trace).toContain(`"baseUrl":"http://127.0.0.1:${servePort}"`);
+      expect(trace).toContain('"event":"opencode_server_ready"');
+    } finally {
+      target?.child?.kill();
+      await fs.rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
   it("rejects managed OpenCode server binds to non-loopback hosts by default", () => {
     expect(() =>
       resolveOpenCodeServerFromEnv({
@@ -98,7 +158,7 @@ describe("OpenCode server manager", () => {
 
   it("falls back to the next candidate port when the preferred port is not OpenCode", async () => {
     const occupied = await startHealthServer("not opencode");
-    const fallbackPort = await freePort();
+    const fallbackPorts = [await freePort(), await freePort(), await freePort()];
     const command = await writeFakeOpenCodeCommand();
     let target: Awaited<ReturnType<typeof ensureOpenCodeServer>> | undefined;
     try {
@@ -109,12 +169,12 @@ describe("OpenCode server manager", () => {
           args: buildServeArgs({ host: "127.0.0.1", port: occupied.port }),
           host: "127.0.0.1",
           port: occupied.port,
-          fallbackPorts: [fallbackPort]
+          fallbackPorts
         },
         { healthTimeoutMs: 5000, healthPollMs: 50 }
       );
 
-      expect(target.baseUrl).toBe(`http://127.0.0.1:${fallbackPort}`);
+      expect(fallbackPorts.map((port) => `http://127.0.0.1:${port}`)).toContain(target.baseUrl);
       expect(target.started).toBe(true);
     } finally {
       target?.child?.kill();

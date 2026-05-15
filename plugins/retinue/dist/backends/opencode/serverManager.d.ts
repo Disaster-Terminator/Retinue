@@ -9,10 +9,7 @@ export interface OpenCodeServerConfig {
     fallbackPorts?: number[];
     allowNonLoopbackHost?: boolean;
 }
-export type OpenCodeServerResolution = {
-    mode: "attach";
-    baseUrl: string;
-} | {
+export type OpenCodeServeResolution = {
     mode: "serve";
     command: string;
     args: string[];
@@ -20,6 +17,11 @@ export type OpenCodeServerResolution = {
     port: number;
     fallbackPorts: number[];
 };
+export type OpenCodeServerResolution = {
+    mode: "attach";
+    baseUrl: string;
+    fallbackServe?: OpenCodeServeResolution;
+} | OpenCodeServeResolution;
 export interface OpenCodeServerTarget {
     baseUrl: string;
     started: boolean;

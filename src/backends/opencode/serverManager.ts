@@ -37,9 +37,16 @@ export interface OpenCodeServerConfig {
   allowNonLoopbackHost?: boolean;
 }
 
-export type OpenCodeServerResolution =
-  | { mode: "attach"; baseUrl: string }
-  | { mode: "serve"; command: string; args: string[]; host: string; port: number; fallbackPorts: number[] };
+export type OpenCodeServeResolution = {
+  mode: "serve";
+  command: string;
+  args: string[];
+  host: string;
+  port: number;
+  fallbackPorts: number[];
+};
+
+export type OpenCodeServerResolution = { mode: "attach"; baseUrl: string; fallbackServe?: OpenCodeServeResolution } | OpenCodeServeResolution;
 
 export interface OpenCodeServerTarget {
   baseUrl: string;
@@ -50,6 +57,7 @@ export interface OpenCodeServerTarget {
 
 type RetinueTraceEvent =
   | { event: "opencode_server_reused"; baseUrl: string; source: "memory" | "discovery"; cwd?: string }
+  | { event: "opencode_server_attach_unreachable"; baseUrl: string; cwd?: string; fallbackBaseUrl?: string }
   | { event: "opencode_server_port_occupied"; host: string; port: number; baseUrl: string }
   | { event: "opencode_server_idle_shutdown_scheduled"; baseUrl: string; delayMs: number; cwd?: string }
   | { event: "opencode_server_stopped"; baseUrl: string; pid?: number; reason: "idle" | "startup_failed" | "process_exit"; cwd?: string }
@@ -82,11 +90,23 @@ interface ManagedOpenCodeDiscovery {
 }
 
 export function resolveOpenCodeServer(config: OpenCodeServerConfig): OpenCodeServerResolution {
+  const fallbackServe = resolveOpenCodeAutoServe(config);
   if (config.baseUrl?.trim()) {
-    return { mode: "attach", baseUrl: normalizeBaseUrl(config.baseUrl) };
+    return {
+      mode: "attach",
+      baseUrl: normalizeBaseUrl(config.baseUrl),
+      ...(fallbackServe ? { fallbackServe } : {})
+    };
   }
+  if (fallbackServe) {
+    return fallbackServe;
+  }
+  throw new Error("OpenCode server target missing: provide RETINUE_OPENCODE_BASE_URL or enable RETINUE_OPENCODE_AUTO_SERVE=1");
+}
+
+function resolveOpenCodeAutoServe(config: OpenCodeServerConfig): OpenCodeServeResolution | undefined {
   if (!config.autoServe) {
-    throw new Error("OpenCode server target missing: provide RETINUE_OPENCODE_BASE_URL or enable RETINUE_OPENCODE_AUTO_SERVE=1");
+    return undefined;
   }
   const host = config.host ?? DEFAULT_OPENCODE_HOST;
   assertOpenCodeHostAllowed(host, config);
@@ -185,6 +205,18 @@ export async function ensureOpenCodeServer(
   options: { stateDir?: string; healthTimeoutMs?: number; healthPollMs?: number; lockTimeoutMs?: number; cwd?: string } = {}
 ): Promise<OpenCodeServerTarget> {
   if (resolution.mode === "attach") {
+    if (resolution.fallbackServe) {
+      const health = await readOpenCodeHealth(resolution.baseUrl, options.healthPollMs ?? DEFAULT_HEALTH_POLL_MS);
+      if (!health.reachable || !health.ok) {
+        await writeRetinueTrace(options.stateDir, {
+          event: "opencode_server_attach_unreachable",
+          baseUrl: resolution.baseUrl,
+          fallbackBaseUrl: `http://${resolution.fallbackServe.host}:${resolution.fallbackServe.port}`,
+          cwd: normalizeServerCwd(options.cwd)
+        });
+        return ensureOpenCodeServer(resolution.fallbackServe, options);
+      }
+    }
     return { baseUrl: resolution.baseUrl, started: false };
   }
   const cwd = normalizeServerCwd(options.cwd);

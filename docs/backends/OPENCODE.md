@@ -37,7 +37,7 @@ Explicit attach remains available:
 RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096
 ```
 
-The explicit URL must be loopback HTTP. Paths are ignored and normalized to the origin.
+The explicit URL must be loopback HTTP. Paths are ignored and normalized to the origin. If both `RETINUE_OPENCODE_BASE_URL` and `RETINUE_OPENCODE_AUTO_SERVE=1` are set, Retinue treats the explicit URL as the preferred attach target and falls back to managed auto-serve when that target is unreachable or does not look like OpenCode. Set only `RETINUE_OPENCODE_BASE_URL` for strict externally managed attach mode.
 
 Model and agent overrides are optional:
 
