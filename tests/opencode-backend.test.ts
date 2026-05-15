@@ -307,6 +307,7 @@ describe("OpenCodeBackend", () => {
 
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"event":"opencode_job_stalled"');
+    expect(trace).toContain('"stallReason":"tool_loop_no_completion"');
     expect(trace).toContain('"toStatus":"stalled"');
     expect(trace).toContain('"toolCallAssistantRounds":3');
     expect(trace).toContain('"lastMessagePartSummaries"');
@@ -339,6 +340,7 @@ describe("OpenCodeBackend", () => {
 
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"event":"opencode_job_stalled"');
+    expect(trace).toContain('"stallReason":"backend_no_final_text"');
     expect(trace).toContain('"emptyAssistantRounds":1');
     expect(trace).toContain('"lastAssistantPartTypes":["step-start","step-finish"]');
   });
@@ -366,6 +368,7 @@ describe("OpenCodeBackend", () => {
 
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"event":"opencode_job_stalled"');
+    expect(trace).toContain('"stallReason":"provider_blank_assistant"');
     expect(trace).toContain('"blankAssistantRounds":1');
     expect(trace).toContain('"lastAssistantProviderID":"litellm"');
     expect(trace).toContain('"lastAssistantModelID":"semantic-router"');
@@ -397,6 +400,7 @@ describe("OpenCodeBackend", () => {
 
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"event":"opencode_job_stalled"');
+    expect(trace).toContain('"stallReason":"provider_zero_progress"');
     expect(trace).toContain('"zeroProgressAssistantRounds":1');
     expect(trace).toContain('"lastAssistantProviderID":"litellm"');
     expect(trace).toContain('"lastAssistantModelID":"semantic-router"');
@@ -428,6 +432,7 @@ describe("OpenCodeBackend", () => {
 
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"event":"opencode_job_stalled"');
+    expect(trace).toContain('"stallReason":"read_tool_stalled"');
     expect(trace).toContain('"runningReadToolParts":1');
     expect(trace).toContain('"lastAssistantProviderID":"litellm"');
     expect(trace).toContain('"lastAssistantModelID":"semantic-router"');
@@ -458,6 +463,7 @@ describe("OpenCodeBackend", () => {
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"event":"opencode_job_stalled"');
+    expect(trace).toContain('"stallReason":"incomplete_assistant_round"');
     expect(trace).toContain('"toolCallAssistantRounds":4');
     expect(trace).toContain('"incompleteAssistantRound":true');
     expect(trace).toContain('"incompleteAssistantStallThresholdMs":1');

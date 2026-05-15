@@ -178,12 +178,18 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
           effectiveTimeoutMs
         });
       }
-      const result = await backend.result({ jobId });
+      const stateDir = resolveStateDir({
+        explicitStateDir: process.env.RETINUE_STATE_DIR,
+        env: process.env
+      });
+      const paths = getJobPaths(stateDir, jobId);
+      const [result, diagnostic] = await Promise.all([backend.result({ jobId }), readLatestJobDiagnostic(paths.stderr)]);
       return jsonToolResult({
         task_name: isJobMeta(status) ? status.name : undefined,
         jobId,
         status: responseStatus,
-        result
+        result,
+        diagnostic
       });
     }
   );
@@ -709,6 +715,8 @@ function summarizeJobDiagnostic(value: unknown): Record<string, unknown> | undef
     patchPartCount: numberValue(diagnostic.patchPartCount),
     readOnlyPatchPartCount: numberValue(diagnostic.readOnlyPatchPartCount),
     readOnlyWriteIntent,
+    stallReason: stringValue(diagnostic.stallReason),
+    stallSummary: stringValue(diagnostic.stallSummary),
     toolCallAssistantRounds: numberValue(diagnostic.toolCallAssistantRounds),
     emptyAssistantRounds: numberValue(diagnostic.emptyAssistantRounds),
     blankAssistantRounds: numberValue(diagnostic.blankAssistantRounds),
@@ -722,6 +730,10 @@ function summarizeJobDiagnostic(value: unknown): Record<string, unknown> | undef
 }
 
 function createDiagnosticSummaryMessage(event: string | undefined, diagnostic: Record<string, unknown>): string {
+  const stallSummary = stringValue(diagnostic.stallSummary);
+  if (stallSummary) {
+    return stallSummary;
+  }
   if (diagnostic.readOnlyWriteIntent === true) {
     return "OpenCode read-only job emitted patch/write intent; treat the child output as untrusted and inspect diagnostics.";
   }

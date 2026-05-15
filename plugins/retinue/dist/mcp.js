@@ -22611,7 +22611,9 @@ function computeStallDiagnostic(jobMessages, meta, env) {
     return {
       patchPartCount,
       readOnlyPatchPartCount: patchPartCount,
-      readOnlyWriteIntent: true
+      readOnlyWriteIntent: true,
+      stallReason: "read_only_write_intent",
+      stallSummary: "OpenCode read-only job emitted patch/write intent."
     };
   }
   const thresholdMs = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_MS, DEFAULT_STALL_MS);
@@ -22647,7 +22649,7 @@ function computeStallDiagnostic(jobMessages, meta, env) {
   if (!emptyAssistantStalled && !blankAssistantStalled && !zeroProgressAssistantStalled && !readToolStalled && !incompleteAssistantStalled && durationMs < thresholdMs) {
     return void 0;
   }
-  return {
+  const diagnostic = {
     toolCallAssistantRounds,
     emptyAssistantRounds,
     blankAssistantRounds,
@@ -22661,7 +22663,18 @@ function computeStallDiagnostic(jobMessages, meta, env) {
     incompleteAssistantStallThresholdMs: incompleteThresholdMs,
     stallToolCallRoundThreshold: roundThreshold,
     stallEmptyAssistantRoundThreshold: emptyAssistantThreshold,
-    incompleteAssistantRound
+    incompleteAssistantRound,
+    stallReason: selectStallReason({
+      emptyAssistantStalled,
+      blankAssistantStalled,
+      zeroProgressAssistantStalled,
+      readToolStalled,
+      incompleteAssistantStalled
+    })
+  };
+  return {
+    ...diagnostic,
+    stallSummary: createStallSummary(diagnostic)
   };
 }
 function createStallMessage(diagnostic) {
@@ -22684,6 +22697,45 @@ function createStallMessage(diagnostic) {
     return `OpenCode job stalled: observed ${runningReadToolParts} running read tool call(s) with no completed assistant text for ${durationMs}ms. The OpenCode tool executor may be stuck; inspect Retinue trace/job diagnostics for call IDs and message summaries.`;
   }
   return `OpenCode job stalled: observed ${rounds} tool-call assistant round(s) and ${emptyRounds} empty assistant round(s) with no completed assistant text for ${durationMs}ms. Inspect Retinue trace/job diagnostics for message summaries.`;
+}
+function selectStallReason(stalled) {
+  if (stalled.blankAssistantStalled) {
+    return "provider_blank_assistant";
+  }
+  if (stalled.zeroProgressAssistantStalled) {
+    return "provider_zero_progress";
+  }
+  if (stalled.readToolStalled) {
+    return "read_tool_stalled";
+  }
+  if (stalled.incompleteAssistantStalled) {
+    return "incomplete_assistant_round";
+  }
+  if (stalled.emptyAssistantStalled) {
+    return "backend_no_final_text";
+  }
+  return "tool_loop_no_completion";
+}
+function createStallSummary(diagnostic) {
+  const durationMs = diagnostic.noCompletedAssistantDurationMs ?? 0;
+  switch (diagnostic.stallReason) {
+    case "read_only_write_intent":
+      return "OpenCode read-only job emitted patch/write intent.";
+    case "provider_blank_assistant":
+      return `OpenCode provider/router produced blank assistant output for ${durationMs}ms.`;
+    case "provider_zero_progress":
+      return `OpenCode provider/router produced zero-progress assistant output for ${durationMs}ms.`;
+    case "read_tool_stalled":
+      return `OpenCode tool executor left read tool call(s) running for ${durationMs}ms.`;
+    case "incomplete_assistant_round":
+      return `OpenCode left the latest assistant round incomplete for ${durationMs}ms.`;
+    case "backend_no_final_text":
+      return `OpenCode produced assistant rounds with no final text for ${durationMs}ms.`;
+    case "tool_loop_no_completion":
+      return `OpenCode ran repeated tool-call assistant rounds with no final text for ${durationMs}ms.`;
+    default:
+      return `OpenCode job stalled with no completed assistant text for ${durationMs}ms.`;
+  }
 }
 function parseOptionalNonNegativeInt(value, fallback) {
   if (!value) {
@@ -23636,15 +23688,15 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
       const status = await backend.status({ jobId });
       const responseStatus = isJobMeta(status) ? status.status : waited.status;
       if (responseStatus === "running") {
-        const stateDir = resolveStateDir({
+        const stateDir2 = resolveStateDir({
           explicitStateDir: process.env.RETINUE_STATE_DIR,
           env: process.env
         });
-        const paths = getJobPaths(stateDir, jobId);
-        const [stdoutTail, stderrTail, diagnostic] = await Promise.all([
-          readTextTailIfExists(paths.stdout, 4096),
-          readTextTailIfExists(paths.stderr, 4096),
-          readLatestJobDiagnostic(paths.stderr)
+        const paths2 = getJobPaths(stateDir2, jobId);
+        const [stdoutTail, stderrTail, diagnostic2] = await Promise.all([
+          readTextTailIfExists(paths2.stdout, 4096),
+          readTextTailIfExists(paths2.stderr, 4096),
+          readLatestJobDiagnostic(paths2.stderr)
         ]);
         return jsonToolResult({
           task_name: isJobMeta(status) ? status.name : void 0,
@@ -23656,29 +23708,35 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
           updatedAt: isJobMeta(status) ? status.updatedAt : void 0,
           externalSessionId: isJobMeta(status) ? status.externalSessionId : void 0,
           externalServerUrl: isJobMeta(status) ? status.externalServerUrl : void 0,
-          stateDir,
-          jobDir: paths.dir,
-          promptPath: paths.prompt,
-          stdoutPath: paths.stdout,
-          stderrPath: paths.stderr,
+          stateDir: stateDir2,
+          jobDir: paths2.dir,
+          promptPath: paths2.prompt,
+          stdoutPath: paths2.stdout,
+          stderrPath: paths2.stderr,
           stdoutTail: stdoutTail.text,
           stderrTail: stderrTail.text,
           stdoutTailBytes: stdoutTail.bytes,
           stderrTailBytes: stderrTail.bytes,
           stdoutTailTruncated: stdoutTail.truncated,
           stderrTailTruncated: stderrTail.truncated,
-          diagnostic,
-          tracePath: getRetinueTracePath(stateDir),
+          diagnostic: diagnostic2,
+          tracePath: getRetinueTracePath(stateDir2),
           requestedTimeoutMs: timeoutMs,
           effectiveTimeoutMs
         });
       }
-      const result = await backend.result({ jobId });
+      const stateDir = resolveStateDir({
+        explicitStateDir: process.env.RETINUE_STATE_DIR,
+        env: process.env
+      });
+      const paths = getJobPaths(stateDir, jobId);
+      const [result, diagnostic] = await Promise.all([backend.result({ jobId }), readLatestJobDiagnostic(paths.stderr)]);
       return jsonToolResult({
         task_name: isJobMeta(status) ? status.name : void 0,
         jobId,
         status: responseStatus,
-        result
+        result,
+        diagnostic
       });
     }
   );
@@ -24132,6 +24190,8 @@ function summarizeJobDiagnostic(value) {
     patchPartCount: numberValue(diagnostic.patchPartCount),
     readOnlyPatchPartCount: numberValue(diagnostic.readOnlyPatchPartCount),
     readOnlyWriteIntent,
+    stallReason: stringValue(diagnostic.stallReason),
+    stallSummary: stringValue(diagnostic.stallSummary),
     toolCallAssistantRounds: numberValue(diagnostic.toolCallAssistantRounds),
     emptyAssistantRounds: numberValue(diagnostic.emptyAssistantRounds),
     blankAssistantRounds: numberValue(diagnostic.blankAssistantRounds),
@@ -24144,6 +24204,10 @@ function summarizeJobDiagnostic(value) {
   });
 }
 function createDiagnosticSummaryMessage(event, diagnostic) {
+  const stallSummary = stringValue(diagnostic.stallSummary);
+  if (stallSummary) {
+    return stallSummary;
+  }
   if (diagnostic.readOnlyWriteIntent === true) {
     return "OpenCode read-only job emitted patch/write intent; treat the child output as untrusted and inspect diagnostics.";
   }
