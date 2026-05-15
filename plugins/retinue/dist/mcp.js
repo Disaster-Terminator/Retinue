@@ -21986,6 +21986,14 @@ var OPENCODE_READ_ONLY_TOOLS = {
   apply_patch: false,
   task: false
 };
+var OPENCODE_READ_ONLY_PROMPT_CONTRACT = [
+  "Retinue read-only child agent contract:",
+  "- Use only OpenCode read, grep, and glob tools plus plain-text reasoning.",
+  "- Do not call bash, edit, write, apply_patch, task, or nested agents.",
+  "- Do not attempt shell commands, file writes, patches, or interactive approvals.",
+  "- If the task needs shell or write access, say that the read-only boundary prevents that part and provide the best file-based answer you can.",
+  "- Always finish with a concise textual result; do not stop after tool calls without a final answer."
+].join("\n");
 var OPENCODE_READ_ONLY_PERMISSION = [
   { permission: "read", pattern: "*", action: "allow" },
   { permission: "glob", pattern: "*", action: "allow" },
@@ -22457,7 +22465,7 @@ var OpenCodeBackend = class {
   async submitPromptAsync(client, sessionId, meta, options) {
     try {
       await client.promptAsync(sessionId, {
-        prompt: options.prompt,
+        prompt: buildOpenCodePrompt(options.prompt, options.readOnly === true),
         model: options.model,
         agent: options.agent,
         tools: options.readOnly === true ? OPENCODE_READ_ONLY_TOOLS : void 0
@@ -22850,6 +22858,15 @@ async function writeJsonAtomic(filePath, value) {
 function createPromptPreview(prompt) {
   const normalized = prompt.replace(/\s+/g, " ").trim();
   return normalized.length > 120 ? `${normalized.slice(0, 117)}...` : normalized;
+}
+function buildOpenCodePrompt(prompt, readOnly) {
+  if (!readOnly) {
+    return prompt;
+  }
+  return `${OPENCODE_READ_ONLY_PROMPT_CONTRACT}
+
+User task:
+${prompt}`;
 }
 function sha256(value) {
   return createHash2("sha256").update(value).digest("hex");

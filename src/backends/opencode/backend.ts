@@ -27,6 +27,14 @@ const OPENCODE_READ_ONLY_TOOLS: Record<string, boolean> = {
   apply_patch: false,
   task: false
 };
+const OPENCODE_READ_ONLY_PROMPT_CONTRACT = [
+  "Retinue read-only child agent contract:",
+  "- Use only OpenCode read, grep, and glob tools plus plain-text reasoning.",
+  "- Do not call bash, edit, write, apply_patch, task, or nested agents.",
+  "- Do not attempt shell commands, file writes, patches, or interactive approvals.",
+  "- If the task needs shell or write access, say that the read-only boundary prevents that part and provide the best file-based answer you can.",
+  "- Always finish with a concise textual result; do not stop after tool calls without a final answer."
+].join("\n");
 const OPENCODE_READ_ONLY_PERMISSION: OpenCodePermissionRule[] = [
   { permission: "read", pattern: "*", action: "allow" },
   { permission: "glob", pattern: "*", action: "allow" },
@@ -613,7 +621,7 @@ export class OpenCodeBackend implements AgentBackend {
   private async submitPromptAsync(client: OpenCodeClient, sessionId: string, meta: JobMeta, options: AgentRunOptions): Promise<void> {
     try {
       await client.promptAsync(sessionId, {
-        prompt: options.prompt,
+        prompt: buildOpenCodePrompt(options.prompt, options.readOnly === true),
         model: options.model,
         agent: options.agent,
         tools: options.readOnly === true ? OPENCODE_READ_ONLY_TOOLS : undefined
@@ -1077,6 +1085,13 @@ async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> 
 function createPromptPreview(prompt: string): string {
   const normalized = prompt.replace(/\s+/g, " ").trim();
   return normalized.length > 120 ? `${normalized.slice(0, 117)}...` : normalized;
+}
+
+function buildOpenCodePrompt(prompt: string, readOnly: boolean): string {
+  if (!readOnly) {
+    return prompt;
+  }
+  return `${OPENCODE_READ_ONLY_PROMPT_CONTRACT}\n\nUser task:\n${prompt}`;
 }
 
 function sha256(value: string): string {

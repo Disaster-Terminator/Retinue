@@ -68,8 +68,8 @@ describe("Retinue OpenCode auto-serve MCP E2E", () => {
     const firstWait = parseToolJson(await first.client.callTool({ name: "retinue_wait_agent", arguments: { jobId: firstSpawn.jobId, timeoutMs: 5000 } }));
     const secondWait = parseToolJson(await second.client.callTool({ name: "retinue_wait_agent", arguments: { jobId: secondSpawn.jobId, timeoutMs: 5000 } }));
 
-    expect(firstWait).toMatchObject({ status: "completed", result: { parsedStdout: { result: "fake cli result: Reply exactly: FIRST_OK" } } });
-    expect(secondWait).toMatchObject({ status: "completed", result: { parsedStdout: { result: "fake cli result: Reply exactly: SECOND_OK" } } });
+    expect(firstWait).toMatchObject({ status: "completed", result: { parsedStdout: { result: expect.stringContaining("Reply exactly: FIRST_OK") } } });
+    expect(secondWait).toMatchObject({ status: "completed", result: { parsedStdout: { result: expect.stringContaining("Reply exactly: SECOND_OK") } } });
 
     const discovery = JSON.parse(await fs.readFile(getScopedDiscoveryPath(tempDir, tempDir), "utf8")) as { baseUrl?: string; cwd?: string };
     expect(discovery.baseUrl).toBe(`http://127.0.0.1:${fallbackPort}`);
@@ -110,12 +110,9 @@ describe("Retinue OpenCode auto-serve MCP E2E", () => {
       );
 
       expect(waits.map((wait) => wait.status)).toEqual(["completed", "completed", "completed", "completed"]);
-      expect(waits.map((wait) => wait.result.parsedStdout.result)).toEqual([
-        "fake cli result: Reply exactly: THREAD_1_OK",
-        "fake cli result: Reply exactly: THREAD_2_OK",
-        "fake cli result: Reply exactly: THREAD_3_OK",
-        "fake cli result: Reply exactly: THREAD_4_OK"
-      ]);
+      for (const [index, wait] of waits.entries()) {
+        expect(wait.result.parsedStdout.result).toContain(`Reply exactly: THREAD_${index + 1}_OK`);
+      }
 
       const discovery = JSON.parse(await fs.readFile(getScopedDiscoveryPath(tempDir, tempDir), "utf8")) as { baseUrl?: string; cwd?: string };
       expect(discovery.baseUrl).toBe(`http://127.0.0.1:${preferredPort}`);
