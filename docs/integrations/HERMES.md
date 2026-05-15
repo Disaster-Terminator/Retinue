@@ -45,6 +45,8 @@ mcp_servers:
 
 The same snippet is shipped at `integrations/hermes/mcp-retinue.yaml`.
 
+Do not set `RETINUE_OPENCODE_BASE_URL` for the normal Hermes path. That variable is for attaching to an externally managed OpenCode server. If an older local Hermes config still contains a fixed base URL while `RETINUE_OPENCODE_AUTO_SERVE=1` is also enabled, Retinue will try that URL first and then fall back to managed auto-serve when it is unavailable.
+
 ## Source Checkout Runtime
 
 For local development without a global npm install, point Hermes at the built source checkout:

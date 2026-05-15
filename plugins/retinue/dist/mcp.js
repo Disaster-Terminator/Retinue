@@ -21327,11 +21327,22 @@ var OpenCodeStartupError = class extends Error {
   kind;
 };
 function resolveOpenCodeServer(config2) {
+  const fallbackServe = resolveOpenCodeAutoServe(config2);
   if (config2.baseUrl?.trim()) {
-    return { mode: "attach", baseUrl: normalizeBaseUrl(config2.baseUrl) };
+    return {
+      mode: "attach",
+      baseUrl: normalizeBaseUrl(config2.baseUrl),
+      ...fallbackServe ? { fallbackServe } : {}
+    };
   }
+  if (fallbackServe) {
+    return fallbackServe;
+  }
+  throw new Error("OpenCode server target missing: provide RETINUE_OPENCODE_BASE_URL or enable RETINUE_OPENCODE_AUTO_SERVE=1");
+}
+function resolveOpenCodeAutoServe(config2) {
   if (!config2.autoServe) {
-    throw new Error("OpenCode server target missing: provide RETINUE_OPENCODE_BASE_URL or enable RETINUE_OPENCODE_AUTO_SERVE=1");
+    return void 0;
   }
   const host = config2.host ?? DEFAULT_OPENCODE_HOST;
   assertOpenCodeHostAllowed(host, config2);
@@ -21411,6 +21422,18 @@ async function resolveOpenCodeCommandForSpawn(command, options = {}) {
 }
 async function ensureOpenCodeServer(resolution, options = {}) {
   if (resolution.mode === "attach") {
+    if (resolution.fallbackServe) {
+      const health = await readOpenCodeHealth(resolution.baseUrl, options.healthPollMs ?? DEFAULT_HEALTH_POLL_MS);
+      if (!health.reachable || !health.ok) {
+        await writeRetinueTrace(options.stateDir, {
+          event: "opencode_server_attach_unreachable",
+          baseUrl: resolution.baseUrl,
+          fallbackBaseUrl: `http://${resolution.fallbackServe.host}:${resolution.fallbackServe.port}`,
+          cwd: normalizeServerCwd(options.cwd)
+        });
+        return ensureOpenCodeServer(resolution.fallbackServe, options);
+      }
+    }
     return { baseUrl: resolution.baseUrl, started: false };
   }
   const cwd = normalizeServerCwd(options.cwd);

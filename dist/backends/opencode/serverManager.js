@@ -23,11 +23,22 @@ class OpenCodeStartupError extends Error {
     }
 }
 export function resolveOpenCodeServer(config) {
+    const fallbackServe = resolveOpenCodeAutoServe(config);
     if (config.baseUrl?.trim()) {
-        return { mode: "attach", baseUrl: normalizeBaseUrl(config.baseUrl) };
+        return {
+            mode: "attach",
+            baseUrl: normalizeBaseUrl(config.baseUrl),
+            ...(fallbackServe ? { fallbackServe } : {})
+        };
     }
+    if (fallbackServe) {
+        return fallbackServe;
+    }
+    throw new Error("OpenCode server target missing: provide RETINUE_OPENCODE_BASE_URL or enable RETINUE_OPENCODE_AUTO_SERVE=1");
+}
+function resolveOpenCodeAutoServe(config) {
     if (!config.autoServe) {
-        throw new Error("OpenCode server target missing: provide RETINUE_OPENCODE_BASE_URL or enable RETINUE_OPENCODE_AUTO_SERVE=1");
+        return undefined;
     }
     const host = config.host ?? DEFAULT_OPENCODE_HOST;
     assertOpenCodeHostAllowed(host, config);
@@ -101,6 +112,18 @@ export async function resolveOpenCodeCommandForSpawn(command, options = {}) {
 }
 export async function ensureOpenCodeServer(resolution, options = {}) {
     if (resolution.mode === "attach") {
+        if (resolution.fallbackServe) {
+            const health = await readOpenCodeHealth(resolution.baseUrl, options.healthPollMs ?? DEFAULT_HEALTH_POLL_MS);
+            if (!health.reachable || !health.ok) {
+                await writeRetinueTrace(options.stateDir, {
+                    event: "opencode_server_attach_unreachable",
+                    baseUrl: resolution.baseUrl,
+                    fallbackBaseUrl: `http://${resolution.fallbackServe.host}:${resolution.fallbackServe.port}`,
+                    cwd: normalizeServerCwd(options.cwd)
+                });
+                return ensureOpenCodeServer(resolution.fallbackServe, options);
+            }
+        }
         return { baseUrl: resolution.baseUrl, started: false };
     }
     const cwd = normalizeServerCwd(options.cwd);
