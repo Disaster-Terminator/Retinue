@@ -93,6 +93,7 @@ describe("OpenCodeBackend", () => {
     expect(submittedPrompt).toContain("Retinue read-only child agent");
     expect(submittedPrompt).toContain("Use only OpenCode read, grep, and glob tools");
     expect(submittedPrompt).toContain("read only a small set of targeted files");
+    expect(submittedPrompt).toContain("Use read serially");
     expect(submittedPrompt).toContain("Do not call bash");
     expect(submittedPrompt).toContain("inspect only");
   });
