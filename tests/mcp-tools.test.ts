@@ -305,6 +305,7 @@ describe("MCP tools", () => {
       const submittedPrompt = extractOpenCodePromptText(fakeOpenCode.promptRequests.at(-1));
       expect(submittedPrompt).toContain("Retinue read-only child agent");
       expect(submittedPrompt).toContain("Use only OpenCode read, grep, and glob tools");
+      expect(submittedPrompt).toContain("read only a small set of targeted files");
       expect(submittedPrompt).toContain("Do not call bash");
       expect(submittedPrompt).toContain("retinue mcp");
       expect(fakeOpenCode.sessionRequests.at(-1)).toMatchObject({

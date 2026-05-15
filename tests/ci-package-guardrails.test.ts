@@ -187,6 +187,7 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(opencodeBackendSource).toContain("task: false");
     expect(opencodeBackendSource).toContain("Retinue read-only child agent contract");
     expect(opencodeBackendSource).toContain("Use only OpenCode read, grep, and glob tools");
+    expect(opencodeBackendSource).toContain("read only a small set of targeted files");
     expect(opencodeBackendSource).toContain("Do not call bash");
   });
 
