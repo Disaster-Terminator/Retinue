@@ -55,10 +55,11 @@
     "typecheck": "tsc -p tsconfig.json",
     "check:generated": "pnpm run build && git diff --exit-code -- dist plugins/retinue/dist",
     "gate:commit": "pnpm run typecheck",
-    "gate:local": "pnpm run typecheck && pnpm test && pnpm run check:generated && pnpm run smoke:package && pnpm run verify:package",
+    "gate:local": "pnpm run typecheck && pnpm test && pnpm run smoke:package && pnpm run verify:package",
+    "gate:release": "pnpm run typecheck && pnpm test && pnpm run check:generated && pnpm run smoke:package && pnpm run verify:package",
     "verify:package": "pnpm pack --dry-run --json | node scripts/verify-package.mjs",
     "smoke:package": "node scripts/smoke-package-artifacts.mjs",
-    "prepublishOnly": "pnpm run gate:local",
+    "prepublishOnly": "pnpm run gate:release",
     "dev:sync-plugin-cache": "node scripts/sync-installed-plugin-cache.mjs",
     "dev:sync-plugin-cache:all": "node scripts/sync-installed-plugin-cache.mjs --include-windows --include-wsl",
     "dev:install-hooks": "node scripts/install-git-hooks.mjs"

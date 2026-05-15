@@ -21314,6 +21314,7 @@ var DEFAULT_OPENCODE_FALLBACK_PORTS = buildPortRange(4097, 4127);
 var DEFAULT_HEALTH_TIMEOUT_MS = 1e4;
 var DEFAULT_HEALTH_POLL_MS = 250;
 var DEFAULT_LOCK_TIMEOUT_MS = 1e4;
+var DEFAULT_LOCK_STALE_MS = 1e3;
 var managedServers = /* @__PURE__ */ new Map();
 var managedServerIdleTimers = /* @__PURE__ */ new Map();
 var WINDOWS_EXECUTABLE_EXTENSIONS = [".EXE", ".CMD", ".BAT", ""];
@@ -21719,6 +21720,9 @@ async function readReusableDiscovery(stateDir, cwd) {
     return void 0;
   }
   const health = await readOpenCodeHealth(discovery.baseUrl);
+  if (health.timedOut) {
+    return { baseUrl: discovery.baseUrl, started: false, cwd };
+  }
   if (!health.ok) {
     await removeDiscoveryIfMatches(stateDir, discovery.pid, cwd);
     return void 0;
@@ -21777,7 +21781,13 @@ async function removeStaleLock(lockPath) {
       await fs.rm(lockPath, { force: true });
     }
   } catch {
-    await fs.rm(lockPath, { force: true });
+    try {
+      const stat = await fs.stat(lockPath);
+      if (Date.now() - stat.mtimeMs > DEFAULT_LOCK_STALE_MS) {
+        await fs.rm(lockPath, { force: true });
+      }
+    } catch {
+    }
   }
 }
 function normalizeOpenCodeServerDiscovery(value) {

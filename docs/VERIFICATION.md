@@ -12,6 +12,15 @@ pnpm run gate:local
 ```
 
 Default tests are deterministic. They do not require real Claude Code or a live OpenCode server.
+`gate:local` intentionally does not run `check:generated`; generated artifact drift is checked
+after commits and in release gates so development runs do not fail just because fresh build output
+has not been staged yet.
+
+Run this before tagging or publishing:
+
+```bash
+pnpm run gate:release
+```
 
 ## Local Hooks
 
@@ -24,8 +33,8 @@ pnpm run dev:install-hooks
 The installed `post-commit` hook runs `pnpm run check:generated` after a commit, which is the
 right point to verify that generated `dist/` and `plugins/retinue/dist/` files were committed.
 The installed `pre-commit` hook runs `pnpm run gate:commit`, currently a fast typecheck. The
-installed `pre-push` hook runs `pnpm run gate:local` so tests, generated artifacts, package smoke,
-and package verification are checked before pushing. Use
+installed `pre-push` hook runs `pnpm run gate:local` so tests, package smoke, and package
+verification are checked before pushing. Use
 `RETINUE_SKIP_GIT_HOOKS=1` only for an explicit emergency local bypass; CI and release gates still
 run the same deterministic checks.
 

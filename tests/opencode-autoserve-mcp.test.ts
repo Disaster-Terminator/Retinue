@@ -149,7 +149,11 @@ function parseToolJson(result: unknown): any {
   if (!text) {
     throw new Error("Tool result did not include text content");
   }
-  return JSON.parse(text);
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    throw new Error(`Tool result was not JSON: ${text}`, { cause: error });
+  }
 }
 
 async function startExternalServer(): Promise<{ port: number; close(): Promise<void> }> {
