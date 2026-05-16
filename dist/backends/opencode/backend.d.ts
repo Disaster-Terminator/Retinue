@@ -26,6 +26,7 @@ export declare class OpenCodeBackend implements AgentBackend {
     run(options: AgentRunOptions): Promise<JobMeta>;
     continueJob(options: AgentContinueOptions): Promise<JobMeta>;
     status(handle: AgentHandle): Promise<JobStatusResult>;
+    private maybeSubmitSoftStallRescue;
     result(handle: AgentHandle): Promise<JobResult>;
     abort(handle: AgentHandle): Promise<void>;
     wait(handle: AgentHandle, timeoutMs?: number): Promise<{
