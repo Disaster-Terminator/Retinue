@@ -70,6 +70,7 @@ describe("OpenCodeBackend", () => {
       permission: expect.arrayContaining([
         { permission: "edit", pattern: "*", action: "deny" },
         { permission: "write", pattern: "*", action: "deny" },
+        { permission: "apply_patch", pattern: "*", action: "deny" },
         { permission: "task", pattern: "*", action: "deny" },
         { permission: "question", pattern: "*", action: "deny" },
         { permission: "external_directory", pattern: "*", action: "deny" },
@@ -124,6 +125,24 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"readOnlyPatchPartCount":1');
     expect(trace).toContain('"readOnlyWriteIntent":true');
     expect(trace).toContain('"type":"patch"');
+  });
+
+  it("stalls read-only OpenCode jobs that attempt write-capable tools", async () => {
+    const backend = createBackend();
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
+    server!.appendWriteIntentAssistant(started.externalSessionId!, "write");
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "stalled",
+      parsedStdout: { result: expect.stringContaining("OpenCode read-only job emitted patch/write intent") },
+      error: expect.stringContaining("OpenCode read-only job emitted patch/write intent")
+    });
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"readOnlyWriteIntent":true');
+    expect(trace).toContain('"writeIntentToolPartCount":1');
+    expect(trace).toContain('"tool":"write"');
   });
 
   it("surfaces final text from read-only OpenCode jobs rejected for patch intent", async () => {
@@ -829,6 +848,35 @@ describe("OpenCodeBackend", () => {
     expect(continued.parentJobId).toBe(first.jobId);
     await expect(backend.result({ jobId: continued.jobId })).resolves.toMatchObject({
       parsedStdout: { result: "fake result: second" }
+    });
+  });
+
+  it("starts a new read-only OpenCode session instead of reusing an unverified session", async () => {
+    const backend = createBackend();
+    const first = await backend.run({ cwd: tempDir, prompt: "first" });
+
+    const continued = await backend.continueJob({
+      cwd: tempDir,
+      prompt: "second",
+      externalSessionId: first.externalSessionId,
+      parentJobId: first.jobId,
+      parentSessionId: first.externalSessionId,
+      readOnly: true
+    });
+
+    expect(continued.externalSessionId).not.toBe(first.externalSessionId);
+    expect(continued.parentJobId).toBe(first.jobId);
+    expect(continued.parentSessionId).toBe(first.externalSessionId);
+    expect(continued.readOnly).toBe(true);
+    expect(server!.sessionRequests.at(-1)).toMatchObject({
+      permission: expect.arrayContaining([
+        { permission: "edit", pattern: "*", action: "deny" },
+        { permission: "write", pattern: "*", action: "deny" },
+        { permission: "apply_patch", pattern: "*", action: "deny" }
+      ])
+    });
+    await expect(backend.result({ jobId: continued.jobId })).resolves.toMatchObject({
+      parsedStdout: { result: expect.stringContaining("User task:\nsecond") }
     });
   });
 
