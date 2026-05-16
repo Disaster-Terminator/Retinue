@@ -501,6 +501,30 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"stateStatus":"running"');
   });
 
+  it("keeps default pending read tool calls running through realistic late-result windows", async () => {
+    const backend = createBackend();
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "boundary audit reads deploy script" });
+    server!.appendPendingReadToolAssistant(started.externalSessionId!);
+
+    const paths = getJobPaths(tempDir, started.jobId);
+    const meta = JSON.parse(await fs.readFile(paths.meta, "utf8")) as typeof started;
+    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 181_000).toISOString() })}\n`, "utf8");
+
+    await expect(backend.wait({ jobId: started.jobId }, 1)).resolves.toMatchObject({ status: "running" });
+    server!.completeSessionWithFinalText(started.externalSessionId!, "late read-tool recovery");
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "completed",
+      parsedStdout: { result: "late read-tool recovery" }
+    });
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_job_wait_timeout"');
+    expect(trace).not.toContain('"event":"opencode_job_stalled"');
+  });
+
   it("marks pending read tool calls as stalled with read-tool diagnostics", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
