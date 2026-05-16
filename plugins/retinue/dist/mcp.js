@@ -22241,24 +22241,31 @@ var OpenCodeBackend = class {
     const diagnostic = await this.inspectJob(meta);
     if (meta.status === "stalled") {
       const stderr = createStallMessage(diagnostic);
-      await fs2.writeFile(paths.stdout, stderr, "utf8");
+      const text2 = diagnostic.readOnlyWriteIntent === true ? latestAssistantMessageText(jobMessages) : "";
+      const stdout = text2 || stderr;
+      await fs2.writeFile(paths.stdout, stdout, "utf8");
       await fs2.appendFile(paths.stderr, `${stderr}
 `, "utf8");
+      diagnostic.selectedAssistantTextBytes = Buffer.byteLength(stdout, "utf8");
+      diagnostic.selectedAssistantSha256 = sha256(stdout);
+      if (process.env.RETINUE_TRACE_TEXT_PREVIEW === "1") {
+        diagnostic.selectedAssistantPreview = createPromptPreview(stdout);
+      }
       await this.writeJobTrace("opencode_job_result_read", meta, diagnostic);
       await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_result_read", diagnostic });
       return {
         jobId: handle.jobId,
         status: meta.status,
-        stdout: stderr,
+        stdout,
         stderr,
         stdoutPath: paths.stdout,
         stderrPath: paths.stderr,
-        stdoutBytes: Buffer.byteLength(stderr, "utf8"),
+        stdoutBytes: Buffer.byteLength(stdout, "utf8"),
         stderrBytes: Buffer.byteLength(stderr, "utf8"),
         stdoutTruncated: false,
         stderrTruncated: false,
         sessionId: meta.externalSessionId,
-        parsedStdout: { result: stderr },
+        parsedStdout: { result: stdout },
         error: stderr
       };
     }

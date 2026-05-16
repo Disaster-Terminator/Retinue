@@ -126,7 +126,7 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"type":"patch"');
   });
 
-  it("does not trust read-only OpenCode jobs that emit patch parts before final text", async () => {
+  it("surfaces final text from read-only OpenCode jobs rejected for patch intent", async () => {
     const backend = createBackend();
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
@@ -136,6 +136,8 @@ describe("OpenCodeBackend", () => {
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
       status: "stalled",
+      stdout: "final review",
+      parsedStdout: { result: "final review" },
       error: expect.stringContaining("OpenCode read-only job emitted patch/write intent")
     });
   });
