@@ -195,10 +195,12 @@ pnpm run probe:hermes-retinue
 ## 开发者文档
 
 - [源码安装和开发](docs/development/SOURCE_INSTALL.md)
+- [架构总览](docs/architecture/OVERVIEW.md)
 - [0.1.0 Release Notes](docs/release/v0.1.0_RELEASE_NOTES.md)
 - [0.1.0 发布说明（中文）](docs/release/v0.1.0_RELEASE_NOTES.zh-CN.md)
 - [0.1.0 发布就绪记录](docs/release/0.1.0_RELEASE_PLAN.md)
 - [Docs Index](docs/README.md)
+- [文档治理](docs/DOCUMENTATION_GOVERNANCE.md)
 - [Long-Term Vision](docs/LONG_TERM_VISION.md)
 - [Project Boundary](docs/architecture/PROJECT_BOUNDARY.md)
 - [Service Lifecycle](docs/deployment/SERVICE_LIFECYCLE.md)
