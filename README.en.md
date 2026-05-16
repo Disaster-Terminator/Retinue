@@ -109,6 +109,7 @@ This means:
 - OpenCode uses the active local profile for provider, model, login, plugins, and skills.
 - `plan` is the 0.1.0 default agent. Retinue product spawns are read-only by default: Retinue sends an OpenCode prompt-level override denying `edit`, `write`, `apply_patch`, and `bash` even when the local OpenCode profile allows them.
 - Read-only review prompts also ask OpenCode to return findings as plain text and avoid unified diffs or patch blocks. If OpenCode still emits patch/write intent, Retinue marks the job `stalled` and the result should be treated as non-evidence.
+- Default read-only children cannot inspect git history, staged changes, uncommitted diffs, or the latest commit unless the caller provides the relevant file paths or content. Use `access_mode: "profile"` only when git commands are intentionally acceptable.
 - Codex plugin installs read their default access mode from the installation-scoped `retinue.config.json` shipped with the plugin. It defaults to `{ "opencode": { "defaultAccessMode": "read_only" } }`.
 - `retinue_spawn_agent` can override that default per child with `access_mode: "read_only"` or `access_mode: "profile"`. Use `"profile"` only when the child is intentionally allowed to follow the active OpenCode profile, including write-capable tools if that profile allows them.
 - Hermes and custom MCP deployments can keep using environment configuration. `RETINUE_OPENCODE_ACCESS_MODE=profile` or the older `RETINUE_OPENCODE_READ_ONLY=0` selects profile permissions when child-agent writes are intentionally acceptable.

@@ -192,6 +192,8 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(opencodeBackendSource).toContain("Do not emit unified diffs");
     expect(opencodeBackendSource).toContain("Do not include patch blocks");
     expect(opencodeBackendSource).toContain("For code review, return findings as plain text");
+    expect(opencodeBackendSource).toContain("You cannot inspect git history");
+    expect(opencodeBackendSource).toContain("If the task asks for a diff");
     expect(opencodeBackendSource).toContain("Do not call bash");
   });
 
