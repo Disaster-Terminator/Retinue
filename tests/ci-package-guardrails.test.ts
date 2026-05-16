@@ -169,10 +169,10 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(readmeEn).toContain("a timeout from one wait call is not by itself a failed child");
   });
 
-  it("keeps OpenCode incomplete-assistant stall detection conservative by default", () => {
+  it("keeps OpenCode incomplete-assistant stall detection conservative while bounding blank placeholders", () => {
     expect(opencodeBackendSource).toContain("const DEFAULT_STALL_MS = 10 * 60_000");
     expect(opencodeBackendSource).toContain("const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = DEFAULT_STALL_MS");
-    expect(opencodeBackendSource).toContain("const DEFAULT_BLANK_ASSISTANT_STALL_MS = DEFAULT_STALL_MS");
+    expect(opencodeBackendSource).toContain("const DEFAULT_BLANK_ASSISTANT_STALL_MS = 90_000");
     expect(opencodeBackendSource).toContain("const DEFAULT_ZERO_PROGRESS_ASSISTANT_STALL_MS = DEFAULT_STALL_MS");
     expect(opencodeBackendSource).toContain("const DEFAULT_READ_TOOL_STALL_MS = 240_000");
     expect(opencodeBackendSource).toContain("const DEFAULT_COMPLETED_TOOL_LOOP_STALL_MS = 120_000");
