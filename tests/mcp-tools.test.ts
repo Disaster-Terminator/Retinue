@@ -316,6 +316,21 @@ describe("MCP tools", () => {
           { permission: "bash", pattern: "git show*", action: "allow" }
         ])
       });
+      const runningWait = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_wait_agent",
+          arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
+        })
+      );
+      expect(runningWait).toMatchObject({
+        jobId: spawn.jobId,
+        status: "running",
+        diagnostic: {
+          event: "opencode_job_wait_timeout",
+          status: "running"
+        }
+      });
+
       fakeOpenCode.completeSession(spawn.externalSessionId);
 
       const wait = parseToolJson(
@@ -328,8 +343,13 @@ describe("MCP tools", () => {
         task_name: "smoke",
         jobId: spawn.jobId,
         status: "completed",
-        result: { parsedStdout: { result: expect.stringContaining("retinue mcp") } }
+        result: { parsedStdout: { result: expect.stringContaining("retinue mcp") } },
+        diagnostic: {
+          event: "opencode_job_result_read",
+          status: "completed"
+        }
       });
+      expect(wait.diagnostic.message).not.toContain("still running");
 
       const close = parseToolJson(
         await connection.client.callTool({
@@ -498,7 +518,7 @@ describe("MCP tools", () => {
           status: "stalled"
         },
         diagnostic: {
-          event: "opencode_job_stalled",
+          event: "opencode_job_result_read",
           backend: "opencode",
           status: "stalled",
           stallReason: "provider_zero_progress",
