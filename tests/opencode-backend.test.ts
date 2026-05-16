@@ -127,6 +127,7 @@ describe("OpenCodeBackend", () => {
 
     expect(server!.sessionRequests.at(-1)).toMatchObject({
       permission: expect.arrayContaining([
+        { permission: "patch", pattern: "*", action: "deny" },
         { permission: "bash", pattern: "*", action: "deny" }
       ])
     });
@@ -139,12 +140,14 @@ describe("OpenCodeBackend", () => {
         edit: false,
         write: false,
         apply_patch: false,
+        patch: false,
         task: false
       }
     });
     const submittedPrompt = extractPromptText(server!.promptRequests.at(-1));
     expect(submittedPrompt).toContain("Use only OpenCode read, grep, and glob tools");
     expect(submittedPrompt).toContain("Do not call bash");
+    expect(submittedPrompt).toContain("Do not enter patch mode");
   });
 
   it("stalls read-only OpenCode jobs that emit patch parts", async () => {

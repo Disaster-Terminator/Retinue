@@ -299,6 +299,7 @@ describe("MCP tools", () => {
           edit: false,
           write: false,
           apply_patch: false,
+          patch: false,
           task: false
         }
       });
@@ -314,6 +315,7 @@ describe("MCP tools", () => {
       expect(fakeOpenCode.sessionRequests.at(-1)).toMatchObject({
         permission: expect.arrayContaining([
           { permission: "doom_loop", pattern: "*", action: "deny" },
+          { permission: "patch", pattern: "*", action: "deny" },
           { permission: "bash", pattern: "*", action: "deny" },
           { permission: "bash", pattern: "git diff --cached*", action: "allow" }
         ])
@@ -412,10 +414,14 @@ describe("MCP tools", () => {
         edit: false,
         write: false,
         apply_patch: false,
+        patch: false,
         task: false
       });
       expect(fakeOpenCode.sessionRequests.at(-1)).toMatchObject({
-        permission: expect.arrayContaining([{ permission: "bash", pattern: "*", action: "deny" }])
+        permission: expect.arrayContaining([
+          { permission: "patch", pattern: "*", action: "deny" },
+          { permission: "bash", pattern: "*", action: "deny" }
+        ])
       });
       expect(fakeOpenCode.sessionRequests.at(-1)).toMatchObject({
         permission: expect.not.arrayContaining([{ permission: "bash", pattern: "git diff --cached*", action: "allow" }])

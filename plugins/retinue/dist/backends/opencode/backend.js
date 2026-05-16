@@ -10,12 +10,14 @@ const OPENCODE_READ_ONLY_TOOLS_NO_BASH = {
     edit: false,
     write: false,
     apply_patch: false,
+    patch: false,
     task: false
 };
 const OPENCODE_READ_ONLY_TOOLS_WITH_READONLY_GIT_BASH = {
     edit: false,
     write: false,
     apply_patch: false,
+    patch: false,
     task: false
 };
 function createReadOnlyPromptContract(bashPolicy) {
@@ -35,6 +37,7 @@ function createReadOnlyPromptContract(bashPolicy) {
             ? "- Do not call bash except for allowed read-only git inspection commands; do not use shell pipes, redirects, command separators, command substitution, or write-capable git commands."
             : "- Do not call bash, edit, write, apply_patch, task, or nested agents.",
         "- Do not attempt non-allowed shell commands, file writes, patches, or interactive approvals.",
+        "- Do not enter patch mode. If you identify a change, describe the affected interfaces, functions, tests, and risks in prose only.",
         "- Do not emit unified diffs.",
         "- Do not include patch blocks, edit scripts, or apply-ready replacement snippets.",
         "- For code review, return findings as plain text with severity and file references; describe suggested fixes in prose.",
@@ -70,6 +73,7 @@ const OPENCODE_READ_ONLY_BASE_PERMISSION = [
     { permission: "edit", pattern: "*", action: "deny" },
     { permission: "write", pattern: "*", action: "deny" },
     { permission: "apply_patch", pattern: "*", action: "deny" },
+    { permission: "patch", pattern: "*", action: "deny" },
     { permission: "task", pattern: "*", action: "deny" },
     { permission: "external_directory", pattern: "*", action: "deny" },
     { permission: "doom_loop", pattern: "*", action: "deny" },
