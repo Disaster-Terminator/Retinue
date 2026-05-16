@@ -22119,6 +22119,7 @@ var DEFAULT_SERVER_IDLE_MS = 3e4;
 var DEFAULT_BLANK_ASSISTANT_STALL_MS = DEFAULT_STALL_MS;
 var DEFAULT_ZERO_PROGRESS_ASSISTANT_STALL_MS = DEFAULT_STALL_MS;
 var DEFAULT_READ_TOOL_STALL_MS = 24e4;
+var DEFAULT_COMPLETED_TOOL_LOOP_STALL_MS = 12e4;
 var DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
 var DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 2;
 var DIAGNOSTIC_VALUE_PREVIEW_BYTES = 1e3;
@@ -22810,6 +22811,10 @@ function computeStallDiagnostic(jobMessages, meta, env) {
     DEFAULT_ZERO_PROGRESS_ASSISTANT_STALL_MS
   );
   const readToolThresholdMs = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_READ_TOOL_MS, DEFAULT_READ_TOOL_STALL_MS);
+  const completedToolLoopThresholdMs = parseOptionalNonNegativeInt(
+    env?.RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS,
+    DEFAULT_COMPLETED_TOOL_LOOP_STALL_MS
+  );
   const roundThreshold = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS, DEFAULT_STALL_TOOL_CALL_ROUNDS);
   const emptyAssistantThreshold = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS, DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS);
   const toolCallAssistantRounds = jobMessages.filter((message) => message.info?.role === "assistant" && isToolCallAssistantMessage(message)).length;
@@ -22828,8 +22833,9 @@ function computeStallDiagnostic(jobMessages, meta, env) {
   const blankAssistantStalled = blankAssistantRounds > 0 && durationMs >= blankAssistantThresholdMs;
   const zeroProgressAssistantStalled = zeroProgressAssistantRounds > 0 && durationMs >= zeroProgressAssistantThresholdMs;
   const readToolStalled = runningReadToolParts > 0 && durationMs >= readToolThresholdMs;
+  const completedToolLoopStalled = toolCallAssistantRounds >= roundThreshold && runningReadToolParts === 0 && !incompleteAssistantRound && durationMs >= completedToolLoopThresholdMs;
   const incompleteAssistantStalled = incompleteAssistantRound && durationMs >= incompleteThresholdMs;
-  if (!emptyAssistantStalled && !blankAssistantStalled && !zeroProgressAssistantStalled && !readToolStalled && !incompleteAssistantStalled && durationMs < thresholdMs) {
+  if (!emptyAssistantStalled && !blankAssistantStalled && !zeroProgressAssistantStalled && !readToolStalled && !completedToolLoopStalled && !incompleteAssistantStalled && durationMs < thresholdMs) {
     return void 0;
   }
   const diagnostic = {
@@ -22843,6 +22849,7 @@ function computeStallDiagnostic(jobMessages, meta, env) {
     blankAssistantStallThresholdMs: blankAssistantThresholdMs,
     zeroProgressAssistantStallThresholdMs: zeroProgressAssistantThresholdMs,
     readToolStallThresholdMs: readToolThresholdMs,
+    completedToolLoopStallThresholdMs: completedToolLoopThresholdMs,
     incompleteAssistantStallThresholdMs: incompleteThresholdMs,
     stallToolCallRoundThreshold: roundThreshold,
     stallEmptyAssistantRoundThreshold: emptyAssistantThreshold,
@@ -22852,6 +22859,7 @@ function computeStallDiagnostic(jobMessages, meta, env) {
       blankAssistantStalled,
       zeroProgressAssistantStalled,
       readToolStalled,
+      completedToolLoopStalled,
       incompleteAssistantStalled
     })
   };
@@ -22906,6 +22914,9 @@ function selectStallReason(stalled) {
   }
   if (stalled.readToolStalled) {
     return "read_tool_stalled";
+  }
+  if (stalled.completedToolLoopStalled) {
+    return "tool_loop_no_completion";
   }
   if (stalled.incompleteAssistantStalled) {
     return "incomplete_assistant_round";

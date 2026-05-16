@@ -120,7 +120,7 @@ Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE
 
 `running` 响应会包含 `stdoutTail`、`stderrTail`、`tracePath` 和 job artifact 路径。先看 tail 字段；复杂 OpenCode `plan` 任务可能会连续几分钟处在 tool-call 阶段，单次 wait 超时不等于子代理失败。
 
-OpenCode 空输出或未完成 assistant 循环超过诊断阈值后，Retinue 会把任务报告为 `stalled`。默认长 stall 阈值是 10 分钟；部署可以用 `RETINUE_OPENCODE_STALL_MS`、`RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS`、`RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS` 和 `RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS` 调整。
+OpenCode 空输出或未完成 assistant 循环超过诊断阈值后，Retinue 会把任务报告为 `stalled`。默认长 stall 阈值是 10 分钟；已经完成工具调用但一直不产出最终文本的循环，在超过 tool-call 轮数阈值后默认 2 分钟判定。部署可以用 `RETINUE_OPENCODE_STALL_MS`、`RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS`、`RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS`、`RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS` 和 `RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS` 调整。
 
 `retinue_spawn_agent` 会同时返回请求的 `cwd` 和 OpenCode 实际 session 的 `externalSessionDirectory`。如果两者不一致，先关闭这个子代理，再用目标仓库的绝对路径重新 spawn；在此之前不要相信仓库相关结论。
 
