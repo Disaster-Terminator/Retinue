@@ -208,6 +208,7 @@ interface OpenCodeJobDiagnostic {
 
 type OpenCodeStallReason =
   | "read_only_write_intent"
+  | "provider_error"
   | "provider_blank_assistant"
   | "provider_zero_progress"
   | "read_tool_stalled"
@@ -938,6 +939,10 @@ function isWriteIntentTool(tool: unknown): boolean {
   return tool === "write" || tool === "edit" || tool === "apply_patch";
 }
 
+function hasAssistantError(messages: OpenCodeMessage[]): boolean {
+  return messages.some((message) => message.info?.role === "assistant" && message.info.error !== undefined);
+}
+
 function computeStallDiagnostic(
   jobMessages: OpenCodeMessage[],
   meta: JobMeta,
@@ -945,6 +950,17 @@ function computeStallDiagnostic(
 ): Partial<OpenCodeJobDiagnostic> | undefined {
   const patchPartCount = countPatchParts(jobMessages);
   const writeIntentToolPartCount = countWriteIntentToolParts(jobMessages);
+  if (hasAssistantError(jobMessages)) {
+    return {
+      patchPartCount,
+      readOnlyPatchPartCount: meta.readOnly === true ? patchPartCount : 0,
+      writeIntentToolPartCount,
+      readOnlyWriteIntentToolPartCount: meta.readOnly === true ? writeIntentToolPartCount : 0,
+      readOnlyWriteIntent: false,
+      stallReason: "provider_error",
+      stallSummary: "OpenCode provider returned an assistant error."
+    };
+  }
   if (meta.readOnly === true && (patchPartCount > 0 || writeIntentToolPartCount > 0)) {
     return {
       patchPartCount,
@@ -1051,6 +1067,11 @@ function createStallMessage(diagnostic: OpenCodeJobDiagnostic): string {
   if (diagnostic.readOnlyWriteIntent === true) {
     return `OpenCode read-only job emitted patch/write intent; Retinue did not treat the child result as trusted output. Inspect Retinue trace/job diagnostics for message summaries.`;
   }
+  if (diagnostic.stallReason === "provider_error") {
+    const preview = diagnostic.lastAssistantError?.preview ?? diagnostic.lastMessageError?.preview;
+    const suffix = preview ? ` Error summary: ${preview}` : " Inspect Retinue trace/job diagnostics for lastAssistantError and message summaries.";
+    return `OpenCode provider returned an assistant error before producing final text.${suffix}`;
+  }
   const rounds = diagnostic.toolCallAssistantRounds ?? 0;
   const emptyRounds = diagnostic.emptyAssistantRounds ?? 0;
   const blankRounds = diagnostic.blankAssistantRounds ?? 0;
@@ -1120,6 +1141,8 @@ function createStallSummary(diagnostic: Partial<OpenCodeJobDiagnostic>): string 
   switch (diagnostic.stallReason) {
     case "read_only_write_intent":
       return "OpenCode read-only job emitted patch/write intent.";
+    case "provider_error":
+      return "OpenCode provider returned an assistant error before final text.";
     case "provider_blank_assistant":
       return `OpenCode provider/router produced blank assistant output for ${durationMs}ms.`;
     case "provider_zero_progress":
