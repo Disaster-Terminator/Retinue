@@ -167,6 +167,34 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"type":"patch"');
   });
 
+  it("classifies OpenCode provider errors before read-only patch intent", async () => {
+    const backend = createBackend();
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
+    server!.appendErroredPatchAssistant(started.externalSessionId!, {
+      name: "APIError",
+      data: {
+        message: "Authentication Error,",
+        statusCode: 401,
+        metadata: { url: "http://127.0.0.1:4000/v1/chat/completions" }
+      }
+    });
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "stalled",
+      parsedStdout: { result: expect.stringContaining("Authentication Error") },
+      error: expect.stringContaining("127.0.0.1:4000")
+    });
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"stallReason":"provider_error"');
+    expect(trace).toContain('"patchPartCount":1');
+    expect(trace).toContain('"readOnlyPatchPartCount":1');
+    expect(trace).toContain('"readOnlyWriteIntent":false');
+    expect(trace).toContain("Authentication Error");
+    expect(trace).toContain("127.0.0.1:4000");
+  });
+
   it("stalls read-only OpenCode jobs that attempt write-capable tools", async () => {
     const backend = createBackend();
     server!.setAutoAssistantResponses(false);

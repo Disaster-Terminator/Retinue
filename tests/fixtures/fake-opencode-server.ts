@@ -35,6 +35,7 @@ export interface FakeOpenCodeServer {
   appendZeroProgressReasoningAssistant(sessionId: string): void;
   appendIncompleteAssistant(sessionId: string, text?: string): void;
   appendPatchAssistant(sessionId: string, text?: string): void;
+  appendErroredPatchAssistant(sessionId: string, error: unknown): void;
   appendErroredIncompleteAssistant(sessionId: string, error: unknown): void;
   completeSessionWithReasoningOnly(sessionId: string): void;
   failSession(sessionId: string, reason?: string): void;
@@ -363,6 +364,25 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
             { type: "patch", text: "*** Begin Patch\n*** Update File: demo.txt\n@@\n-old\n+new\n*** End Patch\n" },
             { type: "step-finish" }
           ]
+        });
+      }
+    },
+    appendErroredPatchAssistant: (sessionId: string, error: unknown) => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.omitState = true;
+        session.messages.push({
+          info: {
+            id: `msg_${nextMessage++}`,
+            sessionID: session.id,
+            role: "assistant",
+            providerID: "litellm",
+            modelID: "semantic-router",
+            agent: "plan",
+            mode: "plan",
+            error
+          },
+          parts: [{ type: "patch", text: "" }]
         });
       }
     },
