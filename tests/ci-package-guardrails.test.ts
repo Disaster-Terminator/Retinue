@@ -175,6 +175,7 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(opencodeBackendSource).toContain("const DEFAULT_BLANK_ASSISTANT_STALL_MS = DEFAULT_STALL_MS");
     expect(opencodeBackendSource).toContain("const DEFAULT_ZERO_PROGRESS_ASSISTANT_STALL_MS = DEFAULT_STALL_MS");
     expect(opencodeBackendSource).toContain("const DEFAULT_READ_TOOL_STALL_MS = 240_000");
+    expect(opencodeBackendSource).toContain("const DEFAULT_COMPLETED_TOOL_LOOP_STALL_MS = 120_000");
     expect(opencodeBackendSource).not.toContain("const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = 60_000");
     expect(opencodeBackendSource).not.toContain("const DEFAULT_ZERO_PROGRESS_ASSISTANT_STALL_MS = 90_000");
     expect(opencodeBackendSource).toContain("const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 2");

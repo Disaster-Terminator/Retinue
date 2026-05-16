@@ -448,6 +448,34 @@ describe("OpenCodeBackend", () => {
     await expect(fs.readFile(getJobPaths(tempDir, started.jobId).stderr, "utf8")).resolves.toContain('"event":"opencode_job_stalled"');
   });
 
+  it("marks completed tool-call loops as stalled before the generic long stall threshold", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_MS: "600000",
+        RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS: "1",
+        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "inspect git status and summarize" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking status one");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking status two");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking status three");
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"stallReason":"tool_loop_no_completion"');
+    expect(trace).toContain('"toolCallAssistantRounds":3');
+    expect(trace).toContain('"runningReadToolParts":0');
+    expect(trace).toContain('"completedToolLoopStallThresholdMs":1');
+    expect(trace).toContain('"stallThresholdMs":600000');
+  });
+
   it("marks empty stop assistant rounds as stalled with diagnostics", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
