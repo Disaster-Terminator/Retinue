@@ -37,6 +37,29 @@ const OPENCODE_READ_ONLY_TOOLS_WITH_READONLY_GIT_BASH: Record<string, boolean> =
   patch: false,
   task: false
 };
+const OPENCODE_FINAL_ANSWER_ONLY_TOOLS: Record<string, boolean> = {
+  read: false,
+  glob: false,
+  grep: false,
+  list: false,
+  todoread: false,
+  todowrite: false,
+  webfetch: false,
+  lsp: false,
+  bash: false,
+  edit: false,
+  write: false,
+  apply_patch: false,
+  patch: false,
+  task: false
+};
+const OPENCODE_SOFT_STALL_RESCUE_PROMPT = [
+  "Retinue recovery request:",
+  "Stop using tools now and produce the final answer from the information already gathered.",
+  "Do not call read, grep, glob, bash, edit, write, patch, apply_patch, task, or any other tool.",
+  "If the available information is insufficient, state the limitation clearly instead of inspecting more files.",
+  "Return concise plain text only. Do not emit patch blocks, unified diffs, or apply-ready replacement snippets."
+].join("\n");
 
 function createReadOnlyPromptContract(bashPolicy: OpenCodeReadOnlyBashPolicy): string {
   const allowsReadonlyGit = bashPolicy === "readonly_git";
@@ -123,7 +146,7 @@ const DEFAULT_ZERO_PROGRESS_ASSISTANT_STALL_MS = 75_000;
 const DEFAULT_READ_TOOL_STALL_MS = 75_000;
 const DEFAULT_COMPLETED_TOOL_LOOP_STALL_MS = 75_000;
 const DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
-const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 2;
+const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 1;
 const DIAGNOSTIC_VALUE_PREVIEW_BYTES = 1000;
 
 interface DiagnosticValuePreview {
@@ -369,6 +392,36 @@ export class OpenCodeBackend implements AgentBackend {
     return this.reconcileStatus(meta);
   }
 
+  private async maybeSubmitSoftStallRescue(meta: JobMeta, diagnostic: Partial<OpenCodeJobDiagnostic>): Promise<void> {
+    if (!meta.externalSessionId || meta.externalRescuePromptSubmittedAt || isHardStallDiagnostic(diagnostic)) {
+      return;
+    }
+    const updated: JobMeta = { ...meta, externalRescuePromptSubmittedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    await writeJsonAtomic(getJobPaths(this.stateDir, meta.jobId).meta, updated);
+    try {
+      await this.clientForMeta(meta).promptAsync(meta.externalSessionId, {
+        prompt: OPENCODE_SOFT_STALL_RESCUE_PROMPT,
+        model: meta.model,
+        agent: resolveSoftStallRescueAgent(meta.agent, this.env),
+        tools: OPENCODE_FINAL_ANSWER_ONLY_TOOLS
+      });
+      const submittedDiagnostic = await this.inspectJob(updated);
+      await this.writeJobTrace("opencode_job_soft_stall_rescue_submitted", updated, submittedDiagnostic);
+      await appendJobDiagnostic(this.stateDir, meta.jobId, { event: "opencode_job_soft_stall_rescue_submitted", diagnostic: submittedDiagnostic });
+    } catch (error) {
+      const failedDiagnostic = {
+        ...(await this.inspectJob(updated)),
+        error: error instanceof Error ? error.message : String(error)
+      };
+      await this.writeJobTrace("opencode_job_soft_stall_rescue_failed", updated, failedDiagnostic);
+      await appendJobDiagnostic(this.stateDir, meta.jobId, {
+        event: "opencode_job_soft_stall_rescue_failed",
+        error: error instanceof Error ? error.message : String(error),
+        diagnostic: failedDiagnostic
+      });
+    }
+  }
+
   async result(handle: AgentHandle): Promise<JobResult> {
     const meta = await this.status(handle);
     if (isProblem(meta)) {
@@ -452,21 +505,49 @@ export class OpenCodeBackend implements AgentBackend {
     if (isProblem(meta) || !meta.externalSessionId) {
       return;
     }
-    await this.clientForMeta(meta).abort(meta.externalSessionId);
+    let abortError: string | undefined;
+    try {
+      await this.clientForMeta(meta).abort(meta.externalSessionId);
+    } catch (error) {
+      abortError = error instanceof Error ? error.message : String(error);
+      await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_abort_failed", error: abortError });
+    }
     const updated: JobMeta = {
       ...meta,
       status: "killed",
       updatedAt: new Date().toISOString()
     };
     await writeJsonAtomic(getJobPaths(this.stateDir, handle.jobId).meta, updated);
+    if (abortError) {
+      await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_abort_marked_killed", error: abortError });
+    }
     await this.maybeScheduleServerIdleShutdown(updated);
   }
 
   async wait(handle: AgentHandle, timeoutMs = DEFAULT_WAIT_TIMEOUT_MS): Promise<{ jobId: string; status: JobStatusResult["status"] }> {
     const deadline = Date.now() + Math.max(0, timeoutMs);
+    let deferredSoftStall = false;
     for (;;) {
       const status = await this.status(handle);
-      if (isProblem(status) || isTerminal(status.status)) {
+      if (isProblem(status)) {
+        return { jobId: handle.jobId, status: status.status };
+      }
+      if (status.status === "stalled") {
+        const diagnostic = await this.inspectJob(status);
+        if (!isHardStallDiagnostic(diagnostic) && Date.now() < deadline) {
+          await this.maybeSubmitSoftStallRescue(status, diagnostic);
+          if (!deferredSoftStall) {
+            await this.writeJobTrace("opencode_job_soft_stall_deferred", status, diagnostic);
+            await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_soft_stall_deferred", diagnostic });
+            deferredSoftStall = true;
+          }
+          await sleep(DEFAULT_WAIT_POLL_MS);
+          continue;
+        }
+        await this.maybeScheduleServerIdleShutdown(status);
+        return { jobId: handle.jobId, status: status.status };
+      }
+      if (isTerminal(status.status)) {
         return { jobId: handle.jobId, status: status.status };
       }
       if (Date.now() >= deadline) {
@@ -572,13 +653,16 @@ export class OpenCodeBackend implements AgentBackend {
           diagnostic
         });
       }
-      if (isTerminal(status)) {
+      if (isTerminal(status) && (status !== "stalled" || isHardStallDiagnostic(diagnostic))) {
         await this.maybeScheduleServerIdleShutdown(updated);
       }
       return updated;
     } catch (error) {
       if (error instanceof OpenCodeClientError && error.status === 404) {
         return { jobId: meta.jobId, status: "not_found", error: "OpenCode session not found" };
+      }
+      if (meta.status === "killed") {
+        return meta;
       }
       return { jobId: meta.jobId, status: "corrupted", error: error instanceof Error ? error.message : String(error) };
     }
@@ -1094,6 +1178,10 @@ function createStallMessage(diagnostic: OpenCodeJobDiagnostic): string {
   return `OpenCode job stalled: observed ${rounds} tool-call assistant round(s) and ${emptyRounds} empty assistant round(s) with no completed assistant text for ${durationMs}ms. Inspect Retinue trace/job diagnostics for message summaries.`;
 }
 
+function isHardStallDiagnostic(diagnostic: Partial<OpenCodeJobDiagnostic>): boolean {
+  return diagnostic.readOnlyWriteIntent === true || diagnostic.stallReason === "provider_error";
+}
+
 function createReadOnlyTextWarning(text: string): string | undefined {
   if (!text.trim()) {
     return undefined;
@@ -1174,6 +1262,14 @@ function parseOptionalNonNegativeInt(value: string | undefined, fallback: number
 
 function resolveServerIdleMs(env?: RetinueOptions["env"]): number {
   return parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_SERVER_IDLE_MS, DEFAULT_SERVER_IDLE_MS);
+}
+
+function resolveSoftStallRescueAgent(currentAgent: string | undefined, env?: RetinueOptions["env"]): string | undefined {
+  const configured = env?.RETINUE_OPENCODE_SOFT_STALL_RESCUE_AGENT?.trim();
+  if (configured === "0" || configured === "false" || configured === "none") {
+    return currentAgent;
+  }
+  return configured || "build";
 }
 
 function hasToolPart(message: OpenCodeMessage): boolean {

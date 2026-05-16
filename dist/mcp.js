@@ -596,6 +596,9 @@ function summarizeJobDiagnostic(value) {
     });
 }
 function resolveDiagnosticStatus(event, diagnostic) {
+    if (event === "opencode_job_soft_stall_deferred") {
+        return "running";
+    }
     if (event === "opencode_job_stalled" || typeof diagnostic.stallReason === "string" || diagnostic.readOnlyWriteIntent === true) {
         return "stalled";
     }
@@ -617,6 +620,9 @@ function createDiagnosticSummaryMessage(event, diagnostic) {
     }
     if (event === "opencode_job_stalled") {
         return "OpenCode job was classified as stalled by Retinue stall rules.";
+    }
+    if (event === "opencode_job_soft_stall_deferred") {
+        return "OpenCode job matched recoverable stall rules; Retinue is still waiting within the caller timeout.";
     }
     if (event === "opencode_job_prompt_failed") {
         return "OpenCode prompt submission failed before the child job became usable.";

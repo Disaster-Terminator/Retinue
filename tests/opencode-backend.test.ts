@@ -508,14 +508,7 @@ describe("OpenCodeBackend", () => {
   });
 
   it("marks empty stop assistant rounds as stalled with diagnostics", async () => {
-    const backend = new OpenCodeBackend({
-      client: new OpenCodeClient(server!.url),
-      baseUrl: server!.url,
-      stateDir: tempDir,
-      env: {
-        RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS: "1"
-      } as NodeJS.ProcessEnv
-    });
+    const backend = createBackend();
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "inspect docs and summarize" });
     server!.appendEmptyStopAssistant(started.externalSessionId!);
@@ -532,6 +525,7 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"event":"opencode_job_stalled"');
     expect(trace).toContain('"stallReason":"backend_no_final_text"');
     expect(trace).toContain('"emptyAssistantRounds":1');
+    expect(trace).toContain('"stallEmptyAssistantRoundThreshold":1');
     expect(trace).toContain('"lastAssistantPartTypes":["step-start","step-finish"]');
   });
 
@@ -922,6 +916,84 @@ describe("OpenCodeBackend", () => {
     });
   });
 
+  it("waits through recoverable OpenCode stalls before returning to the caller", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_MS: "1",
+        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "complex audit eventually answers during wait" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source two");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source three");
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    setTimeout(() => {
+      server!.completeSessionWithFinalText(started.externalSessionId!, "late wait result");
+    }, 25);
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "completed",
+      parsedStdout: { result: "late wait result" }
+    });
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_job_soft_stall_deferred"');
+    expect(trace).toContain('"event":"opencode_job_status_changed"');
+    expect(trace).toContain('"toStatus":"completed"');
+  });
+
+  it("submits a no-tools final-answer rescue prompt for recoverable OpenCode stalls", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_MS: "1",
+        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "complex audit needs rescue" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source two");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source three");
+    const completeAfterRescue = waitForPromptCount(2).then(() => {
+      server!.completeSessionWithFinalText(started.externalSessionId!, "rescued final answer");
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
+    await completeAfterRescue;
+    expect(server!.promptRequests).toHaveLength(2);
+    expect(extractPromptText(server!.promptRequests.at(-1))).toContain("Retinue recovery request");
+    expect(server!.promptRequests.at(-1)).toMatchObject({
+      agent: "build",
+      tools: {
+        read: false,
+        grep: false,
+        glob: false,
+        bash: false,
+        edit: false,
+        write: false,
+        patch: false,
+        task: false
+      }
+    });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "completed",
+      parsedStdout: { result: "rescued final answer" }
+    });
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
+  });
+
   it("does not reuse old completed assistant messages for continued jobs", async () => {
     const backend = createBackend();
     const first = await backend.run({ cwd: tempDir, prompt: "first" });
@@ -1036,6 +1108,20 @@ describe("OpenCodeBackend", () => {
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({ status: "killed" });
   });
 
+  it("treats abort as best-effort when the OpenCode server is already gone", async () => {
+    const backend = createBackend();
+    const started = await backend.run({ cwd: tempDir, prompt: "stop after server exits" });
+    await server!.close();
+    server = undefined;
+
+    await expect(backend.abort({ jobId: started.jobId })).resolves.toBeUndefined();
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "killed" });
+
+    const stderr = await fs.readFile(getJobPaths(tempDir, started.jobId).stderr, "utf8");
+    expect(stderr).toContain('"event":"opencode_job_abort_failed"');
+    expect(stderr).toContain('"event":"opencode_job_abort_marked_killed"');
+  });
+
   it("recovers completed OpenCode text that arrives around an abort race", async () => {
     const backend = createBackend();
     server!.setAutoAssistantResponses(false);
@@ -1122,6 +1208,17 @@ describe("OpenCodeBackend", () => {
       baseUrl: server!.url,
       stateDir: tempDir
     });
+  }
+
+  async function waitForPromptCount(count: number): Promise<void> {
+    const deadline = Date.now() + 1000;
+    while (Date.now() < deadline) {
+      if ((server?.promptRequests.length ?? 0) >= count) {
+        return;
+      }
+      await sleep(10);
+    }
+    throw new Error(`Timed out waiting for ${count} OpenCode prompt requests`);
   }
 });
 
