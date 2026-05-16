@@ -21283,7 +21283,7 @@ import path2 from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 
 // src/core/processTree.ts
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
 var execFileAsync = promisify(execFile);
 async function killProcessTree(pid, signal = "SIGTERM") {
@@ -21295,6 +21295,26 @@ async function killProcessTree(pid, signal = "SIGTERM") {
       await execFileAsync("taskkill", ["/PID", String(pid), "/T", "/F"]);
     } catch {
     }
+    return;
+  }
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    try {
+      process.kill(pid, signal);
+    } catch {
+    }
+  }
+}
+function killProcessTreeSync(pid, signal = "SIGTERM") {
+  if (pid <= 0) {
+    return;
+  }
+  if (process.platform === "win32") {
+    spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], {
+      stdio: "ignore",
+      windowsHide: true
+    });
     return;
   }
   try {
@@ -21492,13 +21512,7 @@ async function startManagedOpenCodeServer(resolution, options) {
       cwd: options.cwd
     });
     const startupFailure = waitForStartupFailure(child, resolution.command);
-    const cleanup = () => {
-      void stopChildProcessTree(baseUrl, child, {
-        stateDir: options.stateDir,
-        cwd: options.cwd,
-        reason: "process_exit"
-      });
-    };
+    const cleanup = () => stopChildProcessTreeSync(child);
     process.once("exit", cleanup);
     try {
       await Promise.race([
@@ -21663,6 +21677,12 @@ async function stopChildProcessTree(baseUrl, child, options) {
       error: error2 instanceof Error ? error2.message : String(error2),
       cwd: options.cwd
     });
+  }
+}
+function stopChildProcessTreeSync(child) {
+  const pid = child.pid;
+  if (pid && child.exitCode === null) {
+    killProcessTreeSync(pid);
   }
 }
 async function writeRetinueTrace(stateDir, event) {
