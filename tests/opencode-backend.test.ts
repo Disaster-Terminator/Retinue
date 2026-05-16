@@ -142,6 +142,30 @@ describe("OpenCodeBackend", () => {
     });
   });
 
+  it("flags patch-like text from completed read-only OpenCode jobs without hiding stdout", async () => {
+    const backend = createBackend();
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
+    const text = "Finding: risky change\n\n```diff\n--- a/demo.txt\n+++ b/demo.txt\n@@ -1 +1 @@\n-old\n+new\n```";
+    server!.completeSessionWithFinalText(started.externalSessionId!, text);
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
+    const result = await backend.result({ jobId: started.jobId });
+    expect(result).toMatchObject({
+      status: "completed",
+      stdout: text,
+      stderr: expect.stringContaining("read-only result may contain patch or write-command text"),
+      parsedStdout: { result: text }
+    });
+    expect(result.error).toBeUndefined();
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"readOnlyTextWarning":true');
+    await expect(fs.readFile(getJobPaths(tempDir, started.jobId).stderr, "utf8")).resolves.toContain(
+      "read-only result may contain patch or write-command text"
+    );
+  });
+
   it("returns a job handle before a slow OpenCode prompt_async call finishes", async () => {
     server!.setPromptAsyncDelayMs(500);
     const backend = createBackend();
