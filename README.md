@@ -106,11 +106,11 @@ Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE
 - Codex 只调用 Retinue，不选择具体后端。
 - Retinue 默认管理 OpenCode server 生命周期，优先使用 `127.0.0.1:4096`，端口被外部服务占用时尝试 `4097` 到 `4127`。
 - OpenCode 使用当前本机 profile，包括 provider、model、login、plugin 和 skill。
-- `plan` 是 0.1.0 的默认 agent。Retinue 产品级 spawn 默认只读：即使本机 OpenCode profile 允许写入，Retinue 也会发送 prompt-level 覆盖，拒绝 `edit`、`write`、`apply_patch` 和 `bash`。
+- `plan` 是 0.1.0 的默认 agent。Retinue 产品级 spawn 默认只读：即使本机 OpenCode profile 允许写入，Retinue 也会发送 prompt-level 覆盖，拒绝 `edit`、`write`、`apply_patch` 和嵌套 `task`。`bash` 只放行一组只读 git 检查命令，例如 `git status --short`、`git diff --cached`、`git diff --staged`、定向 `git diff -- <path>` 和 `git show --stat`。
 - 只读 review prompt 也会要求 OpenCode 只返回纯文本 findings，避免 unified diff 或 patch block。若 OpenCode 仍产生 patch/write intent，Retinue 会把任务标记为 `stalled`，调用方不应把该结果当作审查证据。
 - 如果用户 prompt 已经提供足够事实，默认只读子代理会被要求直接基于这些事实回答，而不是打开仓库工具。仓库检查会被限制在少量 `read`/`grep`/`glob` 调用内，并尽快返回最终文本。
-- 默认只读子代理不能查看 git history、staged changes、uncommitted diff 或 latest commit，除非调用方提供相关文件路径或内容。只有明确接受子代理执行 git 命令时，才使用 `access_mode: "profile"`。
-- Codex 插件安装读取插件目录里的全局 `retinue.config.json`。默认值是 `{ "opencode": { "defaultAccessMode": "read_only" } }`，这是安装域配置，不是项目域配置。
+- 默认只读子代理不能运行任意 shell、写入型 git 命令、shell 组合命令或 patch/edit 工具。需要单次更严格禁用 bash 时传 `bash_policy: "none"`；只有明确接受子代理跟随 OpenCode profile 时，才使用 `access_mode: "profile"`。
+- Codex 插件安装读取插件目录里的全局 `retinue.config.json`。默认值是 `{ "opencode": { "defaultAccessMode": "read_only", "readOnlyBashPolicy": "readonly_git" } }`，这是安装域配置，不是项目域配置。
 - `retinue_spawn_agent` 支持用 `access_mode: "read_only"` 或 `access_mode: "profile"` 覆盖单次子代理权限意图。只有明确需要子代理按当前 OpenCode profile 执行、并接受 profile 中可能开放写工具时，才使用 `"profile"`。
 - Hermes 和自定义 MCP 部署仍可走环境变量。`RETINUE_OPENCODE_ACCESS_MODE=profile` 或旧的 `RETINUE_OPENCODE_READ_ONLY=0` 表示允许子代理跟随 OpenCode profile 权限。
 - `retinue_wait_agent` 会把单次 MCP wait 限制在宿主安全窗口内，默认最大 90 秒。长任务应重复调用 wait 轮询；可用 `RETINUE_MCP_WAIT_MAX_MS` 调整上限。

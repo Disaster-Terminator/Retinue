@@ -22040,34 +22040,45 @@ function parseRequiredPort(value) {
 }
 
 // src/backends/opencode/backend.ts
-var OPENCODE_READ_ONLY_TOOLS = {
+var OPENCODE_READ_ONLY_TOOLS_NO_BASH = {
   bash: false,
   edit: false,
   write: false,
   apply_patch: false,
   task: false
 };
-var OPENCODE_READ_ONLY_PROMPT_CONTRACT = [
-  "Retinue read-only child agent contract:",
-  "- Use only OpenCode read, grep, and glob tools plus plain-text reasoning.",
-  "- Do not call bash, edit, write, apply_patch, task, or nested agents.",
-  "- Do not attempt shell commands, file writes, patches, or interactive approvals.",
-  "- Do not emit unified diffs.",
-  "- Do not include patch blocks, edit scripts, or apply-ready replacement snippets.",
-  "- For code review, return findings as plain text with severity and file references; describe suggested fixes in prose.",
-  "- If the user provides enough facts to answer, answer from those facts without repository inspection.",
-  "- Do not use tools just to confirm prompt-provided facts; use tools only when the task names files, symbols, or explicitly asks for repository inspection.",
-  "- Use at most six inspection tool calls total before producing a final textual answer.",
-  "- Before using any tool, classify whether the user task depends on git-only state such as staged changes, staged diff, uncommitted diff, git history, or the latest commit.",
-  "- If it asks for staged diff, uncommitted diff, git diff, git history, or the latest commit and the prompt did not include the needed diff/content, do not inspect the repository; immediately state that the read-only boundary cannot access that git-only state and ask the caller to provide the diff/content or use profile access.",
-  "- You cannot inspect git history, staged changes, uncommitted diffs, or the latest commit unless the task provides the relevant file paths or content.",
-  "- If the task asks for a diff, commit, or git-only state you cannot access, state that limitation instead of approximating it from repository files.",
-  "- For broad audits, start with grep/glob and read only a small set of targeted files; avoid bulk-reading large generated, cache, log, or backup directories.",
-  "- Use read serially: do not issue multiple read calls in one assistant turn, and stop reading once you have enough evidence to answer.",
-  "- If the task needs shell or write access, say that the read-only boundary prevents that part and provide the best file-based answer you can.",
-  "- Always finish with a concise textual result; do not stop after tool calls without a final answer."
-].join("\n");
-var OPENCODE_READ_ONLY_PERMISSION = [
+var OPENCODE_READ_ONLY_TOOLS_WITH_READONLY_GIT_BASH = {
+  edit: false,
+  write: false,
+  apply_patch: false,
+  task: false
+};
+function createReadOnlyPromptContract(bashPolicy) {
+  const allowsReadonlyGit = bashPolicy === "readonly_git";
+  return [
+    "Retinue read-only child agent contract:",
+    allowsReadonlyGit ? "- Use only OpenCode read, grep, glob, and allowed read-only git bash commands plus plain-text reasoning." : "- Use only OpenCode read, grep, and glob tools plus plain-text reasoning.",
+    allowsReadonlyGit ? "- Allowed bash is limited to read-only git inspection commands: pwd, git status --short, git status --porcelain, git diff --cached, git diff --staged, git diff --name-only --cached, git diff --name-status --cached, git diff --stat --cached, git diff -- <path>, git show --stat, git show --name-only, git ls-files, and git rev-parse --show-toplevel." : void 0,
+    allowsReadonlyGit ? "- For staged diff review, use git diff --cached or git diff --staged; for unstaged file review, use git diff -- <path>." : void 0,
+    allowsReadonlyGit ? "- Do not call bash except for allowed read-only git inspection commands; do not use shell pipes, redirects, command separators, command substitution, or write-capable git commands." : "- Do not call bash, edit, write, apply_patch, task, or nested agents.",
+    "- Do not attempt non-allowed shell commands, file writes, patches, or interactive approvals.",
+    "- Do not emit unified diffs.",
+    "- Do not include patch blocks, edit scripts, or apply-ready replacement snippets.",
+    "- For code review, return findings as plain text with severity and file references; describe suggested fixes in prose.",
+    "- If the user provides enough facts to answer, answer from those facts without repository inspection.",
+    "- Do not use tools just to confirm prompt-provided facts; use tools only when the task names files, symbols, or explicitly asks for repository inspection.",
+    "- Use at most six inspection tool calls total before producing a final textual answer.",
+    "- Before using any tool, classify whether the user task depends on git-only state such as staged changes, staged diff, uncommitted diff, git history, or the latest commit.",
+    allowsReadonlyGit ? "- You may inspect staged or unstaged diff only with the allowed read-only git commands. If a requested git state is outside that allowlist or needs shell composition, state the limitation instead of approximating it from repository files." : "- If it asks for staged diff, uncommitted diff, git diff, git history, or the latest commit and the prompt did not include the needed diff/content, do not inspect the repository; immediately state that the read-only boundary cannot access that git-only state and ask the caller to provide the diff/content or use profile access.",
+    allowsReadonlyGit ? "- You cannot inspect git history, commits beyond allowed git show metadata, or shell-composed repository state unless the task provides the relevant content." : "- You cannot inspect git history, staged changes, uncommitted diffs, or the latest commit unless the task provides the relevant file paths or content.",
+    "- If the task asks for a diff, commit, or git-only state you cannot access, state that limitation instead of approximating it from repository files.",
+    "- For broad audits, start with grep/glob and read only a small set of targeted files; avoid bulk-reading large generated, cache, log, or backup directories.",
+    "- Use read serially: do not issue multiple read calls in one assistant turn, and stop reading once you have enough evidence to answer.",
+    "- If the task needs non-allowed shell or write access, say that the read-only boundary prevents that part and provide the best file-based answer you can.",
+    "- Always finish with a concise textual result; do not stop after tool calls without a final answer."
+  ].filter((line) => typeof line === "string").join("\n");
+}
+var OPENCODE_READ_ONLY_BASE_PERMISSION = [
   { permission: "read", pattern: "*", action: "allow" },
   { permission: "glob", pattern: "*", action: "allow" },
   { permission: "grep", pattern: "*", action: "allow" },
@@ -22083,22 +22094,22 @@ var OPENCODE_READ_ONLY_PERMISSION = [
   { permission: "task", pattern: "*", action: "deny" },
   { permission: "external_directory", pattern: "*", action: "deny" },
   { permission: "doom_loop", pattern: "*", action: "deny" },
-  { permission: "bash", pattern: "*", action: "deny" },
+  { permission: "bash", pattern: "*", action: "deny" }
+];
+var OPENCODE_READONLY_GIT_BASH_PERMISSION = [
   { permission: "bash", pattern: "pwd", action: "allow" },
-  { permission: "bash", pattern: "ls *", action: "allow" },
-  { permission: "bash", pattern: "dir *", action: "allow" },
-  { permission: "bash", pattern: "git status*", action: "allow" },
-  { permission: "bash", pattern: "git show*", action: "allow" },
-  { permission: "bash", pattern: "git diff*", action: "allow" },
-  { permission: "bash", pattern: "git log*", action: "allow" },
-  { permission: "bash", pattern: "git grep*", action: "allow" },
-  { permission: "bash", pattern: "git blame*", action: "allow" },
-  { permission: "bash", pattern: "git branch*", action: "allow" },
-  { permission: "bash", pattern: "git rev-parse*", action: "allow" },
+  { permission: "bash", pattern: "git status --short*", action: "allow" },
+  { permission: "bash", pattern: "git status --porcelain*", action: "allow" },
+  { permission: "bash", pattern: "git diff --cached*", action: "allow" },
+  { permission: "bash", pattern: "git diff --staged*", action: "allow" },
+  { permission: "bash", pattern: "git diff --name-only --cached*", action: "allow" },
+  { permission: "bash", pattern: "git diff --name-status --cached*", action: "allow" },
+  { permission: "bash", pattern: "git diff --stat --cached*", action: "allow" },
+  { permission: "bash", pattern: "git diff -- *", action: "allow" },
+  { permission: "bash", pattern: "git show --stat*", action: "allow" },
+  { permission: "bash", pattern: "git show --name-only*", action: "allow" },
   { permission: "bash", pattern: "git ls-files*", action: "allow" },
-  { permission: "bash", pattern: "git describe*", action: "allow" },
-  { permission: "bash", pattern: "git cat-file*", action: "allow" },
-  { permission: "bash", pattern: "git merge-base*", action: "allow" }
+  { permission: "bash", pattern: "git rev-parse --show-toplevel", action: "allow" }
 ];
 var DEFAULT_WAIT_TIMEOUT_MS = 3e4;
 var DEFAULT_WAIT_POLL_MS = 250;
@@ -22144,10 +22155,11 @@ var OpenCodeBackend = class {
     await fs2.mkdir(paths.dir, { recursive: true });
     await fs2.writeFile(paths.prompt, options.prompt, "utf8");
     const target = await this.resolveTarget(options.cwd);
+    const readOnlyBashPolicy = resolveReadOnlyBashPolicy(options.readOnlyBashPolicy);
     const session = await target.client.createSession({
       cwd: options.cwd,
       title: options.title ?? options.name,
-      permission: options.readOnly === true ? OPENCODE_READ_ONLY_PERMISSION : void 0
+      permission: options.readOnly === true ? buildReadOnlyPermission(readOnlyBashPolicy) : void 0
     });
     const baseline = await this.captureMessageBaseline(target.client, session.id);
     const now = (/* @__PURE__ */ new Date()).toISOString();
@@ -22195,6 +22207,7 @@ var OpenCodeBackend = class {
         model: options.model,
         agent: options.agent,
         readOnly: true,
+        readOnlyBashPolicy: options.readOnlyBashPolicy,
         parentJobId: options.parentJobId,
         parentSessionId: options.parentSessionId ?? options.externalSessionId,
         maxTurns: options.maxTurns,
@@ -22262,7 +22275,7 @@ var OpenCodeBackend = class {
     const diagnostic = await this.inspectJob(meta);
     if (meta.status === "stalled") {
       const stderr = createStallMessage(diagnostic);
-      const text2 = diagnostic.readOnlyWriteIntent === true ? latestAssistantMessageText(jobMessages) : "";
+      const text2 = diagnostic.readOnlyWriteIntent === true ? latestAssistantVisibleText(jobMessages) : "";
       const stdout = text2 || stderr;
       const textWarning2 = meta.readOnly === true ? createReadOnlyTextWarning(stdout) : void 0;
       if (textWarning2) {
@@ -22588,10 +22601,10 @@ ${textWarning2}` : stderr;
   async submitPromptAsync(client, sessionId, meta, options) {
     try {
       await client.promptAsync(sessionId, {
-        prompt: buildOpenCodePrompt(options.prompt, options.readOnly === true),
+        prompt: buildOpenCodePrompt(options.prompt, options.readOnly === true, resolveReadOnlyBashPolicy(options.readOnlyBashPolicy)),
         model: options.model,
         agent: options.agent,
-        tools: options.readOnly === true ? OPENCODE_READ_ONLY_TOOLS : void 0
+        tools: options.readOnly === true ? buildReadOnlyTools(resolveReadOnlyBashPolicy(options.readOnlyBashPolicy)) : void 0
       });
       await this.writeJobTrace("opencode_job_prompt_submitted", meta, await this.inspectJob(meta));
     } catch (error2) {
@@ -22730,6 +22743,9 @@ function selectMessagesForMeta(messages, meta) {
 }
 function latestAssistantMessageText(messages) {
   return [...messages].reverse().filter(isFinalAssistantTextMessage).map(extractMessageText).at(0) ?? "";
+}
+function latestAssistantVisibleText(messages) {
+  return [...messages].reverse().filter((message) => message.info?.role === "assistant").map(extractMessageText).find((text) => text.length > 0) ?? "";
 }
 function countCompletedAssistantMessages(messages) {
   return messages.filter(isCompletedAssistantMessage).length;
@@ -23013,11 +23029,20 @@ function createPromptPreview(prompt) {
   const normalized = prompt.replace(/\s+/g, " ").trim();
   return normalized.length > 120 ? `${normalized.slice(0, 117)}...` : normalized;
 }
-function buildOpenCodePrompt(prompt, readOnly) {
+function resolveReadOnlyBashPolicy(value) {
+  return value ?? "readonly_git";
+}
+function buildReadOnlyPermission(bashPolicy) {
+  return bashPolicy === "readonly_git" ? [...OPENCODE_READONLY_GIT_BASH_PERMISSION, ...OPENCODE_READ_ONLY_BASE_PERMISSION] : OPENCODE_READ_ONLY_BASE_PERMISSION;
+}
+function buildReadOnlyTools(bashPolicy) {
+  return bashPolicy === "readonly_git" ? OPENCODE_READ_ONLY_TOOLS_WITH_READONLY_GIT_BASH : OPENCODE_READ_ONLY_TOOLS_NO_BASH;
+}
+function buildOpenCodePrompt(prompt, readOnly, bashPolicy) {
   if (!readOnly) {
     return prompt;
   }
-  return `${OPENCODE_READ_ONLY_PROMPT_CONTRACT}
+  return `${createReadOnlyPromptContract(bashPolicy)}
 
 User task:
 ${prompt}`;
@@ -23798,6 +23823,7 @@ var OPENCODE_TOOL_NAMES = [
 var RETINUE_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"];
 var DEFAULT_MCP_WAIT_MAX_MS = 9e4;
 var ACCESS_MODES = ["read_only", "profile"];
+var READ_ONLY_BASH_POLICIES = ["readonly_git", "none"];
 function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
   const agentPool = new RetinueAgentPool();
   const server = new McpServer({
@@ -23818,7 +23844,8 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
         taskName: external_exports.string().optional(),
         cwd: external_exports.string().optional(),
         title: external_exports.string().optional(),
-        access_mode: external_exports.enum(ACCESS_MODES).optional()
+        access_mode: external_exports.enum(ACCESS_MODES).optional(),
+        bash_policy: external_exports.enum(READ_ONLY_BASH_POLICIES).optional()
       }
     },
     async (args) => {
@@ -23826,6 +23853,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
       const backend = await createRetinueBackend(retinue);
       const { evicted, started } = await agentPool.withSpawnLock(async () => {
         const evicted2 = await agentPool.ensureSpawnSlot(retinue, process.env);
+        const accessMode = backend.kind === "opencode" ? await resolveOpenCodeAccessMode(args.access_mode, process.env) : void 0;
         const started2 = await backend.run({
           cwd: args.cwd ?? process.cwd(),
           prompt: args.message,
@@ -23834,7 +23862,8 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
           ...backend.kind === "opencode" ? {
             model: process.env.RETINUE_OPENCODE_MODEL,
             agent: process.env.RETINUE_OPENCODE_AGENT,
-            readOnly: await resolveOpenCodeAccessMode(args.access_mode, process.env) === "read_only"
+            readOnly: accessMode === "read_only",
+            readOnlyBashPolicy: await resolveOpenCodeReadOnlyBashPolicy(args.bash_policy, process.env)
           } : {}
         });
         agentPool.add({
@@ -24281,7 +24310,36 @@ async function resolveOpenCodeAccessMode(requested, env) {
   }
   return readOpenCodeAccessModeFromEnv(env);
 }
+async function resolveOpenCodeReadOnlyBashPolicy(requested, env) {
+  if (requested) {
+    return requested;
+  }
+  const configured = await readConfiguredOpenCodeReadOnlyBashPolicy(env);
+  return configured ?? "readonly_git";
+}
 async function readConfiguredOpenCodeAccessMode(env) {
+  const config2 = await readRetinueConfig(env);
+  const value = typeof config2 === "object" && config2 !== null && "opencode" in config2 ? config2.opencode.defaultAccessMode : void 0;
+  if (value === void 0 || value === "") {
+    return void 0;
+  }
+  if (value === "read_only" || value === "profile") {
+    return value;
+  }
+  throw new Error(`Unsupported opencode.defaultAccessMode in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`);
+}
+async function readConfiguredOpenCodeReadOnlyBashPolicy(env) {
+  const config2 = await readRetinueConfig(env);
+  const value = typeof config2 === "object" && config2 !== null && "opencode" in config2 ? config2.opencode.readOnlyBashPolicy : void 0;
+  if (value === void 0 || value === "") {
+    return void 0;
+  }
+  if (value === "readonly_git" || value === "none") {
+    return value;
+  }
+  throw new Error(`Unsupported opencode.readOnlyBashPolicy in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`);
+}
+async function readRetinueConfig(env) {
   const configPath = env.RETINUE_CONFIG_FILE?.trim();
   if (!configPath) {
     return void 0;
@@ -24295,14 +24353,7 @@ async function readConfiguredOpenCodeAccessMode(env) {
     }
     throw new Error(`Failed to read Retinue config ${configPath}: ${error2 instanceof Error ? error2.message : String(error2)}`);
   }
-  const value = typeof parsed === "object" && parsed !== null && "opencode" in parsed ? parsed.opencode.defaultAccessMode : void 0;
-  if (value === void 0 || value === "") {
-    return void 0;
-  }
-  if (value === "read_only" || value === "profile") {
-    return value;
-  }
-  throw new Error(`Unsupported opencode.defaultAccessMode in Retinue config ${configPath}: ${String(value)}`);
+  return parsed;
 }
 function readOpenCodeAccessModeFromEnv(env) {
   const accessMode = env.RETINUE_OPENCODE_ACCESS_MODE?.trim().toLowerCase();

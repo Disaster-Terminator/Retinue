@@ -258,6 +258,7 @@ describe("MCP tools", () => {
       assertOptionalField(tools.tools, "retinue_spawn_agent", "task_name");
       assertOptionalField(tools.tools, "retinue_spawn_agent", "cwd");
       assertOptionalField(tools.tools, "retinue_spawn_agent", "access_mode");
+      assertOptionalField(tools.tools, "retinue_spawn_agent", "bash_policy");
       assertAbsentFields(tools.tools, "retinue_spawn_agent", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
       assertRequiredFields(tools.tools, "retinue_wait_agent", ["jobId"]);
       assertAbsentFields(tools.tools, "retinue_wait_agent", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
@@ -295,27 +296,31 @@ describe("MCP tools", () => {
       });
       expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({
         tools: {
-          bash: false,
           edit: false,
           write: false,
           apply_patch: false,
           task: false
         }
       });
+      expect(fakeOpenCode.promptRequests.at(-1)?.tools).not.toHaveProperty("bash", false);
       const submittedPrompt = extractOpenCodePromptText(fakeOpenCode.promptRequests.at(-1));
       expect(submittedPrompt).toContain("Retinue read-only child agent");
-      expect(submittedPrompt).toContain("Use only OpenCode read, grep, and glob tools");
+      expect(submittedPrompt).toContain("Use only OpenCode read, grep, glob, and allowed read-only git bash commands");
       expect(submittedPrompt).toContain("read only a small set of targeted files");
       expect(submittedPrompt).toContain("Use read serially");
-      expect(submittedPrompt).toContain("Do not call bash");
+      expect(submittedPrompt).toContain("Do not call bash except for allowed read-only git inspection commands");
       expect(submittedPrompt).toContain("retinue mcp");
+      const permissions = fakeOpenCode.sessionRequests.at(-1)?.permission ?? [];
       expect(fakeOpenCode.sessionRequests.at(-1)).toMatchObject({
         permission: expect.arrayContaining([
           { permission: "doom_loop", pattern: "*", action: "deny" },
           { permission: "bash", pattern: "*", action: "deny" },
-          { permission: "bash", pattern: "git show*", action: "allow" }
+          { permission: "bash", pattern: "git diff --cached*", action: "allow" }
         ])
       });
+      expect(permissions.findIndex((rule) => rule.permission === "bash" && rule.pattern === "git diff --cached*")).toBeLessThan(
+        permissions.findIndex((rule) => rule.permission === "bash" && rule.pattern === "*")
+      );
       const runningWait = parseToolJson(
         await connection.client.callTool({
           name: "retinue_wait_agent",
@@ -389,6 +394,40 @@ describe("MCP tools", () => {
     }
   });
 
+  it("lets a Retinue OpenCode read-only spawn opt out of readonly git bash", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-readonly-git-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+
+      await connection.client.callTool({
+        name: "retinue_spawn_agent",
+        arguments: { cwd: tempDir, message: "inspect staged diff", task_name: "no-bash", bash_policy: "none" }
+      });
+
+      expect(fakeOpenCode.promptRequests.at(-1)?.tools).toMatchObject({
+        bash: false,
+        edit: false,
+        write: false,
+        apply_patch: false,
+        task: false
+      });
+      expect(fakeOpenCode.sessionRequests.at(-1)).toMatchObject({
+        permission: expect.arrayContaining([{ permission: "bash", pattern: "*", action: "deny" }])
+      });
+      expect(fakeOpenCode.sessionRequests.at(-1)).toMatchObject({
+        permission: expect.not.arrayContaining([{ permission: "bash", pattern: "git diff --cached*", action: "allow" }])
+      });
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("uses the configured Retinue plugin access mode when spawn omits access_mode", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-config-access-"));
     const configPath = path.join(tempDir, "retinue.config.json");
@@ -406,6 +445,35 @@ describe("MCP tools", () => {
       });
 
       expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      delete process.env.RETINUE_CONFIG_FILE;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses the configured Retinue no-bash policy when spawn omits bash_policy", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-config-bash-"));
+    const configPath = path.join(tempDir, "retinue.config.json");
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      await fs.writeFile(configPath, JSON.stringify({ opencode: { defaultAccessMode: "read_only", readOnlyBashPolicy: "none" } }), "utf8");
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.RETINUE_CONFIG_FILE = configPath;
+
+      await connection.client.callTool({
+        name: "retinue_spawn_agent",
+        arguments: { cwd: tempDir, message: "inspect configured staged diff", task_name: "configured-bash" }
+      });
+
+      expect(fakeOpenCode.promptRequests.at(-1)?.tools).toHaveProperty("bash", false);
+      expect(fakeOpenCode.sessionRequests.at(-1)).toMatchObject({
+        permission: expect.not.arrayContaining([{ permission: "bash", pattern: "git diff --cached*", action: "allow" }])
+      });
     } finally {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;

@@ -181,13 +181,14 @@ describe("Retinue Codex plugin guardrails", () => {
   });
 
   it("keeps default OpenCode read-only prompts from inheriting profile shell access", () => {
-    expect(opencodeBackendSource).toContain("const OPENCODE_READ_ONLY_TOOLS: Record<string, boolean> = {");
-    expect(opencodeBackendSource).toContain("bash: false");
+    expect(opencodeBackendSource).toContain("const OPENCODE_READ_ONLY_TOOLS_NO_BASH: Record<string, boolean> = {");
+    expect(opencodeBackendSource).toContain("const OPENCODE_READ_ONLY_TOOLS_WITH_READONLY_GIT_BASH: Record<string, boolean> = {");
     expect(opencodeBackendSource).toContain("edit: false");
     expect(opencodeBackendSource).toContain("write: false");
     expect(opencodeBackendSource).toContain("task: false");
     expect(opencodeBackendSource).toContain("Retinue read-only child agent contract");
-    expect(opencodeBackendSource).toContain("Use only OpenCode read, grep, and glob tools");
+    expect(opencodeBackendSource).toContain("Use only OpenCode read, grep, glob, and allowed read-only git bash commands");
+    expect(opencodeBackendSource).toContain("Allowed bash is limited to read-only git inspection commands");
     expect(opencodeBackendSource).toContain("read only a small set of targeted files");
     expect(opencodeBackendSource).toContain("Use read serially");
     expect(opencodeBackendSource).toContain("Do not emit unified diffs");
@@ -198,7 +199,7 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(opencodeBackendSource).toContain("Use at most six inspection tool calls");
     expect(opencodeBackendSource).toContain("You cannot inspect git history");
     expect(opencodeBackendSource).toContain("If the task asks for a diff");
-    expect(opencodeBackendSource).toContain("Do not call bash");
+    expect(opencodeBackendSource).toContain("Do not call bash except for allowed read-only git inspection commands");
   });
 
   it("declares a plugin manifest with skill and MCP surfaces", () => {
@@ -239,7 +240,7 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(mcp.retinue?.env?.RETINUE_OPENCODE_READ_ONLY).toBeUndefined();
     expect(existsSync("plugins/retinue/retinue.config.json")).toBe(true);
     expect(JSON.parse(readFileSync("plugins/retinue/retinue.config.json", "utf8"))).toMatchObject({
-      opencode: { defaultAccessMode: "read_only" }
+      opencode: { defaultAccessMode: "read_only", readOnlyBashPolicy: "readonly_git" }
     });
     expect(mcp.retinue?.env?.RETINUE_DAEMON_DISCOVERY).toBeUndefined();
     expect(mcp.retinue?.env?.RETINUE_EXPOSE_BACKEND_TOOLS).toBeUndefined();
