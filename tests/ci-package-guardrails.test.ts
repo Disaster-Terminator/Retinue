@@ -189,6 +189,9 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(opencodeBackendSource).toContain("Use only OpenCode read, grep, and glob tools");
     expect(opencodeBackendSource).toContain("read only a small set of targeted files");
     expect(opencodeBackendSource).toContain("Use read serially");
+    expect(opencodeBackendSource).toContain("Do not emit unified diffs");
+    expect(opencodeBackendSource).toContain("Do not include patch blocks");
+    expect(opencodeBackendSource).toContain("For code review, return findings as plain text");
     expect(opencodeBackendSource).toContain("Do not call bash");
   });
 
