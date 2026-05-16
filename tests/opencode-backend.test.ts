@@ -562,6 +562,22 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"lastAssistantPartTypes":[]');
   });
 
+  it("uses a short default stall window for blank provider assistant placeholders", async () => {
+    const backend = createBackend();
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "provider returned a blank assistant placeholder" });
+    server!.appendBlankAssistant(started.externalSessionId!);
+
+    const paths = getJobPaths(tempDir, started.jobId);
+    const meta = JSON.parse(await fs.readFile(paths.meta, "utf8")) as typeof started;
+    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 91_000).toISOString() })}\n`, "utf8");
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"stallReason":"provider_blank_assistant"');
+    expect(trace).toContain('"blankAssistantStallThresholdMs":90000');
+  });
+
   it("marks zero-progress reasoning placeholders as stalled with diagnostics", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
