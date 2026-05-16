@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { getJobPaths, getOpenCodeServerDiscoveryPath, getOpenCodeServerLockPath, getRetinueTracePath } from "../../core/paths.js";
-import { killProcessTree } from "../../core/processTree.js";
+import { killProcessTree, killProcessTreeSync } from "../../core/processTree.js";
 const DEFAULT_OPENCODE_HOST = "127.0.0.1";
 const DEFAULT_OPENCODE_PORT = 4096;
 const DEFAULT_OPENCODE_FALLBACK_PORTS = buildPortRange(4097, 4127);
@@ -183,13 +183,7 @@ async function startManagedOpenCodeServer(resolution, options) {
             cwd: options.cwd
         });
         const startupFailure = waitForStartupFailure(child, resolution.command);
-        const cleanup = () => {
-            void stopChildProcessTree(baseUrl, child, {
-                stateDir: options.stateDir,
-                cwd: options.cwd,
-                reason: "process_exit"
-            });
-        };
+        const cleanup = () => stopChildProcessTreeSync(child);
         process.once("exit", cleanup);
         try {
             await Promise.race([
@@ -356,6 +350,12 @@ async function stopChildProcessTree(baseUrl, child, options) {
             error: error instanceof Error ? error.message : String(error),
             cwd: options.cwd
         });
+    }
+}
+function stopChildProcessTreeSync(child) {
+    const pid = child.pid;
+    if (pid && child.exitCode === null) {
+        killProcessTreeSync(pid);
     }
 }
 async function writeRetinueTrace(stateDir, event) {
