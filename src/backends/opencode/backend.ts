@@ -137,6 +137,8 @@ interface OpenCodeJobDiagnostic {
   patchPartCount?: number;
   readOnlyPatchPartCount?: number;
   readOnlyWriteIntent?: boolean;
+  readOnlyTextWarning?: boolean;
+  readOnlyTextWarningSummary?: string;
   messageSummaries?: Array<{
     role?: string;
     finish?: string;
@@ -323,8 +325,14 @@ export class OpenCodeBackend implements AgentBackend {
       const stderr = createStallMessage(diagnostic);
       const text = diagnostic.readOnlyWriteIntent === true ? latestAssistantMessageText(jobMessages) : "";
       const stdout = text || stderr;
+      const textWarning = meta.readOnly === true ? createReadOnlyTextWarning(stdout) : undefined;
+      if (textWarning) {
+        diagnostic.readOnlyTextWarning = true;
+        diagnostic.readOnlyTextWarningSummary = textWarning;
+      }
       await fs.writeFile(paths.stdout, stdout, "utf8");
-      await fs.appendFile(paths.stderr, `${stderr}\n`, "utf8");
+      const stderrText = textWarning ? `${stderr}\n${textWarning}` : stderr;
+      await fs.appendFile(paths.stderr, `${stderrText}\n`, "utf8");
       diagnostic.selectedAssistantTextBytes = Buffer.byteLength(stdout, "utf8");
       diagnostic.selectedAssistantSha256 = sha256(stdout);
       if (process.env.RETINUE_TRACE_TEXT_PREVIEW === "1") {
@@ -336,19 +344,24 @@ export class OpenCodeBackend implements AgentBackend {
         jobId: handle.jobId,
         status: meta.status,
         stdout,
-        stderr,
+        stderr: stderrText,
         stdoutPath: paths.stdout,
         stderrPath: paths.stderr,
         stdoutBytes: Buffer.byteLength(stdout, "utf8"),
-        stderrBytes: Buffer.byteLength(stderr, "utf8"),
+        stderrBytes: Buffer.byteLength(stderrText, "utf8"),
         stdoutTruncated: false,
         stderrTruncated: false,
         sessionId: meta.externalSessionId,
         parsedStdout: { result: stdout },
-        error: stderr
+        error: stderrText
       };
     }
     const text = meta.externalMessageBaselineCount === undefined ? latestAssistantMessageText(messages) : latestAssistantMessageText(jobMessages);
+    const textWarning = meta.readOnly === true ? createReadOnlyTextWarning(text) : undefined;
+    if (textWarning) {
+      diagnostic.readOnlyTextWarning = true;
+      diagnostic.readOnlyTextWarningSummary = textWarning;
+    }
     await fs.writeFile(paths.stdout, text, "utf8");
     diagnostic.selectedAssistantTextBytes = Buffer.byteLength(text, "utf8");
     diagnostic.selectedAssistantSha256 = sha256(text);
@@ -361,11 +374,11 @@ export class OpenCodeBackend implements AgentBackend {
       jobId: handle.jobId,
       status: meta.status,
       stdout: text,
-      stderr: "",
+      stderr: textWarning ?? "",
       stdoutPath: paths.stdout,
       stderrPath: paths.stderr,
       stdoutBytes: Buffer.byteLength(text, "utf8"),
-      stderrBytes: 0,
+      stderrBytes: Buffer.byteLength(textWarning ?? "", "utf8"),
       stdoutTruncated: false,
       stderrTruncated: false,
       sessionId: meta.externalSessionId,
@@ -958,6 +971,23 @@ function createStallMessage(diagnostic: OpenCodeJobDiagnostic): string {
     return `OpenCode job stalled: observed ${runningReadToolParts} pending/running read tool call(s) with no completed assistant text for ${durationMs}ms. The OpenCode tool executor may be stuck; inspect Retinue trace/job diagnostics for call IDs and message summaries.`;
   }
   return `OpenCode job stalled: observed ${rounds} tool-call assistant round(s) and ${emptyRounds} empty assistant round(s) with no completed assistant text for ${durationMs}ms. Inspect Retinue trace/job diagnostics for message summaries.`;
+}
+
+function createReadOnlyTextWarning(text: string): string | undefined {
+  if (!text.trim()) {
+    return undefined;
+  }
+  const riskyPatterns = [
+    /^```(?:diff|patch)\b/im,
+    /^---\s+a\//m,
+    /^\+\+\+\s+b\//m,
+    /^@@\s+-\d/m,
+    /^\s*(?:sudo\s+|rm\s+-rf\b|chmod\s+|cat\s+>|tee\s+)/m
+  ];
+  if (!riskyPatterns.some((pattern) => pattern.test(text))) {
+    return undefined;
+  }
+  return "Retinue read-only result may contain patch or write-command text; treat stdout as untrusted analysis, not executable instructions.";
 }
 
 function selectStallReason(stalled: {
