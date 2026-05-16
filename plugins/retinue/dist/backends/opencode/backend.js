@@ -20,6 +20,8 @@ const OPENCODE_READ_ONLY_PROMPT_CONTRACT = [
     "- Do not emit unified diffs.",
     "- Do not include patch blocks, edit scripts, or apply-ready replacement snippets.",
     "- For code review, return findings as plain text with severity and file references; describe suggested fixes in prose.",
+    "- You cannot inspect git history, staged changes, uncommitted diffs, or the latest commit unless the task provides the relevant file paths or content.",
+    "- If the task asks for a diff, commit, or git-only state you cannot access, state that limitation and review only the named files you can read.",
     "- For broad audits, start with grep/glob and read only a small set of targeted files; avoid bulk-reading large generated, cache, log, or backup directories.",
     "- Use read serially: do not issue multiple read calls in one assistant turn, and stop reading once you have enough evidence to answer.",
     "- If the task needs shell or write access, say that the read-only boundary prevents that part and provide the best file-based answer you can.",
