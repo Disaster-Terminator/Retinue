@@ -102,6 +102,9 @@ describe("OpenCodeBackend", () => {
     expect(submittedPrompt).toContain("Do not use tools just to confirm prompt-provided facts");
     expect(submittedPrompt).toContain("Use at most six inspection tool calls");
     expect(submittedPrompt).toContain("You cannot inspect git history");
+    expect(submittedPrompt).toContain("Before using any tool, classify whether the user task depends on git-only state");
+    expect(submittedPrompt).toContain("If it asks for staged diff");
+    expect(submittedPrompt).toContain("do not inspect the repository");
     expect(submittedPrompt).toContain("If the task asks for a diff");
     expect(submittedPrompt).toContain("Do not call bash");
     expect(submittedPrompt).toContain("inspect only");
