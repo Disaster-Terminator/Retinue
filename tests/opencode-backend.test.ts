@@ -94,6 +94,9 @@ describe("OpenCodeBackend", () => {
     expect(submittedPrompt).toContain("Use only OpenCode read, grep, and glob tools");
     expect(submittedPrompt).toContain("read only a small set of targeted files");
     expect(submittedPrompt).toContain("Use read serially");
+    expect(submittedPrompt).toContain("Do not emit unified diffs");
+    expect(submittedPrompt).toContain("Do not include patch blocks");
+    expect(submittedPrompt).toContain("For code review, return findings as plain text");
     expect(submittedPrompt).toContain("Do not call bash");
     expect(submittedPrompt).toContain("inspect only");
   });
