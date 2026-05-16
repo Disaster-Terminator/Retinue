@@ -196,10 +196,12 @@ pnpm run probe:hermes-retinue
 ## Developer Docs
 
 - [Source install and development](docs/development/SOURCE_INSTALL.md)
+- [Architecture overview](docs/architecture/OVERVIEW.md)
 - [0.1.0 Release Notes](docs/release/v0.1.0_RELEASE_NOTES.md)
 - [0.1.0 Release Notes zh-CN](docs/release/v0.1.0_RELEASE_NOTES.zh-CN.md)
 - [0.1.0 Release Readiness](docs/release/0.1.0_RELEASE_PLAN.md)
 - [Docs index](docs/README.md)
+- [Documentation governance](docs/DOCUMENTATION_GOVERNANCE.md)
 - [Long-Term Vision](docs/LONG_TERM_VISION.md)
 - [Project Boundary](docs/architecture/PROJECT_BOUNDARY.md)
 - [Service Lifecycle](docs/deployment/SERVICE_LIFECYCLE.md)
