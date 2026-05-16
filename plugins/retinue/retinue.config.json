@@ -1,5 +1,6 @@
 {
   "opencode": {
-    "defaultAccessMode": "read_only"
+    "defaultAccessMode": "read_only",
+    "readOnlyBashPolicy": "readonly_git"
   }
 }

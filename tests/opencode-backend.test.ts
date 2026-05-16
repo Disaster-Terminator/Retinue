@@ -57,7 +57,7 @@ describe("OpenCodeBackend", () => {
     });
   });
 
-  it("creates read-only OpenCode sessions with tool disables and non-interactive permissions", async () => {
+  it("creates read-only OpenCode sessions with readonly git bash and non-interactive permissions", async () => {
     const backend = createBackend();
 
     await backend.run({
@@ -66,6 +66,7 @@ describe("OpenCodeBackend", () => {
       readOnly: true
     });
 
+    const permissions = server!.sessionRequests.at(-1)?.permission ?? [];
     expect(server!.sessionRequests.at(-1)).toMatchObject({
       permission: expect.arrayContaining([
         { permission: "edit", pattern: "*", action: "deny" },
@@ -76,10 +77,61 @@ describe("OpenCodeBackend", () => {
         { permission: "external_directory", pattern: "*", action: "deny" },
         { permission: "doom_loop", pattern: "*", action: "deny" },
         { permission: "bash", pattern: "*", action: "deny" },
-        { permission: "bash", pattern: "git show*", action: "allow" },
-        { permission: "bash", pattern: "git diff*", action: "allow" },
-        { permission: "bash", pattern: "git status*", action: "allow" }
+        { permission: "bash", pattern: "git diff --cached*", action: "allow" },
+        { permission: "bash", pattern: "git diff --staged*", action: "allow" },
+        { permission: "bash", pattern: "git status --short*", action: "allow" }
       ])
+    });
+    expect(permissions.findIndex((rule) => rule.permission === "bash" && rule.pattern === "git diff --cached*")).toBeLessThan(
+      permissions.findIndex((rule) => rule.permission === "bash" && rule.pattern === "*")
+    );
+    expect(server!.promptRequests.at(-1)).toMatchObject({
+      tools: {
+        edit: false,
+        write: false,
+        apply_patch: false,
+        task: false
+      }
+    });
+    expect(server!.promptRequests.at(-1)?.tools).not.toHaveProperty("bash", false);
+    const submittedPrompt = extractPromptText(server!.promptRequests.at(-1));
+    expect(submittedPrompt).toContain("Retinue read-only child agent");
+    expect(submittedPrompt).toContain("Use only OpenCode read, grep, glob, and allowed read-only git bash commands");
+    expect(submittedPrompt).toContain("Allowed bash is limited to read-only git inspection commands");
+    expect(submittedPrompt).toContain("read only a small set of targeted files");
+    expect(submittedPrompt).toContain("Use read serially");
+    expect(submittedPrompt).toContain("Do not emit unified diffs");
+    expect(submittedPrompt).toContain("Do not include patch blocks");
+    expect(submittedPrompt).toContain("For code review, return findings as plain text");
+    expect(submittedPrompt).toContain("If the user provides enough facts");
+    expect(submittedPrompt).toContain("Do not use tools just to confirm prompt-provided facts");
+    expect(submittedPrompt).toContain("Use at most six inspection tool calls");
+    expect(submittedPrompt).toContain("You cannot inspect git history");
+    expect(submittedPrompt).toContain("Before using any tool, classify whether the user task depends on git-only state");
+    expect(submittedPrompt).toContain("You may inspect staged or unstaged diff only with the allowed read-only git commands");
+    expect(submittedPrompt).toContain("outside that allowlist");
+    expect(submittedPrompt).toContain("If the task asks for a diff");
+    expect(submittedPrompt).toContain("Do not call bash except for allowed read-only git inspection commands");
+    expect(submittedPrompt).toContain("inspect only");
+  });
+
+  it("can opt read-only OpenCode sessions out of readonly git bash commands", async () => {
+    const backend = createBackend();
+
+    await backend.run({
+      cwd: tempDir,
+      prompt: "inspect staged diff",
+      readOnly: true,
+      readOnlyBashPolicy: "none"
+    });
+
+    expect(server!.sessionRequests.at(-1)).toMatchObject({
+      permission: expect.arrayContaining([
+        { permission: "bash", pattern: "*", action: "deny" }
+      ])
+    });
+    expect(server!.sessionRequests.at(-1)).toMatchObject({
+      permission: expect.not.arrayContaining([{ permission: "bash", pattern: "git diff --cached*", action: "allow" }])
     });
     expect(server!.promptRequests.at(-1)).toMatchObject({
       tools: {
@@ -91,23 +143,8 @@ describe("OpenCodeBackend", () => {
       }
     });
     const submittedPrompt = extractPromptText(server!.promptRequests.at(-1));
-    expect(submittedPrompt).toContain("Retinue read-only child agent");
     expect(submittedPrompt).toContain("Use only OpenCode read, grep, and glob tools");
-    expect(submittedPrompt).toContain("read only a small set of targeted files");
-    expect(submittedPrompt).toContain("Use read serially");
-    expect(submittedPrompt).toContain("Do not emit unified diffs");
-    expect(submittedPrompt).toContain("Do not include patch blocks");
-    expect(submittedPrompt).toContain("For code review, return findings as plain text");
-    expect(submittedPrompt).toContain("If the user provides enough facts");
-    expect(submittedPrompt).toContain("Do not use tools just to confirm prompt-provided facts");
-    expect(submittedPrompt).toContain("Use at most six inspection tool calls");
-    expect(submittedPrompt).toContain("You cannot inspect git history");
-    expect(submittedPrompt).toContain("Before using any tool, classify whether the user task depends on git-only state");
-    expect(submittedPrompt).toContain("If it asks for staged diff");
-    expect(submittedPrompt).toContain("do not inspect the repository");
-    expect(submittedPrompt).toContain("If the task asks for a diff");
     expect(submittedPrompt).toContain("Do not call bash");
-    expect(submittedPrompt).toContain("inspect only");
   });
 
   it("stalls read-only OpenCode jobs that emit patch parts", async () => {
@@ -160,6 +197,21 @@ describe("OpenCodeBackend", () => {
       status: "stalled",
       stdout: "final review",
       parsedStdout: { result: "final review" },
+      error: expect.stringContaining("OpenCode read-only job emitted patch/write intent")
+    });
+  });
+
+  it("surfaces incomplete assistant text from read-only jobs rejected for patch intent", async () => {
+    const backend = createBackend();
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
+    server!.appendPatchAssistant(started.externalSessionId!, "Finding: permission order is unsafe.");
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "stalled",
+      stdout: "Finding: permission order is unsafe.",
+      parsedStdout: { result: "Finding: permission order is unsafe." },
       error: expect.stringContaining("OpenCode read-only job emitted patch/write intent")
     });
   });

@@ -9,6 +9,7 @@ export interface AgentRunOptions extends RunOptions {
   model?: string;
   agent?: string;
   readOnly?: boolean;
+  readOnlyBashPolicy?: "none" | "readonly_git";
 }
 
 export interface AgentContinueOptions extends AgentRunOptions {

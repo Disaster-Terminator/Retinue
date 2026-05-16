@@ -44,8 +44,10 @@ export const RETINUE_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", 
 
 const DEFAULT_MCP_WAIT_MAX_MS = 90_000;
 const ACCESS_MODES = ["read_only", "profile"] as const;
+const READ_ONLY_BASH_POLICIES = ["readonly_git", "none"] as const;
 
 type AccessMode = (typeof ACCESS_MODES)[number];
+type ReadOnlyBashPolicy = (typeof READ_ONLY_BASH_POLICIES)[number];
 
 export interface CreateMcpServerOptions {
   exposeBackendTools?: boolean;
@@ -73,7 +75,8 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
         taskName: z.string().optional(),
         cwd: z.string().optional(),
         title: z.string().optional(),
-        access_mode: z.enum(ACCESS_MODES).optional()
+        access_mode: z.enum(ACCESS_MODES).optional(),
+        bash_policy: z.enum(READ_ONLY_BASH_POLICIES).optional()
       }
     },
     async (args) => {
@@ -81,6 +84,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
       const backend = await createRetinueBackend(retinue);
       const { evicted, started } = await agentPool.withSpawnLock(async () => {
         const evicted = await agentPool.ensureSpawnSlot(retinue, process.env);
+        const accessMode = backend.kind === "opencode" ? await resolveOpenCodeAccessMode(args.access_mode, process.env) : undefined;
         const started = await backend.run({
           cwd: args.cwd ?? process.cwd(),
           prompt: args.message,
@@ -90,7 +94,8 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
             ? {
                 model: process.env.RETINUE_OPENCODE_MODEL,
                 agent: process.env.RETINUE_OPENCODE_AGENT,
-                readOnly: (await resolveOpenCodeAccessMode(args.access_mode, process.env)) === "read_only"
+                readOnly: accessMode === "read_only",
+                readOnlyBashPolicy: await resolveOpenCodeReadOnlyBashPolicy(args.bash_policy, process.env)
               }
             : {})
         });
@@ -597,7 +602,48 @@ async function resolveOpenCodeAccessMode(requested: AccessMode | undefined, env:
   return readOpenCodeAccessModeFromEnv(env);
 }
 
+async function resolveOpenCodeReadOnlyBashPolicy(
+  requested: ReadOnlyBashPolicy | undefined,
+  env: NodeJS.ProcessEnv
+): Promise<ReadOnlyBashPolicy> {
+  if (requested) {
+    return requested;
+  }
+  const configured = await readConfiguredOpenCodeReadOnlyBashPolicy(env);
+  return configured ?? "readonly_git";
+}
+
 async function readConfiguredOpenCodeAccessMode(env: NodeJS.ProcessEnv): Promise<AccessMode | undefined> {
+  const config = await readRetinueConfig(env);
+  const value =
+    typeof config === "object" && config !== null && "opencode" in config
+      ? (config.opencode as { defaultAccessMode?: unknown }).defaultAccessMode
+      : undefined;
+  if (value === undefined || value === "") {
+    return undefined;
+  }
+  if (value === "read_only" || value === "profile") {
+    return value;
+  }
+  throw new Error(`Unsupported opencode.defaultAccessMode in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`);
+}
+
+async function readConfiguredOpenCodeReadOnlyBashPolicy(env: NodeJS.ProcessEnv): Promise<ReadOnlyBashPolicy | undefined> {
+  const config = await readRetinueConfig(env);
+  const value =
+    typeof config === "object" && config !== null && "opencode" in config
+      ? (config.opencode as { readOnlyBashPolicy?: unknown }).readOnlyBashPolicy
+      : undefined;
+  if (value === undefined || value === "") {
+    return undefined;
+  }
+  if (value === "readonly_git" || value === "none") {
+    return value;
+  }
+  throw new Error(`Unsupported opencode.readOnlyBashPolicy in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`);
+}
+
+async function readRetinueConfig(env: NodeJS.ProcessEnv): Promise<unknown | undefined> {
   const configPath = env.RETINUE_CONFIG_FILE?.trim();
   if (!configPath) {
     return undefined;
@@ -613,17 +659,7 @@ async function readConfiguredOpenCodeAccessMode(env: NodeJS.ProcessEnv): Promise
     throw new Error(`Failed to read Retinue config ${configPath}: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  const value =
-    typeof parsed === "object" && parsed !== null && "opencode" in parsed
-      ? (parsed.opencode as { defaultAccessMode?: unknown }).defaultAccessMode
-      : undefined;
-  if (value === undefined || value === "") {
-    return undefined;
-  }
-  if (value === "read_only" || value === "profile") {
-    return value;
-  }
-  throw new Error(`Unsupported opencode.defaultAccessMode in Retinue config ${configPath}: ${String(value)}`);
+  return parsed;
 }
 
 function readOpenCodeAccessModeFromEnv(env: NodeJS.ProcessEnv): AccessMode {

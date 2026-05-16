@@ -34,7 +34,7 @@ export interface FakeOpenCodeServer {
   appendBlankAssistant(sessionId: string): void;
   appendZeroProgressReasoningAssistant(sessionId: string): void;
   appendIncompleteAssistant(sessionId: string, text?: string): void;
-  appendPatchAssistant(sessionId: string): void;
+  appendPatchAssistant(sessionId: string, text?: string): void;
   appendErroredIncompleteAssistant(sessionId: string, error: unknown): void;
   completeSessionWithReasoningOnly(sessionId: string): void;
   failSession(sessionId: string, reason?: string): void;
@@ -344,7 +344,7 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
         });
       }
     },
-    appendPatchAssistant: (sessionId: string) => {
+    appendPatchAssistant: (sessionId: string, text = "") => {
       const session = sessions.get(sessionId);
       if (session) {
         session.omitState = true;
@@ -358,6 +358,7 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
           },
           parts: [
             { type: "step-start" },
+            ...(text ? [{ type: "text", text }] : []),
             { type: "tool", text: "tool call placeholder", tool: "task", callID: `call_${nextMessage}`, state: { status: "completed" } },
             { type: "patch", text: "*** Begin Patch\n*** Update File: demo.txt\n@@\n-old\n+new\n*** End Patch\n" },
             { type: "step-finish" }
