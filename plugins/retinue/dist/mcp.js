@@ -22077,6 +22077,7 @@ var OPENCODE_READ_ONLY_PERMISSION = [
   { permission: "question", pattern: "*", action: "deny" },
   { permission: "edit", pattern: "*", action: "deny" },
   { permission: "write", pattern: "*", action: "deny" },
+  { permission: "apply_patch", pattern: "*", action: "deny" },
   { permission: "task", pattern: "*", action: "deny" },
   { permission: "external_directory", pattern: "*", action: "deny" },
   { permission: "doom_loop", pattern: "*", action: "deny" },
@@ -22168,6 +22169,8 @@ var OpenCodeBackend = class {
       externalSessionDirectory: session.directory ?? session.cwd,
       externalMessageBaselineCount: baseline.messageCount,
       externalCompletedAssistantBaselineCount: baseline.completedAssistantCount,
+      parentJobId: options.parentJobId,
+      parentSessionId: options.parentSessionId,
       args: [],
       createdAt: now,
       updatedAt: now
@@ -22180,6 +22183,22 @@ var OpenCodeBackend = class {
   async continueJob(options) {
     if (!options.externalSessionId) {
       return this.run(options);
+    }
+    if (options.readOnly === true) {
+      return this.run({
+        cwd: options.cwd,
+        prompt: options.prompt,
+        name: options.name,
+        title: options.title,
+        model: options.model,
+        agent: options.agent,
+        readOnly: true,
+        parentJobId: options.parentJobId,
+        parentSessionId: options.parentSessionId ?? options.externalSessionId,
+        maxTurns: options.maxTurns,
+        permissionMode: options.permissionMode,
+        timeoutMs: options.timeoutMs
+      });
     }
     const jobId = `job_${randomUUID2()}`;
     const paths = getJobPaths(this.stateDir, jobId);
@@ -22202,7 +22221,7 @@ var OpenCodeBackend = class {
       title: options.title,
       model: options.model,
       agent: options.agent,
-      readOnly: options.readOnly === true,
+      readOnly: false,
       externalSessionId: options.externalSessionId,
       externalServerUrl: target.baseUrl,
       externalSessionDirectory: options.cwd,
@@ -22457,7 +22476,8 @@ ${textWarning2}` : stderr;
       return false;
     }
     const messages = await client.messages(sessionId);
-    return countPatchParts(selectMessagesForMeta(messages, meta)) > 0;
+    const jobMessages = selectMessagesForMeta(messages, meta);
+    return countPatchParts(jobMessages) > 0 || countWriteIntentToolParts(jobMessages) > 0;
   }
   async isStalledOpenCodeJob(client, sessionId, meta) {
     const messages = await client.messages(sessionId);
@@ -22509,7 +22529,9 @@ ${textWarning2}` : stderr;
       diagnostic.lastAssistantTokens = lastAssistant?.info?.tokens;
       diagnostic.patchPartCount = countPatchParts(jobMessages);
       diagnostic.readOnlyPatchPartCount = meta.readOnly === true ? diagnostic.patchPartCount : 0;
-      diagnostic.readOnlyWriteIntent = (diagnostic.readOnlyPatchPartCount ?? 0) > 0;
+      diagnostic.writeIntentToolPartCount = countWriteIntentToolParts(jobMessages);
+      diagnostic.readOnlyWriteIntentToolPartCount = meta.readOnly === true ? diagnostic.writeIntentToolPartCount : 0;
+      diagnostic.readOnlyWriteIntent = (diagnostic.readOnlyPatchPartCount ?? 0) > 0 || (diagnostic.readOnlyWriteIntentToolPartCount ?? 0) > 0;
       diagnostic.messageSummaries = jobMessages.map((message) => ({
         role: message.info?.role,
         finish: stringInfo(message, "finish"),
@@ -22733,12 +22755,24 @@ function isToolCallAssistantMessage(message) {
 function countPatchParts(messages) {
   return messages.reduce((count, message) => count + (message.parts?.filter((part) => part?.type === "patch").length ?? 0), 0);
 }
+function countWriteIntentToolParts(messages) {
+  return messages.reduce(
+    (count, message) => count + (message.parts?.filter((part) => part?.type === "tool" && isWriteIntentTool(part.tool)).length ?? 0),
+    0
+  );
+}
+function isWriteIntentTool(tool) {
+  return tool === "write" || tool === "edit" || tool === "apply_patch";
+}
 function computeStallDiagnostic(jobMessages, meta, env) {
   const patchPartCount = countPatchParts(jobMessages);
-  if (meta.readOnly === true && patchPartCount > 0) {
+  const writeIntentToolPartCount = countWriteIntentToolParts(jobMessages);
+  if (meta.readOnly === true && (patchPartCount > 0 || writeIntentToolPartCount > 0)) {
     return {
       patchPartCount,
       readOnlyPatchPartCount: patchPartCount,
+      writeIntentToolPartCount,
+      readOnlyWriteIntentToolPartCount: writeIntentToolPartCount,
       readOnlyWriteIntent: true,
       stallReason: "read_only_write_intent",
       stallSummary: "OpenCode read-only job emitted patch/write intent."

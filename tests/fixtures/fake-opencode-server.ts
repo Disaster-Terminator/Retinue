@@ -28,6 +28,7 @@ export interface FakeOpenCodeServer {
   completeSessionWithFinalText(sessionId: string, text: string): void;
   completeSessionWithToolCallTextOnly(sessionId: string): void;
   appendToolCallAssistant(sessionId: string, text?: string): void;
+  appendWriteIntentAssistant(sessionId: string, tool: "write" | "edit" | "apply_patch"): void;
   appendRunningReadToolAssistant(sessionId: string): void;
   appendPendingReadToolAssistant(sessionId: string): void;
   appendBlankAssistant(sessionId: string): void;
@@ -235,6 +236,26 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
             { type: "step-start" },
             ...(text ? [{ type: "text", text }] : []),
             { type: "tool", text: "tool call placeholder", tool: "task", callID: `call_${nextMessage}`, state: { status: "completed" } },
+            { type: "step-finish" }
+          ]
+        });
+      }
+    },
+    appendWriteIntentAssistant: (sessionId: string, tool: "write" | "edit" | "apply_patch") => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.omitState = true;
+        session.messages.push({
+          info: {
+            id: `msg_${nextMessage++}`,
+            sessionID: session.id,
+            role: "assistant",
+            time: { completed: Date.now() },
+            finish: "tool-calls"
+          },
+          parts: [
+            { type: "step-start" },
+            { type: "tool", text: `${tool} placeholder`, tool, callID: `call_${nextMessage}`, state: { status: "pending" } },
             { type: "step-finish" }
           ]
         });
