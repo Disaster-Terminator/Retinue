@@ -23923,7 +23923,8 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
         env: process.env
       });
       const paths = getJobPaths(stateDir, jobId);
-      const [result, diagnostic] = await Promise.all([backend.result({ jobId }), readLatestJobDiagnostic(paths.stderr)]);
+      const result = await backend.result({ jobId });
+      const diagnostic = await readLatestJobDiagnostic(paths.stderr);
       return jsonToolResult({
         task_name: isJobMeta(status) ? status.name : void 0,
         jobId,
@@ -24357,7 +24358,7 @@ function summarizeJobDiagnostic(value) {
   return compactRecord({
     event,
     backend: "opencode",
-    status: event === "opencode_job_stalled" ? "stalled" : event === "opencode_job_prompt_failed" ? "failed" : "running",
+    status: resolveDiagnosticStatus(event, diagnostic),
     message: createDiagnosticSummaryMessage(event, diagnostic),
     sessionId: stringValue(diagnostic.sessionId),
     sessionDirectory: stringValue(diagnostic.sessionDirectory),
@@ -24396,6 +24397,18 @@ function summarizeJobDiagnostic(value) {
     sessionState: diagnostic.sessionState
   });
 }
+function resolveDiagnosticStatus(event, diagnostic) {
+  if (event === "opencode_job_stalled" || typeof diagnostic.stallReason === "string" || diagnostic.readOnlyWriteIntent === true) {
+    return "stalled";
+  }
+  if (event === "opencode_job_prompt_failed") {
+    return "failed";
+  }
+  if (event === "opencode_job_result_read") {
+    return "completed";
+  }
+  return "running";
+}
 function createDiagnosticSummaryMessage(event, diagnostic) {
   const stallSummary = stringValue(diagnostic.stallSummary);
   if (stallSummary) {
@@ -24409,6 +24422,9 @@ function createDiagnosticSummaryMessage(event, diagnostic) {
   }
   if (event === "opencode_job_prompt_failed") {
     return "OpenCode prompt submission failed before the child job became usable.";
+  }
+  if (event === "opencode_job_result_read") {
+    return "OpenCode job result was read successfully.";
   }
   const rounds = numberValue(diagnostic.toolCallAssistantRounds) ?? 0;
   const emptyRounds = numberValue(diagnostic.emptyAssistantRounds) ?? 0;
