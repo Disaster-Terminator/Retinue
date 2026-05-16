@@ -107,7 +107,9 @@ describe("package.json guardrails", () => {
     for (const scriptName of realProbeScriptNames) {
       const command = scripts[scriptName];
       expect(command).toBeTypeOf("string");
-      expect(command).toMatch(/scripts\/(probe-real-(claude|opencode)|probe-retinue-(opencode|claude)(-slots)?-mcp|probe-retinue-opencode-slots)\.mjs/);
+      expect(command).toMatch(
+        /scripts\/(probe-real-(claude|opencode)|probe-retinue-(opencode|claude)(-slots)?-mcp|probe-retinue-opencode-slots|probe-retinue-opencode-agent-ab)\.mjs/
+      );
     }
 
     expect(scripts["probe:hermes-retinue"]).toBe("node scripts/probe-hermes-retinue-mcp.mjs");
@@ -169,15 +171,15 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(readmeEn).toContain("a timeout from one wait call is not by itself a failed child");
   });
 
-  it("keeps OpenCode incomplete-assistant stall detection conservative while bounding blank placeholders", () => {
+  it("keeps OpenCode no-progress stall detection inside one MCP wait call", () => {
     expect(opencodeBackendSource).toContain("const DEFAULT_STALL_MS = 10 * 60_000");
-    expect(opencodeBackendSource).toContain("const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = DEFAULT_STALL_MS");
-    expect(opencodeBackendSource).toContain("const DEFAULT_BLANK_ASSISTANT_STALL_MS = 90_000");
-    expect(opencodeBackendSource).toContain("const DEFAULT_ZERO_PROGRESS_ASSISTANT_STALL_MS = DEFAULT_STALL_MS");
-    expect(opencodeBackendSource).toContain("const DEFAULT_READ_TOOL_STALL_MS = 240_000");
-    expect(opencodeBackendSource).toContain("const DEFAULT_COMPLETED_TOOL_LOOP_STALL_MS = 120_000");
+    expect(opencodeBackendSource).toContain("const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = 75_000");
+    expect(opencodeBackendSource).toContain("const DEFAULT_BLANK_ASSISTANT_STALL_MS = 75_000");
+    expect(opencodeBackendSource).toContain("const DEFAULT_ZERO_PROGRESS_ASSISTANT_STALL_MS = 75_000");
+    expect(opencodeBackendSource).toContain("const DEFAULT_READ_TOOL_STALL_MS = 75_000");
+    expect(opencodeBackendSource).toContain("const DEFAULT_COMPLETED_TOOL_LOOP_STALL_MS = 75_000");
     expect(opencodeBackendSource).not.toContain("const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = 60_000");
-    expect(opencodeBackendSource).not.toContain("const DEFAULT_ZERO_PROGRESS_ASSISTANT_STALL_MS = 90_000");
+    expect(opencodeBackendSource).not.toContain("const DEFAULT_ZERO_PROGRESS_ASSISTANT_STALL_MS = 120_000");
     expect(opencodeBackendSource).toContain("const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 2");
   });
 

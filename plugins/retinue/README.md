@@ -32,6 +32,6 @@ Codex-facing product delegation should use:
 
 The default deployment uses OpenCode `plan` and lets Retinue manage the local OpenCode server lifecycle. Each Retinue MCP server session keeps a small active child-agent pool; the default limit is 3 active children, and a new spawn beyond the limit closes the oldest active child and returns `evictedJobId`.
 
-When `retinue_wait_agent` returns `running`, inspect the returned stdout/stderr tails and trace path before closing the child. Complex OpenCode `plan` jobs can stay in tool-call rounds for several minutes before producing final text.
+When `retinue_wait_agent` returns `running`, inspect the returned stdout/stderr tails and trace path before closing the child. Complex OpenCode jobs can still spend time in tool-call rounds, but Retinue bounds blank, zero-progress, incomplete, pending-read, and no-final-text loops so they become diagnostic `stalled` results instead of hanging indefinitely.
 
 Backend-specific `opencode_*` and `claude_*` tools are hidden by default. Set `RETINUE_EXPOSE_BACKEND_TOOLS=1` only for adapter debugging and runbook probes; product delegation should stay on the `retinue_*` tools above.

@@ -49,6 +49,7 @@
     "probe:real:opencode": "node scripts/probe-real-opencode.mjs",
     "probe:real:retinue-claude": "node scripts/probe-retinue-claude-mcp.mjs",
     "probe:real:retinue-opencode": "node scripts/probe-retinue-opencode-mcp.mjs",
+    "probe:real:retinue-opencode-agent-ab": "node scripts/probe-retinue-opencode-agent-ab.mjs",
     "probe:real:retinue-opencode-slots": "node scripts/probe-retinue-opencode-slots.mjs",
     "probe:hermes-retinue": "node scripts/probe-hermes-retinue-mcp.mjs",
     "test": "vitest run",
