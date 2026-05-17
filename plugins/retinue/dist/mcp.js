@@ -23950,7 +23950,7 @@ var OPENCODE_TOOL_NAMES = [
   "opencode_cleanup"
 ];
 var RETINUE_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"];
-var DEFAULT_MCP_WAIT_MAX_MS = 9e4;
+var DEFAULT_MCP_WAIT_MAX_MS = 18e4;
 var ACCESS_MODES = ["read_only", "profile"];
 var READ_ONLY_BASH_POLICIES = ["readonly_git", "none"];
 function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
@@ -24036,7 +24036,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
     },
     async ({ jobId, timeoutMs }) => {
       const backend = await createRetinueBackendForJob(retinue, jobId);
-      const effectiveTimeoutMs = clampMcpWaitTimeoutMs(timeoutMs, process.env);
+      const effectiveTimeoutMs = resolveMcpWaitTimeoutMs(timeoutMs, process.env);
       const waited = await backend.wait({ jobId }, effectiveTimeoutMs);
       const status = await backend.status({ jobId });
       const responseStatus = isJobMeta(status) ? status.status : waited.status;
@@ -24252,7 +24252,7 @@ function registerBackendTools(server, retinue) {
       inputSchema: { jobId: external_exports.string(), timeoutMs: external_exports.number().int().nonnegative().optional(), opencodeBaseUrl: external_exports.string().optional() }
     },
     async ({ jobId, timeoutMs, opencodeBaseUrl }) => {
-      const result = await (await createOpenCodeBackend({ opencodeBaseUrl })).wait({ jobId }, clampMcpWaitTimeoutMs(timeoutMs, process.env));
+      const result = await (await createOpenCodeBackend({ opencodeBaseUrl })).wait({ jobId }, resolveMcpWaitTimeoutMs(timeoutMs, process.env));
       return jsonToolResult(result);
     }
   );
@@ -24753,7 +24753,7 @@ function parseOptionalNumber(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : void 0;
 }
-function clampMcpWaitTimeoutMs(timeoutMs, env) {
+function resolveMcpWaitTimeoutMs(timeoutMs, env) {
   const maxMs = parseOptionalNumber(env.RETINUE_MCP_WAIT_MAX_MS) ?? DEFAULT_MCP_WAIT_MAX_MS;
   if (!Number.isFinite(maxMs) || maxMs <= 0) {
     return timeoutMs;
@@ -24789,6 +24789,7 @@ export {
   OPENCODE_TOOL_NAMES,
   RETINUE_TOOL_NAMES,
   createMcpRetinueFromEnv,
-  createMcpServer
+  createMcpServer,
+  resolveMcpWaitTimeoutMs
 };
 //# sourceMappingURL=mcp.js.map

@@ -9,3 +9,4 @@ export interface CreateMcpServerOptions {
 }
 export declare function createMcpServer(retinue?: RetinueApi, options?: CreateMcpServerOptions): McpServer;
 export declare function createMcpRetinueFromEnv(env?: NodeJS.ProcessEnv | Record<string, string | undefined>): RetinueApi;
+export declare function resolveMcpWaitTimeoutMs(timeoutMs: number | undefined, env: NodeJS.ProcessEnv): number | undefined;

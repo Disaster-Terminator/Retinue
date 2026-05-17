@@ -88,7 +88,7 @@ RETINUE_OPENCODE_SOFT_STALL_RESCUE_AGENT=build
 
 When `RETINUE_OPENCODE_PORT` is explicit, Retinue does not silently fall back to another port. Set it to a concrete loopback port in the `1..65535` range; `0` is rejected because Retinue cannot discover the random port that `opencode serve --port 0` would bind.
 
-MCP hosts commonly enforce their own per-tool timeout. Retinue therefore clamps `retinue_wait_agent` and `opencode_wait` calls to a host-safe maximum of 90 seconds by default. Complex OpenCode tasks should be polled with repeated wait calls; set `RETINUE_MCP_WAIT_MAX_MS` only when the host timeout is known to be higher.
+MCP hosts commonly enforce their own per-tool timeout. Retinue therefore clamps `retinue_wait_agent` and `opencode_wait` calls to a host-safe maximum of 180 seconds by default. This gives the default 75-second OpenCode soft-stall detectors enough room to submit one final-answer rescue prompt and wait for the rescue to complete before the MCP wait returns `stalled`. Complex OpenCode tasks can still be polled with repeated wait calls; set `RETINUE_MCP_WAIT_MAX_MS` only when the host timeout is known to be different.
 
 Retinue's local HTTP clients also apply a 30-second transport timeout to OpenCode and daemon requests. Set `RETINUE_HTTP_TIMEOUT_MS` when a deployment needs a different local request ceiling; set it to `0` only when another layer already enforces a reliable timeout.
 

@@ -42,7 +42,7 @@ export const OPENCODE_TOOL_NAMES = [
 
 export const RETINUE_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"] as const;
 
-const DEFAULT_MCP_WAIT_MAX_MS = 90_000;
+const DEFAULT_MCP_WAIT_MAX_MS = 180_000;
 const ACCESS_MODES = ["read_only", "profile"] as const;
 const READ_ONLY_BASH_POLICIES = ["readonly_git", "none"] as const;
 
@@ -141,7 +141,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
     },
     async ({ jobId, timeoutMs }) => {
       const backend = await createRetinueBackendForJob(retinue, jobId);
-      const effectiveTimeoutMs = clampMcpWaitTimeoutMs(timeoutMs, process.env);
+      const effectiveTimeoutMs = resolveMcpWaitTimeoutMs(timeoutMs, process.env);
       const waited = await backend.wait({ jobId }, effectiveTimeoutMs);
       const status = await backend.status({ jobId });
       const responseStatus = isJobMeta(status) ? status.status : waited.status;
@@ -373,7 +373,7 @@ function registerBackendTools(server: McpServer, retinue: RetinueApi): void {
       inputSchema: { jobId: z.string(), timeoutMs: z.number().int().nonnegative().optional(), opencodeBaseUrl: z.string().optional() }
     },
     async ({ jobId, timeoutMs, opencodeBaseUrl }) => {
-      const result = await (await createOpenCodeBackend({ opencodeBaseUrl })).wait({ jobId }, clampMcpWaitTimeoutMs(timeoutMs, process.env));
+      const result = await (await createOpenCodeBackend({ opencodeBaseUrl })).wait({ jobId }, resolveMcpWaitTimeoutMs(timeoutMs, process.env));
       return jsonToolResult(result);
     }
   );
@@ -968,7 +968,7 @@ function parseOptionalNumber(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function clampMcpWaitTimeoutMs(timeoutMs: number | undefined, env: NodeJS.ProcessEnv): number | undefined {
+export function resolveMcpWaitTimeoutMs(timeoutMs: number | undefined, env: NodeJS.ProcessEnv): number | undefined {
   const maxMs = parseOptionalNumber(env.RETINUE_MCP_WAIT_MAX_MS) ?? DEFAULT_MCP_WAIT_MAX_MS;
   if (!Number.isFinite(maxMs) || maxMs <= 0) {
     return timeoutMs;

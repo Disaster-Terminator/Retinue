@@ -74,5 +74,17 @@ The release OpenCode slot probe is:
 RETINUE_REAL_OPENCODE_SLOT_PROBE=1 RETINUE_MAX_CONCURRENT_AGENTS=1 pnpm run probe:real:retinue-opencode-slots
 ```
 
+The Retinue dogfood pressure probe is:
+
+```bash
+pnpm run probe:dogfood:opencode
+```
+
+This probe runs concurrent read-only OpenCode review jobs through the Retinue MCP surface and exits
+nonzero unless every child returns a completed textual answer with its requested completion marker.
+`stalled`, `running`, `read_only_write_intent`, provider/router zero-progress, and missing-marker
+results are release-blocking dogfood failures, not review evidence. The JSON output includes job ids,
+provider/model metadata, stdout/stderr paths, `stallReason`, and `tracePath` for follow-up.
+
 Do not record API keys, provider secrets, tokens, or account credentials. Record only backend
 metadata, job/session ids, non-secret provider/model metadata, and observed results.

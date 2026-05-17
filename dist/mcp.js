@@ -35,7 +35,7 @@ export const OPENCODE_TOOL_NAMES = [
     "opencode_cleanup"
 ];
 export const RETINUE_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"];
-const DEFAULT_MCP_WAIT_MAX_MS = 90_000;
+const DEFAULT_MCP_WAIT_MAX_MS = 180_000;
 const ACCESS_MODES = ["read_only", "profile"];
 const READ_ONLY_BASH_POLICIES = ["readonly_git", "none"];
 export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
@@ -113,7 +113,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
         }
     }, async ({ jobId, timeoutMs }) => {
         const backend = await createRetinueBackendForJob(retinue, jobId);
-        const effectiveTimeoutMs = clampMcpWaitTimeoutMs(timeoutMs, process.env);
+        const effectiveTimeoutMs = resolveMcpWaitTimeoutMs(timeoutMs, process.env);
         const waited = await backend.wait({ jobId }, effectiveTimeoutMs);
         const status = await backend.status({ jobId });
         const responseStatus = isJobMeta(status) ? status.status : waited.status;
@@ -277,7 +277,7 @@ function registerBackendTools(server, retinue) {
         description: "Wait for an OpenCode job result through the attached OpenCode server.",
         inputSchema: { jobId: z.string(), timeoutMs: z.number().int().nonnegative().optional(), opencodeBaseUrl: z.string().optional() }
     }, async ({ jobId, timeoutMs, opencodeBaseUrl }) => {
-        const result = await (await createOpenCodeBackend({ opencodeBaseUrl })).wait({ jobId }, clampMcpWaitTimeoutMs(timeoutMs, process.env));
+        const result = await (await createOpenCodeBackend({ opencodeBaseUrl })).wait({ jobId }, resolveMcpWaitTimeoutMs(timeoutMs, process.env));
         return jsonToolResult(result);
     });
     server.registerTool("opencode_result", {
@@ -770,7 +770,7 @@ function parseOptionalNumber(value) {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : undefined;
 }
-function clampMcpWaitTimeoutMs(timeoutMs, env) {
+export function resolveMcpWaitTimeoutMs(timeoutMs, env) {
     const maxMs = parseOptionalNumber(env.RETINUE_MCP_WAIT_MAX_MS) ?? DEFAULT_MCP_WAIT_MAX_MS;
     if (!Number.isFinite(maxMs) || maxMs <= 0) {
         return timeoutMs;

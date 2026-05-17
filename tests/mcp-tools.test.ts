@@ -9,13 +9,26 @@ import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { createDaemonServer } from "../src/daemon/server.js";
 import { writeDaemonDiscovery } from "../src/daemon/discovery.js";
-import { CLAUDE_TOOL_NAMES, OPENCODE_TOOL_NAMES, RETINUE_TOOL_NAMES, createMcpServer, createMcpRetinueFromEnv } from "../src/mcp.js";
+import {
+  CLAUDE_TOOL_NAMES,
+  OPENCODE_TOOL_NAMES,
+  RETINUE_TOOL_NAMES,
+  createMcpServer,
+  createMcpRetinueFromEnv,
+  resolveMcpWaitTimeoutMs
+} from "../src/mcp.js";
 import { ClaudeRetinue } from "../src/core/retinue.js";
 import { startFakeOpenCodeServer } from "./fixtures/fake-opencode-server.js";
 
 const fixturePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/fake-claude.mjs");
 
 describe("MCP tools", () => {
+  it("keeps the default MCP wait ceiling long enough for OpenCode soft-stall rescue", () => {
+    expect(resolveMcpWaitTimeoutMs(180_000, {} as NodeJS.ProcessEnv)).toBe(180_000);
+    expect(resolveMcpWaitTimeoutMs(240_000, {} as NodeJS.ProcessEnv)).toBe(180_000);
+    expect(resolveMcpWaitTimeoutMs(240_000, { RETINUE_MCP_WAIT_MAX_MS: "300000" } as NodeJS.ProcessEnv)).toBe(240_000);
+  });
+
   it("declares the Claude Code lifecycle tools", () => {
     expect(CLAUDE_TOOL_NAMES).toEqual([
       "claude_run",
