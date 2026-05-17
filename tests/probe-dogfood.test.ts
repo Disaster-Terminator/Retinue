@@ -25,7 +25,7 @@ describe("dogfood probe classification", () => {
         task_name: "review",
         jobId: "job_long",
         status: "completed",
-        stdoutText: `${"x".repeat(600)}RETINUE_DOGFOOD_REVIEW_DONE`,
+        stdoutText: `${"x".repeat(600)}\nPASS\nRETINUE_DOGFOOD_REVIEW_DONE`,
         stdoutPreview: "x".repeat(500)
       },
       "RETINUE_DOGFOOD_REVIEW_DONE"
@@ -72,6 +72,40 @@ describe("dogfood probe classification", () => {
     expect(wait).toMatchObject({
       usable: false,
       failureReason: "missing_completion_marker"
+    });
+  });
+
+  it("rejects children that report FAIL even when the completion marker is present", () => {
+    const wait = classifyDogfoodWait(
+      {
+        task_name: "review",
+        jobId: "job_fail",
+        status: "completed",
+        stdoutPreview: "FAIL\nFinding: dogfood gate is incomplete.\nRETINUE_DOGFOOD_REVIEW_DONE"
+      },
+      "RETINUE_DOGFOOD_REVIEW_DONE"
+    );
+
+    expect(wait).toMatchObject({
+      usable: false,
+      failureReason: "child_reported_fail"
+    });
+  });
+
+  it("rejects completed children that do not provide a PASS verdict", () => {
+    const wait = classifyDogfoodWait(
+      {
+        task_name: "review",
+        jobId: "job_no_verdict",
+        status: "completed",
+        stdoutPreview: "The workflow looks acceptable.\nRETINUE_DOGFOOD_REVIEW_DONE"
+      },
+      "RETINUE_DOGFOOD_REVIEW_DONE"
+    );
+
+    expect(wait).toMatchObject({
+      usable: false,
+      failureReason: "missing_pass_verdict"
     });
   });
 

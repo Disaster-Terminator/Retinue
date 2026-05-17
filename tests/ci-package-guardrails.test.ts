@@ -127,9 +127,11 @@ describe("package.json guardrails", () => {
 
     expect(scripts["probe:hermes-retinue"]).toBe("node scripts/probe-hermes-retinue-mcp.mjs");
     expect(scripts["probe:dogfood:opencode"]).toBe("pnpm run build && node scripts/probe-retinue-opencode-dogfood.mjs");
+    expect(scripts["gate:dogfood"]).toBe("pnpm run probe:dogfood:opencode");
     expect(scripts.test).not.toContain("probe:real:");
     expect(scripts.build).not.toContain("probe:real:");
     expect(scripts.typecheck).not.toContain("probe:real:");
+    expect(scripts["gate:release"]).not.toContain("probe:dogfood:");
   });
 
   it("keeps the product OpenCode real probe on the default auto-serve path", () => {

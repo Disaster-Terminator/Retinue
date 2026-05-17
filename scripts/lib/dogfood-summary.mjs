@@ -47,11 +47,30 @@ function selectFailureReason({ status, stallReason, readOnlyWriteIntent, stdoutT
   if (expectedMarker && !stdoutText.includes(expectedMarker)) {
     return "missing_completion_marker";
   }
+  const verdict = extractDogfoodVerdict(stdoutText, expectedMarker);
+  if (verdict === "fail") {
+    return "child_reported_fail";
+  }
+  if (verdict === "missing") {
+    return "missing_pass_verdict";
+  }
   return undefined;
 }
 
 function firstString(...values) {
   return values.find((value) => typeof value === "string") ?? "";
+}
+
+function extractDogfoodVerdict(stdoutText, expectedMarker) {
+  const markerIndex = expectedMarker ? stdoutText.indexOf(expectedMarker) : -1;
+  const verdictWindow = stdoutText.slice(0, markerIndex >= 0 ? markerIndex : Math.min(stdoutText.length, 1200));
+  if (/\bFAIL\b/i.test(verdictWindow)) {
+    return "fail";
+  }
+  if (/\bPASS\b/i.test(verdictWindow)) {
+    return "pass";
+  }
+  return "missing";
 }
 
 function countBy(values) {
