@@ -19,7 +19,7 @@ For most implementation work:
 ```bash
 pnpm run build
 pnpm run smoke:package
-pnpm exec vitest run tests/mcp-tools.test.ts
+pnpm run test:mcp
 ```
 
 This validates the built MCP server and plugin bootstrap without touching the installed Codex plugin cache.
