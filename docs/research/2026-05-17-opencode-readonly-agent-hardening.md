@@ -27,9 +27,10 @@ Official OpenCode documentation says agents can be configured with custom prompt
 
 Relevant facts from the docs:
 
-- OpenCode has built-in primary agents such as `build` and `plan`.
-- `plan` is intended for analysis and planning without direct modifications, but its semantic is still "suggest changes or plans", not necessarily "produce only review findings".
-- OpenCode also has read-only exploration-oriented agents, including `explore` in current docs.
+- OpenCode has built-in primary agents `build` and `plan`.
+- OpenCode has built-in subagents `general`, `explore`, and `scout`.
+- `plan` is intended for analysis and planning without direct modifications, but its semantic is still "suggest changes or plans", not necessarily "quick read-only repository exploration".
+- `explore` is OpenCode's built-in fast read-only codebase exploration subagent. It cannot modify files according to the current official docs.
 - Agent permissions are first-class. Legacy `tools` booleans are deprecated in favor of `permission`, but still supported.
 - `edit` gates modification tools such as `write`, `edit`, and `apply_patch`.
 - `bash` can be constrained by pattern. Last matching rule wins.
@@ -41,15 +42,17 @@ Local environment:
 - `opencode debug paths` reported config at `/home/raystorm/.config/opencode`.
 - The local OpenCode config is permissive for the main user profile (`edit: allow`, broad bash allow with some deny/ask rules), so Retinue cannot rely on the user's profile as the read-only boundary.
 
-### Current Retinue Behavior
+### Previous Strict Retinue Behavior
 
-Retinue already has several read-only guard layers:
+Retinue originally stacked several read-only guard layers:
 
 - `src/backends/opencode/backend.ts` creates read-only session permissions for OpenCode sessions.
 - It denies `edit`, `write`, `apply_patch`, `patch`, `task`, `question`, `external_directory`, `doom_loop`, and arbitrary `bash`.
 - With `readonly_git`, it re-allows a small read-only git command allowlist.
 - It passes prompt-level tool denial to `prompt_async`: `edit`, `write`, `apply_patch`, `patch`, and `task` are disabled.
 - It prepends `createReadOnlyPromptContract()` to tell the child to use read/grep/glob and allowed read-only git only, avoid patch mode, avoid unified diffs, keep inspection bounded, and finish with prose.
+
+The current default keeps the session-level OpenCode permission boundary, but stops injecting the extra Retinue prompt contract and prompt-level `tools: false` map unless `opencode.readOnlyPromptContract` or `opencode.readOnlyToolDeny` is explicitly enabled. This lets the default path exercise OpenCode's native `explore` behavior first, while preserving a strict mode for deployments that need it.
 
 Current stall classification:
 
@@ -70,14 +73,14 @@ Retinue low-cost read-only scans:
 High-reasoning Codex subagent review:
 
 - Agreed that custom OpenCode agents can improve behavior but cannot be the security boundary.
-- Recommended keeping Retinue's per-session permissions and per-call tool denial as the actual boundary.
+- Recommended keeping Retinue's per-session permissions as the actual product boundary.
 - Recommended considering a dedicated `readonly-review` agent only as an optional behavior-shaping layer, especially for Retinue-managed auto-serve mode.
 
 ## Architecture Direction
 
 ### Layer 1: Keep Retinue-Owned Read-Only Enforcement
 
-Do not replace Retinue's per-session permission and per-call tool denial with OpenCode profile configuration.
+Do not replace Retinue's per-session permission boundary with OpenCode profile configuration.
 
 Reasons:
 
@@ -126,21 +129,25 @@ Suggested metadata:
 
 The final result should retain diagnostics that a violation happened, but should return `completed` only if the trusted post-recovery text is plain prose.
 
-### Layer 3: Evaluate Better Read-Only Agent Semantics
+### Layer 3: Prefer OpenCode's Built-In Read-Only Agent Semantics
 
-The current default agent is `plan`. That is defensible for 0.1.x because it works without mutating user OpenCode config. But `plan` is not necessarily the best long-term semantics for review-only output.
+The previous default agent was `plan`. That was defensible early in 0.1.x because it is a primary agent and is explicitly analysis-oriented. Current evidence shows that this default likely overfits Retinue's own prompt contract instead of using OpenCode's built-in subagent design.
 
-Options to test:
+Evidence gathered on 2026-05-17:
 
-1. Continue using `plan`, but improve recovery.
-2. Use OpenCode's built-in `explore` for default read-only Retinue tasks if `prompt_async(agent: "explore")` is stable in OpenCode `1.15.x`.
-3. In Retinue-managed auto-serve mode, optionally provide a Retinue-owned `readonly-review` agent with explicit review-only prompt and permissions.
+- `opencode --version` returned `1.15.0`.
+- `opencode agent list --pure` listed `explore (subagent)`.
+- A real `RETINUE_REAL_OPENCODE_AGENT_AB_PROBE=1 RETINUE_OPENCODE_AGENT_LIST=plan,explore` run completed all 3 `plan` jobs and all 3 `explore` jobs with `0` stalled jobs and `0` read-only write-intent jobs.
+- The returned OpenCode message metadata confirmed `lastAssistantAgent=explore` and `lastAssistantMode=explore`, so `prompt_async(agent: "explore")` can target the built-in subagent directly in the local OpenCode 1.15.0 server path.
+- A real `RETINUE_DOGFOOD_OPENCODE_AGENT_LIST=explore pnpm run gate:dogfood` run completed all 3 dogfood jobs with `0` stalled jobs and `0` read-only write-intent jobs.
+- A parallel live Retinue dogfood review using the default `plan` path stalled with `stallReason=read_tool_stalled` after 6 tool-call assistant rounds and one running `read` tool call. That does not prove `plan` is always worse, but it is enough to stop treating `plan` as the safer default.
 
-Recommended order:
+Recommended direction:
 
-1. Implement write-intent recovery first.
-2. Add an E2E probe comparing `plan` and `explore` for Retinue dogfood tasks.
-3. Only after that, decide whether to change the default or add optional custom-agent provisioning.
+1. Use OpenCode's built-in `explore` as the default Retinue OpenCode read-only agent.
+2. Keep Retinue's session-level OpenCode permission as the MCP product boundary, because MCP callers need a stable read-only default even when the user's OpenCode profile is permissive. Treat Retinue's prompt contract and `tools: false` overrides as optional stricter mode, not the default path.
+3. Do not introduce a Retinue-owned custom OpenCode agent for 0.1.0. Custom agents remain a later workflow feature if real usage proves that built-in `explore` is insufficient.
+4. Keep write-intent recovery as a follow-up hardening item, not a prerequisite for changing the default agent.
 
 ## Testing Gaps
 
@@ -157,25 +164,26 @@ Needed dogfood/E2E:
 
 - `gate:dogfood` should continue to reject unrecovered `read_only_write_intent`.
 - Add a targeted fake-OpenCode or real-OpenCode probe that exercises write-intent recovery.
-- Add an optional OpenCode agent comparison probe for `plan` vs `explore`.
+- Keep the OpenCode agent comparison probe focused on `plan` vs `explore` as a compatibility diagnostic.
 
 ## Non-Goals For The Next Iteration
 
 - Do not allow default read-only agents to write.
 - Do not make the user's OpenCode profile the security boundary.
 - Do not require users to install a custom OpenCode agent before Retinue works.
+- Do not build a Retinue-owned custom agent until the built-in `explore` path has been exhausted.
 - Do not change the default backend away from OpenCode.
 - Do not make `access_mode: profile` the default.
 
 ## Open Questions
 
-1. Can `prompt_async(agent: "explore")` target OpenCode's built-in `explore` agent directly and reliably, or does the HTTP API expect primary agents only?
-2. Does `mode: subagent` work with direct `prompt_async`, or should any Retinue-managed custom agent use `mode: all` or `primary`?
+1. Is `prompt_async(agent: "explore")` stable across Windows and WSL OpenCode 1.15.x deployments, not only the current WSL run?
+2. Does `mode: subagent` keep behaving correctly under direct `prompt_async` in future OpenCode releases, or should Retinue add a startup compatibility check?
 3. Should write-intent recovery use the current configured agent, `build` with tools disabled, or a dedicated recovery agent?
 4. Should recovered write intent be surfaced as a warning in `stdout`, `stderr`, or diagnostic only?
 
 ## Current Recommendation
 
-Proceed with write-intent recovery as the next implementation slice.
+Switch the default Retinue OpenCode read-only agent to built-in `explore`, then continue dogfood on Windows and WSL.
 
-This directly addresses the user-visible failure mode while preserving the existing safety boundary. Dedicated OpenCode agent work should follow only after a small real E2E comparison proves it reduces stalls and write intent without increasing deployment complexity.
+This reduces Retinue-specific behavior shaping and follows OpenCode's native agent design without requiring a custom agent. Retinue should still preserve the MCP-side read-only boundary and diagnostics, because that boundary is product behavior for Codex and Hermes callers rather than an OpenCode profile preference.

@@ -22206,6 +22206,8 @@ var OpenCodeBackend = class {
       model: options.model,
       agent: options.agent,
       readOnly: options.readOnly === true,
+      readOnlyPromptContract: options.readOnlyPromptContract === true,
+      readOnlyToolDeny: options.readOnlyToolDeny === true,
       externalSessionId: session.id,
       externalServerUrl: target.baseUrl,
       externalSessionDirectory: session.directory ?? session.cwd,
@@ -22449,6 +22451,23 @@ ${textWarning2}` : stderr;
         const meta = await this.readMeta(handle.jobId);
         if (!isProblem(meta)) {
           const diagnostic = await this.inspectJob(meta);
+          if (diagnostic.stallReason) {
+            const stalled = { ...meta, status: "stalled", updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
+            await writeJsonAtomic(getJobPaths(this.stateDir, handle.jobId).meta, stalled);
+            await this.writeJobTrace("opencode_job_wait_timeout", stalled, diagnostic);
+            await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_wait_timeout", diagnostic });
+            await this.writeJobTrace("opencode_job_stalled", stalled, diagnostic, { fromStatus: meta.status, toStatus: "stalled" });
+            await appendJobDiagnostic(this.stateDir, handle.jobId, {
+              event: "opencode_job_stalled",
+              fromStatus: meta.status,
+              toStatus: "stalled",
+              diagnostic
+            });
+            if (isHardStallDiagnostic(diagnostic)) {
+              await this.maybeScheduleServerIdleShutdown(stalled);
+            }
+            return { jobId: handle.jobId, status: "stalled" };
+          }
           await this.writeJobTrace("opencode_job_wait_timeout", meta, diagnostic);
           await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_wait_timeout", diagnostic });
         }
@@ -22689,10 +22708,14 @@ ${textWarning2}` : stderr;
   async submitPromptAsync(client, sessionId, meta, options) {
     try {
       await client.promptAsync(sessionId, {
-        prompt: buildOpenCodePrompt(options.prompt, options.readOnly === true, resolveReadOnlyBashPolicy(options.readOnlyBashPolicy)),
+        prompt: buildOpenCodePrompt(
+          options.prompt,
+          options.readOnly === true && options.readOnlyPromptContract === true,
+          resolveReadOnlyBashPolicy(options.readOnlyBashPolicy)
+        ),
         model: options.model,
         agent: options.agent,
-        tools: options.readOnly === true ? buildReadOnlyTools(resolveReadOnlyBashPolicy(options.readOnlyBashPolicy)) : void 0
+        tools: options.readOnly === true && options.readOnlyToolDeny === true ? buildReadOnlyTools(resolveReadOnlyBashPolicy(options.readOnlyBashPolicy)) : void 0
       });
       await this.writeJobTrace("opencode_job_prompt_submitted", meta, await this.inspectJob(meta));
     } catch (error2) {
@@ -23979,6 +24002,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
         taskName: external_exports.string().optional(),
         cwd: external_exports.string().optional(),
         title: external_exports.string().optional(),
+        agent: external_exports.string().optional(),
         access_mode: external_exports.enum(ACCESS_MODES).optional(),
         bash_policy: external_exports.enum(READ_ONLY_BASH_POLICIES).optional()
       }
@@ -23996,9 +24020,11 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
           title: args.title ?? taskName,
           ...backend.kind === "opencode" ? {
             model: process.env.RETINUE_OPENCODE_MODEL,
-            agent: process.env.RETINUE_OPENCODE_AGENT,
+            agent: args.agent ?? process.env.RETINUE_OPENCODE_AGENT,
             readOnly: accessMode === "read_only",
-            readOnlyBashPolicy: await resolveOpenCodeReadOnlyBashPolicy(args.bash_policy, process.env)
+            readOnlyBashPolicy: await resolveOpenCodeReadOnlyBashPolicy(args.bash_policy, process.env),
+            readOnlyPromptContract: await resolveOpenCodeReadOnlyPromptContract(process.env),
+            readOnlyToolDeny: await resolveOpenCodeReadOnlyToolDeny(process.env)
           } : {}
         });
         agentPool.add({
@@ -24473,6 +24499,28 @@ async function readConfiguredOpenCodeReadOnlyBashPolicy(env) {
     return value;
   }
   throw new Error(`Unsupported opencode.readOnlyBashPolicy in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`);
+}
+async function resolveOpenCodeReadOnlyPromptContract(env) {
+  const configured = await readConfiguredOpenCodeBoolean(env, "readOnlyPromptContract");
+  return configured ?? false;
+}
+async function resolveOpenCodeReadOnlyToolDeny(env) {
+  const configured = await readConfiguredOpenCodeBoolean(env, "readOnlyToolDeny");
+  return configured ?? false;
+}
+async function readConfiguredOpenCodeBoolean(env, key) {
+  const config2 = await readRetinueConfig(env);
+  const value = typeof config2 === "object" && config2 !== null && "opencode" in config2 ? config2.opencode[key] : void 0;
+  if (value === void 0 || value === "") {
+    return void 0;
+  }
+  if (value === true || value === "true" || value === "1" || value === "on") {
+    return true;
+  }
+  if (value === false || value === "false" || value === "0" || value === "off") {
+    return false;
+  }
+  throw new Error(`Unsupported opencode.${key} in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`);
 }
 async function readRetinueConfig(env) {
   const configPath = env.RETINUE_CONFIG_FILE?.trim();

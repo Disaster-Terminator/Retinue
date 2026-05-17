@@ -18,7 +18,7 @@ async function main() {
     RETINUE_BACKEND: process.env.RETINUE_BACKEND ?? "opencode",
     RETINUE_OPENCODE_AUTO_SERVE: process.env.RETINUE_OPENCODE_AUTO_SERVE ?? "1",
     RETINUE_OPENCODE_HOST: process.env.RETINUE_OPENCODE_HOST ?? "127.0.0.1",
-    RETINUE_OPENCODE_AGENT: process.env.RETINUE_OPENCODE_AGENT ?? "plan",
+    RETINUE_OPENCODE_AGENT: process.env.RETINUE_OPENCODE_AGENT ?? "explore",
     RETINUE_STATE_DIR: stateDir
   };
 

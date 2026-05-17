@@ -8,7 +8,7 @@ import path from "node:path";
 import { createMcpServer } from "../dist/mcp.js";
 
 const OPT_IN_ENV = "RETINUE_REAL_OPENCODE_AGENT_AB_PROBE";
-const DEFAULT_AGENTS = ["plan", "build"];
+const DEFAULT_AGENTS = ["plan", "explore"];
 const DEFAULT_TIMEOUT_MS = 180_000;
 
 const TASKS = [

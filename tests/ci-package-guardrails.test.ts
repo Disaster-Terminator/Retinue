@@ -137,7 +137,7 @@ describe("package.json guardrails", () => {
   it("keeps the product OpenCode real probe on the default auto-serve path", () => {
     expect(realOpenCodeMcpProbe).toContain('process.env.RETINUE_OPENCODE_AUTO_SERVE = process.env.RETINUE_OPENCODE_AUTO_SERVE ?? "1"');
     expect(realOpenCodeMcpProbe).toContain('process.env.RETINUE_OPENCODE_HOST = process.env.RETINUE_OPENCODE_HOST ?? "127.0.0.1"');
-    expect(realOpenCodeMcpProbe).toContain('process.env.RETINUE_OPENCODE_AGENT = process.env.RETINUE_OPENCODE_AGENT ?? "plan"');
+    expect(realOpenCodeMcpProbe).toContain('process.env.RETINUE_OPENCODE_AGENT = process.env.RETINUE_OPENCODE_AGENT ?? "explore"');
     expect(realOpenCodeMcpProbe).not.toContain("Missing RETINUE_OPENCODE_BASE_URL");
   });
 
@@ -201,7 +201,7 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(opencodeBackendSource).toContain("const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 1");
   });
 
-  it("keeps default OpenCode read-only prompts from inheriting profile shell access", () => {
+  it("keeps strict OpenCode read-only prompt and tool-deny layers available as opt-in behavior", () => {
     expect(opencodeBackendSource).toContain("const OPENCODE_READ_ONLY_TOOLS_NO_BASH: Record<string, boolean> = {");
     expect(opencodeBackendSource).toContain("const OPENCODE_READ_ONLY_TOOLS_WITH_READONLY_GIT_BASH: Record<string, boolean> = {");
     expect(opencodeBackendSource).toContain("edit: false");
@@ -257,11 +257,16 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(mcp.retinue?.env?.RETINUE_OPENCODE_HOST).toBe("127.0.0.1");
     expect(mcp.retinue?.env?.RETINUE_OPENCODE_PORT).toBeUndefined();
     expect(mcp.retinue?.env?.RETINUE_OPENCODE_BASE_URL).toBeUndefined();
-    expect(mcp.retinue?.env?.RETINUE_OPENCODE_AGENT).toBe("plan");
+    expect(mcp.retinue?.env?.RETINUE_OPENCODE_AGENT).toBe("explore");
     expect(mcp.retinue?.env?.RETINUE_OPENCODE_READ_ONLY).toBeUndefined();
     expect(existsSync("plugins/retinue/retinue.config.json")).toBe(true);
     expect(JSON.parse(readFileSync("plugins/retinue/retinue.config.json", "utf8"))).toMatchObject({
-      opencode: { defaultAccessMode: "read_only", readOnlyBashPolicy: "readonly_git" }
+      opencode: {
+        defaultAccessMode: "read_only",
+        readOnlyBashPolicy: "readonly_git",
+        readOnlyPromptContract: false,
+        readOnlyToolDeny: false
+      }
     });
     expect(mcp.retinue?.env?.RETINUE_DAEMON_DISCOVERY).toBeUndefined();
     expect(mcp.retinue?.env?.RETINUE_EXPOSE_BACKEND_TOOLS).toBeUndefined();

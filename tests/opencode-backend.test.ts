@@ -63,7 +63,9 @@ describe("OpenCodeBackend", () => {
     await backend.run({
       cwd: tempDir,
       prompt: "inspect only",
-      readOnly: true
+      readOnly: true,
+      readOnlyPromptContract: true,
+      readOnlyToolDeny: true
     });
 
     const permissions = server!.sessionRequests.at(-1)?.permission ?? [];
@@ -122,7 +124,9 @@ describe("OpenCodeBackend", () => {
       cwd: tempDir,
       prompt: "inspect staged diff",
       readOnly: true,
-      readOnlyBashPolicy: "none"
+      readOnlyBashPolicy: "none",
+      readOnlyPromptContract: true,
+      readOnlyToolDeny: true
     });
 
     expect(server!.sessionRequests.at(-1)).toMatchObject({
@@ -527,6 +531,22 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"emptyAssistantRounds":1');
     expect(trace).toContain('"stallEmptyAssistantRoundThreshold":1');
     expect(trace).toContain('"lastAssistantPartTypes":["step-start","step-finish"]');
+  });
+
+  it("returns stalled instead of running when a soft stall appears during a wait window", async () => {
+    const backend = createBackend();
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "inspect docs and summarize near deadline" });
+    setTimeout(() => {
+      server!.appendEmptyStopAssistant(started.externalSessionId!);
+    }, 20);
+
+    await expect(backend.wait({ jobId: started.jobId }, 50)).resolves.toMatchObject({ status: "stalled" });
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "stalled" });
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_job_stalled"');
+    expect(trace).toContain('"stallReason":"backend_no_final_text"');
   });
 
   it("marks blank provider assistant placeholders as stalled with diagnostics", async () => {
@@ -1077,7 +1097,7 @@ describe("OpenCodeBackend", () => {
       ])
     });
     await expect(backend.result({ jobId: continued.jobId })).resolves.toMatchObject({
-      parsedStdout: { result: expect.stringContaining("User task:\nsecond") }
+      parsedStdout: { result: "fake result: second" }
     });
   });
 

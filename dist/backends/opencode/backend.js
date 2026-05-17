@@ -189,6 +189,8 @@ export class OpenCodeBackend {
             model: options.model,
             agent: options.agent,
             readOnly: options.readOnly === true,
+            readOnlyPromptContract: options.readOnlyPromptContract === true,
+            readOnlyToolDeny: options.readOnlyToolDeny === true,
             externalSessionId: session.id,
             externalServerUrl: target.baseUrl,
             externalSessionDirectory: session.directory ?? session.cwd,
@@ -432,6 +434,23 @@ export class OpenCodeBackend {
                 const meta = await this.readMeta(handle.jobId);
                 if (!isProblem(meta)) {
                     const diagnostic = await this.inspectJob(meta);
+                    if (diagnostic.stallReason) {
+                        const stalled = { ...meta, status: "stalled", updatedAt: new Date().toISOString() };
+                        await writeJsonAtomic(getJobPaths(this.stateDir, handle.jobId).meta, stalled);
+                        await this.writeJobTrace("opencode_job_wait_timeout", stalled, diagnostic);
+                        await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_wait_timeout", diagnostic });
+                        await this.writeJobTrace("opencode_job_stalled", stalled, diagnostic, { fromStatus: meta.status, toStatus: "stalled" });
+                        await appendJobDiagnostic(this.stateDir, handle.jobId, {
+                            event: "opencode_job_stalled",
+                            fromStatus: meta.status,
+                            toStatus: "stalled",
+                            diagnostic
+                        });
+                        if (isHardStallDiagnostic(diagnostic)) {
+                            await this.maybeScheduleServerIdleShutdown(stalled);
+                        }
+                        return { jobId: handle.jobId, status: "stalled" };
+                    }
                     await this.writeJobTrace("opencode_job_wait_timeout", meta, diagnostic);
                     await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_wait_timeout", diagnostic });
                 }
@@ -683,10 +702,12 @@ export class OpenCodeBackend {
     async submitPromptAsync(client, sessionId, meta, options) {
         try {
             await client.promptAsync(sessionId, {
-                prompt: buildOpenCodePrompt(options.prompt, options.readOnly === true, resolveReadOnlyBashPolicy(options.readOnlyBashPolicy)),
+                prompt: buildOpenCodePrompt(options.prompt, options.readOnly === true && options.readOnlyPromptContract === true, resolveReadOnlyBashPolicy(options.readOnlyBashPolicy)),
                 model: options.model,
                 agent: options.agent,
-                tools: options.readOnly === true ? buildReadOnlyTools(resolveReadOnlyBashPolicy(options.readOnlyBashPolicy)) : undefined
+                tools: options.readOnly === true && options.readOnlyToolDeny === true
+                    ? buildReadOnlyTools(resolveReadOnlyBashPolicy(options.readOnlyBashPolicy))
+                    : undefined
             });
             await this.writeJobTrace("opencode_job_prompt_submitted", meta, await this.inspectJob(meta));
         }

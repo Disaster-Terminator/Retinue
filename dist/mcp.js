@@ -56,6 +56,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             taskName: z.string().optional(),
             cwd: z.string().optional(),
             title: z.string().optional(),
+            agent: z.string().optional(),
             access_mode: z.enum(ACCESS_MODES).optional(),
             bash_policy: z.enum(READ_ONLY_BASH_POLICIES).optional()
         }
@@ -73,9 +74,11 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
                 ...(backend.kind === "opencode"
                     ? {
                         model: process.env.RETINUE_OPENCODE_MODEL,
-                        agent: process.env.RETINUE_OPENCODE_AGENT,
+                        agent: args.agent ?? process.env.RETINUE_OPENCODE_AGENT,
                         readOnly: accessMode === "read_only",
-                        readOnlyBashPolicy: await resolveOpenCodeReadOnlyBashPolicy(args.bash_policy, process.env)
+                        readOnlyBashPolicy: await resolveOpenCodeReadOnlyBashPolicy(args.bash_policy, process.env),
+                        readOnlyPromptContract: await resolveOpenCodeReadOnlyPromptContract(process.env),
+                        readOnlyToolDeny: await resolveOpenCodeReadOnlyToolDeny(process.env)
                     }
                     : {})
             });
@@ -478,6 +481,30 @@ async function readConfiguredOpenCodeReadOnlyBashPolicy(env) {
         return value;
     }
     throw new Error(`Unsupported opencode.readOnlyBashPolicy in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`);
+}
+async function resolveOpenCodeReadOnlyPromptContract(env) {
+    const configured = await readConfiguredOpenCodeBoolean(env, "readOnlyPromptContract");
+    return configured ?? false;
+}
+async function resolveOpenCodeReadOnlyToolDeny(env) {
+    const configured = await readConfiguredOpenCodeBoolean(env, "readOnlyToolDeny");
+    return configured ?? false;
+}
+async function readConfiguredOpenCodeBoolean(env, key) {
+    const config = await readRetinueConfig(env);
+    const value = typeof config === "object" && config !== null && "opencode" in config
+        ? config.opencode[key]
+        : undefined;
+    if (value === undefined || value === "") {
+        return undefined;
+    }
+    if (value === true || value === "true" || value === "1" || value === "on") {
+        return true;
+    }
+    if (value === false || value === "false" || value === "0" || value === "off") {
+        return false;
+    }
+    throw new Error(`Unsupported opencode.${key} in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`);
 }
 async function readRetinueConfig(env) {
     const configPath = env.RETINUE_CONFIG_FILE?.trim();

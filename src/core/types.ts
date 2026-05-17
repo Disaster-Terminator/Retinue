@@ -52,6 +52,8 @@ export interface JobMeta {
   model?: string;
   agent?: string;
   readOnly?: boolean;
+  readOnlyPromptContract?: boolean;
+  readOnlyToolDeny?: boolean;
   title?: string;
   runtimeTimeoutMs?: number;
   args: string[];

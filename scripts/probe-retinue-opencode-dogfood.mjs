@@ -8,7 +8,7 @@ import path from "node:path";
 import { createMcpServer } from "../dist/mcp.js";
 import { classifyDogfoodWait, summarizeDogfoodResults } from "./lib/dogfood-summary.mjs";
 
-const DEFAULT_AGENTS = ["plan"];
+const DEFAULT_AGENTS = ["explore"];
 const DEFAULT_TIMEOUT_MS = 180_000;
 
 const TASKS = [
@@ -22,7 +22,7 @@ const TASKS = [
     name: "readonly-contract-review",
     marker: "RETINUE_DOGFOOD_READONLY_DONE",
     message:
-      "Read-only bounded review. Use at most 4 repository inspection tool calls. Inspect src/backends/opencode/backend.ts and docs/backends/OPENCODE.md only if needed. Do not propose patches, do not output unified diffs, and do not write files. Task: judge whether read-only OpenCode jobs are instructed and configured to avoid patch/write intent. Final answer must include PASS or FAIL, 1-3 evidence lines with file references, and end with RETINUE_DOGFOOD_READONLY_DONE."
+      "Read-only bounded review. Use at most 4 repository inspection tool calls. Inspect src/backends/opencode/backend.ts, src/mcp.ts, plugins/retinue/retinue.config.json, and docs/backends/OPENCODE.md only if needed. Do not propose patches, do not output unified diffs, and do not write files. Task: judge whether the default read-only OpenCode path keeps the session permission boundary while leaving the extra Retinue prompt contract and prompt-level tools:false map opt-in rather than mandatory. Final answer must include PASS or FAIL, 1-3 evidence lines with file references, and end with RETINUE_DOGFOOD_READONLY_DONE."
   },
   {
     name: "stall-diagnostics-review",
