@@ -191,11 +191,11 @@ describe("Retinue Codex plugin guardrails", () => {
 
   it("keeps OpenCode no-progress stall detection inside one MCP wait call", () => {
     expect(opencodeBackendSource).toContain("const DEFAULT_STALL_MS = 10 * 60_000");
-    expect(opencodeBackendSource).toContain("const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = 75_000");
-    expect(opencodeBackendSource).toContain("const DEFAULT_BLANK_ASSISTANT_STALL_MS = 75_000");
-    expect(opencodeBackendSource).toContain("const DEFAULT_ZERO_PROGRESS_ASSISTANT_STALL_MS = 75_000");
-    expect(opencodeBackendSource).toContain("const DEFAULT_READ_TOOL_STALL_MS = 75_000");
-    expect(opencodeBackendSource).toContain("const DEFAULT_COMPLETED_TOOL_LOOP_STALL_MS = 75_000");
+    expect(opencodeBackendSource).toContain("const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = 45_000");
+    expect(opencodeBackendSource).toContain("const DEFAULT_BLANK_ASSISTANT_STALL_MS = 45_000");
+    expect(opencodeBackendSource).toContain("const DEFAULT_ZERO_PROGRESS_ASSISTANT_STALL_MS = 45_000");
+    expect(opencodeBackendSource).toContain("const DEFAULT_READ_TOOL_STALL_MS = 45_000");
+    expect(opencodeBackendSource).toContain("const DEFAULT_COMPLETED_TOOL_LOOP_STALL_MS = 45_000");
     expect(opencodeBackendSource).not.toContain("const DEFAULT_INCOMPLETE_ASSISTANT_STALL_MS = 60_000");
     expect(opencodeBackendSource).not.toContain("const DEFAULT_ZERO_PROGRESS_ASSISTANT_STALL_MS = 120_000");
     expect(opencodeBackendSource).toContain("const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 1");

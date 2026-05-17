@@ -592,7 +592,7 @@ describe("OpenCodeBackend", () => {
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"stallReason":"provider_blank_assistant"');
-    expect(trace).toContain('"blankAssistantStallThresholdMs":75000');
+    expect(trace).toContain('"blankAssistantStallThresholdMs":45000');
   });
 
   it("marks zero-progress reasoning placeholders as stalled with diagnostics", async () => {
@@ -653,7 +653,7 @@ describe("OpenCodeBackend", () => {
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"event":"opencode_job_stalled"');
     expect(trace).toContain('"stallReason":"provider_zero_progress"');
-    expect(trace).toContain('"zeroProgressAssistantStallThresholdMs":75000');
+    expect(trace).toContain('"zeroProgressAssistantStallThresholdMs":45000');
   });
 
   it("marks stuck read tool calls as stalled without shortening generic long-tool windows", async () => {
@@ -710,7 +710,7 @@ describe("OpenCodeBackend", () => {
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"event":"opencode_job_stalled"');
     expect(trace).toContain('"stallReason":"read_tool_stalled"');
-    expect(trace).toContain('"readToolStallThresholdMs":75000');
+    expect(trace).toContain('"readToolStallThresholdMs":45000');
   });
 
   it("marks pending read tool calls as stalled with read-tool diagnostics", async () => {
@@ -850,7 +850,7 @@ describe("OpenCodeBackend", () => {
 
     const paths = getJobPaths(tempDir, started.jobId);
     const meta = JSON.parse(await fs.readFile(paths.meta, "utf8")) as typeof started;
-    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 60_000).toISOString() })}\n`, "utf8");
+    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 30_000).toISOString() })}\n`, "utf8");
 
     await expect(backend.wait({ jobId: started.jobId }, 1)).resolves.toMatchObject({ status: "running" });
     server!.completeSessionWithFinalText(started.externalSessionId!, "late final result");
@@ -882,7 +882,7 @@ describe("OpenCodeBackend", () => {
 
     const paths = getJobPaths(tempDir, started.jobId);
     const meta = JSON.parse(await fs.readFile(paths.meta, "utf8")) as typeof started;
-    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 76_000).toISOString() })}\n`, "utf8");
+    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 46_000).toISOString() })}\n`, "utf8");
 
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
@@ -892,7 +892,7 @@ describe("OpenCodeBackend", () => {
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"event":"opencode_job_stalled"');
     expect(trace).toContain('"stallReason":"incomplete_assistant_round"');
-    expect(trace).toContain('"incompleteAssistantStallThresholdMs":75000');
+    expect(trace).toContain('"incompleteAssistantStallThresholdMs":45000');
   });
 
   it("keeps a single stale running tool call running before the bounded incomplete window by default", async () => {
@@ -903,7 +903,7 @@ describe("OpenCodeBackend", () => {
 
     const paths = getJobPaths(tempDir, started.jobId);
     const meta = JSON.parse(await fs.readFile(paths.meta, "utf8")) as typeof started;
-    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 60_000).toISOString() })}\n`, "utf8");
+    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 30_000).toISOString() })}\n`, "utf8");
 
     await expect(backend.wait({ jobId: started.jobId }, 1)).resolves.toMatchObject({ status: "running" });
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
