@@ -5,7 +5,13 @@ This is the short verification entry point. Historical milestone notes live in
 
 ## Default Gates
 
-Run these before merging ordinary code or docs changes:
+Run this for a fast workflow check while iterating:
+
+```bash
+pnpm run gate:fast
+```
+
+Run this before merging ordinary code or docs changes:
 
 ```bash
 pnpm run gate:local
@@ -15,6 +21,22 @@ Default tests are deterministic. They do not require real Claude Code or a live 
 `gate:local` intentionally does not run `check:generated`; generated artifact drift is checked
 after commits and in release gates so development runs do not fail just because fresh build output
 has not been staged yet.
+
+Use grouped test scripts instead of ad hoc single-file Vitest commands:
+
+```bash
+pnpm run test:core
+pnpm run test:daemon
+pnpm run test:opencode
+pnpm run test:mcp
+pnpm run test:package
+pnpm run test:probes
+pnpm run test:cli
+```
+
+If a change repeatedly needs a single test file to be run by hand, add or adjust a group script
+first. The workflow should make the useful verification slice explicit so agents and humans do
+not keep rediscovering the same command.
 
 Run this before tagging or publishing:
 
@@ -32,9 +54,9 @@ pnpm run dev:install-hooks
 
 The installed `post-commit` hook runs `pnpm run check:generated` after a commit, which is the
 right point to verify that generated `dist/` and `plugins/retinue/dist/` files were committed.
-The installed `pre-commit` hook runs `pnpm run gate:commit`, currently a fast typecheck. The
-installed `pre-push` hook runs `pnpm run gate:local` so tests, package smoke, and package
-verification are checked before pushing. Use
+The installed `pre-commit` hook runs `pnpm run gate:commit`, currently typecheck plus the core
+test group. The installed `pre-push` hook runs `pnpm run gate:local` so tests, package smoke, and
+package verification are checked before pushing. Use
 `RETINUE_SKIP_GIT_HOOKS=1` only for an explicit emergency local bypass; CI and release gates still
 run the same deterministic checks.
 

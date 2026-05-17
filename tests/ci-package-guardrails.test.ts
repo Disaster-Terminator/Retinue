@@ -92,9 +92,21 @@ describe("package.json guardrails", () => {
 
     expect(scripts["verify:package"]).toBeTypeOf("string");
     expect(scripts["smoke:package"]).toBe("node scripts/smoke-package-artifacts.mjs");
-    expect(scripts["gate:commit"]).toBe("pnpm run typecheck");
-    expect(scripts["gate:local"]).toBe("pnpm run typecheck && pnpm test && pnpm run smoke:package && pnpm run verify:package");
-    expect(scripts["gate:release"]).toBe("pnpm run typecheck && pnpm test && pnpm run check:generated && pnpm run smoke:package && pnpm run verify:package");
+    expect(scripts.test).toBe("pnpm run test:all");
+    expect(scripts["test:all"]).toBe("vitest run");
+    expect(scripts["test:core"]).toBe("vitest run tests/core");
+    expect(scripts["test:daemon"]).toContain("tests/daemon-client.test.ts");
+    expect(scripts["test:opencode"]).toContain("tests/opencode-backend.test.ts");
+    expect(scripts["test:mcp"]).toContain("tests/mcp-tools.test.ts");
+    expect(scripts["test:package"]).toContain("tests/ci-package-guardrails.test.ts");
+    expect(scripts["test:probes"]).toContain("tests/probe-real-opencode.test.ts");
+    expect(scripts["test:cli"]).toBe("vitest run tests/cli.test.ts");
+    expect(scripts["gate:commit"]).toBe("pnpm run typecheck && pnpm run test:core");
+    expect(scripts["gate:fast"]).toBe("pnpm run gate:commit && pnpm run test:mcp && pnpm run test:package");
+    expect(scripts["gate:local"]).toBe("pnpm run typecheck && pnpm run test:all && pnpm run smoke:package && pnpm run verify:package");
+    expect(scripts["gate:release"]).toBe(
+      "pnpm run typecheck && pnpm run test:all && pnpm run check:generated && pnpm run smoke:package && pnpm run verify:package"
+    );
     expect(scripts.prepublishOnly).toBe("pnpm run gate:release");
     expect(scripts["dev:sync-plugin-cache"]).toBe("node scripts/sync-installed-plugin-cache.mjs");
     expect(scripts["dev:sync-plugin-cache:all"]).toBe("node scripts/sync-installed-plugin-cache.mjs --include-windows --include-wsl");
