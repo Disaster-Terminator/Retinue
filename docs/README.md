@@ -19,7 +19,7 @@ directory stays readable.
 - [Plugin Deployment](deployment/PLUGIN_DEPLOYMENT.md) - Codex plugin packaging and install shape.
 - [Source Install And Development](development/SOURCE_INSTALL.md) - contributor setup and source-tree verification.
 - [Plugin Reload Workflow](development/PLUGIN_RELOAD.md) - fast WSL/Windows cache sync during plugin development.
-- [Service Lifecycle](deployment/SERVICE_LIFECYCLE.md) - daemon start, inspect, and stop workflow.
+- [Service Lifecycle](deployment/SERVICE_LIFECYCLE.md) - optional daemon start, inspect, and stop workflow for custom deployments.
 - [Verification](VERIFICATION.md) - short test and packaging gates.
 
 ## Real Runtime Runbooks
@@ -34,4 +34,4 @@ directory stays readable.
 - [PR #58 Static Review](archive/PR58_STATIC_REVIEW.md)
 - [Repository Metadata Notes](archive/REPOSITORY_METADATA.md)
 
-Implementation plans and research notes remain under `docs/superpowers/` and `docs/research/`.
+Historical implementation plans and specs are archived under `docs/archive/superpowers/`. Research notes remain under `docs/research/` when they document current design decisions.

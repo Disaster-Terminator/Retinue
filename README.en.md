@@ -47,7 +47,7 @@ Retinue is a local subagent execution surface. It is not a model gateway or prov
 
 ## Quick Start
 
-Retinue 0.1.0 defaults to OpenCode and asks OpenCode to use its `plan` agent. Users do not need to clone, install dependencies, or compile Retinue. Retinue targets Windows, WSL/Linux, and macOS; this round's acceptance path uses WSL.
+Retinue 0.1.0 defaults to OpenCode and asks OpenCode to use its `explore` agent. Users do not need to clone, install dependencies, or compile Retinue. Retinue targets Windows, WSL/Linux, and macOS; this round's acceptance path uses WSL.
 
 Requirements:
 
@@ -70,7 +70,7 @@ codex plugin marketplace add Disaster-Terminator/Retinue
 Open Codex, run `/plugins`, press the keyboard Right Arrow key until `[Retinue Local]` is selected, press Enter to open the `Retinue` details page, then choose `Install plugin`. After installation, restart Codex, then ask:
 
 ```text
-Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE_OK. Wait for the result and close the child agent.
+Use Retinue to spawn an OpenCode explore subagent. Ask it to reply exactly: RETINUE_OK. Wait for the result and close the child agent.
 ```
 
 Expected result:
@@ -98,7 +98,7 @@ The plugin MCP config lives at `plugins/retinue/.mcp.json`. Retinue 0.1.0 defaul
   "RETINUE_BACKEND": "opencode",
   "RETINUE_OPENCODE_AUTO_SERVE": "1",
   "RETINUE_OPENCODE_HOST": "127.0.0.1",
-  "RETINUE_OPENCODE_AGENT": "plan"
+  "RETINUE_OPENCODE_AGENT": "explore"
 }
 ```
 
@@ -107,21 +107,21 @@ This means:
 - Codex calls Retinue and does not choose the concrete backend.
 - Retinue manages the OpenCode server lifecycle by default. It prefers `127.0.0.1:4096` and tries `4097` through `4127` when earlier ports are occupied by external services.
 - OpenCode uses the active local profile for provider, model, login, plugins, and skills.
-- `plan` is the 0.1.0 default agent. Retinue product spawns are read-only by default: Retinue sends an OpenCode prompt-level override denying `edit`, `write`, `apply_patch`, and nested `task` delegation even when the local OpenCode profile allows them. `bash` is restricted to a small read-only git inspection allowlist for commands such as `git status --short`, `git diff --cached`, `git diff --staged`, targeted `git diff -- <path>`, and `git show --stat`.
+- `explore` is the 0.1.0 default agent. Retinue product spawns are read-only by default: Retinue creates OpenCode sessions with non-interactive permissions that deny edits, patch mode, nested `task` delegation, `doom_loop`, and interactive `question` prompts. `bash` is restricted to a small read-only git inspection allowlist for commands such as `git status --short`, `git diff --cached`, `git diff --staged`, targeted `git diff -- <path>`, and `git show --stat`.
 - Read-only review prompts also ask OpenCode to return findings as plain text and avoid unified diffs or patch blocks. If OpenCode still emits patch/write intent, Retinue marks the job `stalled` and the result should be treated as non-evidence.
 - If the user prompt already provides enough facts, the default read-only child is instructed to answer from those facts instead of opening repository tools. Repository inspection is bounded to a small number of `read`/`grep`/`glob` or allowed read-only git calls before a final text answer.
 - Default read-only children cannot run arbitrary shell, write-capable git commands, shell composition, or patch/edit tools. Use `bash_policy: "none"` for one stricter no-bash child, or `access_mode: "profile"` only when the child should intentionally follow the active OpenCode profile.
 - Codex plugin installs read their default access mode from the installation-scoped `retinue.config.json` shipped with the plugin. It defaults to `{ "opencode": { "defaultAccessMode": "read_only", "readOnlyBashPolicy": "readonly_git" } }`.
 - `retinue_spawn_agent` can override that default per child with `access_mode: "read_only"` or `access_mode: "profile"`. Use `"profile"` only when the child is intentionally allowed to follow the active OpenCode profile, including write-capable tools if that profile allows them.
 - Hermes and custom MCP deployments can keep using environment configuration. `RETINUE_OPENCODE_ACCESS_MODE=profile` or the older `RETINUE_OPENCODE_READ_ONLY=0` selects profile permissions when child-agent writes are intentionally acceptable.
-- `retinue_wait_agent` keeps each MCP wait call inside a host-safe window, 180 seconds by default. That window covers OpenCode's default 75-second soft-stall detection plus one final-answer rescue attempt. Long jobs can still be polled by calling wait again, and deployments can tune the cap with `RETINUE_MCP_WAIT_MAX_MS`.
+- `retinue_wait_agent` keeps each MCP wait call inside a host-safe window, 180 seconds by default. That window covers OpenCode's default 45-second soft-stall detection plus one final-answer rescue attempt. Long jobs can still be polled by calling wait again, and deployments can tune the cap with `RETINUE_MCP_WAIT_MAX_MS`.
 - Each Retinue MCP server session keeps up to 3 active child agents by default, matching the Codex v2 shape of "4 threads including root." The 4th active spawn closes the oldest still-running child and returns `evictedJobId`; deployments can tune this with `RETINUE_MAX_CONCURRENT_AGENTS`.
 
 A long child-agent task is still running when `retinue_wait_agent` returns `status: "running"`. Call `retinue_wait_agent` again with the same `jobId`; do not respawn unless the job reaches `failed`, `killed`, `stalled`, or another terminal status.
 
-When a wait returns `running`, the response includes `stdoutTail`, `stderrTail`, `tracePath`, and job artifact paths. Inspect the tail fields first. Complex OpenCode `plan` tasks can spend several minutes in tool-call rounds before producing final text, so a timeout from one wait call is not by itself a failed child.
+When a wait returns `running`, the response includes `stdoutTail`, `stderrTail`, `tracePath`, and job artifact paths. Inspect the tail fields first. Complex OpenCode tasks can spend several minutes in tool-call rounds before producing final text, so a timeout from one wait call is not by itself a failed child.
 
-Retinue reports OpenCode empty-output or incomplete assistant loops as `stalled` only after diagnostic thresholds are crossed. The default long stall threshold is 10 minutes, while completed tool-call loops with no final text use a 2-minute default after the tool-call round threshold is crossed. Deployments can tune `RETINUE_OPENCODE_STALL_MS`, `RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS`, `RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS`, `RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS`, and `RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS`.
+Retinue reports OpenCode empty-output or incomplete assistant loops as `stalled` only after diagnostic thresholds are crossed. The default long fallback threshold is 10 minutes, while blank provider placeholders, zero-progress assistant placeholders, incomplete latest assistant rounds, pending/running `read` tool calls, and completed tool-call loops with no final text use 45-second default windows. Deployments can tune `RETINUE_OPENCODE_STALL_MS`, `RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS`, `RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS`, `RETINUE_OPENCODE_STALL_READ_TOOL_MS`, `RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS`, `RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS`, `RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS`, and `RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS`.
 
 `retinue_spawn_agent` returns both the requested `cwd` and OpenCode's `externalSessionDirectory`. If they differ, close the child and spawn again with the intended absolute directory before trusting repository-specific conclusions.
 
@@ -157,7 +157,7 @@ npm install -g @disaster-terminator/retinue@0.1.0
 codex mcp add retinue \
   --env RETINUE_BACKEND=opencode \
   --env RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
-  --env RETINUE_OPENCODE_AGENT=plan \
+  --env RETINUE_OPENCODE_AGENT=explore \
   -- retinue-mcp
 ```
 
@@ -167,7 +167,7 @@ Normal Codex users should prefer the plugin marketplace path. The npm path does 
 
 Hermes Agent can use Retinue as a master-agent MCP integration. Hermes is not a Retinue backend; Hermes loads Retinue under `mcp_servers`, then calls the prefixed tools `mcp_retinue_retinue_spawn_agent`, `mcp_retinue_retinue_wait_agent`, `mcp_retinue_retinue_close_agent`, and `mcp_retinue_retinue_list_agents`.
 
-Install the npm runtime and merge `integrations/hermes/mcp-retinue.yaml` into `~/.hermes/config.yaml`, or see [Hermes Agent Integration](docs/integrations/HERMES.md). The default remains OpenCode `plan` with Retinue-managed OpenCode server lifecycle.
+Install the npm runtime and merge `integrations/hermes/mcp-retinue.yaml` into `~/.hermes/config.yaml`, or see [Hermes Agent Integration](docs/integrations/HERMES.md). The default remains OpenCode `explore` with Retinue-managed OpenCode server lifecycle.
 
 ## Verification
 

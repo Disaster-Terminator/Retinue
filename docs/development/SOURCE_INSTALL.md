@@ -71,6 +71,7 @@ It exposes:
 retinue
 retinue-mcp
 retinued
+retinue-daemon
 ```
 
-Legacy `retinue*` bin aliases remain for compatibility but should not be used in user-facing Retinue docs.
+`retinued` and `retinue-daemon` both point at the optional daemon entrypoint. User-facing plugin docs should prefer the marketplace install path; custom runtime docs may use `retinue-mcp`.

@@ -169,9 +169,15 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(readmeZh).toContain("%USERPROFILE%\\.opencode\\bin\\opencode");
     expect(readmeZh).toContain("默认插件配置会管理本机 OpenCode server 生命周期");
     expect(readmeZh).toContain("`4097` 到 `4127`");
+    expect(readmeZh).toContain('"RETINUE_OPENCODE_AGENT": "explore"');
+    expect(readmeZh).toContain("OpenCode `explore`");
+    expect(readmeZh).not.toContain('"RETINUE_OPENCODE_AGENT": "plan"');
     expect(readmeEn).toContain("%USERPROFILE%\\.opencode\\bin\\opencode");
     expect(readmeEn).toContain("The default plugin config manages the local OpenCode server lifecycle");
     expect(readmeEn).toContain("`4097` through `4127`");
+    expect(readmeEn).toContain('"RETINUE_OPENCODE_AGENT": "explore"');
+    expect(readmeEn).toContain("OpenCode `explore`");
+    expect(readmeEn).not.toContain('"RETINUE_OPENCODE_AGENT": "plan"');
     expect(readmeZh).not.toContain("端口被外部服务占用时尝试 `4097`。");
     expect(readmeEn).not.toContain("tries `4097` when that port is occupied");
   });
@@ -182,11 +188,17 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(readmeZh).toContain("`stdoutTail`、`stderrTail`、`tracePath`");
     expect(readmeZh).toContain("单次 wait 超时不等于子代理失败");
     expect(readmeZh).toContain("默认最大 180 秒");
+    expect(readmeZh).toContain("默认 45 秒 soft-stall");
+    expect(readmeZh).not.toContain("默认 75 秒 soft-stall");
+    expect(readmeZh).not.toContain("默认 2 分钟判定");
     expect(readmeEn).toContain("`RETINUE_MAX_CONCURRENT_AGENTS`");
     expect(readmeEn).toContain("`evictedJobId`");
     expect(readmeEn).toContain("`stdoutTail`, `stderrTail`, `tracePath`");
     expect(readmeEn).toContain("a timeout from one wait call is not by itself a failed child");
     expect(readmeEn).toContain("180 seconds by default");
+    expect(readmeEn).toContain("default 45-second soft-stall");
+    expect(readmeEn).not.toContain("default 75-second soft-stall");
+    expect(readmeEn).not.toContain("2-minute default");
   });
 
   it("keeps OpenCode no-progress stall detection inside one MCP wait call", () => {
@@ -229,7 +241,7 @@ describe("Retinue Codex plugin guardrails", () => {
       license?: string;
       skills?: string;
       mcpServers?: string;
-      interface?: { displayName?: string };
+      interface?: { displayName?: string; longDescription?: string; defaultPrompt?: string[] };
     };
     const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { license?: string };
 
@@ -238,6 +250,9 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(manifest.skills).toBe("./skills/");
     expect(manifest.mcpServers).toBe("./.mcp.json");
     expect(manifest.interface?.displayName).toBe("Retinue");
+    expect(manifest.interface?.longDescription).toContain("explore agent");
+    expect(manifest.interface?.longDescription).not.toContain("plan agent");
+    expect(manifest.interface?.defaultPrompt?.join("\n")).toContain("OpenCode explore subagent");
   });
 
   it("uses Codex plugin MCP server map shape", () => {
