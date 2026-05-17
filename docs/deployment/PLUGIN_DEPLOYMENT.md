@@ -61,7 +61,7 @@ The plugin MCP config starts the runtime shipped inside the plugin directory:
         "RETINUE_BACKEND": "opencode",
         "RETINUE_OPENCODE_AUTO_SERVE": "1",
         "RETINUE_OPENCODE_HOST": "127.0.0.1",
-        "RETINUE_OPENCODE_AGENT": "plan"
+        "RETINUE_OPENCODE_AGENT": "explore"
       }
     }
   }
@@ -104,7 +104,7 @@ npm install -g @disaster-terminator/retinue@0.1.0
 codex mcp add retinue \
   --env RETINUE_BACKEND=opencode \
   --env RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
-  --env RETINUE_OPENCODE_AGENT=plan \
+  --env RETINUE_OPENCODE_AGENT=explore \
   -- retinue-mcp
 ```
 
@@ -124,7 +124,7 @@ mcp_servers:
       RETINUE_BACKEND: "opencode"
       RETINUE_OPENCODE_AUTO_SERVE: "1"
       RETINUE_OPENCODE_HOST: "127.0.0.1"
-      RETINUE_OPENCODE_AGENT: "plan"
+      RETINUE_OPENCODE_AGENT: "explore"
     timeout: 180
     connect_timeout: 30
 ```

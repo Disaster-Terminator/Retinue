@@ -18,7 +18,7 @@ Hermes registers them with the server prefix, so Hermes tool names are:
 - `mcp_retinue_retinue_close_agent`
 - `mcp_retinue_retinue_list_agents`
 
-The Retinue backend remains deployment-selected. The default Hermes config uses OpenCode with Retinue-managed auto-serve and the OpenCode `plan` agent.
+The Retinue backend remains deployment-selected. The default Hermes config uses OpenCode with Retinue-managed auto-serve and the OpenCode `explore` agent.
 
 ## Recommended Runtime Install
 
@@ -38,7 +38,7 @@ mcp_servers:
       RETINUE_BACKEND: "opencode"
       RETINUE_OPENCODE_AUTO_SERVE: "1"
       RETINUE_OPENCODE_HOST: "127.0.0.1"
-      RETINUE_OPENCODE_AGENT: "plan"
+      RETINUE_OPENCODE_AGENT: "explore"
     timeout: 180
     connect_timeout: 30
 ```
@@ -60,7 +60,7 @@ mcp_servers:
       RETINUE_BACKEND: "opencode"
       RETINUE_OPENCODE_AUTO_SERVE: "1"
       RETINUE_OPENCODE_HOST: "127.0.0.1"
-      RETINUE_OPENCODE_AGENT: "plan"
+      RETINUE_OPENCODE_AGENT: "explore"
     timeout: 180
     connect_timeout: 30
 ```

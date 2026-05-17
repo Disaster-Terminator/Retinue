@@ -1,6 +1,8 @@
 {
   "opencode": {
     "defaultAccessMode": "read_only",
-    "readOnlyBashPolicy": "readonly_git"
+    "readOnlyBashPolicy": "readonly_git",
+    "readOnlyPromptContract": false,
+    "readOnlyToolDeny": false
   }
 }

@@ -20,7 +20,7 @@ describe("sync-installed-plugin-cache script", () => {
         marker: "old-other"
       });
 
-      const result = spawnSync(process.execPath, [scriptPath, "--source-dir", sourceDir, "--cache-root", cacheRoot], {
+      const result = spawnSync(process.execPath, [scriptPath, "--source-dir", sourceDir, "--cache-root", cacheRoot, "--json"], {
         encoding: "utf8"
       });
 
@@ -53,7 +53,7 @@ describe("sync-installed-plugin-cache script", () => {
 
       const result = spawnSync(
         process.execPath,
-        [scriptPath, "--source-dir", sourceDir, "--cache-root", cacheRoot, "--version", "0.1.0", "--apply"],
+        [scriptPath, "--source-dir", sourceDir, "--cache-root", cacheRoot, "--version", "0.1.0", "--apply", "--json"],
         { encoding: "utf8" }
       );
 
@@ -62,6 +62,27 @@ describe("sync-installed-plugin-cache script", () => {
       expect(output).toMatchObject({ ok: true, dryRun: false, pluginName: "retinue" });
       expect(await readFile(path.join(cacheRoot, "retinue-local", "retinue", "0.1.0", "marker.txt"), "utf8")).toBe("new-retinue\n");
       expect(await readFile(path.join(cacheRoot, "retinue-local", "retinue", "old", "marker.txt"), "utf8")).toBe("old-version\n");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("prints compact human output by default", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "retinue-cache-sync-compact-test-"));
+    try {
+      const sourceDir = path.join(tempDir, "source", "retinue");
+      const cacheRoot = path.join(tempDir, "cache");
+      createPlugin(sourceDir, { marker: "new-retinue" });
+      createPlugin(path.join(cacheRoot, "retinue-local", "retinue", "0.1.0"), { marker: "old-retinue" });
+
+      const result = spawnSync(process.execPath, [scriptPath, "--source-dir", sourceDir, "--cache-root", cacheRoot], {
+        encoding: "utf8"
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("Retinue plugin cache would sync 1 target(s) for retinue");
+      expect(result.stdout).toContain("retinue-local/retinue@0.1.0");
+      expect(() => JSON.parse(result.stdout)).toThrow();
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }

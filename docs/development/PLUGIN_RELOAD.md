@@ -55,6 +55,12 @@ $CODEX_HOME/plugins/cache
 WSL ~/.codex/plugins/cache when --include-wsl is used from Windows
 ```
 
+Default output is compact so reload checks do not flood agent context. Add `--json` when a test or troubleshooting step needs the full target list and paths:
+
+```bash
+pnpm run dev:sync-plugin-cache:all -- --apply --json
+```
+
 Use explicit filters when needed:
 
 ```bash

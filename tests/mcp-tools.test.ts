@@ -270,9 +270,10 @@ describe("MCP tools", () => {
       assertRequiredFields(tools.tools, "retinue_spawn_agent", ["message"]);
       assertOptionalField(tools.tools, "retinue_spawn_agent", "task_name");
       assertOptionalField(tools.tools, "retinue_spawn_agent", "cwd");
+      assertOptionalField(tools.tools, "retinue_spawn_agent", "agent");
       assertOptionalField(tools.tools, "retinue_spawn_agent", "access_mode");
       assertOptionalField(tools.tools, "retinue_spawn_agent", "bash_policy");
-      assertAbsentFields(tools.tools, "retinue_spawn_agent", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
+      assertAbsentFields(tools.tools, "retinue_spawn_agent", ["backend", "profile", "model", "permissionMode", "opencodeBaseUrl"]);
       assertRequiredFields(tools.tools, "retinue_wait_agent", ["jobId"]);
       assertAbsentFields(tools.tools, "retinue_wait_agent", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
       assertRequiredFields(tools.tools, "retinue_close_agent", ["jobId"]);
@@ -295,7 +296,7 @@ describe("MCP tools", () => {
       const spawn = parseToolJson(
         await connection.client.callTool({
           name: "retinue_spawn_agent",
-          arguments: { cwd: tempDir, message: "retinue mcp", task_name: "smoke" }
+        arguments: { cwd: tempDir, message: "retinue mcp", task_name: "smoke", agent: "plan" }
         })
       );
       expect(spawn).toMatchObject({
@@ -307,23 +308,10 @@ describe("MCP tools", () => {
         externalServerUrl: fakeOpenCode.url,
         externalSessionDirectory: process.cwd()
       });
-      expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({
-        tools: {
-          edit: false,
-          write: false,
-          apply_patch: false,
-          patch: false,
-          task: false
-        }
-      });
-      expect(fakeOpenCode.promptRequests.at(-1)?.tools).not.toHaveProperty("bash", false);
+      expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "plan" });
+      expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
       const submittedPrompt = extractOpenCodePromptText(fakeOpenCode.promptRequests.at(-1));
-      expect(submittedPrompt).toContain("Retinue read-only child agent");
-      expect(submittedPrompt).toContain("Use only OpenCode read, grep, glob, and allowed read-only git bash commands");
-      expect(submittedPrompt).toContain("read only a small set of targeted files");
-      expect(submittedPrompt).toContain("Use read serially");
-      expect(submittedPrompt).toContain("Do not call bash except for allowed read-only git inspection commands");
-      expect(submittedPrompt).toContain("retinue mcp");
+      expect(submittedPrompt).toBe("retinue mcp");
       const permissions = fakeOpenCode.sessionRequests.at(-1)?.permission ?? [];
       expect(fakeOpenCode.sessionRequests.at(-1)).toMatchObject({
         permission: expect.arrayContaining([
@@ -422,14 +410,7 @@ describe("MCP tools", () => {
         arguments: { cwd: tempDir, message: "inspect staged diff", task_name: "no-bash", bash_policy: "none" }
       });
 
-      expect(fakeOpenCode.promptRequests.at(-1)?.tools).toMatchObject({
-        bash: false,
-        edit: false,
-        write: false,
-        apply_patch: false,
-        patch: false,
-        task: false
-      });
+      expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
       expect(fakeOpenCode.sessionRequests.at(-1)).toMatchObject({
         permission: expect.arrayContaining([
           { permission: "patch", pattern: "*", action: "deny" },
@@ -489,10 +470,47 @@ describe("MCP tools", () => {
         arguments: { cwd: tempDir, message: "inspect configured staged diff", task_name: "configured-bash" }
       });
 
-      expect(fakeOpenCode.promptRequests.at(-1)?.tools).toHaveProperty("bash", false);
+      expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
       expect(fakeOpenCode.sessionRequests.at(-1)).toMatchObject({
         permission: expect.not.arrayContaining([{ permission: "bash", pattern: "git diff --cached*", action: "allow" }])
       });
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      delete process.env.RETINUE_CONFIG_FILE;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses configured Retinue strict read-only prompt and tool denial when enabled", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-strict-readonly-"));
+    const configPath = path.join(tempDir, "retinue.config.json");
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      await fs.writeFile(
+        configPath,
+        JSON.stringify({ opencode: { defaultAccessMode: "read_only", readOnlyToolDeny: true, readOnlyPromptContract: true } }),
+        "utf8"
+      );
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.RETINUE_CONFIG_FILE = configPath;
+
+      await connection.client.callTool({
+        name: "retinue_spawn_agent",
+        arguments: { cwd: tempDir, message: "inspect configured strict mode", task_name: "configured-strict" }
+      });
+
+      expect(fakeOpenCode.promptRequests.at(-1)?.tools).toMatchObject({
+        edit: false,
+        write: false,
+        apply_patch: false,
+        patch: false,
+        task: false
+      });
+      expect(extractOpenCodePromptText(fakeOpenCode.promptRequests.at(-1))).toContain("Retinue read-only child agent");
     } finally {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
@@ -1058,7 +1076,7 @@ describe("MCP tools", () => {
       process.env.RETINUE_STATE_DIR = tempDir;
       process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
       process.env.RETINUE_OPENCODE_MODEL = "litellm/pro-router";
-      process.env.RETINUE_OPENCODE_AGENT = "plan";
+      process.env.RETINUE_OPENCODE_AGENT = "explore";
       parseToolJson(
         await connection.client.callTool({
           name: "retinue_spawn_agent",
@@ -1067,7 +1085,7 @@ describe("MCP tools", () => {
       );
       expect(fakeOpenCode.promptRequests[0]).toMatchObject({
         model: { providerID: "litellm", modelID: "pro-router" },
-        agent: "plan"
+        agent: "explore"
       });
     } finally {
       delete process.env.RETINUE_STATE_DIR;

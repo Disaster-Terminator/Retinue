@@ -21,7 +21,7 @@ async function main() {
       marketplaceName: options.marketplaceName,
       pluginName,
       version: options.version
-    });
+    }, options);
     targetGroups.push({ cacheRoot, targets });
   }
   const targets = targetGroups.flatMap((group) => group.targets);
@@ -39,7 +39,7 @@ async function main() {
       cacheRoots,
       targets: targetGroups,
       next: "Run with --apply to replace these installed cache directories, then restart Codex and open a new thread."
-    });
+    }, options);
     return;
   }
 
@@ -56,7 +56,7 @@ async function main() {
     pluginName,
     synced,
     next: "Restart the matching Codex host and open a new thread. Existing threads should not be used as the reload proof."
-  });
+  }, options);
 }
 
 function parseArgs(args) {
@@ -65,6 +65,7 @@ function parseArgs(args) {
     cacheRoots: [],
     includeWindows: false,
     includeWsl: false,
+    json: false,
     marketplaceName: undefined,
     pluginName: undefined,
     sourceDir: undefined,
@@ -90,6 +91,8 @@ function parseArgs(args) {
       options.includeWindows = true;
     } else if (arg === "--include-wsl") {
       options.includeWsl = true;
+    } else if (arg === "--json") {
+      options.json = true;
     } else if (arg === "--marketplace") {
       options.marketplaceName = next();
     } else if (arg === "--plugin") {
@@ -244,8 +247,20 @@ function isMissing(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
-function print(value) {
-  process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+function print(value, options = {}) {
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+    return;
+  }
+  const targets = value.dryRun ? value.targets.flatMap((group) => group.targets) : value.synced;
+  const action = value.dryRun ? "would sync" : "synced";
+  const summary = targets.map(formatTarget).join(", ");
+  process.stdout.write(`Retinue plugin cache ${action} ${targets.length} target(s) for ${value.pluginName}: ${summary}\n`);
+  process.stdout.write(`${value.next}\n`);
+}
+
+function formatTarget(target) {
+  return `${target.marketplace}/${target.plugin}@${target.version}`;
 }
 
 main().catch((error) => {

@@ -46,7 +46,7 @@ describe("Retinue OpenCode auto-serve MCP E2E", () => {
       RETINUE_OPENCODE_HOST: "127.0.0.1",
       RETINUE_OPENCODE_PORT: String(occupied.port),
       RETINUE_OPENCODE_FALLBACK_PORTS: String(fallbackPort),
-      RETINUE_OPENCODE_AGENT: "plan"
+      RETINUE_OPENCODE_AGENT: "explore"
     };
 
     first = await connectRetinueMcp(env);
@@ -86,7 +86,7 @@ describe("Retinue OpenCode auto-serve MCP E2E", () => {
       RETINUE_OPENCODE_PREFIX_ARGS: fakeOpenCodeCommand,
       RETINUE_OPENCODE_HOST: "127.0.0.1",
       RETINUE_OPENCODE_PORT: String(preferredPort),
-      RETINUE_OPENCODE_AGENT: "plan"
+      RETINUE_OPENCODE_AGENT: "explore"
     };
     const connections: Array<Awaited<ReturnType<typeof connectRetinueMcp>>> = [];
 

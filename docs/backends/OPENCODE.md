@@ -43,12 +43,12 @@ Model and agent overrides are optional:
 
 ```text
 RETINUE_OPENCODE_MODEL=litellm/pro-router
-RETINUE_OPENCODE_AGENT=plan
+RETINUE_OPENCODE_AGENT=explore
 ```
 
 CLI/MCP request fields win over environment variables. If neither CLI/MCP input nor environment variable is set, retinue does not send `model` or `agent`; OpenCode keeps ownership of default model and agent selection.
 
-Retinue 0.1.0 plugin deployments set `RETINUE_OPENCODE_AGENT=plan` by default. This is a deployment default, not a `retinue_spawn_agent` argument. Use `build` only when the deployment intentionally allows OpenCode child agents to edit.
+Retinue 0.1.0 plugin deployments set `RETINUE_OPENCODE_AGENT=explore` by default. This follows OpenCode's built-in read-only subagent semantics for repository exploration. It is a deployment default, but `retinue_spawn_agent` can override it for a single child with `agent`. Use `build` only when the child is intentionally allowed to edit, normally together with `access_mode: "profile"`.
 
 ## Profile
 
@@ -92,7 +92,7 @@ MCP hosts commonly enforce their own per-tool timeout. Retinue therefore clamps 
 
 Retinue's local HTTP clients also apply a 30-second transport timeout to OpenCode and daemon requests. Set `RETINUE_HTTP_TIMEOUT_MS` when a deployment needs a different local request ceiling; set it to `0` only when another layer already enforces a reliable timeout.
 
-Product `retinue_spawn_agent` calls are read-only by default on the OpenCode backend. In read-only mode, Retinue creates the OpenCode session with explicit non-interactive permissions: file edits, patch mode, and nested `task` agents are denied, `doom_loop` and interactive `question` prompts are denied so headless runs do not wait for UI approval, and `bash` is restricted to a small read-only git inspection allowlist. Retinue also sends `tools: { edit: false, write: false, apply_patch: false, patch: false, task: false }` with `prompt_async`, so local OpenCode profiles that allow edits do not leak those capabilities into child-agent review tasks while normal code-review inspection remains usable through OpenCode's `read`, `grep`, `glob`, and allowed read-only git commands. The submitted prompt includes the same read-only contract so the child agent knows to use only allowed inspection tools, avoid non-allowed shell/write attempts, avoid patch mode, avoid unified diffs or patch blocks in review output, answer from prompt-provided facts without repository inspection when enough facts are already present, and return a textual limitation when the task requires unavailable capabilities. It also asks the child to keep repository inspection bounded to at most six tool calls before producing a final textual answer. The default `readonly_git` bash policy allows commands such as `git status --short`, `git diff --cached`, `git diff --staged`, targeted `git diff -- <path>`, `git show --stat`, `git show --name-only`, `git ls-files`, and `git rev-parse --show-toplevel`; it still blocks shell composition, write-capable git commands, patches, and arbitrary bash. Set `opencode.readOnlyBashPolicy` to `"none"` when a deployment needs the stricter no-bash behavior.
+Product `retinue_spawn_agent` calls are read-only by default on the OpenCode backend. In read-only mode, Retinue creates the OpenCode session with explicit non-interactive permissions: file edits, patch mode, and nested `task` agents are denied, `doom_loop` and interactive `question` prompts are denied so headless runs do not wait for UI approval, and `bash` is restricted to a small read-only git inspection allowlist. The default packaged config does not inject an extra Retinue prompt contract and does not send `tools: false` overrides to `prompt_async`; the default path relies on OpenCode's built-in `explore` behavior plus session permissions. Set `opencode.readOnlyPromptContract: true` or `opencode.readOnlyToolDeny: true` only when a deployment needs the stricter Retinue-owned behavior. The default `readonly_git` bash policy allows commands such as `git status --short`, `git diff --cached`, `git diff --staged`, targeted `git diff -- <path>`, `git show --stat`, `git show --name-only`, `git ls-files`, and `git rev-parse --show-toplevel`; it still blocks shell composition, write-capable git commands, patches, and arbitrary bash. Set `opencode.readOnlyBashPolicy` to `"none"` when a deployment needs the stricter no-bash behavior.
 
 Codex plugin installs read the default from the installation-scoped `retinue.config.json` beside the plugin bootstrap. The shipped default is:
 
@@ -100,12 +100,14 @@ Codex plugin installs read the default from the installation-scoped `retinue.con
 {
   "opencode": {
     "defaultAccessMode": "read_only",
-    "readOnlyBashPolicy": "readonly_git"
+    "readOnlyBashPolicy": "readonly_git",
+    "readOnlyPromptContract": false,
+    "readOnlyToolDeny": false
   }
 }
 ```
 
-`retinue_spawn_agent` can override the default for one child with `access_mode: "read_only"` or `access_mode: "profile"`. In read-only mode Retinue disables OpenCode `edit`, `write`, `apply_patch`, and `task` at prompt level so permissive local profiles do not leak write access into default child agents, and it prepends a short capability contract to reduce futile shell/write tool attempts. The optional `bash_policy` argument can set one child to `"readonly_git"` or `"none"`; the installation-scoped config provides the default when the argument is omitted. `profile` means Retinue does not send that prompt-level tool deny list and the child follows the active OpenCode profile. Hermes and custom MCP deployments can set `RETINUE_OPENCODE_ACCESS_MODE=profile`, or the older `RETINUE_OPENCODE_READ_ONLY=0`, when profile-level shell or write capability is intentionally acceptable.
+`retinue_spawn_agent` can override the default for one child with `agent`, `access_mode: "read_only"` or `access_mode: "profile"`. The optional `bash_policy` argument can set one child to `"readonly_git"` or `"none"`; the installation-scoped config provides the default when the argument is omitted. `profile` means Retinue does not send read-only session permissions and the child follows the active OpenCode profile. Hermes and custom MCP deployments can set `RETINUE_OPENCODE_ACCESS_MODE=profile`, or the older `RETINUE_OPENCODE_READ_ONLY=0`, when profile-level shell or write capability is intentionally acceptable.
 
 If a wait call returns `status: "running"`, keep the same `jobId` and call wait again. Do not spawn a replacement job only because one wait window elapsed.
 

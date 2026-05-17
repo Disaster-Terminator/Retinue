@@ -80,7 +80,8 @@ The Retinue dogfood pressure probe is:
 pnpm run gate:dogfood
 ```
 
-This probe runs concurrent read-only OpenCode review jobs through the Retinue MCP surface and exits
+By default this uses OpenCode's built-in `explore` subagent, matching the packaged Retinue plugin
+default. This probe runs concurrent read-only OpenCode review jobs through the Retinue MCP surface and exits
 nonzero unless every child returns a completed textual answer, reports a `PASS` verdict, and includes
 its requested completion marker. `FAIL` verdicts, `stalled`, `running`, `read_only_write_intent`,
 provider/router zero-progress, and missing-marker results are release-blocking dogfood failures, not
@@ -88,6 +89,14 @@ review evidence. The JSON output includes job ids, provider/model metadata, stdo
 `stallReason`, `stallSummary`, `runningReadToolParts`, `runningReadToolCallIds`, and `tracePath` for
 follow-up. If a run reports `read_tool_stalled`, inspect the failed job entry first; it should identify
 the active read tool call ids before you fall back to the full Retinue JSONL log.
+
+Use the OpenCode agent A/B probe only when comparing runtime behavior across built-in agents:
+
+```bash
+RETINUE_REAL_OPENCODE_AGENT_AB_PROBE=1 RETINUE_OPENCODE_AGENT_LIST=plan,explore pnpm run probe:real:retinue-opencode-agent-ab
+```
+
+The A/B probe is a compatibility diagnostic, not a substitute for `gate:dogfood`.
 
 `gate:dogfood` is intentionally separate from `gate:release` because it uses the real local OpenCode
 provider/router instead of deterministic fixtures. Run both before publishing a release.
