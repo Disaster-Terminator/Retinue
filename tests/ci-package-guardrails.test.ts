@@ -99,6 +99,7 @@ describe("package.json guardrails", () => {
     expect(scripts["test:opencode"]).toContain("tests/opencode-backend.test.ts");
     expect(scripts["test:mcp"]).toContain("tests/mcp-tools.test.ts");
     expect(scripts["test:package"]).toContain("tests/ci-package-guardrails.test.ts");
+    expect(scripts["test:probes"]).toContain("tests/probe-dogfood.test.ts");
     expect(scripts["test:probes"]).toContain("tests/probe-real-opencode.test.ts");
     expect(scripts["test:cli"]).toBe("vitest run tests/cli.test.ts");
     expect(scripts["gate:commit"]).toBe("pnpm run typecheck && pnpm run test:core");
@@ -125,6 +126,7 @@ describe("package.json guardrails", () => {
     }
 
     expect(scripts["probe:hermes-retinue"]).toBe("node scripts/probe-hermes-retinue-mcp.mjs");
+    expect(scripts["probe:dogfood:opencode"]).toBe("pnpm run build && node scripts/probe-retinue-opencode-dogfood.mjs");
     expect(scripts.test).not.toContain("probe:real:");
     expect(scripts.build).not.toContain("probe:real:");
     expect(scripts.typecheck).not.toContain("probe:real:");
@@ -177,10 +179,12 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(readmeZh).toContain("`evictedJobId`");
     expect(readmeZh).toContain("`stdoutTail`、`stderrTail`、`tracePath`");
     expect(readmeZh).toContain("单次 wait 超时不等于子代理失败");
+    expect(readmeZh).toContain("默认最大 180 秒");
     expect(readmeEn).toContain("`RETINUE_MAX_CONCURRENT_AGENTS`");
     expect(readmeEn).toContain("`evictedJobId`");
     expect(readmeEn).toContain("`stdoutTail`, `stderrTail`, `tracePath`");
     expect(readmeEn).toContain("a timeout from one wait call is not by itself a failed child");
+    expect(readmeEn).toContain("180 seconds by default");
   });
 
   it("keeps OpenCode no-progress stall detection inside one MCP wait call", () => {
