@@ -922,7 +922,9 @@ function computeStallDiagnostic(jobMessages, meta, env) {
     const emptyAssistantRounds = jobMessages.filter((message) => message.info?.role === "assistant" && isEmptyStopAssistantMessage(message)).length;
     const blankAssistantRounds = jobMessages.filter((message) => message.info?.role === "assistant" && isBlankAssistantPlaceholder(message)).length;
     const zeroProgressAssistantRounds = jobMessages.filter((message) => message.info?.role === "assistant" && isZeroProgressAssistantPlaceholder(message)).length;
-    const runningReadToolParts = jobMessages.reduce((count, message) => count + countRunningReadToolParts(message), 0);
+    const runningReadToolPartSummaries = collectRunningReadToolPartSummaries(jobMessages);
+    const runningReadToolParts = runningReadToolPartSummaries.length;
+    const runningReadToolCallIds = runningReadToolPartSummaries.flatMap((part) => (part.callID ? [part.callID] : []));
     const lastAssistant = [...jobMessages].reverse().find((message) => message.info?.role === "assistant");
     const incompleteAssistantRound = isIncompleteAssistantMessage(lastAssistant);
     if (toolCallAssistantRounds < roundThreshold &&
@@ -959,6 +961,8 @@ function computeStallDiagnostic(jobMessages, meta, env) {
         blankAssistantRounds,
         zeroProgressAssistantRounds,
         runningReadToolParts,
+        runningReadToolCallIds,
+        runningReadToolPartSummaries,
         noCompletedAssistantDurationMs: Math.max(0, durationMs),
         stallThresholdMs: thresholdMs,
         blankAssistantStallThresholdMs: blankAssistantThresholdMs,
@@ -1092,8 +1096,8 @@ function resolveSoftStallRescueAgent(currentAgent, env) {
 function hasToolPart(message) {
     return Array.isArray(message.parts) && message.parts.some((part) => part?.type === "tool");
 }
-function countRunningReadToolParts(message) {
-    return (summarizeMessageParts(message)?.filter((part) => part.type === "tool" && part.tool === "read" && isActiveToolState(part.stateStatus)).length ?? 0);
+function collectRunningReadToolPartSummaries(messages) {
+    return messages.flatMap((message) => summarizeMessageParts(message)?.filter((part) => part.type === "tool" && part.tool === "read" && isActiveToolState(part.stateStatus)) ?? []);
 }
 function isActiveToolState(status) {
     return status === "pending" || status === "running";

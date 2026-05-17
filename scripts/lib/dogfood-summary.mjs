@@ -30,8 +30,19 @@ export function summarizeDogfoodResults(agentResults) {
       jobId: wait.jobId,
       status: wait.status,
       stallReason: wait.stallReason,
+      stallSummary: wait.stallSummary,
       readOnlyWriteIntent: wait.readOnlyWriteIntent,
       failureReason: wait.failureReason,
+      lastAssistantAgent: wait.lastAssistantAgent,
+      lastAssistantMode: wait.lastAssistantMode,
+      lastAssistantProviderID: wait.lastAssistantProviderID,
+      lastAssistantModelID: wait.lastAssistantModelID,
+      toolCallAssistantRounds: wait.toolCallAssistantRounds,
+      runningReadToolParts: wait.runningReadToolParts,
+      runningReadToolCallIds: wait.runningReadToolCallIds,
+      runningReadToolPartSummaries: wait.runningReadToolPartSummaries,
+      stdoutPath: wait.stdoutPath,
+      stderrPath: wait.stderrPath,
       stdoutPreview: wait.stdoutPreview
     }))
   };

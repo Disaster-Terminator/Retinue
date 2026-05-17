@@ -85,7 +85,9 @@ nonzero unless every child returns a completed textual answer, reports a `PASS` 
 its requested completion marker. `FAIL` verdicts, `stalled`, `running`, `read_only_write_intent`,
 provider/router zero-progress, and missing-marker results are release-blocking dogfood failures, not
 review evidence. The JSON output includes job ids, provider/model metadata, stdout/stderr paths,
-`stallReason`, and `tracePath` for follow-up.
+`stallReason`, `stallSummary`, `runningReadToolParts`, `runningReadToolCallIds`, and `tracePath` for
+follow-up. If a run reports `read_tool_stalled`, inspect the failed job entry first; it should identify
+the active read tool call ids before you fall back to the full Retinue JSONL log.
 
 `gate:dogfood` is intentionally separate from `gate:release` because it uses the real local OpenCode
 provider/router instead of deterministic fixtures. Run both before publishing a release.
