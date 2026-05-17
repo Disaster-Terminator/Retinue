@@ -46,7 +46,7 @@ Retinue 是本地子代理执行面，不是模型网关，也不是 provider ro
 
 ## 快速开始
 
-0.1.0 默认使用 OpenCode 后端，并让 OpenCode 使用 `plan` agent。用户不需要 clone、安装依赖或编译 Retinue。Retinue 面向 Windows、WSL/Linux 和 macOS；本轮验收路径使用 WSL。
+0.1.0 默认使用 OpenCode 后端，并让 OpenCode 使用 `explore` agent。用户不需要 clone、安装依赖或编译 Retinue。Retinue 面向 Windows、WSL/Linux 和 macOS；本轮验收路径使用 WSL。
 
 前置条件：
 
@@ -69,7 +69,7 @@ codex plugin marketplace add Disaster-Terminator/Retinue
 打开 Codex，运行 `/plugins`，按键盘右方向键切到 `[Retinue Local]` 插件市场，按 Enter 打开 `Retinue` 详情页，然后选择 `Install plugin`。安装后重新打开 Codex，然后让 Codex 使用 Retinue：
 
 ```text
-Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE_OK. Wait for the result and close the child agent.
+Use Retinue to spawn an OpenCode explore subagent. Ask it to reply exactly: RETINUE_OK. Wait for the result and close the child agent.
 ```
 
 预期结果：
@@ -97,7 +97,7 @@ Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE
   "RETINUE_BACKEND": "opencode",
   "RETINUE_OPENCODE_AUTO_SERVE": "1",
   "RETINUE_OPENCODE_HOST": "127.0.0.1",
-  "RETINUE_OPENCODE_AGENT": "plan"
+  "RETINUE_OPENCODE_AGENT": "explore"
 }
 ```
 
@@ -106,21 +106,21 @@ Use Retinue to spawn an OpenCode plan subagent. Ask it to reply exactly: RETINUE
 - Codex 只调用 Retinue，不选择具体后端。
 - Retinue 默认管理 OpenCode server 生命周期，优先使用 `127.0.0.1:4096`，端口被外部服务占用时尝试 `4097` 到 `4127`。
 - OpenCode 使用当前本机 profile，包括 provider、model、login、plugin 和 skill。
-- `plan` 是 0.1.0 的默认 agent。Retinue 产品级 spawn 默认只读：即使本机 OpenCode profile 允许写入，Retinue 也会发送 prompt-level 覆盖，拒绝 `edit`、`write`、`apply_patch` 和嵌套 `task`。`bash` 只放行一组只读 git 检查命令，例如 `git status --short`、`git diff --cached`、`git diff --staged`、定向 `git diff -- <path>` 和 `git show --stat`。
+- `explore` 是 0.1.0 的默认 agent。Retinue 产品级 spawn 默认只读：Retinue 会创建带非交互权限的 OpenCode session，拒绝编辑、patch 模式、嵌套 `task`、`doom_loop` 和交互式 `question`。`bash` 只放行一组只读 git 检查命令，例如 `git status --short`、`git diff --cached`、`git diff --staged`、定向 `git diff -- <path>` 和 `git show --stat`。
 - 只读 review prompt 也会要求 OpenCode 只返回纯文本 findings，避免 unified diff 或 patch block。若 OpenCode 仍产生 patch/write intent，Retinue 会把任务标记为 `stalled`，调用方不应把该结果当作审查证据。
 - 如果用户 prompt 已经提供足够事实，默认只读子代理会被要求直接基于这些事实回答，而不是打开仓库工具。仓库检查会被限制在少量 `read`/`grep`/`glob` 调用内，并尽快返回最终文本。
 - 默认只读子代理不能运行任意 shell、写入型 git 命令、shell 组合命令或 patch/edit 工具。需要单次更严格禁用 bash 时传 `bash_policy: "none"`；只有明确接受子代理跟随 OpenCode profile 时，才使用 `access_mode: "profile"`。
 - Codex 插件安装读取插件目录里的全局 `retinue.config.json`。默认值是 `{ "opencode": { "defaultAccessMode": "read_only", "readOnlyBashPolicy": "readonly_git" } }`，这是安装域配置，不是项目域配置。
 - `retinue_spawn_agent` 支持用 `access_mode: "read_only"` 或 `access_mode: "profile"` 覆盖单次子代理权限意图。只有明确需要子代理按当前 OpenCode profile 执行、并接受 profile 中可能开放写工具时，才使用 `"profile"`。
 - Hermes 和自定义 MCP 部署仍可走环境变量。`RETINUE_OPENCODE_ACCESS_MODE=profile` 或旧的 `RETINUE_OPENCODE_READ_ONLY=0` 表示允许子代理跟随 OpenCode profile 权限。
-- `retinue_wait_agent` 会把单次 MCP wait 限制在宿主安全窗口内，默认最大 180 秒。这个窗口覆盖 OpenCode 默认 75 秒 soft-stall 检测和一次 final-answer rescue；长任务仍可重复调用 wait 轮询，也可用 `RETINUE_MCP_WAIT_MAX_MS` 调整上限。
+- `retinue_wait_agent` 会把单次 MCP wait 限制在宿主安全窗口内，默认最大 180 秒。这个窗口覆盖 OpenCode 默认 45 秒 soft-stall 检测和一次 final-answer rescue；长任务仍可重复调用 wait 轮询，也可用 `RETINUE_MCP_WAIT_MAX_MS` 调整上限。
 - 每个 Retinue MCP server 会话默认最多保留 3 个 active 子代理，贴近 Codex v2 的默认“4 个线程含 root”模型。第 4 个 active spawn 会关闭最旧的 running 子代理并返回 `evictedJobId`；可用 `RETINUE_MAX_CONCURRENT_AGENTS` 调整这个上限。
 
 当 `retinue_wait_agent` 返回 `status: "running"` 时，子代理仍在运行。继续用同一个 `jobId` 再次调用 `retinue_wait_agent`；只有任务进入 `failed`、`killed`、`stalled` 或其他终态时，才需要按终态处理或重新启动。
 
-`running` 响应会包含 `stdoutTail`、`stderrTail`、`tracePath` 和 job artifact 路径。先看 tail 字段；复杂 OpenCode `plan` 任务可能会连续几分钟处在 tool-call 阶段，单次 wait 超时不等于子代理失败。
+`running` 响应会包含 `stdoutTail`、`stderrTail`、`tracePath` 和 job artifact 路径。先看 tail 字段；复杂 OpenCode 任务可能会连续几分钟处在 tool-call 阶段，单次 wait 超时不等于子代理失败。
 
-OpenCode 空输出或未完成 assistant 循环超过诊断阈值后，Retinue 会把任务报告为 `stalled`。默认长 stall 阈值是 10 分钟；已经完成工具调用但一直不产出最终文本的循环，在超过 tool-call 轮数阈值后默认 2 分钟判定。部署可以用 `RETINUE_OPENCODE_STALL_MS`、`RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS`、`RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS`、`RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS` 和 `RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS` 调整。
+OpenCode 空输出或未完成 assistant 循环超过诊断阈值后，Retinue 会把任务报告为 `stalled`。默认长兜底阈值是 10 分钟；blank provider placeholder、zero-progress assistant placeholder、未完成的最新 assistant round、pending/running `read` tool call，以及完成工具调用但没有最终文本的循环，默认窗口都是 45 秒。部署可以用 `RETINUE_OPENCODE_STALL_MS`、`RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS`、`RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS`、`RETINUE_OPENCODE_STALL_READ_TOOL_MS`、`RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS`、`RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS`、`RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS` 和 `RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS` 调整。
 
 `retinue_spawn_agent` 会同时返回请求的 `cwd` 和 OpenCode 实际 session 的 `externalSessionDirectory`。如果两者不一致，先关闭这个子代理，再用目标仓库的绝对路径重新 spawn；在此之前不要相信仓库相关结论。
 
@@ -156,7 +156,7 @@ npm install -g @disaster-terminator/retinue@0.1.0
 codex mcp add retinue \
   --env RETINUE_BACKEND=opencode \
   --env RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
-  --env RETINUE_OPENCODE_AGENT=plan \
+  --env RETINUE_OPENCODE_AGENT=explore \
   -- retinue-mcp
 ```
 
@@ -166,7 +166,7 @@ codex mcp add retinue \
 
 Hermes Agent 可以把 Retinue 当作 master-agent MCP 集成来用。Hermes 不是 Retinue 后端；Hermes 通过 `mcp_servers` 加载 Retinue，然后调用带前缀的工具：`mcp_retinue_retinue_spawn_agent`、`mcp_retinue_retinue_wait_agent`、`mcp_retinue_retinue_close_agent`、`mcp_retinue_retinue_list_agents`。
 
-安装 npm runtime，并把 `integrations/hermes/mcp-retinue.yaml` 合并进 `~/.hermes/config.yaml`；完整说明见 [Hermes Agent Integration](docs/integrations/HERMES.md)。默认仍然是 OpenCode `plan`，并由 Retinue 管理 OpenCode server 生命周期。
+安装 npm runtime，并把 `integrations/hermes/mcp-retinue.yaml` 合并进 `~/.hermes/config.yaml`；完整说明见 [Hermes Agent Integration](docs/integrations/HERMES.md)。默认仍然是 OpenCode `explore`，并由 Retinue 管理 OpenCode server 生命周期。
 
 ## 验证
 
