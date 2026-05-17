@@ -759,6 +759,8 @@ function summarizeJobDiagnostic(value: unknown): Record<string, unknown> | undef
     blankAssistantRounds: numberValue(diagnostic.blankAssistantRounds),
     zeroProgressAssistantRounds: numberValue(diagnostic.zeroProgressAssistantRounds),
     runningReadToolParts: numberValue(diagnostic.runningReadToolParts),
+    runningReadToolCallIds: stringArrayValue(diagnostic.runningReadToolCallIds),
+    runningReadToolPartSummaries: arrayValue(diagnostic.runningReadToolPartSummaries),
     incompleteAssistantRound: booleanValue(diagnostic.incompleteAssistantRound),
     noCompletedAssistantDurationMs: numberValue(diagnostic.noCompletedAssistantDurationMs),
     stateStatus: stringValue(diagnostic.stateStatus),

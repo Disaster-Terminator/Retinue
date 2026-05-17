@@ -662,6 +662,9 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"event":"opencode_job_stalled"');
     expect(trace).toContain('"stallReason":"read_tool_stalled"');
     expect(trace).toContain('"runningReadToolParts":1');
+    expect(trace).toContain('"runningReadToolCallIds":["call_');
+    expect(trace).toContain('"runningReadToolPartSummaries":[{"type":"tool","tool":"read","callID":"call_');
+    expect(trace).toContain('"stateStatus":"running"');
     expect(trace).toContain('"lastAssistantProviderID":"litellm"');
     expect(trace).toContain('"lastAssistantModelID":"semantic-router"');
     expect(trace).toContain('"tool":"read"');
@@ -714,6 +717,8 @@ describe("OpenCodeBackend", () => {
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"stallReason":"read_tool_stalled"');
     expect(trace).toContain('"runningReadToolParts":1');
+    expect(trace).toContain('"runningReadToolCallIds":["call_');
+    expect(trace).toContain('"runningReadToolPartSummaries":[{"type":"tool","tool":"read","callID":"call_');
     expect(trace).toContain('"stateStatus":"pending"');
   });
 

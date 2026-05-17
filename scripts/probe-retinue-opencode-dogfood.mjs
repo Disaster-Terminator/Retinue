@@ -175,6 +175,8 @@ function summarizeWait(spawn, wait) {
     toolCallAssistantRounds: wait.diagnostic?.toolCallAssistantRounds,
     blankAssistantRounds: wait.diagnostic?.blankAssistantRounds,
     runningReadToolParts: wait.diagnostic?.runningReadToolParts,
+    runningReadToolCallIds: wait.diagnostic?.runningReadToolCallIds,
+    runningReadToolPartSummaries: wait.diagnostic?.runningReadToolPartSummaries,
     readOnlyWriteIntent: wait.diagnostic?.readOnlyWriteIntent,
     stdoutPath: wait.result?.stdoutPath,
     stderrPath: wait.result?.stderrPath,

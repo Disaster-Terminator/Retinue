@@ -129,7 +129,18 @@ describe("dogfood probe classification", () => {
               jobId: "job_patch",
               status: "stalled",
               stallReason: "read_only_write_intent",
+              stallSummary: "OpenCode read-only job emitted patch/write intent.",
               readOnlyWriteIntent: true,
+              lastAssistantAgent: "plan",
+              lastAssistantMode: "plan",
+              lastAssistantProviderID: "litellm",
+              lastAssistantModelID: "semantic-router",
+              toolCallAssistantRounds: 3,
+              runningReadToolParts: 1,
+              runningReadToolCallIds: ["call_read"],
+              runningReadToolPartSummaries: [{ type: "tool", tool: "read", callID: "call_read", stateStatus: "running" }],
+              stdoutPath: "/tmp/retinue/jobs/job_patch/stdout.log",
+              stderrPath: "/tmp/retinue/jobs/job_patch/stderr.log",
               stdoutPreview: "Patch intent"
             },
             "RETINUE_DOGFOOD_PATCH_DONE"
@@ -147,5 +158,27 @@ describe("dogfood probe classification", () => {
         read_only_write_intent: 1
       }
     });
+    expect(summary.failedJobs).toEqual([
+      {
+        task_name: "patch",
+        jobId: "job_patch",
+        status: "stalled",
+        stallReason: "read_only_write_intent",
+        stallSummary: "OpenCode read-only job emitted patch/write intent.",
+        readOnlyWriteIntent: true,
+        failureReason: "read_only_write_intent",
+        lastAssistantAgent: "plan",
+        lastAssistantMode: "plan",
+        lastAssistantProviderID: "litellm",
+        lastAssistantModelID: "semantic-router",
+        toolCallAssistantRounds: 3,
+        runningReadToolParts: 1,
+        runningReadToolCallIds: ["call_read"],
+        runningReadToolPartSummaries: [{ type: "tool", tool: "read", callID: "call_read", stateStatus: "running" }],
+        stdoutPath: "/tmp/retinue/jobs/job_patch/stdout.log",
+        stderrPath: "/tmp/retinue/jobs/job_patch/stderr.log",
+        stdoutPreview: "Patch intent"
+      }
+    ]);
   });
 });
