@@ -115,7 +115,7 @@ This means:
 - `retinue_spawn_agent` can override that default per child with `access_mode: "read_only"` or `access_mode: "profile"`. Use `"profile"` only when the child is intentionally allowed to follow the active OpenCode profile, including write-capable tools if that profile allows them.
 - Hermes and custom MCP deployments can keep using environment configuration. `RETINUE_OPENCODE_ACCESS_MODE=profile` or the older `RETINUE_OPENCODE_READ_ONLY=0` selects profile permissions when child-agent writes are intentionally acceptable.
 - `retinue_wait_agent` keeps each MCP wait call inside a host-safe window, 180 seconds by default. That window covers OpenCode's default 45-second soft-stall detection plus one final-answer rescue attempt. Long jobs can still be polled by calling wait again, and deployments can tune the cap with `RETINUE_MCP_WAIT_MAX_MS`.
-- Each Retinue MCP server session keeps up to 3 active child agents by default, matching the Codex v2 shape of "4 threads including root." The 4th active spawn closes the oldest still-running child and returns `evictedJobId`; deployments can tune this with `RETINUE_MAX_CONCURRENT_AGENTS`.
+- Each Retinue MCP server session keeps up to 5 active child agents by default. The 6th active spawn closes the oldest still-running child and returns `evictedJobId`; deployments can tune this with `RETINUE_MAX_CONCURRENT_AGENTS`.
 
 A long child-agent task is still running when `retinue_wait_agent` returns `status: "running"`. Call `retinue_wait_agent` again with the same `jobId`; do not respawn unless the job reaches `failed`, `killed`, `stalled`, or another terminal status.
 

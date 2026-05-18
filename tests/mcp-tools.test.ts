@@ -753,7 +753,7 @@ describe("MCP tools", () => {
 
       const list = parseToolJson(await connection.client.callTool({ name: "retinue_list_agents", arguments: {} }));
       expect(list).toMatchObject({
-        maxAgents: 3,
+        maxAgents: 5,
         agents: [
           { jobId: first.jobId, task_name: "list-first", backend: "opencode", status: "running" },
           { jobId: second.jobId, task_name: "list-second", backend: "opencode", status: "running" }
@@ -826,7 +826,7 @@ describe("MCP tools", () => {
       });
 
       const list = parseToolJson(await connection.client.callTool({ name: "retinue_list_agents", arguments: {} }));
-      expect(list).toMatchObject({ maxAgents: 3, agents: [] });
+      expect(list).toMatchObject({ maxAgents: 5, agents: [] });
     } finally {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
