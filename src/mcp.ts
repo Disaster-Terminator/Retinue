@@ -585,9 +585,9 @@ class RetinueAgentPool {
 
 function parseMaxConcurrentAgents(env: NodeJS.ProcessEnv): number | undefined {
   const configured = parseOptionalNumber(env.RETINUE_MAX_CONCURRENT_AGENTS);
-  const maxAgents = configured ?? 3;
+  const maxAgents = configured ?? 5;
   if (!Number.isFinite(maxAgents)) {
-    return 3;
+    return 5;
   }
   return Math.max(1, Math.floor(maxAgents));
 }
