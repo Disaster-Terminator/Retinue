@@ -1157,7 +1157,9 @@ function isSoftStallRescueEligible(diagnostic) {
     }
     return (diagnostic.stallReason === "backend_no_final_text" ||
         diagnostic.stallReason === "tool_loop_no_completion" ||
-        diagnostic.stallReason === "incomplete_assistant_round");
+        diagnostic.stallReason === "incomplete_assistant_round" ||
+        diagnostic.stallReason === "provider_blank_assistant" ||
+        diagnostic.stallReason === "provider_zero_progress");
 }
 function createReadOnlyTextWarning(text) {
     if (!text.trim()) {
