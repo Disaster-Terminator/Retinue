@@ -199,6 +199,8 @@ interface OpenCodeJobDiagnostic {
   writeIntentToolPartCount?: number;
   readOnlyWriteIntentToolPartCount?: number;
   readOnlyWriteIntent?: boolean;
+  readOnlyWriteIntentRecoveryJobMessageCount?: number;
+  recoveredFromReadOnlyWriteIntent?: boolean;
   readOnlyTextWarning?: boolean;
   readOnlyTextWarningSummary?: string;
   messageSummaries?: Array<{
@@ -397,10 +399,22 @@ export class OpenCodeBackend implements AgentBackend {
   }
 
   private async maybeSubmitSoftStallRescue(meta: JobMeta, diagnostic: Partial<OpenCodeJobDiagnostic>): Promise<void> {
-    if (!meta.externalSessionId || meta.externalRescuePromptSubmittedAt || isHardStallDiagnostic(diagnostic)) {
+    const recoverReadOnlyWriteIntent = diagnostic.readOnlyWriteIntent === true;
+    if (
+      !meta.externalSessionId ||
+      meta.externalRescuePromptSubmittedAt ||
+      (isHardStallDiagnostic(diagnostic) && !recoverReadOnlyWriteIntent)
+    ) {
       return;
     }
-    const updated: JobMeta = { ...meta, externalRescuePromptSubmittedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    const updated: JobMeta = {
+      ...meta,
+      externalRescuePromptSubmittedAt: new Date().toISOString(),
+      externalReadOnlyWriteIntentRecoveryJobMessageCount: recoverReadOnlyWriteIntent
+        ? (diagnostic.jobMessageCount ?? meta.externalReadOnlyWriteIntentRecoveryJobMessageCount)
+        : meta.externalReadOnlyWriteIntentRecoveryJobMessageCount,
+      updatedAt: new Date().toISOString()
+    };
     await writeJsonAtomic(getJobPaths(this.stateDir, meta.jobId).meta, updated);
     try {
       await this.clientForMeta(meta).promptAsync(meta.externalSessionId, {
@@ -441,7 +455,8 @@ export class OpenCodeBackend implements AgentBackend {
     const diagnostic = await this.inspectJob(meta);
     if (meta.status === "stalled") {
       const stderr = createStallMessage(diagnostic);
-      const text = diagnostic.readOnlyWriteIntent === true ? latestAssistantVisibleText(jobMessages) : "";
+      const text =
+        diagnostic.readOnlyWriteIntent === true ? latestAssistantVisibleText(selectResultMessagesForMeta(jobMessages, meta)) : "";
       const stdout = text || stderr;
       const textWarning = meta.readOnly === true ? createReadOnlyTextWarning(stdout) : undefined;
       if (textWarning) {
@@ -474,7 +489,8 @@ export class OpenCodeBackend implements AgentBackend {
         error: stderrText
       };
     }
-    const text = meta.externalMessageBaselineCount === undefined ? latestAssistantMessageText(messages) : latestAssistantMessageText(jobMessages);
+    const resultMessages = selectResultMessagesForMeta(jobMessages, meta);
+    const text = meta.externalMessageBaselineCount === undefined && resultMessages === jobMessages ? latestAssistantMessageText(messages) : latestAssistantMessageText(resultMessages);
     const textWarning = meta.readOnly === true ? createReadOnlyTextWarning(text) : undefined;
     if (textWarning) {
       diagnostic.readOnlyTextWarning = true;
@@ -538,7 +554,10 @@ export class OpenCodeBackend implements AgentBackend {
       }
       if (status.status === "stalled") {
         const diagnostic = await this.inspectJob(status);
-        if (!isHardStallDiagnostic(diagnostic) && Date.now() < deadline) {
+        const canDeferStall =
+          !isHardStallDiagnostic(diagnostic) ||
+          (diagnostic.readOnlyWriteIntent === true && status.externalRescuePromptSubmittedAt === undefined);
+        if (canDeferStall && Date.now() < deadline) {
           await this.maybeSubmitSoftStallRescue(status, diagnostic);
           if (!deferredSoftStall) {
             await this.writeJobTrace("opencode_job_soft_stall_deferred", status, diagnostic);
@@ -655,7 +674,15 @@ export class OpenCodeBackend implements AgentBackend {
       if (status === meta.status) {
         return meta;
       }
-      const updated: JobMeta = { ...meta, status, updatedAt: new Date().toISOString() };
+      const updated: JobMeta = {
+        ...meta,
+        status,
+        externalReadOnlyWriteIntentRecoveredAt:
+          status === "completed" && meta.externalReadOnlyWriteIntentRecoveryJobMessageCount !== undefined
+            ? (meta.externalReadOnlyWriteIntentRecoveredAt ?? new Date().toISOString())
+            : meta.externalReadOnlyWriteIntentRecoveredAt,
+        updatedAt: new Date().toISOString()
+      };
       await writeJsonAtomic(getJobPaths(this.stateDir, meta.jobId).meta, updated);
       const diagnostic = await this.inspectJob(updated);
       await this.writeJobTrace("opencode_job_status_changed", updated, diagnostic, { fromStatus: meta.status, toStatus: status });
@@ -700,10 +727,11 @@ export class OpenCodeBackend implements AgentBackend {
   private async hasNewCompletedAssistantMessage(client: OpenCodeClient, sessionId: string, meta: JobMeta): Promise<boolean> {
     const messages = await client.messages(sessionId);
     const jobMessages = selectMessagesForMeta(messages, meta);
-    if (jobMessages.some(isCompletedAssistantMessage)) {
+    const completionMessages = selectResultMessagesForMeta(jobMessages, meta);
+    if (completionMessages.some(isCompletedAssistantMessage)) {
       return true;
     }
-    if (meta.externalMessageBaselineCount !== undefined) {
+    if (meta.externalMessageBaselineCount !== undefined || meta.externalReadOnlyWriteIntentRecoveryJobMessageCount !== undefined) {
       return false;
     }
     return countCompletedAssistantMessages(messages) > (meta.externalCompletedAssistantBaselineCount ?? 0);
@@ -715,7 +743,8 @@ export class OpenCodeBackend implements AgentBackend {
     }
     const messages = await client.messages(sessionId);
     const jobMessages = selectMessagesForMeta(messages, meta);
-    return countPatchParts(jobMessages) > 0 || countWriteIntentToolParts(jobMessages) > 0;
+    const writeIntentMessages = selectReadOnlyWriteIntentMessagesForMeta(jobMessages, meta);
+    return countPatchParts(writeIntentMessages) > 0 || countWriteIntentToolParts(writeIntentMessages) > 0;
   }
 
   private async isStalledOpenCodeJob(client: OpenCodeClient, sessionId: string, meta: JobMeta): Promise<boolean> {
@@ -768,11 +797,18 @@ export class OpenCodeBackend implements AgentBackend {
       diagnostic.lastAssistantCost = numberInfo(lastAssistant, "cost");
       diagnostic.lastAssistantTokens = lastAssistant?.info?.tokens;
       diagnostic.patchPartCount = countPatchParts(jobMessages);
-      diagnostic.readOnlyPatchPartCount = meta.readOnly === true ? diagnostic.patchPartCount : 0;
+      const readOnlyWriteIntentMessages = selectReadOnlyWriteIntentMessagesForMeta(jobMessages, meta);
+      diagnostic.readOnlyPatchPartCount = meta.readOnly === true ? countPatchParts(readOnlyWriteIntentMessages) : 0;
       diagnostic.writeIntentToolPartCount = countWriteIntentToolParts(jobMessages);
-      diagnostic.readOnlyWriteIntentToolPartCount = meta.readOnly === true ? diagnostic.writeIntentToolPartCount : 0;
+      diagnostic.readOnlyWriteIntentToolPartCount = meta.readOnly === true ? countWriteIntentToolParts(readOnlyWriteIntentMessages) : 0;
       diagnostic.readOnlyWriteIntent =
         (diagnostic.readOnlyPatchPartCount ?? 0) > 0 || (diagnostic.readOnlyWriteIntentToolPartCount ?? 0) > 0;
+      diagnostic.readOnlyWriteIntentRecoveryJobMessageCount = meta.externalReadOnlyWriteIntentRecoveryJobMessageCount;
+      diagnostic.recoveredFromReadOnlyWriteIntent =
+        meta.readOnly === true &&
+        meta.externalReadOnlyWriteIntentRecoveryJobMessageCount !== undefined &&
+        diagnostic.readOnlyWriteIntent !== true &&
+        selectResultMessagesForMeta(jobMessages, meta).some(isCompletedAssistantMessage);
       diagnostic.messageSummaries = jobMessages.map((message) => ({
         role: message.info?.role,
         finish: stringInfo(message, "finish"),
@@ -783,6 +819,17 @@ export class OpenCodeBackend implements AgentBackend {
         messageError: diagnosticValuePreview(message.info?.error)
       }));
       Object.assign(diagnostic, computeStallDiagnostic(jobMessages, meta, this.env));
+      if (
+        meta.status === "stalled" &&
+        meta.readOnly === true &&
+        meta.externalReadOnlyWriteIntentRecoveryJobMessageCount !== undefined &&
+        diagnostic.recoveredFromReadOnlyWriteIntent !== true &&
+        diagnostic.readOnlyWriteIntent !== true &&
+        !diagnostic.stallReason
+      ) {
+        diagnostic.stallReason = "read_only_write_intent";
+        diagnostic.stallSummary = "OpenCode read-only job emitted patch/write intent, and recovery did not produce usable final text.";
+      }
     } catch (error) {
       diagnostic.error = error instanceof Error ? error.message : String(error);
     }
@@ -993,6 +1040,17 @@ function selectMessagesForMeta(messages: OpenCodeMessage[], meta: JobMeta): Open
   return messages.slice(Math.max(0, meta.externalMessageBaselineCount));
 }
 
+function selectResultMessagesForMeta(jobMessages: OpenCodeMessage[], meta: JobMeta): OpenCodeMessage[] {
+  if (meta.externalReadOnlyWriteIntentRecoveryJobMessageCount === undefined) {
+    return jobMessages;
+  }
+  return jobMessages.slice(Math.max(0, meta.externalReadOnlyWriteIntentRecoveryJobMessageCount));
+}
+
+function selectReadOnlyWriteIntentMessagesForMeta(jobMessages: OpenCodeMessage[], meta: JobMeta): OpenCodeMessage[] {
+  return selectResultMessagesForMeta(jobMessages, meta);
+}
+
 function latestAssistantMessageText(messages: OpenCodeMessage[]): string {
   return (
     [...messages]
@@ -1064,9 +1122,11 @@ function computeStallDiagnostic(
   meta: JobMeta,
   env: RetinueOptions["env"] | undefined
 ): Partial<OpenCodeJobDiagnostic> | undefined {
-  const patchPartCount = countPatchParts(jobMessages);
-  const writeIntentToolPartCount = countWriteIntentToolParts(jobMessages);
-  if (hasAssistantError(jobMessages)) {
+  const activeMessages = selectResultMessagesForMeta(jobMessages, meta);
+  const writeIntentMessages = selectReadOnlyWriteIntentMessagesForMeta(jobMessages, meta);
+  const patchPartCount = countPatchParts(writeIntentMessages);
+  const writeIntentToolPartCount = countWriteIntentToolParts(writeIntentMessages);
+  if (hasAssistantError(activeMessages)) {
     return {
       patchPartCount,
       readOnlyPatchPartCount: meta.readOnly === true ? patchPartCount : 0,
@@ -1088,7 +1148,7 @@ function computeStallDiagnostic(
       stallSummary: "OpenCode read-only job emitted patch/write intent."
     };
   }
-  if (jobMessages.some(isCompletedAssistantMessage)) {
+  if (activeMessages.some(isCompletedAssistantMessage)) {
     return undefined;
   }
   const thresholdMs = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_MS, DEFAULT_STALL_MS);
@@ -1108,14 +1168,14 @@ function computeStallDiagnostic(
   );
   const roundThreshold = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS, DEFAULT_STALL_TOOL_CALL_ROUNDS);
   const emptyAssistantThreshold = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS, DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS);
-  const toolCallAssistantRounds = jobMessages.filter((message) => message.info?.role === "assistant" && isToolCallAssistantMessage(message)).length;
-  const emptyAssistantRounds = jobMessages.filter((message) => message.info?.role === "assistant" && isEmptyStopAssistantMessage(message)).length;
-  const blankAssistantRounds = jobMessages.filter((message) => message.info?.role === "assistant" && isBlankAssistantPlaceholder(message)).length;
-  const zeroProgressAssistantRounds = jobMessages.filter((message) => message.info?.role === "assistant" && isZeroProgressAssistantPlaceholder(message)).length;
-  const runningReadToolPartSummaries = collectRunningReadToolPartSummaries(jobMessages);
+  const toolCallAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isToolCallAssistantMessage(message)).length;
+  const emptyAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isEmptyStopAssistantMessage(message)).length;
+  const blankAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isBlankAssistantPlaceholder(message)).length;
+  const zeroProgressAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isZeroProgressAssistantPlaceholder(message)).length;
+  const runningReadToolPartSummaries = collectRunningReadToolPartSummaries(activeMessages);
   const runningReadToolParts = runningReadToolPartSummaries.length;
   const runningReadToolCallIds = runningReadToolPartSummaries.flatMap((part) => (part.callID ? [part.callID] : []));
-  const lastAssistant = [...jobMessages].reverse().find((message) => message.info?.role === "assistant");
+  const lastAssistant = [...activeMessages].reverse().find((message) => message.info?.role === "assistant");
   const incompleteAssistantRound = isIncompleteAssistantMessage(lastAssistant);
   if (
     toolCallAssistantRounds < roundThreshold &&
@@ -1186,6 +1246,9 @@ function computeStallDiagnostic(
 function createStallMessage(diagnostic: OpenCodeJobDiagnostic): string {
   if (diagnostic.readOnlyWriteIntent === true) {
     return `OpenCode read-only job emitted patch/write intent; Retinue did not treat the child result as trusted output. Inspect Retinue trace/job diagnostics for message summaries.`;
+  }
+  if (diagnostic.stallReason === "read_only_write_intent") {
+    return `OpenCode read-only job emitted patch/write intent; Retinue requested a no-tools prose-only recovery, but no trusted final text was produced. Inspect Retinue trace/job diagnostics for message summaries.`;
   }
   if (diagnostic.stallReason === "provider_error") {
     const preview = diagnostic.lastAssistantError?.preview ?? diagnostic.lastMessageError?.preview;

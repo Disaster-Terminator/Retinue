@@ -43,6 +43,8 @@ export interface JobMeta {
     externalSessionDirectory?: string;
     externalMessageId?: string;
     externalRescuePromptSubmittedAt?: string;
+    externalReadOnlyWriteIntentRecoveryJobMessageCount?: number;
+    externalReadOnlyWriteIntentRecoveredAt?: string;
     externalMessageBaselineCount?: number;
     externalCompletedAssistantBaselineCount?: number;
     model?: string;
