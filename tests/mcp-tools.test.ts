@@ -629,7 +629,9 @@ describe("MCP tools", () => {
           stallReason: "provider_zero_progress",
           zeroProgressAssistantRounds: 1,
           lastAssistantProviderID: "litellm",
-          lastAssistantModelID: "semantic-router"
+          lastAssistantModelID: "semantic-router",
+          selectedAssistantTextBytes: expect.any(Number),
+          selectedAssistantSha256: expect.any(String)
         }
       });
       expect(wait.diagnostic.message).toContain("provider/router produced zero-progress assistant output");
