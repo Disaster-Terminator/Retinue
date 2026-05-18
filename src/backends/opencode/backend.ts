@@ -638,14 +638,10 @@ export class OpenCodeBackend implements AgentBackend {
   }
 
   private isSoftStallRescuePending(meta: JobMeta, diagnostic: Partial<OpenCodeJobDiagnostic>): boolean {
-    if (
-      !meta.externalRescuePromptSubmittedAt ||
-      meta.externalReadOnlyWriteIntentRecoveryJobMessageCount === undefined ||
-      diagnostic.recoveredFromReadOnlyWriteIntent === true
-    ) {
+    if (!meta.externalRescuePromptSubmittedAt || diagnostic.recoveredFromReadOnlyWriteIntent === true) {
       return false;
     }
-    if (isHardStallDiagnostic(diagnostic)) {
+    if (isHardStallDiagnostic(diagnostic) || !isSoftStallRescueEligible(diagnostic)) {
       return false;
     }
     const submittedAt = Date.parse(meta.externalRescuePromptSubmittedAt);
@@ -1350,12 +1346,13 @@ function isSoftStallRescueEligible(diagnostic: Partial<OpenCodeJobDiagnostic>): 
   if (diagnostic.readOnlyWriteIntent === true) {
     return true;
   }
+  const hasToolProgress = (diagnostic.toolCallAssistantRounds ?? 0) > 0;
   return (
     diagnostic.stallReason === "backend_no_final_text" ||
     diagnostic.stallReason === "tool_loop_no_completion" ||
     diagnostic.stallReason === "incomplete_assistant_round" ||
-    diagnostic.stallReason === "provider_blank_assistant" ||
-    diagnostic.stallReason === "provider_zero_progress"
+    (hasToolProgress && diagnostic.stallReason === "provider_blank_assistant") ||
+    (hasToolProgress && diagnostic.stallReason === "provider_zero_progress")
   );
 }
 
