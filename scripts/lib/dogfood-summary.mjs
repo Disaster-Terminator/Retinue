@@ -4,14 +4,21 @@ export function classifyDogfoodWait(wait, expectedMarker) {
   const readOnlyWriteIntent = wait?.readOnlyWriteIntent === true || wait?.diagnostic?.readOnlyWriteIntent === true;
   const stdoutText = firstString(wait?.stdoutText, wait?.stdout, wait?.stdoutPreview);
   const stdoutPreview = typeof wait?.stdoutPreview === "string" ? wait.stdoutPreview : "";
-  const failureReason = selectFailureReason({ status, stallReason, readOnlyWriteIntent, stdoutText, expectedMarker });
+  const providerError = classifyProviderError({ stallReason, stdoutText });
+  const failureReason = selectFailureReason({ status, stallReason, readOnlyWriteIntent, stdoutText, expectedMarker, providerError });
   const { stdoutText: _stdoutText, stdout: _stdout, ...publicWait } = wait ?? {};
 
   return {
     ...publicWait,
     expectedMarker,
     usable: failureReason === undefined,
-    failureReason
+    failureReason,
+    ...(providerError
+      ? {
+          providerErrorKind: providerError.kind,
+          providerErrorHint: providerError.hint
+        }
+      : {})
   };
 }
 
@@ -33,6 +40,8 @@ export function summarizeDogfoodResults(agentResults) {
       stallSummary: wait.stallSummary,
       readOnlyWriteIntent: wait.readOnlyWriteIntent,
       failureReason: wait.failureReason,
+      providerErrorKind: wait.providerErrorKind,
+      providerErrorHint: wait.providerErrorHint,
       lastAssistantAgent: wait.lastAssistantAgent,
       lastAssistantMode: wait.lastAssistantMode,
       lastAssistantProviderID: wait.lastAssistantProviderID,
@@ -48,9 +57,12 @@ export function summarizeDogfoodResults(agentResults) {
   };
 }
 
-function selectFailureReason({ status, stallReason, readOnlyWriteIntent, stdoutText, expectedMarker }) {
+function selectFailureReason({ status, stallReason, readOnlyWriteIntent, stdoutText, expectedMarker, providerError }) {
   if (readOnlyWriteIntent) {
     return "read_only_write_intent";
+  }
+  if (providerError) {
+    return `provider_error:${providerError.kind}`;
   }
   if (status !== "completed") {
     return stallReason ?? status;
@@ -66,6 +78,34 @@ function selectFailureReason({ status, stallReason, readOnlyWriteIntent, stdoutT
     return "missing_pass_verdict";
   }
   return undefined;
+}
+
+function classifyProviderError({ stallReason, stdoutText }) {
+  if (stallReason !== "provider_error") {
+    return undefined;
+  }
+  if (/reasoning_content.*thinking mode must be passed back to the API/is.test(stdoutText)) {
+    return {
+      kind: "deepseek_reasoning_content",
+      hint: "Deepseek thinking-mode routing requires reasoning_content continuity; check LiteLLM/OpenCode router configuration."
+    };
+  }
+  if (/\b(?:401|unauthorized|invalid[_ -]?api[_ -]?key|authentication)\b/i.test(stdoutText)) {
+    return {
+      kind: "auth",
+      hint: "Provider authentication failed; check the active OpenCode/LiteLLM credentials before retrying Retinue."
+    };
+  }
+  if (/\b(?:429|rate limit|quota|insufficient_quota)\b/i.test(stdoutText)) {
+    return {
+      kind: "rate_limit",
+      hint: "Provider quota or rate limits blocked the child; retry later or change the backend route."
+    };
+  }
+  return {
+    kind: "generic",
+    hint: "OpenCode provider or router failed before final text; inspect provider logs and route configuration."
+  };
 }
 
 function firstString(...values) {

@@ -89,6 +89,9 @@ review evidence. The JSON output includes job ids, provider/model metadata, stdo
 `stallReason`, `stallSummary`, `runningReadToolParts`, `runningReadToolCallIds`, and `tracePath` for
 follow-up. If a run reports `read_tool_stalled`, inspect the failed job entry first; it should identify
 the active read tool call ids before you fall back to the full Retinue JSONL log.
+Provider/API failures are grouped under provider-specific `failureReason` values when Retinue can
+recognize them, for example `provider_error:deepseek_reasoning_content`; treat those as backend route
+or provider compatibility failures before investigating Retinue lifecycle code.
 
 Use the OpenCode agent A/B probe only when comparing runtime behavior across built-in agents:
 

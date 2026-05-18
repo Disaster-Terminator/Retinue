@@ -181,4 +181,46 @@ describe("dogfood probe classification", () => {
       }
     ]);
   });
+
+  it("classifies Deepseek thinking-mode provider errors separately from generic Retinue stalls", () => {
+    const wait = classifyDogfoodWait(
+      {
+        task_name: "provider",
+        jobId: "job_provider",
+        status: "stalled",
+        stallReason: "provider_error",
+        lastAssistantProviderID: "litellm",
+        lastAssistantModelID: "semantic-router",
+        stdoutText:
+          'OpenCode provider returned an assistant error before producing final text. Error summary: {"message":"litellm.BadRequestError: DeepseekException - {\\"error\\":{\\"message\\":\\"The `reasoning_content` in the thinking mode must be passed back to the API.\\"}}"}',
+        stdoutPreview: "OpenCode provider returned an assistant error before producing final text."
+      },
+      "RETINUE_DOGFOOD_PROVIDER_DONE"
+    );
+
+    expect(wait).toMatchObject({
+      usable: false,
+      failureReason: "provider_error:deepseek_reasoning_content",
+      providerErrorKind: "deepseek_reasoning_content",
+      providerErrorHint: "Deepseek thinking-mode routing requires reasoning_content continuity; check LiteLLM/OpenCode router configuration."
+    });
+
+    const summary = summarizeDogfoodResults([{ agent: "explore", waits: [wait] }]);
+    expect(summary).toMatchObject({
+      ok: false,
+      failed: 1,
+      failureReasons: {
+        "provider_error:deepseek_reasoning_content": 1
+      },
+      failedJobs: [
+        {
+          task_name: "provider",
+          jobId: "job_provider",
+          stallReason: "provider_error",
+          providerErrorKind: "deepseek_reasoning_content",
+          providerErrorHint: "Deepseek thinking-mode routing requires reasoning_content continuity; check LiteLLM/OpenCode router configuration."
+        }
+      ]
+    });
+  });
 });
