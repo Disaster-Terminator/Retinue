@@ -31,9 +31,12 @@ function validPackJson() {
         { path: "integrations/hermes/skills/retinue/SKILL.md" },
         { path: "plugins/retinue/dist/backends/opencode/backend.js" },
         { path: "plugins/retinue/dist/core/retinue.js" },
+        { path: "plugins/retinue/dist/cli.js" },
+        { path: "plugins/retinue/dist/daemon.js" },
         { path: "plugins/retinue/dist/daemon/client.js" },
         { path: "plugins/retinue/dist/mcp.js" },
         { path: "dist/backends/opencode/backend.js" },
+        { path: "dist/core/retinue.js" },
         { path: "dist/cli.js" },
         { path: "dist/mcp.js" },
         { path: "dist/daemon.js" }
@@ -74,6 +77,18 @@ describe("verify-package script", () => {
     expect(result.stderr).toContain("missing required runtime pattern");
   });
 
+  it("fails when root core runtime files are missing", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "verify-package-missing-core-runtime-"));
+    const packJsonPath = path.join(dir, "pack.json");
+    const parsed = JSON.parse(validPackJson()) as Array<{ files: Array<{ path: string }> }>;
+    parsed[0].files = parsed[0].files.filter((entry) => !entry.path.startsWith("dist/core/"));
+    writeFileSync(packJsonPath, JSON.stringify(parsed));
+
+    const result = spawnSync(process.execPath, [scriptPath, packJsonPath], { cwd: dir, encoding: "utf8" });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("missing required runtime pattern: dist/core/");
+  });
+
   it("fails when plugin-local runtime files are missing", () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "verify-package-missing-plugin-runtime-"));
     const packJsonPath = path.join(dir, "pack.json");
@@ -84,5 +99,17 @@ describe("verify-package script", () => {
     const result = spawnSync(process.execPath, [scriptPath, packJsonPath], { cwd: dir, encoding: "utf8" });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("missing required plugin runtime pattern");
+  });
+
+  it("fails when plugin-local CLI and daemon entrypoints are missing", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "verify-package-missing-plugin-entrypoints-"));
+    const packJsonPath = path.join(dir, "pack.json");
+    const parsed = JSON.parse(validPackJson()) as Array<{ files: Array<{ path: string }> }>;
+    parsed[0].files = parsed[0].files.filter((entry) => entry.path !== "plugins/retinue/dist/cli.js" && entry.path !== "plugins/retinue/dist/daemon.js");
+    writeFileSync(packJsonPath, JSON.stringify(parsed));
+
+    const result = spawnSync(process.execPath, [scriptPath, packJsonPath], { cwd: dir, encoding: "utf8" });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("missing required plugin runtime pattern: plugins/retinue/dist/cli.");
   });
 });

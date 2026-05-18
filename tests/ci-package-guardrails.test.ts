@@ -40,6 +40,7 @@ const realOpenCodeMcpProbe = readFileSync("scripts/probe-retinue-opencode-mcp.mj
 const opencodeBackendSource = readFileSync("src/backends/opencode/backend.ts", "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   name?: string;
+  version?: string;
   private?: boolean;
   license?: string;
   bin?: Record<string, string>;
@@ -238,6 +239,7 @@ describe("Retinue Codex plugin guardrails", () => {
   it("declares a plugin manifest with skill and MCP surfaces", () => {
     const manifest = JSON.parse(readFileSync("plugins/retinue/.codex-plugin/plugin.json", "utf8")) as {
       name?: string;
+      version?: string;
       license?: string;
       skills?: string;
       mcpServers?: string;
@@ -246,6 +248,7 @@ describe("Retinue Codex plugin guardrails", () => {
     const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { license?: string };
 
     expect(manifest.name).toBe("retinue");
+    expect(manifest.version).toBe(packageJson.version);
     expect(manifest.license).toBe(pkg.license);
     expect(manifest.skills).toBe("./skills/");
     expect(manifest.mcpServers).toBe("./.mcp.json");
