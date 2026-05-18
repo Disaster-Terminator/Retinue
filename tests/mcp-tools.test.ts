@@ -296,7 +296,7 @@ describe("MCP tools", () => {
       const spawn = parseToolJson(
         await connection.client.callTool({
           name: "retinue_spawn_agent",
-        arguments: { cwd: tempDir, message: "retinue mcp", task_name: "smoke", agent: "plan" }
+        arguments: { cwd: tempDir, message: "retinue mcp", task_name: "smoke", agent: "explore" }
         })
       );
       expect(spawn).toMatchObject({
@@ -308,7 +308,7 @@ describe("MCP tools", () => {
         externalServerUrl: fakeOpenCode.url,
         externalSessionDirectory: process.cwd()
       });
-      expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "plan" });
+      expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "explore" });
       expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
       const submittedPrompt = extractOpenCodePromptText(fakeOpenCode.promptRequests.at(-1));
       expect(submittedPrompt).toBe("retinue mcp");
@@ -397,6 +397,108 @@ describe("MCP tools", () => {
     }
   });
 
+  it("follows OpenCode agent semantics when spawn omits access_mode", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-agent-policy-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+
+      await connection.client.callTool({
+        name: "retinue_spawn_agent",
+        arguments: { cwd: tempDir, message: "write the implementation plan", task_name: "plan-policy", agent: "plan" }
+      });
+
+      expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "plan" });
+      expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
+      expect(fakeOpenCode.sessionRequests.at(-1)).not.toHaveProperty("permission");
+
+      await connection.client.callTool({
+        name: "retinue_spawn_agent",
+        arguments: { cwd: tempDir, message: "make the requested change", task_name: "build-policy", agent: "build" }
+      });
+
+      expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "build" });
+      expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
+      expect(fakeOpenCode.sessionRequests.at(-1)).not.toHaveProperty("permission");
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("lets explicit access_mode override the OpenCode agent policy", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-agent-policy-override-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+
+      await connection.client.callTool({
+        name: "retinue_spawn_agent",
+        arguments: {
+          cwd: tempDir,
+          message: "read-only build review",
+          task_name: "build-readonly-override",
+          agent: "build",
+          access_mode: "read_only"
+        }
+      });
+
+      expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "build" });
+      expect(fakeOpenCode.sessionRequests.at(-1)).toMatchObject({
+        permission: expect.arrayContaining([
+          { permission: "patch", pattern: "*", action: "deny" },
+          { permission: "bash", pattern: "*", action: "deny" }
+        ])
+      });
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses configured OpenCode agent policies when spawn omits access_mode", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-config-agent-policy-"));
+    const configPath = path.join(tempDir, "retinue.config.json");
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      await fs.writeFile(configPath, JSON.stringify({ opencode: { agentPolicies: { plan: "read_only", build: "profile" } } }), "utf8");
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.RETINUE_CONFIG_FILE = configPath;
+
+      await connection.client.callTool({
+        name: "retinue_spawn_agent",
+        arguments: { cwd: tempDir, message: "configured plan policy", task_name: "configured-plan-policy", agent: "plan" }
+      });
+
+      expect(fakeOpenCode.sessionRequests.at(-1)).toMatchObject({
+        permission: expect.arrayContaining([{ permission: "patch", pattern: "*", action: "deny" }])
+      });
+
+      await connection.client.callTool({
+        name: "retinue_spawn_agent",
+        arguments: { cwd: tempDir, message: "configured build policy", task_name: "configured-build-policy", agent: "build" }
+      });
+
+      expect(fakeOpenCode.sessionRequests.at(-1)).not.toHaveProperty("permission");
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      delete process.env.RETINUE_CONFIG_FILE;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("lets a Retinue OpenCode read-only spawn opt out of readonly git bash", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-readonly-git-"));
     const fakeOpenCode = await startFakeOpenCodeServer();
@@ -407,7 +509,7 @@ describe("MCP tools", () => {
 
       await connection.client.callTool({
         name: "retinue_spawn_agent",
-        arguments: { cwd: tempDir, message: "inspect staged diff", task_name: "no-bash", bash_policy: "none" }
+        arguments: { cwd: tempDir, message: "inspect staged diff", task_name: "no-bash", agent: "explore", bash_policy: "none" }
       });
 
       expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
@@ -781,7 +883,7 @@ describe("MCP tools", () => {
       const spawn = parseToolJson(
         await connection.client.callTool({
           name: "retinue_spawn_agent",
-          arguments: { cwd: tempDir, message: "retinue stalled pool", task_name: "stalled-pool" }
+          arguments: { cwd: tempDir, message: "retinue stalled pool", task_name: "stalled-pool", agent: "explore" }
         })
       );
       fakeOpenCode.appendPatchAssistant(spawn.externalSessionId);

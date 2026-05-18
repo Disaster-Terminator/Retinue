@@ -90,6 +90,12 @@ function classifyProviderError({ stallReason, stdoutText }) {
       hint: "Deepseek thinking-mode routing requires reasoning_content continuity; check LiteLLM/OpenCode router configuration."
     };
   }
+  if (/function call should not be used with prefix/is.test(stdoutText)) {
+    return {
+      kind: "deepseek_function_call_prefix",
+      hint: "Deepseek rejected a tool/function-call fallback with prefix text; check router fallback compatibility for OpenCode tool calls."
+    };
+  }
   if (/\b(?:401|unauthorized|invalid[_ -]?api[_ -]?key|authentication)\b/i.test(stdoutText)) {
     return {
       kind: "auth",
@@ -115,10 +121,11 @@ function firstString(...values) {
 function extractDogfoodVerdict(stdoutText, expectedMarker) {
   const markerIndex = expectedMarker ? stdoutText.indexOf(expectedMarker) : -1;
   const verdictWindow = stdoutText.slice(0, markerIndex >= 0 ? markerIndex : Math.min(stdoutText.length, 1200));
-  if (/\bFAIL\b/i.test(verdictWindow)) {
+  const firstVerdict = verdictWindow.match(/\b(PASS|FAIL)\b/i)?.[1]?.toLowerCase();
+  if (firstVerdict === "fail") {
     return "fail";
   }
-  if (/\bPASS\b/i.test(verdictWindow)) {
+  if (firstVerdict === "pass") {
     return "pass";
   }
   return "missing";

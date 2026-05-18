@@ -38,6 +38,13 @@ export const RETINUE_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", 
 const DEFAULT_MCP_WAIT_MAX_MS = 180_000;
 const ACCESS_MODES = ["read_only", "profile"];
 const READ_ONLY_BASH_POLICIES = ["readonly_git", "none"];
+const BUILTIN_OPENCODE_AGENT_ACCESS_MODES = {
+    explore: "read_only",
+    scout: "read_only",
+    general: "read_only",
+    plan: "profile",
+    build: "profile"
+};
 export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
     const agentPool = new RetinueAgentPool();
     const server = new McpServer({
@@ -65,7 +72,8 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
         const backend = await createRetinueBackend(retinue);
         const { evicted, started } = await agentPool.withSpawnLock(async () => {
             const evicted = await agentPool.ensureSpawnSlot(retinue, process.env);
-            const accessMode = backend.kind === "opencode" ? await resolveOpenCodeAccessMode(args.access_mode, process.env) : undefined;
+            const agent = args.agent ?? process.env.RETINUE_OPENCODE_AGENT;
+            const accessMode = backend.kind === "opencode" ? await resolveOpenCodeAccessMode(args.access_mode, agent, process.env) : undefined;
             const started = await backend.run({
                 cwd: args.cwd ?? process.cwd(),
                 prompt: args.message,
@@ -74,7 +82,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
                 ...(backend.kind === "opencode"
                     ? {
                         model: process.env.RETINUE_OPENCODE_MODEL,
-                        agent: args.agent ?? process.env.RETINUE_OPENCODE_AGENT,
+                        agent,
                         readOnly: accessMode === "read_only",
                         readOnlyBashPolicy: await resolveOpenCodeReadOnlyBashPolicy(args.bash_policy, process.env),
                         readOnlyPromptContract: await resolveOpenCodeReadOnlyPromptContract(process.env),
@@ -439,7 +447,7 @@ function parseMaxConcurrentAgents(env) {
     }
     return Math.max(1, Math.floor(maxAgents));
 }
-async function resolveOpenCodeAccessMode(requested, env) {
+async function resolveOpenCodeAccessMode(requested, agent, env) {
     if (requested) {
         return requested;
     }
@@ -447,7 +455,15 @@ async function resolveOpenCodeAccessMode(requested, env) {
     if (configMode) {
         return configMode;
     }
-    return readOpenCodeAccessModeFromEnv(env);
+    const envMode = readOpenCodeAccessModeFromEnv(env);
+    if (envMode) {
+        return envMode;
+    }
+    const configuredAgentMode = await readConfiguredOpenCodeAgentAccessMode(agent, env);
+    if (configuredAgentMode) {
+        return configuredAgentMode;
+    }
+    return readBuiltInOpenCodeAgentAccessMode(agent) ?? "profile";
 }
 async function resolveOpenCodeReadOnlyBashPolicy(requested, env) {
     if (requested) {
@@ -481,6 +497,38 @@ async function readConfiguredOpenCodeReadOnlyBashPolicy(env) {
         return value;
     }
     throw new Error(`Unsupported opencode.readOnlyBashPolicy in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`);
+}
+async function readConfiguredOpenCodeAgentAccessMode(agent, env) {
+    const normalizedAgent = normalizeOpenCodeAgentName(agent);
+    if (!normalizedAgent) {
+        return undefined;
+    }
+    const config = await readRetinueConfig(env);
+    const agentPolicies = typeof config === "object" && config !== null && "opencode" in config
+        ? config.opencode.agentPolicies
+        : undefined;
+    if (agentPolicies === undefined || agentPolicies === "") {
+        return undefined;
+    }
+    if (typeof agentPolicies !== "object" || agentPolicies === null || Array.isArray(agentPolicies)) {
+        throw new Error(`Unsupported opencode.agentPolicies in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(agentPolicies)}`);
+    }
+    const value = agentPolicies[normalizedAgent];
+    if (value === undefined || value === "") {
+        return undefined;
+    }
+    if (value === "read_only" || value === "profile") {
+        return value;
+    }
+    throw new Error(`Unsupported opencode.agentPolicies.${normalizedAgent} in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`);
+}
+function readBuiltInOpenCodeAgentAccessMode(agent) {
+    const normalizedAgent = normalizeOpenCodeAgentName(agent);
+    return normalizedAgent ? BUILTIN_OPENCODE_AGENT_ACCESS_MODES[normalizedAgent] : undefined;
+}
+function normalizeOpenCodeAgentName(agent) {
+    const normalized = agent?.trim().toLowerCase();
+    return normalized === "" ? undefined : normalized;
 }
 async function resolveOpenCodeReadOnlyPromptContract(env) {
     const configured = await readConfiguredOpenCodeBoolean(env, "readOnlyPromptContract");
@@ -533,7 +581,7 @@ function readOpenCodeAccessModeFromEnv(env) {
     }
     const configured = env.RETINUE_OPENCODE_READ_ONLY?.trim().toLowerCase();
     if (configured === undefined || configured === "") {
-        return "read_only";
+        return undefined;
     }
     return configured === "0" || configured === "false" || configured === "no" || configured === "off" ? "profile" : "read_only";
 }

@@ -1,6 +1,12 @@
 {
   "opencode": {
-    "defaultAccessMode": "read_only",
+    "agentPolicies": {
+      "explore": "read_only",
+      "scout": "read_only",
+      "general": "read_only",
+      "plan": "profile",
+      "build": "profile"
+    },
     "readOnlyBashPolicy": "readonly_git",
     "readOnlyPromptContract": false,
     "readOnlyToolDeny": false
