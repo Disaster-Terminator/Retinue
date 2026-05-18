@@ -278,7 +278,7 @@ export class OpenCodeBackend {
         const recoverReadOnlyWriteIntent = diagnostic.readOnlyWriteIntent === true;
         if (!meta.externalSessionId ||
             meta.externalRescuePromptSubmittedAt ||
-            (isHardStallDiagnostic(diagnostic) && !recoverReadOnlyWriteIntent)) {
+            !isSoftStallRescueEligible(diagnostic)) {
             return;
         }
         const updated = {
@@ -427,7 +427,7 @@ export class OpenCodeBackend {
             }
             if (status.status === "stalled") {
                 const diagnostic = await this.inspectJob(status);
-                const canDeferStall = !isHardStallDiagnostic(diagnostic) ||
+                const canDeferStall = isSoftStallRescueEligible(diagnostic) ||
                     (diagnostic.readOnlyWriteIntent === true && status.externalRescuePromptSubmittedAt === undefined);
                 if (canDeferStall && Date.now() < deadline) {
                     await this.maybeSubmitSoftStallRescue(status, diagnostic);
@@ -1149,6 +1149,14 @@ function createStallMessage(diagnostic) {
 }
 function isHardStallDiagnostic(diagnostic) {
     return diagnostic.readOnlyWriteIntent === true || diagnostic.stallReason === "provider_error";
+}
+function isSoftStallRescueEligible(diagnostic) {
+    if (diagnostic.readOnlyWriteIntent === true) {
+        return true;
+    }
+    return (diagnostic.stallReason === "backend_no_final_text" ||
+        diagnostic.stallReason === "tool_loop_no_completion" ||
+        diagnostic.stallReason === "incomplete_assistant_round");
 }
 function createReadOnlyTextWarning(text) {
     if (!text.trim()) {
