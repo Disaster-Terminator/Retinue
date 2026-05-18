@@ -404,7 +404,7 @@ export class OpenCodeBackend implements AgentBackend {
     if (
       !meta.externalSessionId ||
       meta.externalRescuePromptSubmittedAt ||
-      (isHardStallDiagnostic(diagnostic) && !recoverReadOnlyWriteIntent)
+      !isSoftStallRescueEligible(diagnostic)
     ) {
       return;
     }
@@ -557,7 +557,7 @@ export class OpenCodeBackend implements AgentBackend {
       if (status.status === "stalled") {
         const diagnostic = await this.inspectJob(status);
         const canDeferStall =
-          !isHardStallDiagnostic(diagnostic) ||
+          isSoftStallRescueEligible(diagnostic) ||
           (diagnostic.readOnlyWriteIntent === true && status.externalRescuePromptSubmittedAt === undefined);
         if (canDeferStall && Date.now() < deadline) {
           await this.maybeSubmitSoftStallRescue(status, diagnostic);
@@ -1343,6 +1343,17 @@ function createStallMessage(diagnostic: OpenCodeJobDiagnostic): string {
 
 function isHardStallDiagnostic(diagnostic: Partial<OpenCodeJobDiagnostic>): boolean {
   return diagnostic.readOnlyWriteIntent === true || diagnostic.stallReason === "provider_error";
+}
+
+function isSoftStallRescueEligible(diagnostic: Partial<OpenCodeJobDiagnostic>): boolean {
+  if (diagnostic.readOnlyWriteIntent === true) {
+    return true;
+  }
+  return (
+    diagnostic.stallReason === "backend_no_final_text" ||
+    diagnostic.stallReason === "tool_loop_no_completion" ||
+    diagnostic.stallReason === "incomplete_assistant_round"
+  );
 }
 
 function createReadOnlyTextWarning(text: string): string | undefined {

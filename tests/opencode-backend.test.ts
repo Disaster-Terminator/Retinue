@@ -690,6 +690,8 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"lastAssistantModelID":"semantic-router"');
     expect(trace).toContain('"lastAssistantPartTypes":["step-start","reasoning"]');
     expect(trace).toContain('"textBytes":0');
+    expect(trace).not.toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
+    expect(server!.promptRequests).toHaveLength(1);
   });
 
   it("marks default zero-progress placeholders as stalled after the bounded no-progress window", async () => {
@@ -804,6 +806,27 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"runningReadToolCallIds":["call_');
     expect(trace).toContain('"runningReadToolPartSummaries":[{"type":"tool","tool":"read","callID":"call_');
     expect(trace).toContain('"stateStatus":"pending"');
+  });
+
+  it("does not submit no-tools rescue for stalled read tool executor calls", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "risk review leaves read pending" });
+    server!.appendPendingReadToolAssistant(started.externalSessionId!);
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+
+    expect(server!.promptRequests).toHaveLength(1);
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"stallReason":"read_tool_stalled"');
+    expect(trace).not.toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
   });
 
   it("marks incomplete assistant tool rounds as stalled before the long-duration threshold", async () => {
