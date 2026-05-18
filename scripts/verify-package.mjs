@@ -27,10 +27,12 @@ const requiredPluginFiles = [
   "plugins/retinue/dist/mcp.js"
 ];
 
-const requiredRuntimePatterns = ["dist/backends/", "dist/cli.", "dist/mcp.", "dist/daemon."];
+const requiredRuntimePatterns = ["dist/backends/", "dist/core/", "dist/cli.", "dist/mcp.", "dist/daemon."];
 const requiredPluginRuntimePatterns = [
   "plugins/retinue/dist/backends/",
   "plugins/retinue/dist/core/",
+  "plugins/retinue/dist/cli.",
+  "plugins/retinue/dist/daemon.",
   "plugins/retinue/dist/daemon/",
   "plugins/retinue/dist/mcp."
 ];
@@ -62,14 +64,14 @@ if (!Array.isArray(files)) {
 const packagedPaths = new Set(files.map((entry) => entry?.path).filter((value) => typeof value === "string"));
 
 for (const requiredRuntimePattern of requiredRuntimePatterns) {
-  const hasPattern = [...packagedPaths].some((item) => item.includes(requiredRuntimePattern));
+  const hasPattern = [...packagedPaths].some((item) => item.startsWith(requiredRuntimePattern));
   if (!hasPattern) {
     fail(`missing required runtime pattern: ${requiredRuntimePattern}`);
   }
 }
 
 for (const requiredPluginRuntimePattern of requiredPluginRuntimePatterns) {
-  const hasPattern = [...packagedPaths].some((item) => item.includes(requiredPluginRuntimePattern));
+  const hasPattern = [...packagedPaths].some((item) => item.startsWith(requiredPluginRuntimePattern));
   if (!hasPattern) {
     fail(`missing required plugin runtime pattern: ${requiredPluginRuntimePattern}`);
   }
