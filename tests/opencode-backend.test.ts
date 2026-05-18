@@ -740,6 +740,7 @@ describe("OpenCodeBackend", () => {
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
       status: "stalled",
       stdout: expect.stringContaining("pending/running read tool call"),
+      stderr: expect.stringContaining("call_"),
       parsedStdout: { result: expect.stringContaining("pending/running read tool call") },
       error: expect.stringContaining("pending/running read tool call")
     });

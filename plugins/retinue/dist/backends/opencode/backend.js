@@ -1143,7 +1143,8 @@ function createStallMessage(diagnostic) {
         return `OpenCode job stalled: observed ${zeroProgressRounds} zero-progress assistant placeholder(s) with no completed assistant text for ${durationMs}ms. The OpenCode provider or model router may be unavailable or stuck after tool calls; inspect Retinue trace/job diagnostics for provider, model, and message summaries.`;
     }
     if (runningReadToolParts > 0) {
-        return `OpenCode job stalled: observed ${runningReadToolParts} pending/running read tool call(s) with no completed assistant text for ${durationMs}ms. The OpenCode tool executor may be stuck; inspect Retinue trace/job diagnostics for call IDs and message summaries.`;
+        const details = formatReadToolStallDetails(diagnostic);
+        return `OpenCode job stalled: observed ${runningReadToolParts} pending/running read tool call(s) with no completed assistant text for ${durationMs}ms.${details} The OpenCode tool executor may be stuck; inspect Retinue trace/job diagnostics for full message summaries.`;
     }
     return `OpenCode job stalled: observed ${rounds} tool-call assistant round(s) and ${emptyRounds} empty assistant round(s) with no completed assistant text for ${durationMs}ms. Inspect Retinue trace/job diagnostics for message summaries.`;
 }
@@ -1207,7 +1208,7 @@ function createStallSummary(diagnostic) {
         case "provider_zero_progress":
             return `OpenCode provider/router produced zero-progress assistant output for ${durationMs}ms.`;
         case "read_tool_stalled":
-            return `OpenCode tool executor left read tool call(s) running for ${durationMs}ms.`;
+            return `OpenCode tool executor left read tool call(s) running for ${durationMs}ms.${formatReadToolStallDetails(diagnostic)}`;
         case "incomplete_assistant_round":
             return `OpenCode left the latest assistant round incomplete for ${durationMs}ms.`;
         case "backend_no_final_text":
@@ -1217,6 +1218,20 @@ function createStallSummary(diagnostic) {
         default:
             return `OpenCode job stalled with no completed assistant text for ${durationMs}ms.`;
     }
+}
+function formatReadToolStallDetails(diagnostic) {
+    const summaries = diagnostic.runningReadToolPartSummaries ?? [];
+    const callIds = diagnostic.runningReadToolCallIds ?? [];
+    const stateDetails = summaries
+        .map((part) => [part.callID, part.stateStatus].filter(Boolean).join(":"))
+        .filter((value) => value.length > 0);
+    if (stateDetails.length > 0) {
+        return ` readToolCalls=${stateDetails.join(",")}.`;
+    }
+    if (callIds.length > 0) {
+        return ` readToolCallIds=${callIds.join(",")}.`;
+    }
+    return "";
 }
 function parseOptionalNonNegativeInt(value, fallback) {
     if (!value) {
