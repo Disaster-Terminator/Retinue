@@ -126,6 +126,7 @@ const DEFAULT_BLANK_ASSISTANT_STALL_MS = 45_000;
 const DEFAULT_ZERO_PROGRESS_ASSISTANT_STALL_MS = 45_000;
 const DEFAULT_READ_TOOL_STALL_MS = 45_000;
 const DEFAULT_COMPLETED_TOOL_LOOP_STALL_MS = 45_000;
+const DEFAULT_SOFT_STALL_RESCUE_GRACE_MS = 60_000;
 const DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
 const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 1;
 const DIAGNOSTIC_VALUE_PREVIEW_BYTES = 1000;
@@ -282,6 +283,7 @@ export class OpenCodeBackend {
         }
         const updated = {
             ...meta,
+            status: meta.status === "stalled" ? "running" : meta.status,
             externalRescuePromptSubmittedAt: new Date().toISOString(),
             externalReadOnlyWriteIntentRecoveryJobMessageCount: recoverReadOnlyWriteIntent
                 ? (diagnostic.jobMessageCount ?? meta.externalReadOnlyWriteIntentRecoveryJobMessageCount)
@@ -437,6 +439,11 @@ export class OpenCodeBackend {
                     await sleep(DEFAULT_WAIT_POLL_MS);
                     continue;
                 }
+                if (this.isSoftStallRescuePending(status, diagnostic)) {
+                    await this.writeJobTrace("opencode_job_soft_stall_rescue_pending", status, diagnostic);
+                    await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_soft_stall_rescue_pending", diagnostic });
+                    return { jobId: handle.jobId, status: "running" };
+                }
                 await this.maybeScheduleServerIdleShutdown(status);
                 return { jobId: handle.jobId, status: status.status };
             }
@@ -447,7 +454,33 @@ export class OpenCodeBackend {
                 const meta = await this.readMeta(handle.jobId);
                 if (!isProblem(meta)) {
                     const diagnostic = await this.inspectJob(meta);
+                    if (this.isReadOnlyWriteIntentRecoveryExpired(meta, diagnostic)) {
+                        const expiredDiagnostic = {
+                            ...diagnostic,
+                            stallReason: "read_only_write_intent",
+                            stallSummary: "OpenCode read-only job emitted patch/write intent, and recovery did not produce usable final text."
+                        };
+                        const stalled = { ...meta, status: "stalled", updatedAt: new Date().toISOString() };
+                        await writeJsonAtomic(getJobPaths(this.stateDir, handle.jobId).meta, stalled);
+                        await this.writeJobTrace("opencode_job_wait_timeout", stalled, expiredDiagnostic);
+                        await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_wait_timeout", diagnostic: expiredDiagnostic });
+                        await this.writeJobTrace("opencode_job_stalled", stalled, expiredDiagnostic, { fromStatus: meta.status, toStatus: "stalled" });
+                        await appendJobDiagnostic(this.stateDir, handle.jobId, {
+                            event: "opencode_job_stalled",
+                            fromStatus: meta.status,
+                            toStatus: "stalled",
+                            diagnostic: expiredDiagnostic
+                        });
+                        return { jobId: handle.jobId, status: "stalled" };
+                    }
                     if (diagnostic.stallReason) {
+                        if (this.isSoftStallRescuePending(meta, diagnostic)) {
+                            await this.writeJobTrace("opencode_job_wait_timeout", meta, diagnostic);
+                            await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_wait_timeout", diagnostic });
+                            await this.writeJobTrace("opencode_job_soft_stall_rescue_pending", meta, diagnostic);
+                            await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_soft_stall_rescue_pending", diagnostic });
+                            return { jobId: handle.jobId, status: "running" };
+                        }
                         const stalled = { ...meta, status: "stalled", updatedAt: new Date().toISOString() };
                         await writeJsonAtomic(getJobPaths(this.stateDir, handle.jobId).meta, stalled);
                         await this.writeJobTrace("opencode_job_wait_timeout", stalled, diagnostic);
@@ -471,6 +504,34 @@ export class OpenCodeBackend {
             }
             await sleep(DEFAULT_WAIT_POLL_MS);
         }
+    }
+    isSoftStallRescuePending(meta, diagnostic) {
+        if (!meta.externalRescuePromptSubmittedAt ||
+            meta.externalReadOnlyWriteIntentRecoveryJobMessageCount === undefined ||
+            diagnostic.recoveredFromReadOnlyWriteIntent === true) {
+            return false;
+        }
+        if (isHardStallDiagnostic(diagnostic)) {
+            return false;
+        }
+        const submittedAt = Date.parse(meta.externalRescuePromptSubmittedAt);
+        if (!Number.isFinite(submittedAt)) {
+            return false;
+        }
+        return Date.now() - submittedAt < resolveSoftStallRescueGraceMs(this.env);
+    }
+    isReadOnlyWriteIntentRecoveryExpired(meta, diagnostic) {
+        if (!meta.externalRescuePromptSubmittedAt ||
+            meta.externalReadOnlyWriteIntentRecoveryJobMessageCount === undefined ||
+            diagnostic.recoveredFromReadOnlyWriteIntent === true ||
+            diagnostic.readOnlyWriteIntent === true) {
+            return false;
+        }
+        const submittedAt = Date.parse(meta.externalRescuePromptSubmittedAt);
+        if (!Number.isFinite(submittedAt)) {
+            return false;
+        }
+        return Date.now() - submittedAt >= resolveSoftStallRescueGraceMs(this.env);
     }
     async cleanup(options = {}) {
         const olderThanMs = options.olderThanMs ?? 0;
@@ -1158,6 +1219,9 @@ function parseOptionalNonNegativeInt(value, fallback) {
 }
 function resolveServerIdleMs(env) {
     return parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_SERVER_IDLE_MS, DEFAULT_SERVER_IDLE_MS);
+}
+function resolveSoftStallRescueGraceMs(env) {
+    return parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS, DEFAULT_SOFT_STALL_RESCUE_GRACE_MS);
 }
 function resolveSoftStallRescueAgent(currentAgent, env) {
     const configured = env?.RETINUE_OPENCODE_SOFT_STALL_RESCUE_AGENT?.trim();

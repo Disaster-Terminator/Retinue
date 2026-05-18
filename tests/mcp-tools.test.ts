@@ -369,6 +369,7 @@ describe("MCP tools", () => {
     } finally {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
+      delete process.env.RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS;
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });
     }
@@ -875,6 +876,7 @@ describe("MCP tools", () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-stalled-pool-"));
     const fakeOpenCode = await startFakeOpenCodeServer();
     fakeOpenCode.setAutoAssistantResponses(false);
+    process.env.RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS = "0";
     const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
     try {
       process.env.RETINUE_STATE_DIR = tempDir;
