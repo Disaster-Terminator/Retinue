@@ -92,6 +92,23 @@ describe("dogfood probe classification", () => {
     });
   });
 
+  it("accepts PASS verdicts even when evidence text later mentions failure behavior", () => {
+    const wait = classifyDogfoodWait(
+      {
+        task_name: "review",
+        jobId: "job_pass_with_failure_evidence",
+        status: "completed",
+        stdoutPreview: "PASS\nFinding: the guardrail means a regression would fail CI.\nRETINUE_DOGFOOD_REVIEW_DONE"
+      },
+      "RETINUE_DOGFOOD_REVIEW_DONE"
+    );
+
+    expect(wait).toMatchObject({
+      usable: true,
+      failureReason: undefined
+    });
+  });
+
   it("rejects completed children that do not provide a PASS verdict", () => {
     const wait = classifyDogfoodWait(
       {
@@ -221,6 +238,28 @@ describe("dogfood probe classification", () => {
           providerErrorHint: "Deepseek thinking-mode routing requires reasoning_content continuity; check LiteLLM/OpenCode router configuration."
         }
       ]
+    });
+  });
+
+  it("classifies Deepseek function-call prefix provider errors separately", () => {
+    const wait = classifyDogfoodWait(
+      {
+        task_name: "provider-prefix",
+        jobId: "job_provider_prefix",
+        status: "completed",
+        stallReason: "provider_error",
+        stdoutText:
+          'OpenCode provider returned an assistant error. Error summary: {"message":"litellm.BadRequestError: DeepseekException - {\\"error\\":{\\"message\\":\\"Function call should not be used with prefix\\"}}"}',
+        stdoutPreview: "OpenCode provider returned an assistant error."
+      },
+      "RETINUE_DOGFOOD_PROVIDER_DONE"
+    );
+
+    expect(wait).toMatchObject({
+      usable: false,
+      failureReason: "provider_error:deepseek_function_call_prefix",
+      providerErrorKind: "deepseek_function_call_prefix",
+      providerErrorHint: "Deepseek rejected a tool/function-call fallback with prefix text; check router fallback compatibility for OpenCode tool calls."
     });
   });
 });

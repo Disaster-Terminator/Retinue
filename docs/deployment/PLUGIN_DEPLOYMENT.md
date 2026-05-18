@@ -80,12 +80,18 @@ The Codex plugin also ships an installation-scoped `retinue.config.json` beside 
 ```json
 {
   "opencode": {
-    "defaultAccessMode": "read_only"
+    "agentPolicies": {
+      "explore": "read_only",
+      "scout": "read_only",
+      "general": "read_only",
+      "plan": "profile",
+      "build": "profile"
+    }
   }
 }
 ```
 
-This is global to that installed plugin cache, not project-scoped. The product tool still exposes per-spawn `access_mode` so callers can explicitly choose `profile` for tasks where child-agent writes are intended and acceptable.
+This is global to that installed plugin cache, not project-scoped. The product tool still exposes per-spawn `access_mode` so callers can force `read_only` or `profile` for a single child when the default agent policy is not the right fit.
 
 ## npm Runtime Path
 
@@ -151,7 +157,7 @@ Before calling the plugin production-ready, run the real OpenCode lifecycle thro
 3. Use `retinue_spawn_agent` with a deterministic prompt.
 4. Use `retinue_wait_agent` and verify the terminal result.
 5. Use `retinue_close_agent`.
-6. Confirm tool arguments did not include backend, profile, model, agent, or OpenCode server selection. `access_mode` may be present only to choose the child-agent safety mode for that spawn.
+6. Confirm tool arguments did not include backend, profile, model, or OpenCode server selection. `agent` and `access_mode` may be present only when the probe intentionally exercises a specific child-agent policy.
 7. Run the fake Claude parity path with `RETINUE_BACKEND=claude-code`.
 8. When Claude Code is locally usable, run the best-effort real Retinue Claude probe.
 

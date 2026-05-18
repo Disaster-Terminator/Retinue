@@ -280,7 +280,13 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(existsSync("plugins/retinue/retinue.config.json")).toBe(true);
     expect(JSON.parse(readFileSync("plugins/retinue/retinue.config.json", "utf8"))).toMatchObject({
       opencode: {
-        defaultAccessMode: "read_only",
+        agentPolicies: {
+          explore: "read_only",
+          scout: "read_only",
+          general: "read_only",
+          plan: "profile",
+          build: "profile"
+        },
         readOnlyBashPolicy: "readonly_git",
         readOnlyPromptContract: false,
         readOnlyToolDeny: false
