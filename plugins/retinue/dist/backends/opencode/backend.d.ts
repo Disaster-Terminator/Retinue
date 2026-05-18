@@ -33,6 +33,8 @@ export declare class OpenCodeBackend implements AgentBackend {
         jobId: string;
         status: JobStatusResult["status"];
     }>;
+    private isSoftStallRescuePending;
+    private isReadOnlyWriteIntentRecoveryExpired;
     cleanup(options?: CleanupOptions): Promise<CleanupResult>;
     private readMeta;
     private readCurrentMetaOrFallback;

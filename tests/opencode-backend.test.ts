@@ -155,7 +155,7 @@ describe("OpenCodeBackend", () => {
   });
 
   it("stalls read-only OpenCode jobs that emit patch parts", async () => {
-    const backend = createBackend();
+    const backend = createBackend({ RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0" });
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
     server!.appendPatchAssistant(started.externalSessionId!);
@@ -203,7 +203,7 @@ describe("OpenCodeBackend", () => {
   });
 
   it("stalls read-only OpenCode jobs that attempt write-capable tools", async () => {
-    const backend = createBackend();
+    const backend = createBackend({ RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0" });
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
     server!.appendWriteIntentAssistant(started.externalSessionId!, "write");
@@ -221,7 +221,7 @@ describe("OpenCodeBackend", () => {
   });
 
   it("does not trust pre-recovery final text from read-only jobs rejected for patch intent", async () => {
-    const backend = createBackend();
+    const backend = createBackend({ RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0" });
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
     server!.appendPatchAssistant(started.externalSessionId!);
@@ -237,7 +237,7 @@ describe("OpenCodeBackend", () => {
   });
 
   it("does not trust incomplete assistant text from read-only jobs rejected for patch intent", async () => {
-    const backend = createBackend();
+    const backend = createBackend({ RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0" });
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
     server!.appendPatchAssistant(started.externalSessionId!, "Finding: permission order is unsafe.");
@@ -273,6 +273,25 @@ describe("OpenCodeBackend", () => {
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
     expect(trace).toContain('"recoveredFromReadOnlyWriteIntent":true');
+  });
+
+  it("keeps read-only patch-intent recovery running until the post-recovery answer arrives", async () => {
+    const backend = createBackend();
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
+    server!.appendPatchAssistant(started.externalSessionId!, "Finding: original patch intent should be quarantined.");
+
+    await expect(backend.wait({ jobId: started.jobId }, 100)).resolves.toMatchObject({ status: "running" });
+    await waitForPromptCount(2);
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "running" });
+
+    server!.completeSessionWithFinalText(started.externalSessionId!, "recovered prose-only review");
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "completed",
+      stdout: "recovered prose-only review",
+      parsedStdout: { result: "recovered prose-only review" }
+    });
   });
 
   it("keeps read-only jobs stalled when recovery emits another patch intent", async () => {
@@ -1272,11 +1291,12 @@ describe("OpenCodeBackend", () => {
     await expect(fs.stat(getJobPaths(tempDir, abandoned.jobId).dir)).resolves.toBeTruthy();
   });
 
-  function createBackend(): OpenCodeBackend {
+  function createBackend(env: NodeJS.ProcessEnv = {} as NodeJS.ProcessEnv): OpenCodeBackend {
     return new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
       baseUrl: server!.url,
-      stateDir: tempDir
+      stateDir: tempDir,
+      env
     });
   }
 
