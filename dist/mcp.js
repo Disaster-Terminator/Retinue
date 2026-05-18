@@ -609,6 +609,8 @@ function summarizeJobDiagnostic(value) {
         patchPartCount: numberValue(diagnostic.patchPartCount),
         readOnlyPatchPartCount: numberValue(diagnostic.readOnlyPatchPartCount),
         readOnlyWriteIntent,
+        readOnlyWriteIntentRecoveryJobMessageCount: numberValue(diagnostic.readOnlyWriteIntentRecoveryJobMessageCount),
+        recoveredFromReadOnlyWriteIntent: booleanValue(diagnostic.recoveredFromReadOnlyWriteIntent),
         stallReason: stringValue(diagnostic.stallReason),
         stallSummary: stringValue(diagnostic.stallSummary),
         toolCallAssistantRounds: numberValue(diagnostic.toolCallAssistantRounds),
