@@ -515,7 +515,8 @@ describe("OpenCodeBackend", () => {
       stateDir: tempDir,
       env: {
         RETINUE_OPENCODE_STALL_MS: "1",
-        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3"
+        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -555,7 +556,8 @@ describe("OpenCodeBackend", () => {
       env: {
         RETINUE_OPENCODE_STALL_MS: "600000",
         RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS: "1",
-        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3"
+        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -576,7 +578,7 @@ describe("OpenCodeBackend", () => {
   });
 
   it("marks empty stop assistant rounds as stalled with diagnostics", async () => {
-    const backend = createBackend();
+    const backend = createBackend({ RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0" } as NodeJS.ProcessEnv);
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "inspect docs and summarize" });
     server!.appendEmptyStopAssistant(started.externalSessionId!);
@@ -619,7 +621,8 @@ describe("OpenCodeBackend", () => {
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
-        RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1"
+        RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -644,7 +647,7 @@ describe("OpenCodeBackend", () => {
   });
 
   it("uses a short default stall window for blank provider assistant placeholders", async () => {
-    const backend = createBackend();
+    const backend = createBackend({ RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0" } as NodeJS.ProcessEnv);
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "provider returned a blank assistant placeholder" });
     server!.appendBlankAssistant(started.externalSessionId!);
@@ -692,6 +695,52 @@ describe("OpenCodeBackend", () => {
     expect(server!.promptRequests).toHaveLength(2);
   });
 
+  it("keeps generic blank-provider recovery running during the rescue grace window", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "60000"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "blank provider needs rescue time" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking package docs");
+    server!.appendBlankAssistant(started.externalSessionId!);
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "running" });
+    expect(server!.promptRequests).toHaveLength(2);
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
+    expect(trace).toContain('"event":"opencode_job_soft_stall_rescue_pending"');
+    expect(trace).toContain('"stallReason":"provider_blank_assistant"');
+  });
+
+  it("does not rescue first-turn blank provider output without tool progress", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "provider fails before any tool progress" });
+    server!.appendBlankAssistant(started.externalSessionId!);
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    expect(server!.promptRequests).toHaveLength(1);
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"stallReason":"provider_blank_assistant"');
+    expect(trace).toContain('"toolCallAssistantRounds":0');
+    expect(trace).not.toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
+  });
+
   it("rescues zero-progress reasoning placeholders after completed tool rounds", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
@@ -733,7 +782,10 @@ describe("OpenCodeBackend", () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
       baseUrl: server!.url,
-      stateDir: tempDir
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
+      } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "complex audit pauses after many tools" });
@@ -873,7 +925,8 @@ describe("OpenCodeBackend", () => {
       env: {
         RETINUE_OPENCODE_STALL_MS: "600000",
         RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS: "1",
-        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3"
+        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -933,7 +986,8 @@ describe("OpenCodeBackend", () => {
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
-        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3"
+        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -961,7 +1015,8 @@ describe("OpenCodeBackend", () => {
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
-        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3"
+        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -993,7 +1048,8 @@ describe("OpenCodeBackend", () => {
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
-        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3"
+        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
