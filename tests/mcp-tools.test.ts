@@ -747,6 +747,61 @@ describe("MCP tools", () => {
     }
   });
 
+  it("returns pending read tool call IDs when a Retinue child reaches read-tool stalled", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-read-stalled-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    fakeOpenCode.setAutoAssistantResponses(false);
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.RETINUE_OPENCODE_STALL_READ_TOOL_MS = "1";
+
+      const spawn = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "risk review leaves a read pending", task_name: "read-stalled-opencode" }
+        })
+      );
+      fakeOpenCode.appendPendingReadToolAssistant(spawn.externalSessionId);
+
+      const wait = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_wait_agent",
+          arguments: { jobId: spawn.jobId, timeoutMs: 5000 }
+        })
+      );
+
+      expect(wait).toMatchObject({
+        task_name: "read-stalled-opencode",
+        jobId: spawn.jobId,
+        status: "stalled",
+        result: {
+          status: "stalled",
+          stdout: expect.stringContaining("readToolCalls=call_")
+        },
+        diagnostic: {
+          event: "opencode_job_result_read",
+          backend: "opencode",
+          status: "stalled",
+          stallReason: "read_tool_stalled",
+          runningReadToolParts: 1,
+          runningReadToolCallIds: [expect.stringMatching(/^call_/)]
+        }
+      });
+      expect(wait.diagnostic.message).toContain("readToolCalls=call_");
+      expect(wait.diagnostic.runningReadToolPartSummaries).toEqual(
+        expect.arrayContaining([expect.objectContaining({ tool: "read", stateStatus: "pending", callID: expect.stringMatching(/^call_/) })])
+      );
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      delete process.env.RETINUE_OPENCODE_STALL_READ_TOOL_MS;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("evicts the oldest running Retinue OpenCode agent when the session slot pool is full", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-slots-"));
     const fakeOpenCode = await startFakeOpenCodeServer();
