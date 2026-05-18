@@ -659,13 +659,47 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"blankAssistantStallThresholdMs":45000');
   });
 
-  it("marks zero-progress reasoning placeholders as stalled with diagnostics", async () => {
+  it("rescues blank provider assistant placeholders after completed tool rounds", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
-        RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1"
+        RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "docs review ends in blank output after tools" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking package docs");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking packaged skill");
+    server!.appendBlankAssistant(started.externalSessionId!);
+    const completeAfterRescue = waitForPromptCount(2).then(() => {
+      server!.completeSessionWithFinalText(started.externalSessionId!, "rescued blank-output review");
+    });
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
+    await completeAfterRescue;
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "completed",
+      parsedStdout: { result: "rescued blank-output review" }
+    });
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
+    expect(trace).toContain('"stallReason":"provider_blank_assistant"');
+    expect(trace).toContain('"blankAssistantRounds":1');
+    expect(server!.promptRequests).toHaveLength(2);
+  });
+
+  it("rescues zero-progress reasoning placeholders after completed tool rounds", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -673,25 +707,26 @@ describe("OpenCodeBackend", () => {
     server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
     server!.appendToolCallAssistant(started.externalSessionId!, "checking source two");
     server!.appendZeroProgressReasoningAssistant(started.externalSessionId!);
+    const completeAfterRescue = waitForPromptCount(2).then(() => {
+      server!.completeSessionWithFinalText(started.externalSessionId!, "rescued zero-progress review");
+    });
 
-    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
+    await completeAfterRescue;
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
-      status: "stalled",
-      stdout: expect.stringContaining("zero-progress assistant placeholder"),
-      parsedStdout: { result: expect.stringContaining("zero-progress assistant placeholder") },
-      error: expect.stringContaining("zero-progress assistant placeholder")
+      status: "completed",
+      parsedStdout: { result: "rescued zero-progress review" }
     });
 
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
-    expect(trace).toContain('"event":"opencode_job_stalled"');
+    expect(trace).toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
     expect(trace).toContain('"stallReason":"provider_zero_progress"');
     expect(trace).toContain('"zeroProgressAssistantRounds":1');
     expect(trace).toContain('"lastAssistantProviderID":"litellm"');
     expect(trace).toContain('"lastAssistantModelID":"semantic-router"');
     expect(trace).toContain('"lastAssistantPartTypes":["step-start","reasoning"]');
     expect(trace).toContain('"textBytes":0');
-    expect(trace).not.toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
-    expect(server!.promptRequests).toHaveLength(1);
+    expect(server!.promptRequests).toHaveLength(2);
   });
 
   it("marks default zero-progress placeholders as stalled after the bounded no-progress window", async () => {
