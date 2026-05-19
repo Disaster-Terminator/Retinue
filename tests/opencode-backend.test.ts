@@ -839,6 +839,9 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"runningReadToolCallIds":["call_');
     expect(trace).toContain('"runningReadToolPartSummaries":[{"type":"tool","tool":"read","callID":"call_');
     expect(trace).toContain('"stateStatus":"running"');
+    expect(trace).toContain('"stateInput":{"type":"object","preview":"{\\"filePath\\":\\"src/backends/opencode/backend.ts\\"}"}');
+    expect(trace).toContain('readToolCalls=call_');
+    expect(trace).toContain('input={\\"filePath\\":\\"src/backends/opencode/backend.ts\\"}');
     expect(trace).toContain('"lastAssistantProviderID":"litellm"');
     expect(trace).toContain('"lastAssistantModelID":"semantic-router"');
     expect(trace).toContain('"tool":"read"');
@@ -894,6 +897,8 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"runningReadToolCallIds":["call_');
     expect(trace).toContain('"runningReadToolPartSummaries":[{"type":"tool","tool":"read","callID":"call_');
     expect(trace).toContain('"stateStatus":"pending"');
+    expect(trace).toContain('"stateInput":{"type":"object","preview":"{\\"filePath\\":\\"docs/VERIFICATION.md\\"}"}');
+    expect(trace).toContain('input={\\"filePath\\":\\"docs/VERIFICATION.md\\"}');
   });
 
   it("does not submit no-tools rescue for stalled read tool executor calls", async () => {
