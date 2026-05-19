@@ -22738,7 +22738,11 @@ ${textWarning2}` : stderr;
         messageError: diagnosticValuePreview(message.info?.error)
       }));
       Object.assign(diagnostic, computeStallDiagnostic(jobMessages, meta, this.env));
-      if (meta.status === "stalled" && meta.readOnly === true && meta.externalReadOnlyWriteIntentRecoveryJobMessageCount !== void 0 && diagnostic.recoveredFromReadOnlyWriteIntent !== true && diagnostic.readOnlyWriteIntent !== true && !diagnostic.stallReason) {
+      if (meta.status === "stalled" && meta.readOnly === true && meta.externalReadOnlyWriteIntentRecoveryJobMessageCount !== void 0 && diagnostic.recoveredFromReadOnlyWriteIntent !== true && diagnostic.readOnlyWriteIntent !== true) {
+        if (diagnostic.stallReason && diagnostic.stallReason !== "read_only_write_intent") {
+          diagnostic.recoveryStallReason = diagnostic.stallReason;
+          diagnostic.recoveryStallSummary = diagnostic.stallSummary;
+        }
         diagnostic.stallReason = "read_only_write_intent";
         diagnostic.stallSummary = "OpenCode read-only job emitted patch/write intent, and recovery did not produce usable final text.";
       }
