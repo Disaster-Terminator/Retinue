@@ -430,7 +430,7 @@ function isPidAlive(pid) {
     }
 }
 function isProblem(value) {
-    return value.status === "not_found" || value.status === "corrupted";
+    return value.status === "not_found" || value.status === "corrupted" || value.status === "backend_unreachable";
 }
 function isMissingFile(error) {
     return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";

@@ -57,6 +57,28 @@ describe("OpenCodeBackend", () => {
     });
   });
 
+  it("reports unreachable OpenCode backend without marking job metadata corrupted", async () => {
+    const backend = createBackend();
+    const started = await backend.run({ cwd: tempDir, prompt: "hello" });
+    await server!.close();
+    server = undefined;
+
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({
+      jobId: started.jobId,
+      status: "backend_unreachable",
+      error: expect.any(String)
+    });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      jobId: started.jobId,
+      status: "backend_unreachable",
+      error: expect.any(String)
+    });
+    await expect(fs.readFile(getJobPaths(tempDir, started.jobId).meta, "utf8").then(JSON.parse)).resolves.toMatchObject({
+      status: "running",
+      externalSessionId: started.externalSessionId
+    });
+  });
+
   it("creates read-only OpenCode sessions with readonly git bash and non-interactive permissions", async () => {
     const backend = createBackend();
 

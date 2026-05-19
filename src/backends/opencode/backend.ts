@@ -780,6 +780,9 @@ export class OpenCodeBackend implements AgentBackend {
       if (meta.status === "killed") {
         return meta;
       }
+      if (isBackendUnavailableError(error)) {
+        return { jobId: meta.jobId, status: "backend_unreachable", error: error instanceof Error ? error.message : String(error) };
+      }
       return { jobId: meta.jobId, status: "corrupted", error: error instanceof Error ? error.message : String(error) };
     }
   }
@@ -1102,7 +1105,14 @@ function sleep(ms: number): Promise<void> {
 }
 
 function isProblem(value: JobStatusResult): value is JobProblem {
-  return value.status === "not_found" || value.status === "corrupted";
+  return value.status === "not_found" || value.status === "corrupted" || value.status === "backend_unreachable";
+}
+
+function isBackendUnavailableError(error: unknown): boolean {
+  if (!(error instanceof OpenCodeClientError)) {
+    return false;
+  }
+  return error.code === "transport_error" || error.code === "invalid_json" || error.status === 0 || (error.status ?? 0) >= 500;
 }
 
 function selectMessagesForMeta(messages: OpenCodeMessage[], meta: JobMeta): OpenCodeMessage[] {

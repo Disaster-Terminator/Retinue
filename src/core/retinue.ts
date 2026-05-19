@@ -509,7 +509,7 @@ function isPidAlive(pid: number): boolean {
 }
 
 function isProblem(value: JobStatusResult): value is JobProblem {
-  return value.status === "not_found" || value.status === "corrupted";
+  return value.status === "not_found" || value.status === "corrupted" || value.status === "backend_unreachable";
 }
 
 function isMissingFile(error: unknown): boolean {
