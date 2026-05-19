@@ -778,7 +778,7 @@ describe("MCP tools", () => {
         status: "stalled",
         result: {
           status: "stalled",
-          stdout: expect.stringContaining("readToolCalls=call_")
+          stdout: expect.stringContaining("input={\"filePath\":\"docs/VERIFICATION.md\"}")
         },
         diagnostic: {
           event: "opencode_job_result_read",
@@ -790,8 +790,16 @@ describe("MCP tools", () => {
         }
       });
       expect(wait.diagnostic.message).toContain("readToolCalls=call_");
+      expect(wait.diagnostic.message).toContain('input={"filePath":"docs/VERIFICATION.md"}');
       expect(wait.diagnostic.runningReadToolPartSummaries).toEqual(
-        expect.arrayContaining([expect.objectContaining({ tool: "read", stateStatus: "pending", callID: expect.stringMatching(/^call_/) })])
+        expect.arrayContaining([
+          expect.objectContaining({
+            tool: "read",
+            stateStatus: "pending",
+            callID: expect.stringMatching(/^call_/),
+            stateInput: { type: "object", preview: '{"filePath":"docs/VERIFICATION.md"}' }
+          })
+        ])
       );
     } finally {
       delete process.env.RETINUE_STATE_DIR;

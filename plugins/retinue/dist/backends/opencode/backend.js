@@ -909,6 +909,7 @@ function summarizeMessageParts(message) {
         if (typeof state?.status === "string") {
             summary.stateStatus = state.status;
         }
+        summary.stateInput = diagnosticValuePreview(state?.input);
         if (typeof part.text === "string") {
             summary.textBytes = Buffer.byteLength(part.text, "utf8");
         }
@@ -1244,7 +1245,7 @@ function formatReadToolStallDetails(diagnostic) {
     const summaries = diagnostic.runningReadToolPartSummaries ?? [];
     const callIds = diagnostic.runningReadToolCallIds ?? [];
     const stateDetails = summaries
-        .map((part) => [part.callID, part.stateStatus].filter(Boolean).join(":"))
+        .map((part) => [part.callID, part.stateStatus, part.stateInput ? `input=${part.stateInput.preview}` : undefined].filter(Boolean).join(":"))
         .filter((value) => value.length > 0);
     if (stateDetails.length > 0) {
         return ` readToolCalls=${stateDetails.join(",")}.`;

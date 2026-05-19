@@ -279,8 +279,20 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
           parts: [
             { type: "step-start" },
             { type: "reasoning", text: "Need to inspect a few files." },
-            { type: "tool", text: "read placeholder", tool: "read", callID: `call_${nextMessage}`, state: { status: "running" } },
-            { type: "tool", text: "read placeholder", tool: "read", callID: `call_${nextMessage + 1}`, state: { status: "error" } }
+            {
+              type: "tool",
+              text: "read placeholder",
+              tool: "read",
+              callID: `call_${nextMessage}`,
+              state: { status: "running", input: { filePath: "src/backends/opencode/backend.ts" } }
+            },
+            {
+              type: "tool",
+              text: "read placeholder",
+              tool: "read",
+              callID: `call_${nextMessage + 1}`,
+              state: { status: "error", input: { filePath: "src/backends/opencode/client.ts" } }
+            }
           ]
         });
       }
@@ -302,7 +314,13 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
           parts: [
             { type: "step-start" },
             { type: "reasoning", text: "Need to inspect one more file." },
-            { type: "tool", text: "read placeholder", tool: "read", callID: `call_${nextMessage}`, state: { status: "pending" } }
+            {
+              type: "tool",
+              text: "read placeholder",
+              tool: "read",
+              callID: `call_${nextMessage}`,
+              state: { status: "pending", input: { filePath: "docs/VERIFICATION.md" } }
+            }
           ]
         });
       }
