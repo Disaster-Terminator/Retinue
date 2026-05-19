@@ -980,6 +980,35 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"messageError"');
   });
 
+  it("classifies LiteLLM DeepSeek reasoning_content provider errors explicitly", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "complex audit hits DeepSeek reasoning-content error" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
+    server!.appendErroredIncompleteAssistant(started.externalSessionId!, {
+      name: "APIError",
+      data: {
+        message:
+          'litellm.BadRequestError: DeepseekException - {"error":{"message":"The `reasoning_content` in the thinking mode must be passed back to the API.","type":"invalid_request_error","code":"invalid_request_error"}}. Received Model Group=semantic-router'
+      },
+      statusCode: 400
+    });
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "stalled",
+      stdout: expect.stringContaining("DeepSeek reasoning_content")
+    });
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"stallReason":"provider_reasoning_content_error"');
+    expect(trace).toContain("semantic-router");
+    expect(trace).toContain("reasoning_content");
+  });
+
   it("keeps default incomplete assistant tool rounds running before the incomplete stall threshold", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),

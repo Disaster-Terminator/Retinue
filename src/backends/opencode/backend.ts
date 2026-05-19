@@ -241,6 +241,7 @@ interface OpenCodeJobDiagnostic {
 type OpenCodeStallReason =
   | "read_only_write_intent"
   | "provider_error"
+  | "provider_reasoning_content_error"
   | "provider_blank_assistant"
   | "provider_zero_progress"
   | "read_tool_stalled"
@@ -1181,6 +1182,19 @@ function hasAssistantError(messages: OpenCodeMessage[]): boolean {
   return messages.some((message) => message.info?.role === "assistant" && message.info.error !== undefined);
 }
 
+function hasReasoningContentProviderError(messages: OpenCodeMessage[]): boolean {
+  return messages.some((message) => {
+    if (message.info?.role !== "assistant" || message.info.error === undefined) {
+      return false;
+    }
+    const errorText = JSON.stringify(message.info.error).toLowerCase();
+    return (
+      errorText.includes("reasoning_content") &&
+      (errorText.includes("deepseek") || errorText.includes("deepseekexception") || errorText.includes("thinking mode"))
+    );
+  });
+}
+
 function computeStallDiagnostic(
   jobMessages: OpenCodeMessage[],
   meta: JobMeta,
@@ -1191,14 +1205,17 @@ function computeStallDiagnostic(
   const patchPartCount = countPatchParts(writeIntentMessages);
   const writeIntentToolPartCount = countWriteIntentToolParts(writeIntentMessages);
   if (hasAssistantError(activeMessages)) {
+    const reasoningContentError = hasReasoningContentProviderError(activeMessages);
     return {
       patchPartCount,
       readOnlyPatchPartCount: meta.readOnly === true ? patchPartCount : 0,
       writeIntentToolPartCount,
       readOnlyWriteIntentToolPartCount: meta.readOnly === true ? writeIntentToolPartCount : 0,
       readOnlyWriteIntent: false,
-      stallReason: "provider_error",
-      stallSummary: "OpenCode provider returned an assistant error."
+      stallReason: reasoningContentError ? "provider_reasoning_content_error" : "provider_error",
+      stallSummary: reasoningContentError
+        ? "OpenCode provider rejected a DeepSeek thinking-mode request because reasoning_content was not preserved."
+        : "OpenCode provider returned an assistant error."
     };
   }
   if (meta.readOnly === true && (patchPartCount > 0 || writeIntentToolPartCount > 0)) {
@@ -1314,6 +1331,11 @@ function createStallMessage(diagnostic: OpenCodeJobDiagnostic): string {
   if (diagnostic.stallReason === "read_only_write_intent") {
     return `OpenCode read-only job emitted patch/write intent; Retinue requested a no-tools prose-only recovery, but no trusted final text was produced. Inspect Retinue trace/job diagnostics for message summaries.`;
   }
+  if (diagnostic.stallReason === "provider_reasoning_content_error") {
+    const preview = diagnostic.lastAssistantError?.preview ?? diagnostic.lastMessageError?.preview;
+    const suffix = preview ? ` Error summary: ${preview}` : " Inspect Retinue trace/job diagnostics for lastAssistantError and message summaries.";
+    return `OpenCode provider rejected a DeepSeek reasoning_content request through LiteLLM/semantic-router. This is a provider/router compatibility issue for thinking-mode messages, not a trusted child-agent result.${suffix}`;
+  }
   if (diagnostic.stallReason === "provider_error") {
     const preview = diagnostic.lastAssistantError?.preview ?? diagnostic.lastMessageError?.preview;
     const suffix = preview ? ` Error summary: ${preview}` : " Inspect Retinue trace/job diagnostics for lastAssistantError and message summaries.";
@@ -1409,6 +1431,8 @@ function createStallSummary(diagnostic: Partial<OpenCodeJobDiagnostic>): string 
       return "OpenCode read-only job emitted patch/write intent.";
     case "provider_error":
       return "OpenCode provider returned an assistant error before final text.";
+    case "provider_reasoning_content_error":
+      return "OpenCode provider rejected a DeepSeek reasoning_content thinking-mode request.";
     case "provider_blank_assistant":
       return `OpenCode provider/router produced blank assistant output for ${durationMs}ms.`;
     case "provider_zero_progress":
