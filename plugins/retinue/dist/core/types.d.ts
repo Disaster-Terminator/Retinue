@@ -1,7 +1,7 @@
 export type PermissionMode = "default" | "acceptEdits" | "plan" | "auto" | "dontAsk";
 export type AgentBackendKind = "claude-code" | "opencode";
 export type JobTerminalStatus = "completed" | "failed" | "killed" | "timed_out";
-export type JobProblemStatus = "not_found" | "corrupted";
+export type JobProblemStatus = "not_found" | "corrupted" | "backend_unreachable";
 export type JobStatus = "running" | "stalled" | "orphaned" | "abandoned" | JobProblemStatus | JobTerminalStatus;
 export interface RunOptions {
     cwd: string;

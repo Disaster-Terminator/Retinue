@@ -643,6 +643,9 @@ export class OpenCodeBackend {
             if (meta.status === "killed") {
                 return meta;
             }
+            if (isBackendUnavailableError(error)) {
+                return { jobId: meta.jobId, status: "backend_unreachable", error: error instanceof Error ? error.message : String(error) };
+            }
             return { jobId: meta.jobId, status: "corrupted", error: error instanceof Error ? error.message : String(error) };
         }
     }
@@ -944,7 +947,13 @@ function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 function isProblem(value) {
-    return value.status === "not_found" || value.status === "corrupted";
+    return value.status === "not_found" || value.status === "corrupted" || value.status === "backend_unreachable";
+}
+function isBackendUnavailableError(error) {
+    if (!(error instanceof OpenCodeClientError)) {
+        return false;
+    }
+    return error.code === "transport_error" || error.code === "invalid_json" || error.status === 0 || (error.status ?? 0) >= 500;
 }
 function selectMessagesForMeta(messages, meta) {
     if (meta.externalMessageBaselineCount === undefined) {

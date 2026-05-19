@@ -22641,6 +22641,9 @@ ${textWarning2}` : stderr;
       if (meta.status === "killed") {
         return meta;
       }
+      if (isBackendUnavailableError(error2)) {
+        return { jobId: meta.jobId, status: "backend_unreachable", error: error2 instanceof Error ? error2.message : String(error2) };
+      }
       return { jobId: meta.jobId, status: "corrupted", error: error2 instanceof Error ? error2.message : String(error2) };
     }
   }
@@ -22927,7 +22930,13 @@ function sleep2(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 function isProblem(value) {
-  return value.status === "not_found" || value.status === "corrupted";
+  return value.status === "not_found" || value.status === "corrupted" || value.status === "backend_unreachable";
+}
+function isBackendUnavailableError(error2) {
+  if (!(error2 instanceof OpenCodeClientError)) {
+    return false;
+  }
+  return error2.code === "transport_error" || error2.code === "invalid_json" || error2.status === 0 || (error2.status ?? 0) >= 500;
 }
 function selectMessagesForMeta(messages, meta) {
   if (meta.externalMessageBaselineCount === void 0) {
@@ -24065,7 +24074,7 @@ function isPidAlive3(pid) {
   }
 }
 function isProblem2(value) {
-  return value.status === "not_found" || value.status === "corrupted";
+  return value.status === "not_found" || value.status === "corrupted" || value.status === "backend_unreachable";
 }
 function isMissingFile2(error2) {
   return typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === "ENOENT";
