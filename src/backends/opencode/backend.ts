@@ -203,6 +203,8 @@ interface OpenCodeJobDiagnostic {
   readOnlyWriteIntent?: boolean;
   readOnlyWriteIntentRecoveryJobMessageCount?: number;
   recoveredFromReadOnlyWriteIntent?: boolean;
+  recoveryStallReason?: OpenCodeStallReason;
+  recoveryStallSummary?: string;
   readOnlyTextWarning?: boolean;
   readOnlyTextWarningSummary?: string;
   messageSummaries?: Array<{
@@ -890,9 +892,12 @@ export class OpenCodeBackend implements AgentBackend {
         meta.readOnly === true &&
         meta.externalReadOnlyWriteIntentRecoveryJobMessageCount !== undefined &&
         diagnostic.recoveredFromReadOnlyWriteIntent !== true &&
-        diagnostic.readOnlyWriteIntent !== true &&
-        !diagnostic.stallReason
+        diagnostic.readOnlyWriteIntent !== true
       ) {
+        if (diagnostic.stallReason && diagnostic.stallReason !== "read_only_write_intent") {
+          diagnostic.recoveryStallReason = diagnostic.stallReason;
+          diagnostic.recoveryStallSummary = diagnostic.stallSummary;
+        }
         diagnostic.stallReason = "read_only_write_intent";
         diagnostic.stallSummary = "OpenCode read-only job emitted patch/write intent, and recovery did not produce usable final text.";
       }

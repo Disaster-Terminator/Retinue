@@ -315,6 +315,30 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"readOnlyWriteIntent":true');
   });
 
+  it("keeps the read-only write intent root cause when recovery ends in blank provider output", async () => {
+    const backend = createBackend({
+      RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1",
+      RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
+    server!.appendPatchAssistant(started.externalSessionId!, "Finding: original patch intent.");
+    const blankAfterRescue = waitForPromptCount(2).then(() => {
+      server!.appendBlankAssistant(started.externalSessionId!);
+    });
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    await blankAfterRescue;
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "stalled",
+      stdout: expect.stringContaining("OpenCode read-only job emitted patch/write intent"),
+      error: expect.stringContaining("OpenCode read-only job emitted patch/write intent")
+    });
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"stallReason":"read_only_write_intent"');
+    expect(trace).toContain('"recoveryStallReason":"provider_blank_assistant"');
+  });
+
   it("flags patch-like text from completed read-only OpenCode jobs without hiding stdout", async () => {
     const backend = createBackend();
     server!.setAutoAssistantResponses(false);
