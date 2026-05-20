@@ -951,6 +951,32 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('input={\\"filePath\\":\\"docs/VERIFICATION.md\\"}');
   });
 
+  it("classifies pending read tool calls with empty input as malformed provider tool calls", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "risk review emits empty read input" });
+    server!.appendMalformedReadToolAssistant(started.externalSessionId!);
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    const result = await backend.result({ jobId: started.jobId });
+    expect(result.status).toBe("stalled");
+    expect(result.stdout).toContain("missing or invalid input");
+    expect(result.stdout).toContain("input={}");
+    expect(result.stdout).toContain("provider=litellm model=semantic-router agent=explore mode=explore");
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"stallReason":"read_tool_invalid_input"');
+    expect(trace).toContain('"malformedReadToolParts":1');
+    expect(trace).toContain('input={}');
+  });
+
   it("preserves the source stall reason when a soft-stall rescue stalls in a read tool", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),

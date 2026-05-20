@@ -23068,6 +23068,7 @@ function computeStallDiagnostic(jobMessages, meta, env) {
   const zeroProgressAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isZeroProgressAssistantPlaceholder(message)).length;
   const runningReadToolPartSummaries = collectRunningReadToolPartSummaries(activeMessages);
   const runningReadToolParts = runningReadToolPartSummaries.length;
+  const malformedReadToolParts = runningReadToolPartSummaries.filter(isMalformedReadToolInput).length;
   const runningReadToolCallIds = runningReadToolPartSummaries.flatMap((part) => part.callID ? [part.callID] : []);
   const lastAssistant = [...activeMessages].reverse().find((message) => message.info?.role === "assistant");
   const incompleteAssistantRound = isIncompleteAssistantMessage(lastAssistant);
@@ -23080,6 +23081,7 @@ function computeStallDiagnostic(jobMessages, meta, env) {
   const blankAssistantStalled = blankAssistantRounds > 0 && durationMs >= blankAssistantThresholdMs;
   const zeroProgressAssistantStalled = zeroProgressAssistantRounds > 0 && durationMs >= zeroProgressAssistantThresholdMs;
   const readToolStalled = runningReadToolParts > 0 && durationMs >= readToolThresholdMs;
+  const readToolInvalidInputStalled = malformedReadToolParts > 0 && durationMs >= readToolThresholdMs;
   const completedToolLoopStalled = toolCallAssistantRounds >= roundThreshold && runningReadToolParts === 0 && !incompleteAssistantRound && durationMs >= completedToolLoopThresholdMs;
   const incompleteAssistantStalled = incompleteAssistantRound && durationMs >= incompleteThresholdMs;
   if (!emptyAssistantStalled && !blankAssistantStalled && !zeroProgressAssistantStalled && !readToolStalled && !completedToolLoopStalled && !incompleteAssistantStalled && durationMs < thresholdMs) {
@@ -23093,6 +23095,7 @@ function computeStallDiagnostic(jobMessages, meta, env) {
     runningReadToolParts,
     runningReadToolCallIds,
     runningReadToolPartSummaries,
+    malformedReadToolParts,
     noCompletedAssistantDurationMs: Math.max(0, durationMs),
     stallThresholdMs: thresholdMs,
     blankAssistantStallThresholdMs: blankAssistantThresholdMs,
@@ -23107,6 +23110,7 @@ function computeStallDiagnostic(jobMessages, meta, env) {
       emptyAssistantStalled,
       blankAssistantStalled,
       zeroProgressAssistantStalled,
+      readToolInvalidInputStalled,
       readToolStalled,
       completedToolLoopStalled,
       incompleteAssistantStalled
@@ -23141,7 +23145,12 @@ function createStallMessage(diagnostic) {
   const blankRounds = diagnostic.blankAssistantRounds ?? 0;
   const zeroProgressRounds = diagnostic.zeroProgressAssistantRounds ?? 0;
   const runningReadToolParts = diagnostic.runningReadToolParts ?? 0;
+  const malformedReadToolParts = diagnostic.malformedReadToolParts ?? 0;
   const durationMs = diagnostic.noCompletedAssistantDurationMs ?? 0;
+  if (diagnostic.stallReason === "read_tool_invalid_input" && malformedReadToolParts > 0) {
+    const details = formatReadToolStallDetails(diagnostic);
+    return `OpenCode job stalled: observed ${malformedReadToolParts} read tool call(s) with missing or invalid input for ${durationMs}ms.${details}${providerDetails}${rescueDetails} The OpenCode provider/model emitted a malformed read tool call; inspect Retinue trace/job diagnostics for full message summaries.`;
+  }
   if (diagnostic.recoveryStallReason === "read_tool_stalled" && runningReadToolParts > 0) {
     const details = formatReadToolStallDetails(diagnostic);
     return `OpenCode job stalled: soft-stall rescue reached ${runningReadToolParts} pending/running read tool call(s) with no completed assistant text for ${durationMs}ms.${details}${providerDetails}${rescueDetails} The OpenCode tool executor may be stuck; inspect Retinue trace/job diagnostics for full message summaries.`;
@@ -23185,6 +23194,9 @@ function createReadOnlyTextWarning(text) {
   return "Retinue read-only result may contain patch or write-command text; treat stdout as untrusted analysis, not executable instructions.";
 }
 function selectStallReason(stalled) {
+  if (stalled.readToolInvalidInputStalled) {
+    return "read_tool_invalid_input";
+  }
   if (stalled.readToolStalled) {
     return "read_tool_stalled";
   }
@@ -23219,6 +23231,8 @@ function createStallSummary(diagnostic) {
       return `OpenCode provider/router produced blank assistant output for ${durationMs}ms.${rescueDetails}`;
     case "provider_zero_progress":
       return `OpenCode provider/router produced zero-progress assistant output for ${durationMs}ms.${rescueDetails}`;
+    case "read_tool_invalid_input":
+      return `OpenCode provider/model emitted read tool call(s) with missing or invalid input for ${durationMs}ms.${formatReadToolStallDetails(diagnostic)}${rescueDetails}`;
     case "read_tool_stalled":
       return `OpenCode tool executor left read tool call(s) running for ${durationMs}ms.${formatReadToolStallDetails(diagnostic)}${rescueDetails}`;
     case "incomplete_assistant_round":
@@ -23232,7 +23246,7 @@ function createStallSummary(diagnostic) {
   }
 }
 function isOpenCodeStallReason(value) {
-  return value === "read_only_write_intent" || value === "provider_error" || value === "provider_reasoning_content_error" || value === "provider_blank_assistant" || value === "provider_zero_progress" || value === "read_tool_stalled" || value === "incomplete_assistant_round" || value === "backend_no_final_text" || value === "tool_loop_no_completion";
+  return value === "read_only_write_intent" || value === "provider_error" || value === "provider_reasoning_content_error" || value === "provider_blank_assistant" || value === "provider_zero_progress" || value === "read_tool_invalid_input" || value === "read_tool_stalled" || value === "incomplete_assistant_round" || value === "backend_no_final_text" || value === "tool_loop_no_completion";
 }
 function formatProviderDetails(diagnostic) {
   const entries = [
@@ -23249,6 +23263,13 @@ function formatSoftStallRescueDetails(diagnostic) {
   }
   const recovery = diagnostic.recoveryStallReason ? ` recovery=${diagnostic.recoveryStallReason}` : "";
   return ` rescueSource=${diagnostic.softStallRescueSourceReason}${recovery}.`;
+}
+function isMalformedReadToolInput(part) {
+  if (part.tool !== "read") {
+    return false;
+  }
+  const preview = part.stateInput?.preview?.trim();
+  return !preview || preview === "{}" || preview === "null";
 }
 function formatReadToolStallDetails(diagnostic) {
   const summaries = diagnostic.runningReadToolPartSummaries ?? [];

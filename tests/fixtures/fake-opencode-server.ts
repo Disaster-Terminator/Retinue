@@ -31,6 +31,7 @@ export interface FakeOpenCodeServer {
   appendWriteIntentAssistant(sessionId: string, tool: "write" | "edit" | "apply_patch"): void;
   appendRunningReadToolAssistant(sessionId: string): void;
   appendPendingReadToolAssistant(sessionId: string): void;
+  appendMalformedReadToolAssistant(sessionId: string): void;
   appendBlankAssistant(sessionId: string): void;
   appendZeroProgressReasoningAssistant(sessionId: string): void;
   appendIncompleteAssistant(sessionId: string, text?: string): void;
@@ -320,6 +321,34 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
               tool: "read",
               callID: `call_${nextMessage}`,
               state: { status: "pending", input: { filePath: "docs/VERIFICATION.md" } }
+            }
+          ]
+        });
+      }
+    },
+    appendMalformedReadToolAssistant: (sessionId: string) => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.omitState = true;
+        session.messages.push({
+          info: {
+            id: `msg_${nextMessage++}`,
+            sessionID: session.id,
+            role: "assistant",
+            providerID: "litellm",
+            modelID: "semantic-router",
+            agent: "explore",
+            mode: "explore"
+          },
+          parts: [
+            { type: "step-start" },
+            { type: "reasoning", text: "Need to inspect a file but emitted malformed read input." },
+            {
+              type: "tool",
+              text: "read placeholder",
+              tool: "read",
+              callID: `call_${nextMessage}`,
+              state: { status: "pending", input: {} }
             }
           ]
         });
