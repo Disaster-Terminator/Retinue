@@ -171,6 +171,7 @@ export class OpenCodeBackend {
         const session = await target.client.createSession({
             cwd: options.cwd,
             title: options.title ?? options.name,
+            agent: "build",
             permission: options.readOnly === true ? buildReadOnlyPermission(readOnlyBashPolicy) : undefined
         });
         const baseline = await this.captureMessageBaseline(target.client, session.id);
@@ -193,6 +194,7 @@ export class OpenCodeBackend {
             readOnlyPromptContract: options.readOnlyPromptContract === true,
             readOnlyToolDeny: options.readOnlyToolDeny === true,
             externalSessionId: session.id,
+            externalParentSessionId: session.id,
             externalServerUrl: target.baseUrl,
             externalSessionDirectory: session.directory ?? session.cwd,
             externalMessageBaselineCount: baseline.messageCount,
@@ -204,8 +206,14 @@ export class OpenCodeBackend {
             updatedAt: now
         };
         await writeJsonAtomic(paths.meta, meta);
-        const submitted = this.submitPromptAsync(target.client, session.id, meta, options);
+        let submittedFinished = false;
+        const submitted = this.submitPromptAsync(target.client, session.id, meta, options).then(() => {
+            submittedFinished = true;
+        });
         await Promise.race([submitted, sleep(50)]);
+        if (submittedFinished) {
+            return this.refreshNativeChildSessions(target.client, meta);
+        }
         return this.readCurrentMetaOrFallback(jobId, meta);
     }
     async continueJob(options) {
@@ -688,7 +696,9 @@ export class OpenCodeBackend {
     async inspectJob(meta) {
         const diagnostic = {
             baseUrl: meta.externalServerUrl ?? this.baseUrl ?? "",
-            sessionId: meta.externalSessionId
+            sessionId: meta.externalSessionId,
+            parentSessionId: meta.externalParentSessionId,
+            childSessionIds: meta.externalChildSessionIds
         };
         if (!meta.externalSessionId) {
             return diagnostic;
@@ -817,10 +827,10 @@ export class OpenCodeBackend {
     }
     async submitPromptAsync(client, sessionId, meta, options) {
         try {
+            const prompt = buildOpenCodePrompt(options.prompt, options.readOnly === true && options.readOnlyPromptContract === true, resolveReadOnlyBashPolicy(options.readOnlyBashPolicy));
             await client.promptAsync(sessionId, {
-                prompt: buildOpenCodePrompt(options.prompt, options.readOnly === true && options.readOnlyPromptContract === true, resolveReadOnlyBashPolicy(options.readOnlyBashPolicy)),
-                model: options.model,
-                agent: options.agent,
+                parts: buildNativeSubtaskPromptParts(prompt, options),
+                agent: "build",
                 tools: options.readOnly === true && options.readOnlyToolDeny === true
                     ? buildReadOnlyTools(resolveReadOnlyBashPolicy(options.readOnlyBashPolicy))
                     : undefined
@@ -836,6 +846,25 @@ export class OpenCodeBackend {
             });
             await this.writeJobTrace("opencode_job_prompt_failed", failed, await this.inspectJob(failed));
             await this.maybeScheduleServerIdleShutdown(failed);
+        }
+    }
+    async refreshNativeChildSessions(client, meta) {
+        if (!meta.externalSessionId) {
+            return meta;
+        }
+        try {
+            const current = await this.readCurrentMetaOrFallback(meta.jobId, meta);
+            if (current.status !== "running") {
+                return current;
+            }
+            const children = await client.children(meta.externalSessionId);
+            const childIds = children.map((session) => session.id).filter((id) => typeof id === "string");
+            const updated = { ...current, externalChildSessionIds: childIds, updatedAt: new Date().toISOString() };
+            await writeJsonAtomic(getJobPaths(this.stateDir, meta.jobId).meta, updated);
+            return updated;
+        }
+        catch {
+            return meta;
         }
     }
     clientForMeta(meta) {
@@ -1457,6 +1486,18 @@ function buildOpenCodePrompt(prompt, readOnly, bashPolicy) {
         return prompt;
     }
     return `${createReadOnlyPromptContract(bashPolicy)}\n\nUser task:\n${prompt}`;
+}
+function buildNativeSubtaskPromptParts(prompt, options) {
+    return [
+        { type: "text", text: prompt },
+        {
+            type: "subtask",
+            description: options.title ?? options.name ?? "Retinue child agent",
+            agent: options.agent ?? "explore",
+            prompt,
+            model: options.model
+        }
+    ];
 }
 function sha256(value) {
     return createHash("sha256").update(value).digest("hex");

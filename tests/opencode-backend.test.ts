@@ -57,6 +57,38 @@ describe("OpenCodeBackend", () => {
     });
   });
 
+  it("uses OpenCode native subtask as the default run path", async () => {
+    const backend = createBackend();
+
+    const started = await backend.run({
+      cwd: tempDir,
+      prompt: "review this repository",
+      title: "native demo",
+      model: "local/test",
+      agent: "explore"
+    });
+
+    expect(server!.sessionRequests.at(-1)).toMatchObject({
+      directory: tempDir,
+      title: "native demo",
+      agent: "build"
+    });
+    expect(server!.promptRequests.at(-1)).toMatchObject({
+      agent: "build",
+      parts: expect.arrayContaining([
+        { type: "subtask", description: "native demo", agent: "explore", prompt: "review this repository", model: "local/test" }
+      ])
+    });
+    await expect(new OpenCodeClient(server!.url).children(started.externalSessionId!)).resolves.toContainEqual(
+      expect.objectContaining({ parentID: started.externalSessionId, agent: "explore" })
+    );
+    await expect(fs.readFile(getJobPaths(tempDir, started.jobId).meta, "utf8").then(JSON.parse)).resolves.toMatchObject({
+      externalSessionId: started.externalSessionId,
+      externalParentSessionId: started.externalSessionId,
+      externalChildSessionIds: [expect.stringMatching(/^ses_/)]
+    });
+  });
+
   it("reports unreachable OpenCode backend without marking job metadata corrupted", async () => {
     const backend = createBackend();
     const started = await backend.run({ cwd: tempDir, prompt: "hello" });

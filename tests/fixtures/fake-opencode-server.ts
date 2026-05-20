@@ -4,6 +4,8 @@ import type { AddressInfo } from "node:net";
 interface FakeSession {
   id: string;
   title?: string;
+  parentID?: string;
+  agent?: string;
   directory?: string;
   cwd?: string;
   aborted?: boolean;
@@ -69,12 +71,21 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
       const session: FakeSession = {
         id: `ses_${nextSession++}`,
         title: typeof body.title === "string" ? body.title : undefined,
+        parentID: typeof body.parentID === "string" ? body.parentID : undefined,
+        agent: typeof body.agent === "string" ? body.agent : undefined,
         directory: serverCwd,
         state: "running",
         messages: []
       };
       sessions.set(session.id, session);
-      writeJson(response, 200, { id: session.id, title: session.title, directory: session.directory, cwd: session.cwd });
+      writeJson(response, 200, {
+        id: session.id,
+        title: session.title,
+        parentID: session.parentID,
+        agent: session.agent,
+        directory: session.directory,
+        cwd: session.cwd
+      });
       return;
     }
 
@@ -82,7 +93,14 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
       writeJson(
         response,
         200,
-        [...sessions.values()].map((session) => ({ id: session.id, title: session.title, directory: session.directory, cwd: session.cwd }))
+        [...sessions.values()].map((session) => ({
+          id: session.id,
+          title: session.title,
+          parentID: session.parentID,
+          agent: session.agent,
+          directory: session.directory,
+          cwd: session.cwd
+        }))
       );
       return;
     }
@@ -104,6 +122,8 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
       writeJson(response, 200, {
         id: session.id,
         title: session.title,
+        parentID: session.parentID,
+        agent: session.agent,
         directory: session.directory,
         cwd: session.cwd,
         aborted: session.aborted === true,
@@ -123,6 +143,30 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
       }
       const body = await readJson(request);
       promptRequests.push(body);
+      const subtaskPart = Array.isArray(body.parts)
+        ? body.parts.find(
+            (part): part is { type: string; description?: string; agent?: string; prompt?: string } =>
+              typeof part === "object" && part !== null && (part as { type?: unknown }).type === "subtask"
+          )
+        : undefined;
+      if (subtaskPart) {
+        const childId = `ses_${nextSession++}`;
+        const child: FakeSession = {
+          id: childId,
+          title: subtaskPart.description ? `${subtaskPart.description} (@${subtaskPart.agent ?? "agent"} subagent)` : undefined,
+          parentID: session.id,
+          agent: subtaskPart.agent,
+          directory: session.directory,
+          state: "completed",
+          messages: [
+            {
+              info: { id: `msg_${nextMessage++}`, sessionID: childId, role: "assistant", time: { completed: Date.now() }, finish: "stop" },
+              parts: [{ type: "text", text: subtaskPart.prompt ?? "" }]
+            }
+          ]
+        };
+        sessions.set(child.id, child);
+      }
       const prompt =
         Array.isArray(body.parts) && typeof body.parts[0] === "object" && body.parts[0] !== null && "text" in body.parts[0]
           ? String((body.parts[0] as { text?: unknown }).text ?? "")
@@ -147,6 +191,24 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
 
     if (request.method === "GET" && action === "message") {
       writeJson(response, 200, session.messages);
+      return;
+    }
+
+    if (request.method === "GET" && action === "children") {
+      writeJson(
+        response,
+        200,
+        [...sessions.values()]
+          .filter((candidate) => candidate.parentID === session.id)
+          .map((candidate) => ({
+            id: candidate.id,
+            title: candidate.title,
+            parentID: candidate.parentID,
+            agent: candidate.agent,
+            directory: candidate.directory,
+            cwd: candidate.cwd
+          }))
+      );
       return;
     }
 

@@ -1,6 +1,8 @@
 export interface OpenCodeSession {
     id: string;
     title?: string;
+    parentID?: string;
+    agent?: string;
     directory?: string;
     cwd?: string;
     [key: string]: unknown;
@@ -24,6 +26,17 @@ export interface OpenCodePermissionRule {
     pattern: string;
     action: "allow" | "deny" | "ask";
 }
+export type OpenCodePromptPart = {
+    type: "text";
+    text: string;
+} | {
+    type: "subtask";
+    description: string;
+    agent: string;
+    prompt: string;
+    model?: string;
+    command?: string;
+};
 export declare class OpenCodeClientError extends Error {
     readonly code: string;
     readonly status?: number | undefined;
@@ -41,12 +54,18 @@ export declare class OpenCodeClient {
     createSession(options?: {
         cwd?: string;
         title?: string;
+        parentID?: string;
+        agent?: string;
+        model?: string;
+        workspaceID?: string;
         permission?: OpenCodePermissionRule[];
     }): Promise<OpenCodeSession>;
     listSessions(): Promise<OpenCodeSession[]>;
     getSession(sessionId: string): Promise<OpenCodeSession>;
+    children(sessionId: string): Promise<OpenCodeSession[]>;
     promptAsync(sessionId: string, options: {
-        prompt: string;
+        prompt?: string;
+        parts?: OpenCodePromptPart[];
         model?: string;
         agent?: string;
         tools?: Record<string, boolean>;

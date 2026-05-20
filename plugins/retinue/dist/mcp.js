@@ -21171,6 +21171,10 @@ var OpenCodeClient = class {
   createSession(options = {}) {
     return this.request("POST", "/session", {
       title: options.title,
+      parentID: options.parentID,
+      agent: options.agent,
+      model: formatModelOverride(options.model),
+      workspaceID: options.workspaceID,
       permission: options.permission,
       directory: options.cwd
     });
@@ -21181,12 +21185,15 @@ var OpenCodeClient = class {
   getSession(sessionId) {
     return this.request("GET", `/session/${encodeURIComponent(sessionId)}`);
   }
+  children(sessionId) {
+    return this.request("GET", `/session/${encodeURIComponent(sessionId)}/children`);
+  }
   promptAsync(sessionId, options) {
     return this.requestVoid("POST", `/session/${encodeURIComponent(sessionId)}/prompt_async`, {
       model: formatModelOverride(options.model),
       agent: options.agent,
       tools: options.tools,
-      parts: [{ type: "text", text: options.prompt }]
+      parts: options.parts ?? [{ type: "text", text: options.prompt ?? "" }]
     });
   }
   messages(sessionId) {
@@ -22188,6 +22195,7 @@ var OpenCodeBackend = class {
     const session = await target.client.createSession({
       cwd: options.cwd,
       title: options.title ?? options.name,
+      agent: "build",
       permission: options.readOnly === true ? buildReadOnlyPermission(readOnlyBashPolicy) : void 0
     });
     const baseline = await this.captureMessageBaseline(target.client, session.id);
@@ -22210,6 +22218,7 @@ var OpenCodeBackend = class {
       readOnlyPromptContract: options.readOnlyPromptContract === true,
       readOnlyToolDeny: options.readOnlyToolDeny === true,
       externalSessionId: session.id,
+      externalParentSessionId: session.id,
       externalServerUrl: target.baseUrl,
       externalSessionDirectory: session.directory ?? session.cwd,
       externalMessageBaselineCount: baseline.messageCount,
@@ -22221,8 +22230,14 @@ var OpenCodeBackend = class {
       updatedAt: now
     };
     await writeJsonAtomic(paths.meta, meta);
-    const submitted = this.submitPromptAsync(target.client, session.id, meta, options);
+    let submittedFinished = false;
+    const submitted = this.submitPromptAsync(target.client, session.id, meta, options).then(() => {
+      submittedFinished = true;
+    });
     await Promise.race([submitted, sleep2(50)]);
+    if (submittedFinished) {
+      return this.refreshNativeChildSessions(target.client, meta);
+    }
     return this.readCurrentMetaOrFallback(jobId, meta);
   }
   async continueJob(options) {
@@ -22686,7 +22701,9 @@ ${textWarning2}` : stderr;
   async inspectJob(meta) {
     const diagnostic = {
       baseUrl: meta.externalServerUrl ?? this.baseUrl ?? "",
-      sessionId: meta.externalSessionId
+      sessionId: meta.externalSessionId,
+      parentSessionId: meta.externalParentSessionId,
+      childSessionIds: meta.externalChildSessionIds
     };
     if (!meta.externalSessionId) {
       return diagnostic;
@@ -22800,14 +22817,14 @@ ${textWarning2}` : stderr;
   }
   async submitPromptAsync(client, sessionId, meta, options) {
     try {
+      const prompt = buildOpenCodePrompt(
+        options.prompt,
+        options.readOnly === true && options.readOnlyPromptContract === true,
+        resolveReadOnlyBashPolicy(options.readOnlyBashPolicy)
+      );
       await client.promptAsync(sessionId, {
-        prompt: buildOpenCodePrompt(
-          options.prompt,
-          options.readOnly === true && options.readOnlyPromptContract === true,
-          resolveReadOnlyBashPolicy(options.readOnlyBashPolicy)
-        ),
-        model: options.model,
-        agent: options.agent,
+        parts: buildNativeSubtaskPromptParts(prompt, options),
+        agent: "build",
         tools: options.readOnly === true && options.readOnlyToolDeny === true ? buildReadOnlyTools(resolveReadOnlyBashPolicy(options.readOnlyBashPolicy)) : void 0
       });
       await this.writeJobTrace("opencode_job_prompt_submitted", meta, await this.inspectJob(meta));
@@ -22820,6 +22837,24 @@ ${textWarning2}` : stderr;
       });
       await this.writeJobTrace("opencode_job_prompt_failed", failed, await this.inspectJob(failed));
       await this.maybeScheduleServerIdleShutdown(failed);
+    }
+  }
+  async refreshNativeChildSessions(client, meta) {
+    if (!meta.externalSessionId) {
+      return meta;
+    }
+    try {
+      const current = await this.readCurrentMetaOrFallback(meta.jobId, meta);
+      if (current.status !== "running") {
+        return current;
+      }
+      const children = await client.children(meta.externalSessionId);
+      const childIds = children.map((session) => session.id).filter((id) => typeof id === "string");
+      const updated = { ...current, externalChildSessionIds: childIds, updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
+      await writeJsonAtomic(getJobPaths(this.stateDir, meta.jobId).meta, updated);
+      return updated;
+    } catch {
+      return meta;
     }
   }
   clientForMeta(meta) {
@@ -23407,6 +23442,18 @@ function buildOpenCodePrompt(prompt, readOnly, bashPolicy) {
 
 User task:
 ${prompt}`;
+}
+function buildNativeSubtaskPromptParts(prompt, options) {
+  return [
+    { type: "text", text: prompt },
+    {
+      type: "subtask",
+      description: options.title ?? options.name ?? "Retinue child agent",
+      agent: options.agent ?? "explore",
+      prompt,
+      model: options.model
+    }
+  ];
 }
 function sha256(value) {
   return createHash2("sha256").update(value).digest("hex");

@@ -43,6 +43,8 @@ export interface JobMeta {
   parentSessionId?: string;
   sessionId?: string;
   externalSessionId?: string;
+  externalParentSessionId?: string;
+  externalChildSessionIds?: string[];
   externalServerUrl?: string;
   externalSessionDirectory?: string;
   externalMessageId?: string;

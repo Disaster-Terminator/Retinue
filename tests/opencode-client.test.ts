@@ -42,6 +42,40 @@ describe("OpenCodeClient", () => {
     );
   });
 
+  it("supports OpenCode native parent/child sessions and subtask prompt parts", async () => {
+    server = await startFakeOpenCodeServer({ serverCwd: "G:/repository/retinue" });
+    const client = new OpenCodeClient(server.url);
+
+    const parent = await client.createSession({ cwd: "G:/repository/retinue", title: "parent", agent: "build" });
+    const child = await client.createSession({ cwd: "G:/repository/retinue", title: "child", parentID: parent.id, agent: "explore" });
+
+    expect(server.sessionRequests.at(-2)).toMatchObject({ directory: "G:/repository/retinue", title: "parent", agent: "build" });
+    expect(server.sessionRequests.at(-1)).toMatchObject({
+      directory: "G:/repository/retinue",
+      title: "child",
+      parentID: parent.id,
+      agent: "explore"
+    });
+    expect(child).toMatchObject({ parentID: parent.id });
+    await expect(client.children(parent.id)).resolves.toContainEqual(expect.objectContaining({ id: child.id, parentID: parent.id }));
+
+    await client.promptAsync(parent.id, {
+      agent: "build",
+      parts: [
+        { type: "text", text: "Run the subtask." },
+        { type: "subtask", description: "native child", agent: "explore", prompt: "Reply exactly: CHILD_OK" }
+      ]
+    });
+
+    expect(server.promptRequests.at(-1)).toMatchObject({
+      agent: "build",
+      parts: [
+        { type: "text", text: "Run the subtask." },
+        { type: "subtask", description: "native child", agent: "explore", prompt: "Reply exactly: CHILD_OK" }
+      ]
+    });
+  });
+
   it("aborts sessions", async () => {
     server = await startFakeOpenCodeServer();
     const client = new OpenCodeClient(server.url);

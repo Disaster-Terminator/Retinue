@@ -6,7 +6,7 @@ Date: 2026-05-20
 
 Retinue has repeatedly exposed unstable behavior when it emulates a child-agent boundary around a standalone OpenCode session: read-tool stalls, zero-progress provider loops, and read-only jobs that still emit patch/write intent. Those are useful guardrails, but the architecture should prefer OpenCode's native session/subagent model when it exists instead of adding more Retinue-owned policy layers.
 
-This note records the release-blocking architecture decision tracked in beads issue `RET-ygi`.
+This note records the release-blocking architecture decision tracked in beads issue `RET-ygi`. The pre-migration wrapper snapshot is preserved on the remote branch `archive/pre-native-opencode-runner`.
 
 ## Evidence
 
@@ -51,16 +51,18 @@ Retinue dogfood cross-check:
 
 Retinue should not keep deepening the current standalone-session wrapper as the primary architecture.
 
-The next backend direction should be a staged OpenCode-native adapter:
+The backend direction is now OpenCode-native by default:
 
-1. Keep the existing session runner as a compatibility fallback.
-2. Add an experimental native-spawn path that drives OpenCode `subtask` parts from a parent session.
-3. Preserve explicit child session and fork probes as diagnostics, not the first production path.
-4. Keep Retinue access policy configurable, but avoid making Retinue pretend to be OpenCode's permission system.
+1. Use a parent OpenCode `build` session as the Retinue job session.
+2. Submit the actual child work as an OpenCode `subtask` part, with the requested Retinue agent and model passed through to OpenCode.
+3. Treat the parent assistant's final text as the result collection path.
+4. Record parent and child session IDs in Retinue metadata and diagnostics.
+5. Preserve explicit child session and fork probes as diagnostics, not the first production path.
+6. Keep Retinue access policy configurable, but avoid making Retinue pretend to be OpenCode's permission system.
 
 ## Acceptance For The Next Product Change
 
-- A backend option can run a Retinue job through OpenCode native `subtask` and collect the parent final text.
-- The option records parent/child session IDs in diagnostics when OpenCode exposes them.
-- Current runner behavior and existing stall diagnostics remain available as fallback.
+- Retinue runs OpenCode jobs through native `subtask` and collects parent final text.
+- Retinue records parent/child session IDs in metadata and diagnostics when OpenCode exposes them.
+- Existing stall diagnostics remain available around the parent session stream.
 - The release should describe this as OpenCode-native spawn alignment work, not as a new custom agent framework.

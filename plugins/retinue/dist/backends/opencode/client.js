@@ -26,6 +26,10 @@ export class OpenCodeClient {
     createSession(options = {}) {
         return this.request("POST", "/session", {
             title: options.title,
+            parentID: options.parentID,
+            agent: options.agent,
+            model: formatModelOverride(options.model),
+            workspaceID: options.workspaceID,
             permission: options.permission,
             directory: options.cwd
         });
@@ -36,12 +40,15 @@ export class OpenCodeClient {
     getSession(sessionId) {
         return this.request("GET", `/session/${encodeURIComponent(sessionId)}`);
     }
+    children(sessionId) {
+        return this.request("GET", `/session/${encodeURIComponent(sessionId)}/children`);
+    }
     promptAsync(sessionId, options) {
         return this.requestVoid("POST", `/session/${encodeURIComponent(sessionId)}/prompt_async`, {
             model: formatModelOverride(options.model),
             agent: options.agent,
             tools: options.tools,
-            parts: [{ type: "text", text: options.prompt }]
+            parts: options.parts ?? [{ type: "text", text: options.prompt ?? "" }]
         });
     }
     messages(sessionId) {

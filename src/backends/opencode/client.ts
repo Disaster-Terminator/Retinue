@@ -3,6 +3,8 @@ import { fetchWithTimeout } from "../../core/http.js";
 export interface OpenCodeSession {
   id: string;
   title?: string;
+  parentID?: string;
+  agent?: string;
   directory?: string;
   cwd?: string;
   [key: string]: unknown;
@@ -28,6 +30,10 @@ export interface OpenCodePermissionRule {
   pattern: string;
   action: "allow" | "deny" | "ask";
 }
+
+export type OpenCodePromptPart =
+  | { type: "text"; text: string }
+  | { type: "subtask"; description: string; agent: string; prompt: string; model?: string; command?: string };
 
 export class OpenCodeClientError extends Error {
   constructor(
@@ -55,9 +61,23 @@ export class OpenCodeClient {
     return this.request("GET", "/global/health");
   }
 
-  createSession(options: { cwd?: string; title?: string; permission?: OpenCodePermissionRule[] } = {}): Promise<OpenCodeSession> {
+  createSession(
+    options: {
+      cwd?: string;
+      title?: string;
+      parentID?: string;
+      agent?: string;
+      model?: string;
+      workspaceID?: string;
+      permission?: OpenCodePermissionRule[];
+    } = {}
+  ): Promise<OpenCodeSession> {
     return this.request("POST", "/session", {
       title: options.title,
+      parentID: options.parentID,
+      agent: options.agent,
+      model: formatModelOverride(options.model),
+      workspaceID: options.workspaceID,
       permission: options.permission,
       directory: options.cwd
     });
@@ -71,12 +91,19 @@ export class OpenCodeClient {
     return this.request("GET", `/session/${encodeURIComponent(sessionId)}`);
   }
 
-  promptAsync(sessionId: string, options: { prompt: string; model?: string; agent?: string; tools?: Record<string, boolean> }): Promise<void> {
+  children(sessionId: string): Promise<OpenCodeSession[]> {
+    return this.request("GET", `/session/${encodeURIComponent(sessionId)}/children`);
+  }
+
+  promptAsync(
+    sessionId: string,
+    options: { prompt?: string; parts?: OpenCodePromptPart[]; model?: string; agent?: string; tools?: Record<string, boolean> }
+  ): Promise<void> {
     return this.requestVoid("POST", `/session/${encodeURIComponent(sessionId)}/prompt_async`, {
       model: formatModelOverride(options.model),
       agent: options.agent,
       tools: options.tools,
-      parts: [{ type: "text", text: options.prompt }]
+      parts: options.parts ?? [{ type: "text", text: options.prompt ?? "" }]
     });
   }
 

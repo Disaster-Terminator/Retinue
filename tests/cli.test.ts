@@ -316,7 +316,10 @@ describe("CLI", () => {
     );
 
     expect(fakeOpenCode.promptRequests[0]).toMatchObject({
-      model: { providerID: "litellm", modelID: "pro-router" },
+      agent: "build"
+    });
+    expect(extractOpenCodeSubtaskPart(fakeOpenCode.promptRequests[0])).toMatchObject({
+      model: "litellm/pro-router",
       agent: "build"
     });
   });
@@ -369,4 +372,9 @@ function closeServer(server: http.Server): Promise<void> {
       resolve();
     });
   });
+}
+
+function extractOpenCodeSubtaskPart(request: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  const parts = Array.isArray(request?.parts) ? request.parts : [];
+  return parts.find((part): part is Record<string, unknown> => typeof part === "object" && part !== null && part.type === "subtask");
 }

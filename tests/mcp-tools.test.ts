@@ -308,7 +308,8 @@ describe("MCP tools", () => {
         externalServerUrl: fakeOpenCode.url,
         externalSessionDirectory: process.cwd()
       });
-      expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "explore" });
+      expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "build" });
+      expect(extractOpenCodeSubtaskPart(fakeOpenCode.promptRequests.at(-1))).toMatchObject({ agent: "explore", prompt: "retinue mcp" });
       expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
       const submittedPrompt = extractOpenCodePromptText(fakeOpenCode.promptRequests.at(-1));
       expect(submittedPrompt).toBe("retinue mcp");
@@ -411,7 +412,8 @@ describe("MCP tools", () => {
         arguments: { cwd: tempDir, message: "write the implementation plan", task_name: "plan-policy", agent: "plan" }
       });
 
-      expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "plan" });
+      expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "build" });
+      expect(extractOpenCodeSubtaskPart(fakeOpenCode.promptRequests.at(-1))).toMatchObject({ agent: "plan", prompt: "write the implementation plan" });
       expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
       expect(fakeOpenCode.sessionRequests.at(-1)).not.toHaveProperty("permission");
 
@@ -421,6 +423,7 @@ describe("MCP tools", () => {
       });
 
       expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "build" });
+      expect(extractOpenCodeSubtaskPart(fakeOpenCode.promptRequests.at(-1))).toMatchObject({ agent: "build", prompt: "make the requested change" });
       expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
       expect(fakeOpenCode.sessionRequests.at(-1)).not.toHaveProperty("permission");
     } finally {
@@ -1225,7 +1228,10 @@ describe("MCP tools", () => {
         })
       );
       expect(fakeOpenCode.promptRequests[0]).toMatchObject({
-        model: { providerID: "litellm", modelID: "pro-router" },
+        agent: "build"
+      });
+      expect(extractOpenCodeSubtaskPart(fakeOpenCode.promptRequests[0])).toMatchObject({
+        model: "litellm/pro-router",
         agent: "build"
       });
     } finally {
@@ -1253,7 +1259,10 @@ describe("MCP tools", () => {
         })
       );
       expect(fakeOpenCode.promptRequests[0]).toMatchObject({
-        model: { providerID: "litellm", modelID: "pro-router" },
+        agent: "build"
+      });
+      expect(extractOpenCodeSubtaskPart(fakeOpenCode.promptRequests[0])).toMatchObject({
+        model: "litellm/pro-router",
         agent: "explore"
       });
     } finally {
@@ -1381,6 +1390,11 @@ function extractOpenCodePromptText(request: Record<string, unknown> | undefined)
     return String((first as { text?: unknown }).text ?? "");
   }
   return "";
+}
+
+function extractOpenCodeSubtaskPart(request: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  const parts = Array.isArray(request?.parts) ? request.parts : [];
+  return parts.find((part): part is Record<string, unknown> => typeof part === "object" && part !== null && part.type === "subtask");
 }
 
 function getToolSchema(
