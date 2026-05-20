@@ -43,6 +43,9 @@ export interface JobMeta {
   parentSessionId?: string;
   sessionId?: string;
   externalSessionId?: string;
+  externalRunnerMode?: "per-spawn" | "shared-root";
+  externalRootAgent?: string;
+  externalRootSessionId?: string;
   externalParentSessionId?: string;
   externalChildSessionIds?: string[];
   externalServerUrl?: string;

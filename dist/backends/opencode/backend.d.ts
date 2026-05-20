@@ -49,6 +49,7 @@ export declare class OpenCodeBackend implements AgentBackend {
     private writeJobTrace;
     private submitPromptAsync;
     private refreshNativeChildSessions;
+    private getOrCreateSharedRootSession;
     private clientForMeta;
     private targetForContinue;
 }

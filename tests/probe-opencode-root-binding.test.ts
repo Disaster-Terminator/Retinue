@@ -50,7 +50,7 @@ describe("probe-opencode-root-binding", () => {
         const session = sessions.get(decodeURIComponent(promptMatch[1]));
         if (!session) return json(res, 404, { error: "missing session" });
         const promptText = isRecord(body) && Array.isArray(body.parts) ? body.parts.map((part) => (isRecord(part) ? part.text : "")).join("") : "";
-        const expected = String(promptText).match(/RETINUE_ROOT_[A-Z_]+_OK/)?.[0] ?? "RETINUE_ROOT_UNKNOWN_OK";
+        const expected = String(promptText).match(/RETINUE_ROOT_[A-Z_]+(?:_OK|_DONE)/)?.[0] ?? "RETINUE_ROOT_UNKNOWN_OK";
         session.messages.push({
           info: { role: "assistant", finish: "stop", agent: session.agent, sessionID: session.id },
           parts: [{ type: "text", text: expected }]
@@ -98,10 +98,13 @@ describe("probe-opencode-root-binding", () => {
 
       expect(output.ok).toBe(true);
       expect(perSpawn).toMatchObject({ ok: true });
+      expect(perSpawn.runnerMode).toBe("per-spawn");
       expect(new Set(perSpawn.roots).size).toBe(2);
       expect(sharedRoot).toMatchObject({ ok: true });
+      expect(sharedRoot.runnerMode).toBe("shared-root");
       expect(new Set(sharedRoot.childParentIds)).toEqual(new Set([sharedRoot.root]));
       expect(sharedRoot.childrenAfterPrompt.map((session: { id: string }) => session.id)).toEqual(expect.arrayContaining(sharedRoot.children));
+      expect(sharedRoot.tasks.every((task: { markerFound: boolean }) => task.markerFound)).toBe(true);
     });
 
     const createRequests = requests.filter((request) => request.method === "POST" && request.url.startsWith("/session?"));

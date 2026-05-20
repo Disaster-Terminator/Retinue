@@ -5,6 +5,7 @@ import { getJobPaths, getRetinueTracePath, resolveStateDir } from "../../core/pa
 import { isCleanupSafeStatus } from "../../core/status.js";
 import { OpenCodeClient, OpenCodeClientError } from "./client.js";
 import { scheduleManagedOpenCodeServerIdleShutdown } from "./serverManager.js";
+const SHARED_ROOT_SESSIONS = new Map();
 const OPENCODE_READ_ONLY_TOOLS_NO_BASH = {
     bash: false,
     edit: false,
@@ -168,11 +169,15 @@ export class OpenCodeBackend {
         await fs.writeFile(paths.prompt, options.prompt, "utf8");
         const target = await this.resolveTarget(options.cwd);
         const readOnlyBashPolicy = resolveReadOnlyBashPolicy(options.readOnlyBashPolicy);
-        const parentSession = await target.client.createSession({
-            cwd: options.cwd,
-            title: options.title ?? options.name,
-            agent: "build"
-        });
+        const runnerMode = resolveRunnerMode(this.env);
+        const rootAgent = resolveRootAgent(this.env);
+        const parentSession = runnerMode === "shared-root"
+            ? await this.getOrCreateSharedRootSession(target, options.cwd, rootAgent)
+            : await target.client.createSession({
+                cwd: options.cwd,
+                title: options.title ?? options.name,
+                agent: rootAgent
+            });
         const childSession = await target.client.createSession({
             cwd: options.cwd,
             title: options.title ?? options.name,
@@ -201,6 +206,9 @@ export class OpenCodeBackend {
             readOnlyPromptContract: options.readOnlyPromptContract === true,
             readOnlyToolDeny: options.readOnlyToolDeny === true,
             externalSessionId: childSession.id,
+            externalRunnerMode: runnerMode,
+            externalRootAgent: rootAgent,
+            externalRootSessionId: parentSession.id,
             externalParentSessionId: parentSession.id,
             externalChildSessionIds: [childSession.id],
             externalServerUrl: target.baseUrl,
@@ -705,6 +713,9 @@ export class OpenCodeBackend {
         const diagnostic = {
             baseUrl: meta.externalServerUrl ?? this.baseUrl ?? "",
             sessionId: meta.externalSessionId,
+            runnerMode: meta.externalRunnerMode,
+            rootAgent: meta.externalRootAgent,
+            rootSessionId: meta.externalRootSessionId,
             parentSessionId: meta.externalParentSessionId,
             childSessionIds: meta.externalChildSessionIds
         };
@@ -875,6 +886,26 @@ export class OpenCodeBackend {
         catch {
             return meta;
         }
+    }
+    async getOrCreateSharedRootSession(target, cwd, agent) {
+        const key = [target.baseUrl, cwd ?? "", agent].join("\0");
+        const existing = SHARED_ROOT_SESSIONS.get(key);
+        if (existing) {
+            try {
+                const session = await target.client.getSession(existing.id);
+                return session;
+            }
+            catch {
+                SHARED_ROOT_SESSIONS.delete(key);
+            }
+        }
+        const session = await target.client.createSession({
+            cwd,
+            title: "retinue-shared-root",
+            agent
+        });
+        SHARED_ROOT_SESSIONS.set(key, { id: session.id, baseUrl: target.baseUrl, cwd, agent });
+        return session;
     }
     clientForMeta(meta) {
         const baseUrl = meta.externalServerUrl?.replace(/\/+$/, "");
@@ -1481,6 +1512,23 @@ function createPromptPreview(prompt) {
 }
 function resolveReadOnlyBashPolicy(value) {
     return value ?? "readonly_git";
+}
+function resolveRunnerMode(env) {
+    const value = env?.RETINUE_OPENCODE_ROOT_BINDING_MODE?.trim().toLowerCase();
+    if (value === undefined || value === "" || value === "per_spawn" || value === "per-spawn") {
+        return "per-spawn";
+    }
+    if (value === "shared_root" || value === "shared-root") {
+        return "shared-root";
+    }
+    throw new Error(`Unsupported RETINUE_OPENCODE_ROOT_BINDING_MODE: ${value}`);
+}
+function resolveRootAgent(env) {
+    const value = env?.RETINUE_OPENCODE_ROOT_AGENT?.trim();
+    if (value === undefined || value === "") {
+        return "build";
+    }
+    return value;
 }
 function buildReadOnlyPermission(bashPolicy) {
     return bashPolicy === "readonly_git"

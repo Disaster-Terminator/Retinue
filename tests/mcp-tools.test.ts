@@ -306,6 +306,10 @@ describe("MCP tools", () => {
         cwd: tempDir,
         jobDir: path.join(tempDir, "jobs", spawn.jobId),
         externalServerUrl: fakeOpenCode.url,
+        externalRunnerMode: "per-spawn",
+        externalRootAgent: "build",
+        externalRootSessionId: expect.stringMatching(/^ses_/),
+        externalParentSessionId: expect.stringMatching(/^ses_/),
         externalSessionDirectory: process.cwd()
       });
       expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "explore" });

@@ -35,11 +35,15 @@ const TASKS = [
 async function main() {
   const rootStateDir = await ensureStateDir(process.env.RETINUE_STATE_DIR);
   const agents = parseAgents(process.env.RETINUE_DOGFOOD_OPENCODE_AGENT_LIST ?? process.env.RETINUE_OPENCODE_AGENT_LIST);
+  const rootBindingModes = parseRootBindingModes(process.env.RETINUE_DOGFOOD_OPENCODE_ROOT_BINDING_MODE_LIST);
+  const accessMode = parseAccessMode(process.env.RETINUE_DOGFOOD_OPENCODE_ACCESS_MODE);
   const timeoutMs = parsePositiveInt(process.env.RETINUE_DOGFOOD_OPENCODE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);
   const results = [];
 
   for (const agent of agents) {
-    results.push(await runAgentDogfood({ agent, rootStateDir, timeoutMs }));
+    for (const rootBindingMode of rootBindingModes) {
+      results.push(await runAgentDogfood({ agent, rootBindingMode, accessMode, rootStateDir, timeoutMs }));
+    }
   }
 
   const summary = summarizeDogfoodResults(results);
@@ -47,6 +51,8 @@ async function main() {
     ok: summary.ok,
     cwd: process.cwd(),
     agents,
+    rootBindingModes,
+    accessMode,
     timeoutMs,
     rootStateDir,
     tracePath: path.join(rootStateDir, "logs", "retinue.jsonl"),
@@ -63,22 +69,24 @@ async function main() {
   process.exitCode = 1;
 }
 
-async function runAgentDogfood({ agent, rootStateDir, timeoutMs }) {
+async function runAgentDogfood({ agent, rootBindingMode, accessMode, rootStateDir, timeoutMs }) {
   const stateDir = rootStateDir;
-  await mkdir(path.join(stateDir, "dogfood-runs", sanitizePathPart(agent)), { recursive: true });
+  await mkdir(path.join(stateDir, "dogfood-runs", sanitizePathPart(agent), sanitizePathPart(rootBindingMode)), { recursive: true });
 
   const previousEnv = snapshotEnv([
     "RETINUE_BACKEND",
     "RETINUE_STATE_DIR",
     "RETINUE_OPENCODE_AUTO_SERVE",
     "RETINUE_OPENCODE_HOST",
-    "RETINUE_OPENCODE_AGENT"
+    "RETINUE_OPENCODE_AGENT",
+    "RETINUE_OPENCODE_ROOT_BINDING_MODE"
   ]);
   process.env.RETINUE_BACKEND = "opencode";
   process.env.RETINUE_STATE_DIR = stateDir;
   process.env.RETINUE_OPENCODE_AUTO_SERVE = process.env.RETINUE_OPENCODE_AUTO_SERVE ?? "1";
   process.env.RETINUE_OPENCODE_HOST = process.env.RETINUE_OPENCODE_HOST ?? "127.0.0.1";
   process.env.RETINUE_OPENCODE_AGENT = agent;
+  process.env.RETINUE_OPENCODE_ROOT_BINDING_MODE = rootBindingMode;
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: `retinue-opencode-dogfood-${agent}`, version: "0.1.0" });
@@ -96,8 +104,8 @@ async function runAgentDogfood({ agent, rootStateDir, timeoutMs }) {
             name: "retinue_spawn_agent",
             arguments: {
               cwd,
-              task_name: `${agent}-${task.name}`,
-              access_mode: "read_only",
+              task_name: `${agent}-${rootBindingMode}-${task.name}`,
+              access_mode: accessMode,
               bash_policy: "readonly_git",
               message: task.message
             }
@@ -145,8 +153,10 @@ async function runAgentDogfood({ agent, rootStateDir, timeoutMs }) {
 
     return {
       agent,
+      rootBindingMode,
+      accessMode,
       stateDir,
-      agentArtifactDir: path.join(stateDir, "dogfood-runs", sanitizePathPart(agent)),
+      agentArtifactDir: path.join(stateDir, "dogfood-runs", sanitizePathPart(agent), sanitizePathPart(rootBindingMode)),
       tracePath: path.join(stateDir, "logs", "retinue.jsonl"),
       waits
     };
@@ -163,6 +173,10 @@ function summarizeWait(spawn, wait) {
     jobId: spawn.jobId,
     backend: spawn.backend,
     externalSessionId: spawn.externalSessionId,
+    externalRunnerMode: spawn.externalRunnerMode,
+    externalRootAgent: spawn.externalRootAgent,
+    externalRootSessionId: spawn.externalRootSessionId,
+    externalParentSessionId: spawn.externalParentSessionId,
     externalServerUrl: spawn.externalServerUrl,
     externalSessionDirectory: spawn.externalSessionDirectory,
     status: wait.status,
@@ -199,6 +213,29 @@ function parseAgents(value) {
     throw new Error("RETINUE_DOGFOOD_OPENCODE_AGENT_LIST did not include any agent names");
   }
   return agents;
+}
+
+function parseRootBindingModes(value) {
+  const modes = (value ? value.split(",") : ["per_spawn"]).map((mode) => mode.trim()).filter(Boolean);
+  if (modes.length === 0) {
+    throw new Error("RETINUE_DOGFOOD_OPENCODE_ROOT_BINDING_MODE_LIST did not include any modes");
+  }
+  for (const mode of modes) {
+    if (!["per_spawn", "per-spawn", "shared_root", "shared-root"].includes(mode)) {
+      throw new Error(`Unsupported root binding mode: ${mode}`);
+    }
+  }
+  return modes;
+}
+
+function parseAccessMode(value) {
+  if (value === undefined || value === "") {
+    return "read_only";
+  }
+  if (value === "read_only" || value === "profile") {
+    return value;
+  }
+  throw new Error(`Unsupported RETINUE_DOGFOOD_OPENCODE_ACCESS_MODE: ${value}`);
 }
 
 function parsePositiveInt(value, fallback) {

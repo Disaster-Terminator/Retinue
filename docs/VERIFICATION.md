@@ -93,6 +93,18 @@ Provider/API failures are grouped under provider-specific `failureReason` values
 recognize them, for example `provider_error:deepseek_reasoning_content`; treat those as backend route
 or provider compatibility failures before investigating Retinue lifecycle code.
 
+When comparing OpenCode root binding modes, keep both modes in the same Retinue MCP probe and let the
+output separate them:
+
+```bash
+RETINUE_DOGFOOD_OPENCODE_ROOT_BINDING_MODE_LIST=per_spawn,shared_root pnpm run gate:dogfood
+```
+
+The default product path is still `per_spawn`. `shared_root` is experimental and should become a
+default only after real Retinue dogfood shows a clear reliability advantage. The dogfood JSON records
+`externalRunnerMode`, `externalRootAgent`, `externalRootSessionId`, `externalParentSessionId`, and the
+child `externalSessionId` for this comparison.
+
 Use the OpenCode agent A/B probe only when comparing runtime behavior across built-in agents:
 
 ```bash

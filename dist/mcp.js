@@ -110,6 +110,10 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             }), started.jobId).dir,
             sessionId: started.sessionId,
             externalSessionId: started.externalSessionId,
+            externalRunnerMode: started.externalRunnerMode,
+            externalRootAgent: started.externalRootAgent,
+            externalRootSessionId: started.externalRootSessionId,
+            externalParentSessionId: started.externalParentSessionId,
             externalServerUrl: started.externalServerUrl,
             externalSessionDirectory: started.externalSessionDirectory,
             evictedJobId: evicted?.jobId

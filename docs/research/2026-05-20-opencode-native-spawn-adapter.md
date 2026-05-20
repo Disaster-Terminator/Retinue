@@ -62,6 +62,13 @@ The backend direction is now OpenCode-native by default:
 6. Preserve `subtask` prompt parts and fork probes as diagnostics or future explicit parent-orchestrated flows, not the normal single-agent runner.
 7. Keep Retinue access policy configurable, but avoid making Retinue pretend to be OpenCode's permission system.
 
+Follow-up dogfood on 2026-05-20 compared two native root-container shapes through the Retinue MCP path:
+
+- `per_spawn`: one unprompted OpenCode root session per Retinue job, then one prompted child session.
+- `shared_root`: one unprompted OpenCode root session reused for jobs with the same server URL, cwd, and root agent, then separate prompted child sessions.
+
+The real dogfood result did not show a clear reliability advantage for `shared_root`: profile mode completed 3/3 usable `per_spawn` jobs and 2/3 usable `shared_root` jobs, while read-only mode completed 3/3 in both modes. Therefore `per_spawn` remains the default. `shared_root` is kept as an experimental feature behind `RETINUE_OPENCODE_ROOT_BINDING_MODE=shared_root`, with `RETINUE_OPENCODE_ROOT_AGENT` available to avoid hard-coding the root container agent. Logs and MCP spawn results include `externalRunnerMode`, `externalRootAgent`, `externalRootSessionId`, `externalParentSessionId`, and child session ids so the two modes do not get mixed in audits.
+
 ## Acceptance For The Next Product Change
 
 - Retinue runs OpenCode jobs through a direct native child session and collects child final text.

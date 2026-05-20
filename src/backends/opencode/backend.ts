@@ -21,6 +21,16 @@ export interface OpenCodeBackendTarget {
   baseUrl: string;
 }
 type OpenCodeReadOnlyBashPolicy = "none" | "readonly_git";
+type OpenCodeRunnerMode = "per-spawn" | "shared-root";
+
+interface SharedRootSession {
+  id: string;
+  baseUrl: string;
+  cwd?: string;
+  agent: string;
+}
+
+const SHARED_ROOT_SESSIONS = new Map<string, SharedRootSession>();
 
 const OPENCODE_READ_ONLY_TOOLS_NO_BASH: Record<string, boolean> = {
   bash: false,
@@ -168,6 +178,9 @@ interface OpenCodePartSummary {
 interface OpenCodeJobDiagnostic {
   baseUrl: string;
   sessionId?: string;
+  runnerMode?: JobMeta["externalRunnerMode"];
+  rootAgent?: string;
+  rootSessionId?: string;
   parentSessionId?: string;
   childSessionIds?: string[];
   sessionDirectory?: string;
@@ -300,11 +313,16 @@ export class OpenCodeBackend implements AgentBackend {
 
     const target = await this.resolveTarget(options.cwd);
     const readOnlyBashPolicy = resolveReadOnlyBashPolicy(options.readOnlyBashPolicy);
-    const parentSession = await target.client.createSession({
-      cwd: options.cwd,
-      title: options.title ?? options.name,
-      agent: "build"
-    });
+    const runnerMode = resolveRunnerMode(this.env);
+    const rootAgent = resolveRootAgent(this.env);
+    const parentSession =
+      runnerMode === "shared-root"
+        ? await this.getOrCreateSharedRootSession(target, options.cwd, rootAgent)
+        : await target.client.createSession({
+            cwd: options.cwd,
+            title: options.title ?? options.name,
+            agent: rootAgent
+          });
     const childSession = await target.client.createSession({
       cwd: options.cwd,
       title: options.title ?? options.name,
@@ -333,6 +351,9 @@ export class OpenCodeBackend implements AgentBackend {
       readOnlyPromptContract: options.readOnlyPromptContract === true,
       readOnlyToolDeny: options.readOnlyToolDeny === true,
       externalSessionId: childSession.id,
+      externalRunnerMode: runnerMode,
+      externalRootAgent: rootAgent,
+      externalRootSessionId: parentSession.id,
       externalParentSessionId: parentSession.id,
       externalChildSessionIds: [childSession.id],
       externalServerUrl: target.baseUrl,
@@ -853,6 +874,9 @@ export class OpenCodeBackend implements AgentBackend {
     const diagnostic: OpenCodeJobDiagnostic = {
       baseUrl: meta.externalServerUrl ?? this.baseUrl ?? "",
       sessionId: meta.externalSessionId,
+      runnerMode: meta.externalRunnerMode,
+      rootAgent: meta.externalRootAgent,
+      rootSessionId: meta.externalRootSessionId,
       parentSessionId: meta.externalParentSessionId,
       childSessionIds: meta.externalChildSessionIds
     };
@@ -1034,6 +1058,26 @@ export class OpenCodeBackend implements AgentBackend {
     } catch {
       return meta;
     }
+  }
+
+  private async getOrCreateSharedRootSession(target: OpenCodeBackendTarget, cwd: string | undefined, agent: string) {
+    const key = [target.baseUrl, cwd ?? "", agent].join("\0");
+    const existing = SHARED_ROOT_SESSIONS.get(key);
+    if (existing) {
+      try {
+        const session = await target.client.getSession(existing.id);
+        return session;
+      } catch {
+        SHARED_ROOT_SESSIONS.delete(key);
+      }
+    }
+    const session = await target.client.createSession({
+      cwd,
+      title: "retinue-shared-root",
+      agent
+    });
+    SHARED_ROOT_SESSIONS.set(key, { id: session.id, baseUrl: target.baseUrl, cwd, agent });
+    return session;
   }
 
   private clientForMeta(meta: JobMeta): OpenCodeClient {
@@ -1731,6 +1775,25 @@ function createPromptPreview(prompt: string): string {
 
 function resolveReadOnlyBashPolicy(value: AgentRunOptions["readOnlyBashPolicy"]): OpenCodeReadOnlyBashPolicy {
   return value ?? "readonly_git";
+}
+
+function resolveRunnerMode(env: RetinueOptions["env"]): OpenCodeRunnerMode {
+  const value = env?.RETINUE_OPENCODE_ROOT_BINDING_MODE?.trim().toLowerCase();
+  if (value === undefined || value === "" || value === "per_spawn" || value === "per-spawn") {
+    return "per-spawn";
+  }
+  if (value === "shared_root" || value === "shared-root") {
+    return "shared-root";
+  }
+  throw new Error(`Unsupported RETINUE_OPENCODE_ROOT_BINDING_MODE: ${value}`);
+}
+
+function resolveRootAgent(env: RetinueOptions["env"]): string {
+  const value = env?.RETINUE_OPENCODE_ROOT_AGENT?.trim();
+  if (value === undefined || value === "") {
+    return "build";
+  }
+  return value;
 }
 
 function buildReadOnlyPermission(bashPolicy: OpenCodeReadOnlyBashPolicy): OpenCodePermissionRule[] {

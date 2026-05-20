@@ -98,6 +98,78 @@ describe("OpenCodeBackend", () => {
     });
   });
 
+  it("can reuse one OpenCode root session for multiple child jobs in shared-root mode", async () => {
+    const backend = createBackend({ RETINUE_OPENCODE_ROOT_BINDING_MODE: "shared_root" } as NodeJS.ProcessEnv);
+
+    const first = await backend.run({
+      cwd: tempDir,
+      prompt: "review package scripts",
+      title: "shared demo one",
+      agent: "explore"
+    });
+    const second = await backend.run({
+      cwd: tempDir,
+      prompt: "review mcp surface",
+      title: "shared demo two",
+      agent: "explore"
+    });
+
+    expect(first.externalRunnerMode).toBe("shared-root");
+    expect(second.externalRunnerMode).toBe("shared-root");
+    expect(first.externalRootAgent).toBe("build");
+    expect(second.externalRootAgent).toBe("build");
+    expect(first.externalRootSessionId).toBe(first.externalParentSessionId);
+    expect(second.externalRootSessionId).toBe(first.externalRootSessionId);
+    expect(second.externalParentSessionId).toBe(first.externalParentSessionId);
+    expect(first.externalSessionId).not.toBe(second.externalSessionId);
+    expect(server!.sessionRequests).toHaveLength(3);
+    expect(server!.sessionRequests[0]).toMatchObject({
+      directory: tempDir,
+      title: "retinue-shared-root",
+      agent: "build"
+    });
+    expect(server!.sessionRequests[1]).toMatchObject({
+      directory: tempDir,
+      parentID: first.externalRootSessionId,
+      agent: "explore"
+    });
+    expect(server!.sessionRequests[2]).toMatchObject({
+      directory: tempDir,
+      parentID: first.externalRootSessionId,
+      agent: "explore"
+    });
+    await expect(new OpenCodeClient(server!.url).children(first.externalRootSessionId!)).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: first.externalSessionId, parentID: first.externalRootSessionId }),
+        expect.objectContaining({ id: second.externalSessionId, parentID: first.externalRootSessionId })
+      ])
+    );
+  });
+
+  it("can select the OpenCode root agent without changing the child agent", async () => {
+    const backend = createBackend({ RETINUE_OPENCODE_ROOT_AGENT: "plan" } as NodeJS.ProcessEnv);
+
+    const started = await backend.run({
+      cwd: tempDir,
+      prompt: "review package scripts",
+      title: "root agent demo",
+      agent: "explore"
+    });
+
+    expect(started.externalRunnerMode).toBe("per-spawn");
+    expect(started.externalRootAgent).toBe("plan");
+    expect(server!.sessionRequests[0]).toMatchObject({
+      directory: tempDir,
+      title: "root agent demo",
+      agent: "plan"
+    });
+    expect(server!.sessionRequests[1]).toMatchObject({
+      directory: tempDir,
+      parentID: started.externalRootSessionId,
+      agent: "explore"
+    });
+  });
+
   it("reports unreachable OpenCode backend without marking job metadata corrupted", async () => {
     const backend = createBackend();
     const started = await backend.run({ cwd: tempDir, prompt: "hello" });

@@ -8,6 +8,64 @@ const timeoutMs = Number(process.env.RETINUE_OPENCODE_ROOT_BINDING_TIMEOUT_MS ??
 const pollMs = 750;
 const rootAgent = process.env.RETINUE_OPENCODE_ROOT_BINDING_ROOT_AGENT ?? "build";
 const childAgent = process.env.RETINUE_OPENCODE_ROOT_BINDING_CHILD_AGENT ?? "explore";
+const scenario = process.env.RETINUE_OPENCODE_ROOT_BINDING_SCENARIO ?? "deterministic";
+
+const SCENARIOS = {
+  deterministic: [
+    {
+      name: "one",
+      marker: "RETINUE_ROOT_DETERMINISTIC_ONE_OK",
+      prompt: "Do not use tools. Reply exactly: RETINUE_ROOT_DETERMINISTIC_ONE_OK"
+    },
+    {
+      name: "two",
+      marker: "RETINUE_ROOT_DETERMINISTIC_TWO_OK",
+      prompt: "Do not use tools. Reply exactly: RETINUE_ROOT_DETERMINISTIC_TWO_OK"
+    }
+  ],
+  "diff-bash": [
+    {
+      name: "diff-stat",
+      marker: "RETINUE_ROOT_DIFF_STAT_DONE",
+      prompt:
+        "Do not modify files. Run git diff --stat once if bash is available, then report whether bash worked and end with RETINUE_ROOT_DIFF_STAT_DONE."
+    },
+    {
+      name: "diff-name-status",
+      marker: "RETINUE_ROOT_DIFF_NAME_STATUS_DONE",
+      prompt:
+        "Do not modify files. Run git diff --name-status once if bash is available, then report whether bash worked and end with RETINUE_ROOT_DIFF_NAME_STATUS_DONE."
+    }
+  ],
+  "bounded-file-review": [
+    {
+      name: "package-review",
+      marker: "RETINUE_ROOT_PACKAGE_REVIEW_DONE",
+      prompt:
+        "Read-only bounded review. Use at most 3 repository inspection tool calls. Inspect package.json only if needed. Judge whether package scripts include grouped test commands. Return PASS or FAIL with one evidence line and end with RETINUE_ROOT_PACKAGE_REVIEW_DONE."
+    },
+    {
+      name: "mcp-review",
+      marker: "RETINUE_ROOT_MCP_REVIEW_DONE",
+      prompt:
+        "Read-only bounded review. Use at most 3 repository inspection tool calls. Inspect src/mcp.ts only if needed. Judge whether retinue_spawn_agent exposes access_mode. Return PASS or FAIL with one evidence line and end with RETINUE_ROOT_MCP_REVIEW_DONE."
+    }
+  ],
+  "write-intent-review": [
+    {
+      name: "useful-review-with-diff",
+      marker: "RETINUE_ROOT_WRITE_INTENT_ONE_DONE",
+      prompt:
+        "Read-only review. Do not modify files. Inspect package.json if needed. Return one useful finding or PASS with evidence, then include a fenced diff snippet as an illustrative suggestion only. End with RETINUE_ROOT_WRITE_INTENT_ONE_DONE."
+    },
+    {
+      name: "useful-review-with-patch-mention",
+      marker: "RETINUE_ROOT_WRITE_INTENT_TWO_DONE",
+      prompt:
+        "Read-only review. Do not modify files. Inspect src/mcp.ts if needed. Return one useful finding or PASS with evidence, then include an apply_patch-style snippet as an illustrative suggestion only. End with RETINUE_ROOT_WRITE_INTENT_TWO_DONE."
+    }
+  ]
+};
 
 const createdSessions = [];
 
@@ -39,6 +97,7 @@ async function main() {
         baseUrl,
         cwd,
         mode,
+        scenario,
         rootAgent,
         childAgent,
         health,
@@ -61,28 +120,33 @@ function selectModes(value) {
 }
 
 async function probePerSpawn() {
-  const first = await createParentChild("retinue-root-binding-per-spawn-1", "RETINUE_ROOT_PER_SPAWN_ONE_OK");
-  const second = await createParentChild("retinue-root-binding-per-spawn-2", "RETINUE_ROOT_PER_SPAWN_TWO_OK");
+  const tasks = selectScenario(scenario);
+  const first = await createParentChild("retinue-root-binding-per-spawn-1", tasks[0]);
+  const second = await createParentChild("retinue-root-binding-per-spawn-2", tasks[1]);
   const parentIds = [first.parent.id, second.parent.id];
   return {
     name: "per-spawn",
+    runnerMode: "per-spawn",
     ok: parentIds[0] !== parentIds[1] && first.ok && second.ok,
     roots: parentIds,
     children: [first.child.id, second.child.id],
     childParentIds: [first.child.parentID, second.child.parentID],
+    tasks: [first.taskSummary, second.taskSummary],
     childResults: [first.observed, second.observed],
     childrenByRoot: [first.childrenAfterPrompt, second.childrenAfterPrompt]
   };
 }
 
 async function probeSharedRoot() {
+  const tasks = selectScenario(scenario);
   const root = await createSession({ title: "retinue-root-binding-shared-root", agent: rootAgent });
-  const first = await createChildAndPrompt(root, "retinue-root-binding-shared-child-1", "RETINUE_ROOT_SHARED_ONE_OK");
-  const second = await createChildAndPrompt(root, "retinue-root-binding-shared-child-2", "RETINUE_ROOT_SHARED_TWO_OK");
+  const first = await createChildAndPrompt(root, "retinue-root-binding-shared-child-1", tasks[0]);
+  const second = await createChildAndPrompt(root, "retinue-root-binding-shared-child-2", tasks[1]);
   const childrenAfterPrompt = await sessionChildren(root.id);
   const childIds = childrenAfterPrompt.map((session) => session.id);
   return {
     name: "shared-root",
+    runnerMode: "shared-root",
     ok:
       first.ok &&
       second.ok &&
@@ -93,32 +157,55 @@ async function probeSharedRoot() {
     root: root.id,
     children: [first.child.id, second.child.id],
     childParentIds: [first.child.parentID, second.child.parentID],
+    tasks: [first.taskSummary, second.taskSummary],
     childResults: [first.observed, second.observed],
     childrenAfterPrompt
   };
 }
 
-async function createParentChild(title, expectedText) {
+function selectScenario(value) {
+  const tasks = SCENARIOS[value];
+  if (tasks) {
+    return tasks;
+  }
+  throw new Error(`Unsupported RETINUE_OPENCODE_ROOT_BINDING_SCENARIO: ${value}`);
+}
+
+async function createParentChild(title, task) {
   const parent = await createSession({ title: `${title}-root`, agent: rootAgent });
-  const childResult = await createChildAndPrompt(parent, `${title}-child`, expectedText);
+  const childResult = await createChildAndPrompt(parent, `${title}-${task.name}-child`, task);
   const childrenAfterPrompt = await sessionChildren(parent.id);
   return {
     ok: childResult.ok && childResult.child.parentID === parent.id,
     parent,
     child: childResult.child,
+    taskSummary: childResult.taskSummary,
     observed: childResult.observed,
     childrenAfterPrompt
   };
 }
 
-async function createChildAndPrompt(parent, title, expectedText) {
+async function createChildAndPrompt(parent, title, task) {
   const child = await createSession({ title, parentID: parent.id, agent: childAgent });
   await promptAsync(child.id, {
     agent: childAgent,
-    parts: [{ type: "text", text: `Do not use tools. Reply exactly: ${expectedText}` }]
+    parts: [{ type: "text", text: task.prompt }]
   });
   const observed = await waitForFinalText(child.id);
-  return { ok: observed.status === "completed" && observed.finalText.includes(expectedText), child, observed };
+  return {
+    ok: observed.status === "completed" && observed.finalText.includes(task.marker),
+    marker: task.marker,
+    taskSummary: {
+      name: task.name,
+      marker: task.marker,
+      status: observed.status,
+      markerFound: (observed.finalText ?? "").includes(task.marker),
+      finalTextBytes: Buffer.byteLength(observed.finalText ?? "", "utf8"),
+      finalTextPreview: (observed.finalText ?? "").slice(0, 500)
+    },
+    child,
+    observed
+  };
 }
 
 async function createSession(body) {
@@ -159,8 +246,12 @@ function latestCompletedAssistantText(messages) {
     if (message?.info?.role !== "assistant") {
       continue;
     }
+    const partTypes = Array.isArray(message.parts) ? message.parts.map((part) => part.type ?? "unknown") : [];
+    if (partTypes.includes("tool")) {
+      continue;
+    }
     const text = extractText(message);
-    const completed = message.info?.finish === "stop" || typeof message.info?.time?.completed === "number";
+    const completed = message.info?.finish === "stop";
     if (completed && text.trim()) {
       return text.trim();
     }
