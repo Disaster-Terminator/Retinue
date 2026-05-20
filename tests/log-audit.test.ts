@@ -1,0 +1,80 @@
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+
+const scriptPath = path.resolve("scripts/audit-retinue-logs.mjs");
+
+describe("Retinue log audit script", () => {
+  it("summarizes recent stalled diagnostics into deduplicated issue candidates", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-"));
+    try {
+      const tracePath = path.join(tempDir, "retinue.jsonl");
+      fs.writeFileSync(
+        tracePath,
+        [
+          JSON.stringify({
+            time: "2026-05-20T07:00:00.000Z",
+            event: "opencode_job_stalled",
+            jobId: "old",
+            diagnostic: { stallReason: "provider_blank_assistant", lastAssistantProviderID: "litellm", lastAssistantModelID: "semantic-router" }
+          }),
+          JSON.stringify({
+            time: "2026-05-20T08:00:00.000Z",
+            event: "opencode_job_stalled",
+            jobId: "job_a",
+            diagnostic: {
+              sessionId: "ses_child",
+              parentSessionId: "ses_parent",
+              childSessionIds: ["ses_child"],
+              sessionDirectory: "/repo",
+              stallReason: "provider_blank_assistant",
+              stallSummary: "OpenCode provider/router produced blank assistant output for 90000ms.",
+              lastAssistantProviderID: "litellm",
+              lastAssistantModelID: "semantic-router",
+              lastAssistantAgent: "explore",
+              lastAssistantMode: "explore",
+              noCompletedAssistantDurationMs: 90000,
+              blankAssistantRounds: 1
+            }
+          }),
+          JSON.stringify({
+            time: "2026-05-20T08:01:00.000Z",
+            event: "opencode_job_result_read",
+            jobId: "job_b",
+            diagnostic: {
+              stallReason: "provider_blank_assistant",
+              lastAssistantProviderID: "litellm",
+              lastAssistantModelID: "semantic-router",
+              lastAssistantAgent: "explore",
+              lastAssistantMode: "explore"
+            }
+          })
+        ].join("\n")
+      );
+
+      const stdout = execFileSync(process.execPath, [scriptPath, "--trace", tracePath, "--since", "2026-05-20T07:30:00.000Z"], {
+        encoding: "utf8"
+      });
+      const parsed = JSON.parse(stdout);
+
+      expect(parsed.scannedEvents).toBe(2);
+      expect(parsed.issueCount).toBe(1);
+      expect(parsed.issues[0]).toMatchObject({
+        count: 2,
+        jobIds: ["job_a", "job_b"],
+        title: "Investigate Retinue provider_blank_assistant on litellm/semantic-router",
+        sample: {
+          jobId: "job_a",
+          sessionId: "ses_child",
+          parentSessionId: "ses_parent",
+          childSessionIds: ["ses_child"],
+          stallReason: "provider_blank_assistant"
+        }
+      });
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+});

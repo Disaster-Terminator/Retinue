@@ -55,6 +55,7 @@
     "probe:dogfood:opencode": "pnpm run build && node scripts/probe-retinue-opencode-dogfood.mjs",
     "gate:dogfood": "pnpm run probe:dogfood:opencode",
     "probe:hermes-retinue": "node scripts/probe-hermes-retinue-mcp.mjs",
+    "audit:logs": "node scripts/audit-retinue-logs.mjs",
     "test": "pnpm run test:all",
     "test:all": "vitest run",
     "test:core": "vitest run tests/core",
