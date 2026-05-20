@@ -38,14 +38,15 @@ Probe result summary:
 | Current runner session + `prompt_async` | completed | The existing runner still works for simple deterministic prompts. |
 | Explicit child session with `parentID` | completed | OpenCode records parent/child relation and `/children` returns the child. |
 | Fork endpoint | created fork session | Fork exists, but the initial probe did not yet verify a completed fork reply. |
-| `subtask` part on a parent prompt | completed, final text returned by parent | This is the strongest native candidate for Retinue-style spawn/result collection. |
+| Direct child session with `parentID` | completed, final text returned by child | This is the default candidate for Retinue-style single child-agent spawn/result collection. |
+| `subtask` part on a parent prompt | completed, final text returned by parent | Useful for parent-orchestrated probes or future multi-child aggregation, but it adds an extra model hop. |
 | Agent `steps` surface | none in current agent summary | No actionable local `steps` contract was observed in this config. |
 
 Retinue dogfood cross-check:
 
 - A read-only Retinue review job produced useful text, but OpenCode also emitted a patch/write-intent part.
 - Retinue correctly marked it `stalled` rather than trusting the job as clean read-only output.
-- This supports reducing Retinue-owned prompt/policy emulation where OpenCode native subtask semantics can return a parent-level final answer.
+- This supports reducing Retinue-owned prompt/policy emulation while keeping result collection on the actual child session whenever Retinue is asked to spawn one child agent.
 
 ## Decision
 
@@ -53,16 +54,17 @@ Retinue should not keep deepening the current standalone-session wrapper as the 
 
 The backend direction is now OpenCode-native by default:
 
-1. Use a parent OpenCode `build` session as the Retinue job session.
-2. Submit the actual child work as an OpenCode `subtask` part, with the requested Retinue agent and model passed through to OpenCode.
-3. Treat the parent assistant's final text as the result collection path.
-4. Record parent and child session IDs in Retinue metadata and diagnostics.
-5. Preserve explicit child session and fork probes as diagnostics, not the first production path.
-6. Keep Retinue access policy configurable, but avoid making Retinue pretend to be OpenCode's permission system.
+1. Use an unprompted parent OpenCode session only as a native relationship container when useful.
+2. Create the actual Retinue job as a direct OpenCode child session with `parentID`, requested agent, model, cwd, and permission policy.
+3. Submit the prompt directly to the child session.
+4. Treat the child assistant's final text as the result collection path.
+5. Record parent and child session IDs in Retinue metadata and diagnostics.
+6. Preserve `subtask` prompt parts and fork probes as diagnostics or future explicit parent-orchestrated flows, not the normal single-agent runner.
+7. Keep Retinue access policy configurable, but avoid making Retinue pretend to be OpenCode's permission system.
 
 ## Acceptance For The Next Product Change
 
-- Retinue runs OpenCode jobs through native `subtask` and collects parent final text.
+- Retinue runs OpenCode jobs through a direct native child session and collects child final text.
 - Retinue records parent/child session IDs in metadata and diagnostics when OpenCode exposes them.
-- Existing stall diagnostics remain available around the parent session stream.
+- Existing stall diagnostics remain available around the child session stream.
 - The release should describe this as OpenCode-native spawn alignment work, not as a new custom agent framework.

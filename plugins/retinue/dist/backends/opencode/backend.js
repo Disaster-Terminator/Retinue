@@ -168,13 +168,20 @@ export class OpenCodeBackend {
         await fs.writeFile(paths.prompt, options.prompt, "utf8");
         const target = await this.resolveTarget(options.cwd);
         const readOnlyBashPolicy = resolveReadOnlyBashPolicy(options.readOnlyBashPolicy);
-        const session = await target.client.createSession({
+        const parentSession = await target.client.createSession({
             cwd: options.cwd,
             title: options.title ?? options.name,
-            agent: "build",
+            agent: "build"
+        });
+        const childSession = await target.client.createSession({
+            cwd: options.cwd,
+            title: options.title ?? options.name,
+            parentID: parentSession.id,
+            agent: options.agent ?? "explore",
+            model: options.model,
             permission: options.readOnly === true ? buildReadOnlyPermission(readOnlyBashPolicy) : undefined
         });
-        const baseline = await this.captureMessageBaseline(target.client, session.id);
+        const baseline = await this.captureMessageBaseline(target.client, childSession.id);
         const now = new Date().toISOString();
         const meta = {
             schemaVersion: 1,
@@ -193,10 +200,11 @@ export class OpenCodeBackend {
             readOnly: options.readOnly === true,
             readOnlyPromptContract: options.readOnlyPromptContract === true,
             readOnlyToolDeny: options.readOnlyToolDeny === true,
-            externalSessionId: session.id,
-            externalParentSessionId: session.id,
+            externalSessionId: childSession.id,
+            externalParentSessionId: parentSession.id,
+            externalChildSessionIds: [childSession.id],
             externalServerUrl: target.baseUrl,
-            externalSessionDirectory: session.directory ?? session.cwd,
+            externalSessionDirectory: childSession.directory ?? childSession.cwd,
             externalMessageBaselineCount: baseline.messageCount,
             externalCompletedAssistantBaselineCount: baseline.completedAssistantCount,
             parentJobId: options.parentJobId,
@@ -207,7 +215,7 @@ export class OpenCodeBackend {
         };
         await writeJsonAtomic(paths.meta, meta);
         let submittedFinished = false;
-        const submitted = this.submitPromptAsync(target.client, session.id, meta, options).then(() => {
+        const submitted = this.submitPromptAsync(target.client, childSession.id, meta, options).then(() => {
             submittedFinished = true;
         });
         await Promise.race([submitted, sleep(50)]);
@@ -829,8 +837,9 @@ export class OpenCodeBackend {
         try {
             const prompt = buildOpenCodePrompt(options.prompt, options.readOnly === true && options.readOnlyPromptContract === true, resolveReadOnlyBashPolicy(options.readOnlyBashPolicy));
             await client.promptAsync(sessionId, {
-                parts: buildNativeSubtaskPromptParts(prompt, options),
-                agent: "build",
+                prompt,
+                agent: options.agent ?? "explore",
+                model: options.model,
                 tools: options.readOnly === true && options.readOnlyToolDeny === true
                     ? buildReadOnlyTools(resolveReadOnlyBashPolicy(options.readOnlyBashPolicy))
                     : undefined
@@ -849,7 +858,7 @@ export class OpenCodeBackend {
         }
     }
     async refreshNativeChildSessions(client, meta) {
-        if (!meta.externalSessionId) {
+        if (!meta.externalParentSessionId) {
             return meta;
         }
         try {
@@ -857,7 +866,7 @@ export class OpenCodeBackend {
             if (current.status !== "running") {
                 return current;
             }
-            const children = await client.children(meta.externalSessionId);
+            const children = await client.children(meta.externalParentSessionId);
             const childIds = children.map((session) => session.id).filter((id) => typeof id === "string");
             const updated = { ...current, externalChildSessionIds: childIds, updatedAt: new Date().toISOString() };
             await writeJsonAtomic(getJobPaths(this.stateDir, meta.jobId).meta, updated);
@@ -1486,18 +1495,6 @@ function buildOpenCodePrompt(prompt, readOnly, bashPolicy) {
         return prompt;
     }
     return `${createReadOnlyPromptContract(bashPolicy)}\n\nUser task:\n${prompt}`;
-}
-function buildNativeSubtaskPromptParts(prompt, options) {
-    return [
-        { type: "text", text: prompt },
-        {
-            type: "subtask",
-            description: options.title ?? options.name ?? "Retinue child agent",
-            agent: options.agent ?? "explore",
-            prompt,
-            model: options.model
-        }
-    ];
 }
 function sha256(value) {
     return createHash("sha256").update(value).digest("hex");

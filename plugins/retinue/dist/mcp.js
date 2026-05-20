@@ -22192,13 +22192,20 @@ var OpenCodeBackend = class {
     await fs2.writeFile(paths.prompt, options.prompt, "utf8");
     const target = await this.resolveTarget(options.cwd);
     const readOnlyBashPolicy = resolveReadOnlyBashPolicy(options.readOnlyBashPolicy);
-    const session = await target.client.createSession({
+    const parentSession = await target.client.createSession({
       cwd: options.cwd,
       title: options.title ?? options.name,
-      agent: "build",
+      agent: "build"
+    });
+    const childSession = await target.client.createSession({
+      cwd: options.cwd,
+      title: options.title ?? options.name,
+      parentID: parentSession.id,
+      agent: options.agent ?? "explore",
+      model: options.model,
       permission: options.readOnly === true ? buildReadOnlyPermission(readOnlyBashPolicy) : void 0
     });
-    const baseline = await this.captureMessageBaseline(target.client, session.id);
+    const baseline = await this.captureMessageBaseline(target.client, childSession.id);
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const meta = {
       schemaVersion: 1,
@@ -22217,10 +22224,11 @@ var OpenCodeBackend = class {
       readOnly: options.readOnly === true,
       readOnlyPromptContract: options.readOnlyPromptContract === true,
       readOnlyToolDeny: options.readOnlyToolDeny === true,
-      externalSessionId: session.id,
-      externalParentSessionId: session.id,
+      externalSessionId: childSession.id,
+      externalParentSessionId: parentSession.id,
+      externalChildSessionIds: [childSession.id],
       externalServerUrl: target.baseUrl,
-      externalSessionDirectory: session.directory ?? session.cwd,
+      externalSessionDirectory: childSession.directory ?? childSession.cwd,
       externalMessageBaselineCount: baseline.messageCount,
       externalCompletedAssistantBaselineCount: baseline.completedAssistantCount,
       parentJobId: options.parentJobId,
@@ -22231,7 +22239,7 @@ var OpenCodeBackend = class {
     };
     await writeJsonAtomic(paths.meta, meta);
     let submittedFinished = false;
-    const submitted = this.submitPromptAsync(target.client, session.id, meta, options).then(() => {
+    const submitted = this.submitPromptAsync(target.client, childSession.id, meta, options).then(() => {
       submittedFinished = true;
     });
     await Promise.race([submitted, sleep2(50)]);
@@ -22823,8 +22831,9 @@ ${textWarning2}` : stderr;
         resolveReadOnlyBashPolicy(options.readOnlyBashPolicy)
       );
       await client.promptAsync(sessionId, {
-        parts: buildNativeSubtaskPromptParts(prompt, options),
-        agent: "build",
+        prompt,
+        agent: options.agent ?? "explore",
+        model: options.model,
         tools: options.readOnly === true && options.readOnlyToolDeny === true ? buildReadOnlyTools(resolveReadOnlyBashPolicy(options.readOnlyBashPolicy)) : void 0
       });
       await this.writeJobTrace("opencode_job_prompt_submitted", meta, await this.inspectJob(meta));
@@ -22840,7 +22849,7 @@ ${textWarning2}` : stderr;
     }
   }
   async refreshNativeChildSessions(client, meta) {
-    if (!meta.externalSessionId) {
+    if (!meta.externalParentSessionId) {
       return meta;
     }
     try {
@@ -22848,7 +22857,7 @@ ${textWarning2}` : stderr;
       if (current.status !== "running") {
         return current;
       }
-      const children = await client.children(meta.externalSessionId);
+      const children = await client.children(meta.externalParentSessionId);
       const childIds = children.map((session) => session.id).filter((id) => typeof id === "string");
       const updated = { ...current, externalChildSessionIds: childIds, updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
       await writeJsonAtomic(getJobPaths(this.stateDir, meta.jobId).meta, updated);
@@ -23442,18 +23451,6 @@ function buildOpenCodePrompt(prompt, readOnly, bashPolicy) {
 
 User task:
 ${prompt}`;
-}
-function buildNativeSubtaskPromptParts(prompt, options) {
-  return [
-    { type: "text", text: prompt },
-    {
-      type: "subtask",
-      description: options.title ?? options.name ?? "Retinue child agent",
-      agent: options.agent ?? "explore",
-      prompt,
-      model: options.model
-    }
-  ];
 }
 function sha256(value) {
   return createHash2("sha256").update(value).digest("hex");

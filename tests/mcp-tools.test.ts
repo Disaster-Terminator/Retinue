@@ -308,8 +308,7 @@ describe("MCP tools", () => {
         externalServerUrl: fakeOpenCode.url,
         externalSessionDirectory: process.cwd()
       });
-      expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "build" });
-      expect(extractOpenCodeSubtaskPart(fakeOpenCode.promptRequests.at(-1))).toMatchObject({ agent: "explore", prompt: "retinue mcp" });
+      expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "explore" });
       expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
       const submittedPrompt = extractOpenCodePromptText(fakeOpenCode.promptRequests.at(-1));
       expect(submittedPrompt).toBe("retinue mcp");
@@ -412,8 +411,8 @@ describe("MCP tools", () => {
         arguments: { cwd: tempDir, message: "write the implementation plan", task_name: "plan-policy", agent: "plan" }
       });
 
-      expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "build" });
-      expect(extractOpenCodeSubtaskPart(fakeOpenCode.promptRequests.at(-1))).toMatchObject({ agent: "plan", prompt: "write the implementation plan" });
+      expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "plan" });
+      expect(extractOpenCodePromptText(fakeOpenCode.promptRequests.at(-1))).toBe("write the implementation plan");
       expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
       expect(fakeOpenCode.sessionRequests.at(-1)).not.toHaveProperty("permission");
 
@@ -423,7 +422,7 @@ describe("MCP tools", () => {
       });
 
       expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "build" });
-      expect(extractOpenCodeSubtaskPart(fakeOpenCode.promptRequests.at(-1))).toMatchObject({ agent: "build", prompt: "make the requested change" });
+      expect(extractOpenCodePromptText(fakeOpenCode.promptRequests.at(-1))).toBe("make the requested change");
       expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
       expect(fakeOpenCode.sessionRequests.at(-1)).not.toHaveProperty("permission");
     } finally {
@@ -1228,11 +1227,8 @@ describe("MCP tools", () => {
         })
       );
       expect(fakeOpenCode.promptRequests[0]).toMatchObject({
-        agent: "build"
-      });
-      expect(extractOpenCodeSubtaskPart(fakeOpenCode.promptRequests[0])).toMatchObject({
-        model: "litellm/pro-router",
-        agent: "build"
+        agent: "build",
+        model: { providerID: "litellm", modelID: "pro-router" }
       });
     } finally {
       delete process.env.RETINUE_STATE_DIR;
@@ -1259,11 +1255,8 @@ describe("MCP tools", () => {
         })
       );
       expect(fakeOpenCode.promptRequests[0]).toMatchObject({
-        agent: "build"
-      });
-      expect(extractOpenCodeSubtaskPart(fakeOpenCode.promptRequests[0])).toMatchObject({
-        model: "litellm/pro-router",
-        agent: "explore"
+        agent: "explore",
+        model: { providerID: "litellm", modelID: "pro-router" }
       });
     } finally {
       delete process.env.RETINUE_STATE_DIR;

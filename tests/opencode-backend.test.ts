@@ -45,8 +45,11 @@ describe("OpenCodeBackend", () => {
       agent: "build",
       externalServerUrl: server!.url,
       externalSessionDirectory: process.cwd(),
-      externalSessionId: expect.stringMatching(/^ses_/)
+      externalSessionId: expect.stringMatching(/^ses_/),
+      externalParentSessionId: expect.stringMatching(/^ses_/),
+      externalChildSessionIds: [expect.stringMatching(/^ses_/)]
     });
+    expect(started.externalSessionId).not.toBe(started.externalParentSessionId);
     expect(started.promptPath).toMatch(/prompt\.md$/);
     await expect(fs.readFile(started.promptPath, "utf8")).resolves.toBe("hello");
     expect(extractPromptText(server!.promptRequests.at(-1))).toBe("hello");
@@ -57,7 +60,7 @@ describe("OpenCodeBackend", () => {
     });
   });
 
-  it("uses OpenCode native subtask as the default run path", async () => {
+  it("uses a direct OpenCode child session as the default run path", async () => {
     const backend = createBackend();
 
     const started = await backend.run({
@@ -68,24 +71,30 @@ describe("OpenCodeBackend", () => {
       agent: "explore"
     });
 
-    expect(server!.sessionRequests.at(-1)).toMatchObject({
+    expect(server!.sessionRequests.at(-2)).toMatchObject({
       directory: tempDir,
       title: "native demo",
       agent: "build"
     });
-    expect(server!.promptRequests.at(-1)).toMatchObject({
-      agent: "build",
-      parts: expect.arrayContaining([
-        { type: "subtask", description: "native demo", agent: "explore", prompt: "review this repository", model: "local/test" }
-      ])
+    expect(server!.sessionRequests.at(-1)).toMatchObject({
+      directory: tempDir,
+      title: "native demo",
+      parentID: started.externalParentSessionId,
+      agent: "explore",
+      model: { providerID: "local", modelID: "test" }
     });
-    await expect(new OpenCodeClient(server!.url).children(started.externalSessionId!)).resolves.toContainEqual(
-      expect.objectContaining({ parentID: started.externalSessionId, agent: "explore" })
+    expect(server!.promptRequests.at(-1)).toMatchObject({
+      agent: "explore",
+      model: { providerID: "local", modelID: "test" },
+      parts: [{ type: "text", text: "review this repository" }]
+    });
+    await expect(new OpenCodeClient(server!.url).children(started.externalParentSessionId!)).resolves.toContainEqual(
+      expect.objectContaining({ id: started.externalSessionId, parentID: started.externalParentSessionId, agent: "explore" })
     );
     await expect(fs.readFile(getJobPaths(tempDir, started.jobId).meta, "utf8").then(JSON.parse)).resolves.toMatchObject({
       externalSessionId: started.externalSessionId,
-      externalParentSessionId: started.externalSessionId,
-      externalChildSessionIds: [expect.stringMatching(/^ses_/)]
+      externalParentSessionId: started.externalParentSessionId,
+      externalChildSessionIds: [started.externalSessionId]
     });
   });
 

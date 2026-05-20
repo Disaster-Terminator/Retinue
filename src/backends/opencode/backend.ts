@@ -5,7 +5,7 @@ import { getJobPaths, getRetinueTracePath, resolveStateDir } from "../../core/pa
 import { isCleanupSafeStatus } from "../../core/status.js";
 import type { CleanupOptions, CleanupResult, JobMeta, JobProblem, JobResult, JobStatusResult, RetinueOptions } from "../../core/types.js";
 import type { AgentBackend, AgentContinueOptions, AgentHandle, AgentRunOptions } from "../types.js";
-import { OpenCodeClient, OpenCodeClientError, type OpenCodeMessage, type OpenCodePermissionRule, type OpenCodePromptPart } from "./client.js";
+import { OpenCodeClient, OpenCodeClientError, type OpenCodeMessage, type OpenCodePermissionRule } from "./client.js";
 import { scheduleManagedOpenCodeServerIdleShutdown } from "./serverManager.js";
 
 export interface OpenCodeBackendOptions {
@@ -300,13 +300,20 @@ export class OpenCodeBackend implements AgentBackend {
 
     const target = await this.resolveTarget(options.cwd);
     const readOnlyBashPolicy = resolveReadOnlyBashPolicy(options.readOnlyBashPolicy);
-    const session = await target.client.createSession({
+    const parentSession = await target.client.createSession({
       cwd: options.cwd,
       title: options.title ?? options.name,
-      agent: "build",
+      agent: "build"
+    });
+    const childSession = await target.client.createSession({
+      cwd: options.cwd,
+      title: options.title ?? options.name,
+      parentID: parentSession.id,
+      agent: options.agent ?? "explore",
+      model: options.model,
       permission: options.readOnly === true ? buildReadOnlyPermission(readOnlyBashPolicy) : undefined
     });
-    const baseline = await this.captureMessageBaseline(target.client, session.id);
+    const baseline = await this.captureMessageBaseline(target.client, childSession.id);
     const now = new Date().toISOString();
     const meta: JobMeta = {
       schemaVersion: 1,
@@ -325,10 +332,11 @@ export class OpenCodeBackend implements AgentBackend {
       readOnly: options.readOnly === true,
       readOnlyPromptContract: options.readOnlyPromptContract === true,
       readOnlyToolDeny: options.readOnlyToolDeny === true,
-      externalSessionId: session.id,
-      externalParentSessionId: session.id,
+      externalSessionId: childSession.id,
+      externalParentSessionId: parentSession.id,
+      externalChildSessionIds: [childSession.id],
       externalServerUrl: target.baseUrl,
-      externalSessionDirectory: session.directory ?? session.cwd,
+      externalSessionDirectory: childSession.directory ?? childSession.cwd,
       externalMessageBaselineCount: baseline.messageCount,
       externalCompletedAssistantBaselineCount: baseline.completedAssistantCount,
       parentJobId: options.parentJobId,
@@ -339,7 +347,7 @@ export class OpenCodeBackend implements AgentBackend {
     };
     await writeJsonAtomic(paths.meta, meta);
     let submittedFinished = false;
-    const submitted = this.submitPromptAsync(target.client, session.id, meta, options).then(() => {
+    const submitted = this.submitPromptAsync(target.client, childSession.id, meta, options).then(() => {
       submittedFinished = true;
     });
     await Promise.race([submitted, sleep(50)]);
@@ -988,8 +996,9 @@ export class OpenCodeBackend implements AgentBackend {
         resolveReadOnlyBashPolicy(options.readOnlyBashPolicy)
       );
       await client.promptAsync(sessionId, {
-        parts: buildNativeSubtaskPromptParts(prompt, options),
-        agent: "build",
+        prompt,
+        agent: options.agent ?? "explore",
+        model: options.model,
         tools:
           options.readOnly === true && options.readOnlyToolDeny === true
             ? buildReadOnlyTools(resolveReadOnlyBashPolicy(options.readOnlyBashPolicy))
@@ -1009,7 +1018,7 @@ export class OpenCodeBackend implements AgentBackend {
   }
 
   private async refreshNativeChildSessions(client: OpenCodeClient, meta: JobMeta): Promise<JobMeta> {
-    if (!meta.externalSessionId) {
+    if (!meta.externalParentSessionId) {
       return meta;
     }
     try {
@@ -1017,7 +1026,7 @@ export class OpenCodeBackend implements AgentBackend {
       if (current.status !== "running") {
         return current;
       }
-      const children = await client.children(meta.externalSessionId);
+      const children = await client.children(meta.externalParentSessionId);
       const childIds = children.map((session) => session.id).filter((id): id is string => typeof id === "string");
       const updated: JobMeta = { ...current, externalChildSessionIds: childIds, updatedAt: new Date().toISOString() };
       await writeJsonAtomic(getJobPaths(this.stateDir, meta.jobId).meta, updated);
@@ -1739,19 +1748,6 @@ function buildOpenCodePrompt(prompt: string, readOnly: boolean, bashPolicy: Open
     return prompt;
   }
   return `${createReadOnlyPromptContract(bashPolicy)}\n\nUser task:\n${prompt}`;
-}
-
-function buildNativeSubtaskPromptParts(prompt: string, options: AgentRunOptions): OpenCodePromptPart[] {
-  return [
-    { type: "text", text: prompt },
-    {
-      type: "subtask",
-      description: options.title ?? options.name ?? "Retinue child agent",
-      agent: options.agent ?? "explore",
-      prompt,
-      model: options.model
-    }
-  ];
 }
 
 function sha256(value: string): string {

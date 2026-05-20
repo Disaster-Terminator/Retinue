@@ -316,11 +316,8 @@ describe("CLI", () => {
     );
 
     expect(fakeOpenCode.promptRequests[0]).toMatchObject({
-      agent: "build"
-    });
-    expect(extractOpenCodeSubtaskPart(fakeOpenCode.promptRequests[0])).toMatchObject({
-      model: "litellm/pro-router",
-      agent: "build"
+      agent: "build",
+      model: { providerID: "litellm", modelID: "pro-router" }
     });
   });
 

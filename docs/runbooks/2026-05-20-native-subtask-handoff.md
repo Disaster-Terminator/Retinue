@@ -12,13 +12,15 @@ Time: 2026-05-20T15:13:45+08:00
 
 ## What Changed
 
-Retinue's OpenCode backend now uses OpenCode native `subtask` semantics as the default run path:
+Retinue's OpenCode backend initially moved to OpenCode native `subtask` semantics as the default run path:
 
 - A Retinue OpenCode job creates a parent OpenCode `build` session.
 - The requested child agent/model is passed through an OpenCode `subtask` part.
 - Retinue treats the parent assistant final text as the result collection path.
 - Metadata and diagnostics record `externalParentSessionId` and `externalChildSessionIds`.
 - The old standalone-session wrapper is preserved only by the archive branch, not as the preferred product direction.
+
+Follow-up dogfood showed this added an unnecessary parent-model result hop for normal single-agent Retinue spawns. The current direction is direct native child sessions: create a parent only as an unprompted relationship container, create/prompt the child session directly, and collect the child final text.
 
 Key files:
 
@@ -55,5 +57,5 @@ The Retinue MCP tool available in the previous thread still used the old install
 
 1. Confirm `git status --short --branch` is clean except this handoff file if it has not been committed.
 2. If the host has been restarted, run a real Retinue dogfood task through the installed plugin.
-3. Prefer checking whether results now come back through native parent/subtask behavior before adding more stall heuristics.
+3. Prefer checking whether results now come back through the direct native child session before adding more stall heuristics.
 4. If e2e is healthy, decide whether to update README/release notes for the native-subtask baseline.
