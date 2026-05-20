@@ -69,6 +69,14 @@ Follow-up dogfood on 2026-05-20 compared two native root-container shapes throug
 
 The real dogfood result did not show a clear reliability advantage for `shared_root`: profile mode completed 3/3 usable `per_spawn` jobs and 2/3 usable `shared_root` jobs, while read-only mode completed 3/3 in both modes. Therefore `per_spawn` remains the default. `shared_root` is kept as an experimental feature behind `RETINUE_OPENCODE_ROOT_BINDING_MODE=shared_root`, with `RETINUE_OPENCODE_ROOT_AGENT` available to avoid hard-coding the root container agent. Logs and MCP spawn results include `externalRunnerMode`, `externalRootAgent`, `externalRootSessionId`, `externalParentSessionId`, and child session ids so the two modes do not get mixed in audits.
 
+Abstraction clarification from the 2026-05-20 follow-up discussion:
+
+- `per_spawn` versus `shared_root` is a root/session lifecycle choice, not a primary-agent versus subagent choice.
+- In both modes, the Retinue job can still be executed by the same OpenCode child agent, usually `explore`.
+- The default `build` root agent is an unprompted relationship container; it is not the agent that produces the Retinue child result.
+- `close_agent` is child-job lifecycle management: it aborts the child OpenCode session only while running, then removes the Retinue MCP slot. It does not delete OpenCode sessions or close a shared root.
+- `shared_root` is most natural for a bounded work group with multiple children such as `explore`, `plan`, and `build`; it should not become a global long-lived root without an explicit group lifecycle.
+
 ## Acceptance For The Next Product Change
 
 - Retinue runs OpenCode jobs through a direct native child session and collects child final text.

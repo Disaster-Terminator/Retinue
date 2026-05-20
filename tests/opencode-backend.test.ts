@@ -355,7 +355,7 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"tool":"write"');
   });
 
-  it("does not trust pre-recovery final text from read-only jobs rejected for patch intent", async () => {
+  it("returns pre-recovery final text only as advisory when read-only patch intent is rejected", async () => {
     const backend = createBackend({ RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0" });
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
@@ -365,13 +365,14 @@ describe("OpenCodeBackend", () => {
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
       status: "stalled",
-      stdout: expect.stringContaining("OpenCode read-only job emitted patch/write intent"),
-      parsedStdout: { result: expect.stringContaining("OpenCode read-only job emitted patch/write intent") },
-      error: expect.stringContaining("OpenCode read-only job emitted patch/write intent")
+      stdout: "final review",
+      parsedStdout: { result: "final review" },
+      stderr: expect.stringContaining("Retinue returned read-only write-intent text as advisory stdout only"),
+      error: expect.stringContaining("Retinue returned read-only write-intent text as advisory stdout only")
     });
   });
 
-  it("does not trust incomplete assistant text from read-only jobs rejected for patch intent", async () => {
+  it("returns incomplete read-only patch-intent text only as advisory when recovery fails", async () => {
     const backend = createBackend({ RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0" });
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
@@ -380,9 +381,10 @@ describe("OpenCodeBackend", () => {
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
       status: "stalled",
-      stdout: expect.stringContaining("OpenCode read-only job emitted patch/write intent"),
-      parsedStdout: { result: expect.stringContaining("OpenCode read-only job emitted patch/write intent") },
-      error: expect.stringContaining("OpenCode read-only job emitted patch/write intent")
+      stdout: "Finding: permission order is unsafe.",
+      parsedStdout: { result: "Finding: permission order is unsafe." },
+      stderr: expect.stringContaining("Retinue returned read-only write-intent text as advisory stdout only"),
+      error: expect.stringContaining("Retinue returned read-only write-intent text as advisory stdout only")
     });
   });
 
@@ -450,7 +452,7 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"readOnlyWriteIntent":true');
   });
 
-  it("keeps the read-only write intent root cause when recovery ends in blank provider output", async () => {
+  it("returns read-only write-intent text as advisory stdout when recovery has no trusted final text", async () => {
     const backend = createBackend({
       RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1",
       RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
@@ -466,12 +468,14 @@ describe("OpenCodeBackend", () => {
     await blankAfterRescue;
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
       status: "stalled",
-      stdout: expect.stringContaining("OpenCode read-only job emitted patch/write intent"),
-      error: expect.stringContaining("OpenCode read-only job emitted patch/write intent")
+      stdout: "Finding: original patch intent.",
+      stderr: expect.stringContaining("Retinue returned read-only write-intent text as advisory stdout only"),
+      error: expect.stringContaining("Retinue returned read-only write-intent text as advisory stdout only")
     });
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"stallReason":"read_only_write_intent"');
     expect(trace).toContain('"recoveryStallReason":"provider_blank_assistant"');
+    expect(trace).toContain('"readOnlyAdvisoryText":true');
   });
 
   it("flags patch-like text from completed read-only OpenCode jobs without hiding stdout", async () => {
