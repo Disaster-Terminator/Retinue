@@ -24230,9 +24230,9 @@ var DEFAULT_MCP_WAIT_MAX_MS = 18e4;
 var ACCESS_MODES = ["read_only", "profile"];
 var READ_ONLY_BASH_POLICIES = ["readonly_git", "none"];
 var BUILTIN_OPENCODE_AGENT_ACCESS_MODES = {
-  explore: "read_only",
-  scout: "read_only",
-  general: "read_only",
+  explore: "profile",
+  scout: "profile",
+  general: "profile",
   plan: "profile",
   build: "profile"
 };

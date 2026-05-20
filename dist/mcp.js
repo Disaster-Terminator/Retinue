@@ -39,9 +39,9 @@ const DEFAULT_MCP_WAIT_MAX_MS = 180_000;
 const ACCESS_MODES = ["read_only", "profile"];
 const READ_ONLY_BASH_POLICIES = ["readonly_git", "none"];
 const BUILTIN_OPENCODE_AGENT_ACCESS_MODES = {
-    explore: "read_only",
-    scout: "read_only",
-    general: "read_only",
+    explore: "profile",
+    scout: "profile",
+    general: "profile",
     plan: "profile",
     build: "profile"
 };

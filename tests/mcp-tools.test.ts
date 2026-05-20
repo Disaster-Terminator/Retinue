@@ -312,18 +312,7 @@ describe("MCP tools", () => {
       expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
       const submittedPrompt = extractOpenCodePromptText(fakeOpenCode.promptRequests.at(-1));
       expect(submittedPrompt).toBe("retinue mcp");
-      const permissions = fakeOpenCode.sessionRequests.at(-1)?.permission ?? [];
-      expect(fakeOpenCode.sessionRequests.at(-1)).toMatchObject({
-        permission: expect.arrayContaining([
-          { permission: "doom_loop", pattern: "*", action: "deny" },
-          { permission: "patch", pattern: "*", action: "deny" },
-          { permission: "bash", pattern: "*", action: "deny" },
-          { permission: "bash", pattern: "git diff --cached*", action: "allow" }
-        ])
-      });
-      expect(permissions.findIndex((rule) => rule.permission === "bash" && rule.pattern === "git diff --cached*")).toBeLessThan(
-        permissions.findIndex((rule) => rule.permission === "bash" && rule.pattern === "*")
-      );
+      expect(fakeOpenCode.sessionRequests.at(-1)).not.toHaveProperty("permission");
       const runningWait = parseToolJson(
         await connection.client.callTool({
           name: "retinue_wait_agent",
@@ -405,6 +394,16 @@ describe("MCP tools", () => {
     try {
       process.env.RETINUE_STATE_DIR = tempDir;
       process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+
+      await connection.client.callTool({
+        name: "retinue_spawn_agent",
+        arguments: { cwd: tempDir, message: "inspect with native explore profile", task_name: "explore-policy", agent: "explore" }
+      });
+
+      expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "explore" });
+      expect(extractOpenCodePromptText(fakeOpenCode.promptRequests.at(-1))).toBe("inspect with native explore profile");
+      expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
+      expect(fakeOpenCode.sessionRequests.at(-1)).not.toHaveProperty("permission");
 
       await connection.client.callTool({
         name: "retinue_spawn_agent",
@@ -512,7 +511,14 @@ describe("MCP tools", () => {
 
       await connection.client.callTool({
         name: "retinue_spawn_agent",
-        arguments: { cwd: tempDir, message: "inspect staged diff", task_name: "no-bash", agent: "explore", bash_policy: "none" }
+        arguments: {
+          cwd: tempDir,
+          message: "inspect staged diff",
+          task_name: "no-bash",
+          agent: "explore",
+          access_mode: "read_only",
+          bash_policy: "none"
+        }
       });
 
       expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
@@ -950,7 +956,13 @@ describe("MCP tools", () => {
       const spawn = parseToolJson(
         await connection.client.callTool({
           name: "retinue_spawn_agent",
-          arguments: { cwd: tempDir, message: "retinue stalled pool", task_name: "stalled-pool", agent: "explore" }
+          arguments: {
+            cwd: tempDir,
+            message: "retinue stalled pool",
+            task_name: "stalled-pool",
+            agent: "explore",
+            access_mode: "read_only"
+          }
         })
       );
       fakeOpenCode.appendPatchAssistant(spawn.externalSessionId);

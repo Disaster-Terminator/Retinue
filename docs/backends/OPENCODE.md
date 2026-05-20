@@ -48,7 +48,7 @@ RETINUE_OPENCODE_AGENT=explore
 
 CLI/MCP request fields win over environment variables. If neither CLI/MCP input nor environment variable is set, retinue does not send `model` or `agent`; OpenCode keeps ownership of default model and agent selection.
 
-Retinue 0.1.0 plugin deployments set `RETINUE_OPENCODE_AGENT=explore` by default. Retinue follows OpenCode agent semantics when `access_mode` is omitted: built-in repository exploration agents such as `explore`, `scout`, and `general` get Retinue's read-only framework, while `plan` and `build` follow the active OpenCode profile. `retinue_spawn_agent` can still override the agent for one child with `agent`, and can override the safety mode with `access_mode`.
+Retinue 0.1.0 plugin deployments set `RETINUE_OPENCODE_AGENT=explore` by default. Retinue follows the active OpenCode profile when `access_mode` is omitted, including for built-in repository exploration agents such as `explore`, `scout`, and `general`. `retinue_spawn_agent` can still override the agent for one child with `agent`, and can opt into Retinue's stricter read-only safety mode with `access_mode: "read_only"`.
 
 ## Profile
 
@@ -92,7 +92,7 @@ MCP hosts commonly enforce their own per-tool timeout. Retinue therefore clamps 
 
 Retinue's local HTTP clients also apply a 30-second transport timeout to OpenCode and daemon requests. Set `RETINUE_HTTP_TIMEOUT_MS` when a deployment needs a different local request ceiling; set it to `0` only when another layer already enforces a reliable timeout.
 
-Product `retinue_spawn_agent` calls are agent-aware on the OpenCode backend. In read-only mode, Retinue creates the OpenCode session with explicit non-interactive permissions: file edits, patch mode, and nested `task` agents are denied, `doom_loop` and interactive `question` prompts are denied so headless runs do not wait for UI approval, and `bash` is restricted to a small read-only git inspection allowlist. The default packaged config does not inject an extra Retinue prompt contract and does not send `tools: false` overrides to `prompt_async`; the default `explore` path relies on OpenCode's built-in read-only behavior plus session permissions. Set `opencode.readOnlyPromptContract: true` or `opencode.readOnlyToolDeny: true` only when a deployment needs the stricter Retinue-owned behavior. The default `readonly_git` bash policy allows commands such as `git status --short`, `git diff --cached`, `git diff --staged`, targeted `git diff -- <path>`, `git show --stat`, `git show --name-only`, `git ls-files`, and `git rev-parse --show-toplevel`; it still blocks shell composition, write-capable git commands, patches, and arbitrary bash. Set `opencode.readOnlyBashPolicy` to `"none"` when a deployment needs the stricter no-bash behavior.
+Product `retinue_spawn_agent` calls are agent-aware on the OpenCode backend. The default packaged config uses `profile` access so OpenCode owns the effective permissions, tools, plugins, and agent behavior. When a caller explicitly asks for `access_mode: "read_only"`, Retinue creates the OpenCode session with explicit non-interactive permissions: file edits, patch mode, and nested `task` agents are denied, `doom_loop` and interactive `question` prompts are denied so headless runs do not wait for UI approval, and `bash` is restricted to a small read-only git inspection allowlist. The packaged config does not inject an extra Retinue prompt contract and does not send `tools: false` overrides to `prompt_async`; set `opencode.readOnlyPromptContract: true` or `opencode.readOnlyToolDeny: true` only when a deployment needs stricter Retinue-owned behavior. In explicit read-only mode, the default `readonly_git` bash policy allows commands such as `git status --short`, `git diff --cached`, `git diff --staged`, targeted `git diff -- <path>`, `git show --stat`, `git show --name-only`, `git ls-files`, and `git rev-parse --show-toplevel`; it still blocks shell composition, write-capable git commands, patches, and arbitrary bash. Set `opencode.readOnlyBashPolicy` to `"none"` when a deployment needs no-bash behavior.
 
 Codex plugin installs read the default from the installation-scoped `retinue.config.json` beside the plugin bootstrap. The shipped default is:
 
@@ -100,9 +100,9 @@ Codex plugin installs read the default from the installation-scoped `retinue.con
 {
   "opencode": {
     "agentPolicies": {
-      "explore": "read_only",
-      "scout": "read_only",
-      "general": "read_only",
+      "explore": "profile",
+      "scout": "profile",
+      "general": "profile",
       "plan": "profile",
       "build": "profile"
     },

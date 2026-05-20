@@ -81,9 +81,9 @@ The Codex plugin also ships an installation-scoped `retinue.config.json` beside 
 {
   "opencode": {
     "agentPolicies": {
-      "explore": "read_only",
-      "scout": "read_only",
-      "general": "read_only",
+      "explore": "profile",
+      "scout": "profile",
+      "general": "profile",
       "plan": "profile",
       "build": "profile"
     }
