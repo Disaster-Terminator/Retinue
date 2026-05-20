@@ -238,6 +238,8 @@ interface OpenCodeJobDiagnostic {
   incompleteAssistantRound?: boolean;
   stallReason?: OpenCodeStallReason;
   stallSummary?: string;
+  softStallRescueSourceReason?: OpenCodeStallReason;
+  softStallRescueSourceSummary?: string;
   error?: string;
 }
 
@@ -416,6 +418,8 @@ export class OpenCodeBackend implements AgentBackend {
       ...meta,
       status: meta.status === "stalled" ? "running" : meta.status,
       externalRescuePromptSubmittedAt: new Date().toISOString(),
+      externalSoftStallRescueSourceReason: diagnostic.stallReason,
+      externalSoftStallRescueSourceSummary: diagnostic.stallSummary,
       externalReadOnlyWriteIntentRecoveryJobMessageCount: recoverReadOnlyWriteIntent
         ? (diagnostic.jobMessageCount ?? meta.externalReadOnlyWriteIntentRecoveryJobMessageCount)
         : meta.externalReadOnlyWriteIntentRecoveryJobMessageCount,
@@ -875,6 +879,10 @@ export class OpenCodeBackend implements AgentBackend {
       diagnostic.readOnlyWriteIntent =
         (diagnostic.readOnlyPatchPartCount ?? 0) > 0 || (diagnostic.readOnlyWriteIntentToolPartCount ?? 0) > 0;
       diagnostic.readOnlyWriteIntentRecoveryJobMessageCount = meta.externalReadOnlyWriteIntentRecoveryJobMessageCount;
+      diagnostic.softStallRescueSourceReason = isOpenCodeStallReason(meta.externalSoftStallRescueSourceReason)
+        ? meta.externalSoftStallRescueSourceReason
+        : undefined;
+      diagnostic.softStallRescueSourceSummary = meta.externalSoftStallRescueSourceSummary;
       diagnostic.recoveredFromReadOnlyWriteIntent =
         meta.readOnly === true &&
         meta.externalReadOnlyWriteIntentRecoveryJobMessageCount !== undefined &&
@@ -890,6 +898,15 @@ export class OpenCodeBackend implements AgentBackend {
         messageError: diagnosticValuePreview(message.info?.error)
       }));
       Object.assign(diagnostic, computeStallDiagnostic(jobMessages, meta, this.env));
+      if (
+        meta.status === "stalled" &&
+        diagnostic.softStallRescueSourceReason &&
+        diagnostic.stallReason &&
+        diagnostic.stallReason !== diagnostic.softStallRescueSourceReason
+      ) {
+        diagnostic.recoveryStallReason = diagnostic.stallReason;
+        diagnostic.recoveryStallSummary = diagnostic.stallSummary;
+      }
       if (
         meta.status === "stalled" &&
         meta.readOnly === true &&
@@ -1342,6 +1359,8 @@ function computeStallDiagnostic(
 }
 
 function createStallMessage(diagnostic: OpenCodeJobDiagnostic): string {
+  const providerDetails = formatProviderDetails(diagnostic);
+  const rescueDetails = formatSoftStallRescueDetails(diagnostic);
   if (diagnostic.readOnlyWriteIntent === true) {
     return `OpenCode read-only job emitted patch/write intent; Retinue did not treat the child result as trusted output. Inspect Retinue trace/job diagnostics for message summaries.`;
   }
@@ -1364,17 +1383,21 @@ function createStallMessage(diagnostic: OpenCodeJobDiagnostic): string {
   const zeroProgressRounds = diagnostic.zeroProgressAssistantRounds ?? 0;
   const runningReadToolParts = diagnostic.runningReadToolParts ?? 0;
   const durationMs = diagnostic.noCompletedAssistantDurationMs ?? 0;
+  if (diagnostic.recoveryStallReason === "read_tool_stalled" && runningReadToolParts > 0) {
+    const details = formatReadToolStallDetails(diagnostic);
+    return `OpenCode job stalled: soft-stall rescue reached ${runningReadToolParts} pending/running read tool call(s) with no completed assistant text for ${durationMs}ms.${details}${providerDetails}${rescueDetails} The OpenCode tool executor may be stuck; inspect Retinue trace/job diagnostics for full message summaries.`;
+  }
   if (blankRounds > 0) {
-    return `OpenCode job stalled: observed ${blankRounds} blank assistant placeholder(s) with no completed assistant text for ${durationMs}ms. The OpenCode provider or model router may be unavailable; inspect Retinue trace/job diagnostics for provider, model, and message summaries.`;
+    return `OpenCode job stalled: observed ${blankRounds} blank assistant placeholder(s) with no completed assistant text for ${durationMs}ms.${providerDetails}${rescueDetails} The OpenCode provider or model router may be unavailable; inspect Retinue trace/job diagnostics for message summaries.`;
   }
   if (zeroProgressRounds > 0) {
-    return `OpenCode job stalled: observed ${zeroProgressRounds} zero-progress assistant placeholder(s) with no completed assistant text for ${durationMs}ms. The OpenCode provider or model router may be unavailable or stuck after tool calls; inspect Retinue trace/job diagnostics for provider, model, and message summaries.`;
+    return `OpenCode job stalled: observed ${zeroProgressRounds} zero-progress assistant placeholder(s) with no completed assistant text for ${durationMs}ms.${providerDetails}${rescueDetails} The OpenCode provider or model router may be unavailable or stuck after tool calls; inspect Retinue trace/job diagnostics for message summaries.`;
   }
   if (runningReadToolParts > 0) {
     const details = formatReadToolStallDetails(diagnostic);
-    return `OpenCode job stalled: observed ${runningReadToolParts} pending/running read tool call(s) with no completed assistant text for ${durationMs}ms.${details} The OpenCode tool executor may be stuck; inspect Retinue trace/job diagnostics for full message summaries.`;
+    return `OpenCode job stalled: observed ${runningReadToolParts} pending/running read tool call(s) with no completed assistant text for ${durationMs}ms.${details}${providerDetails}${rescueDetails} The OpenCode tool executor may be stuck; inspect Retinue trace/job diagnostics for full message summaries.`;
   }
-  return `OpenCode job stalled: observed ${rounds} tool-call assistant round(s) and ${emptyRounds} empty assistant round(s) with no completed assistant text for ${durationMs}ms. Inspect Retinue trace/job diagnostics for message summaries.`;
+  return `OpenCode job stalled: observed ${rounds} tool-call assistant round(s) and ${emptyRounds} empty assistant round(s) with no completed assistant text for ${durationMs}ms.${providerDetails}${rescueDetails} Inspect Retinue trace/job diagnostics for message summaries.`;
 }
 
 function isHardStallDiagnostic(diagnostic: Partial<OpenCodeJobDiagnostic>): boolean {
@@ -1420,14 +1443,14 @@ function selectStallReason(stalled: {
   completedToolLoopStalled: boolean;
   incompleteAssistantStalled: boolean;
 }): OpenCodeStallReason {
+  if (stalled.readToolStalled) {
+    return "read_tool_stalled";
+  }
   if (stalled.blankAssistantStalled) {
     return "provider_blank_assistant";
   }
   if (stalled.zeroProgressAssistantStalled) {
     return "provider_zero_progress";
-  }
-  if (stalled.readToolStalled) {
-    return "read_tool_stalled";
   }
   if (stalled.completedToolLoopStalled) {
     return "tool_loop_no_completion";
@@ -1443,6 +1466,7 @@ function selectStallReason(stalled: {
 
 function createStallSummary(diagnostic: Partial<OpenCodeJobDiagnostic>): string {
   const durationMs = diagnostic.noCompletedAssistantDurationMs ?? 0;
+  const rescueDetails = formatSoftStallRescueDetails(diagnostic);
   switch (diagnostic.stallReason) {
     case "read_only_write_intent":
       return "OpenCode read-only job emitted patch/write intent.";
@@ -1451,11 +1475,11 @@ function createStallSummary(diagnostic: Partial<OpenCodeJobDiagnostic>): string 
     case "provider_reasoning_content_error":
       return "OpenCode provider rejected a DeepSeek reasoning_content thinking-mode request.";
     case "provider_blank_assistant":
-      return `OpenCode provider/router produced blank assistant output for ${durationMs}ms.`;
+      return `OpenCode provider/router produced blank assistant output for ${durationMs}ms.${rescueDetails}`;
     case "provider_zero_progress":
-      return `OpenCode provider/router produced zero-progress assistant output for ${durationMs}ms.`;
+      return `OpenCode provider/router produced zero-progress assistant output for ${durationMs}ms.${rescueDetails}`;
     case "read_tool_stalled":
-      return `OpenCode tool executor left read tool call(s) running for ${durationMs}ms.${formatReadToolStallDetails(diagnostic)}`;
+      return `OpenCode tool executor left read tool call(s) running for ${durationMs}ms.${formatReadToolStallDetails(diagnostic)}${rescueDetails}`;
     case "incomplete_assistant_round":
       return `OpenCode left the latest assistant round incomplete for ${durationMs}ms.`;
     case "backend_no_final_text":
@@ -1465,6 +1489,38 @@ function createStallSummary(diagnostic: Partial<OpenCodeJobDiagnostic>): string 
     default:
       return `OpenCode job stalled with no completed assistant text for ${durationMs}ms.`;
   }
+}
+
+function isOpenCodeStallReason(value: unknown): value is OpenCodeStallReason {
+  return (
+    value === "read_only_write_intent" ||
+    value === "provider_error" ||
+    value === "provider_reasoning_content_error" ||
+    value === "provider_blank_assistant" ||
+    value === "provider_zero_progress" ||
+    value === "read_tool_stalled" ||
+    value === "incomplete_assistant_round" ||
+    value === "backend_no_final_text" ||
+    value === "tool_loop_no_completion"
+  );
+}
+
+function formatProviderDetails(diagnostic: Partial<OpenCodeJobDiagnostic>): string {
+  const entries = [
+    diagnostic.lastAssistantProviderID ? `provider=${diagnostic.lastAssistantProviderID}` : undefined,
+    diagnostic.lastAssistantModelID ? `model=${diagnostic.lastAssistantModelID}` : undefined,
+    diagnostic.lastAssistantAgent ? `agent=${diagnostic.lastAssistantAgent}` : undefined,
+    diagnostic.lastAssistantMode ? `mode=${diagnostic.lastAssistantMode}` : undefined
+  ].filter(Boolean);
+  return entries.length > 0 ? ` ${entries.join(" ")}.` : "";
+}
+
+function formatSoftStallRescueDetails(diagnostic: Partial<OpenCodeJobDiagnostic>): string {
+  if (!diagnostic.softStallRescueSourceReason) {
+    return "";
+  }
+  const recovery = diagnostic.recoveryStallReason ? ` recovery=${diagnostic.recoveryStallReason}` : "";
+  return ` rescueSource=${diagnostic.softStallRescueSourceReason}${recovery}.`;
 }
 
 function formatReadToolStallDetails(diagnostic: Partial<OpenCodeJobDiagnostic>): string {

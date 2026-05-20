@@ -846,8 +846,12 @@ describe("OpenCodeBackend", () => {
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
       status: "stalled",
-      parsedStdout: { result: expect.stringContaining("zero-progress assistant placeholder") }
+      parsedStdout: {
+        result: expect.stringContaining("zero-progress assistant placeholder")
+      }
     });
+    const result = await backend.result({ jobId: started.jobId });
+    expect(result.stdout).toContain("provider=litellm model=semantic-router agent=plan mode=plan");
 
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"event":"opencode_job_stalled"');
@@ -945,6 +949,39 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"stateStatus":"pending"');
     expect(trace).toContain('"stateInput":{"type":"object","preview":"{\\"filePath\\":\\"docs/VERIFICATION.md\\"}"}');
     expect(trace).toContain('input={\\"filePath\\":\\"docs/VERIFICATION.md\\"}');
+  });
+
+  it("preserves the source stall reason when a soft-stall rescue stalls in a read tool", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1",
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "1000"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "review stalls blank after tool progress" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
+    server!.appendBlankAssistant(started.externalSessionId!);
+
+    await expect(backend.wait({ jobId: started.jobId }, 100)).resolves.toMatchObject({ status: "running" });
+    await waitForPromptCount(2);
+    server!.appendPendingReadToolAssistant(started.externalSessionId!);
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    const result = await backend.result({ jobId: started.jobId });
+    expect(result.status).toBe("stalled");
+    expect(result.stdout).toContain("pending/running read tool call");
+    expect(result.stdout).toContain("rescueSource=provider_blank_assistant recovery=read_tool_stalled");
+    expect(result.stdout).toContain("provider=litellm model=semantic-router agent=plan mode=plan");
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"softStallRescueSourceReason":"provider_blank_assistant"');
+    expect(trace).toContain('"recoveryStallReason":"read_tool_stalled"');
+    const persisted = JSON.parse(await fs.readFile(getJobPaths(tempDir, started.jobId).meta, "utf8")) as typeof started;
+    expect(persisted.externalSoftStallRescueSourceReason).toBe("provider_blank_assistant");
   });
 
   it("does not submit no-tools rescue for stalled read tool executor calls", async () => {
