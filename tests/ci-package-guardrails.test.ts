@@ -101,6 +101,7 @@ describe("package.json guardrails", () => {
     expect(scripts["test:mcp"]).toContain("tests/mcp-tools.test.ts");
     expect(scripts["test:package"]).toContain("tests/ci-package-guardrails.test.ts");
     expect(scripts["test:probes"]).toContain("tests/probe-dogfood.test.ts");
+    expect(scripts["test:probes"]).toContain("tests/probe-opencode-root-binding.test.ts");
     expect(scripts["test:probes"]).toContain("tests/probe-real-opencode.test.ts");
     expect(scripts["test:cli"]).toBe("vitest run tests/cli.test.ts");
     expect(scripts["gate:commit"]).toBe("pnpm run typecheck && pnpm run test:core");
@@ -122,7 +123,7 @@ describe("package.json guardrails", () => {
       const command = scripts[scriptName];
       expect(command).toBeTypeOf("string");
       expect(command).toMatch(
-        /scripts\/(probe-real-(claude|opencode)|probe-opencode-native-spawn|probe-retinue-(opencode|claude)(-slots)?-mcp|probe-retinue-opencode-slots|probe-retinue-opencode-agent-ab)\.mjs/
+        /scripts\/(probe-real-(claude|opencode)|probe-opencode-native-spawn|probe-opencode-root-binding|probe-retinue-(opencode|claude)(-slots)?-mcp|probe-retinue-opencode-slots|probe-retinue-opencode-agent-ab)\.mjs/
       );
     }
 
