@@ -1314,7 +1314,7 @@ describe("OpenCodeBackend", () => {
     await new Promise((resolve) => setTimeout(resolve, 5));
     setTimeout(() => {
       server!.completeSessionWithFinalText(started.externalSessionId!, "late wait result");
-    }, 25);
+    }, 250);
 
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
