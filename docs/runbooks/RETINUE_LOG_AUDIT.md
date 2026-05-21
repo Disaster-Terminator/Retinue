@@ -24,3 +24,5 @@ Each issue candidate includes a signature, affected job IDs, first/last seen tim
 For direct-child OpenCode runs, `sample.sessionId` is the result child session and `sample.parentSessionId` is the unprompted relationship container. If the same job also shows a later `build`/`build` candidate, that is usually the no-tools soft-stall rescue prompt, not the original child runner.
 
 If `sample.stallReason` is `read_tool_invalid_input`, treat the run as provider/model malformed tool-call output rather than audit evidence. The sample includes `malformedReadToolParts` and `runningReadToolPartSummaries`; an input preview such as `{}` means OpenCode received a `read` tool call without a usable `filePath`.
+
+If `sample.stallReason` is `read_tool_stalled`, treat the run as an OpenCode tool-executor stall rather than audit evidence. The sample includes the pending/running read call and its input preview when available. A later OpenCode completion for the same session should be reviewed as a separate backend event, not as evidence for the already stalled Retinue job.

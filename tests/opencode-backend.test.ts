@@ -1015,6 +1015,37 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"stateStatus":"running"');
   });
 
+  it("does not promote a recorded read-tool stall when OpenCode later completes", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "risk review gets stuck then later finishes" });
+    server!.appendRunningReadToolAssistant(started.externalSessionId!);
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    const stalledResult = await backend.result({ jobId: started.jobId });
+    expect(stalledResult.status).toBe("stalled");
+    expect(stalledResult.stdout).toContain("pending/running read tool call");
+
+    server!.completeSessionWithFinalText(started.externalSessionId!, "Late answer after Retinue already marked stalled.");
+
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "stalled" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "stalled",
+      stdout: expect.stringContaining("pending/running read tool call")
+    });
+
+    const persistedStdout = await fs.readFile(getJobPaths(tempDir, started.jobId).stdout, "utf8");
+    expect(persistedStdout).toContain("pending/running read tool call");
+    expect(persistedStdout).not.toContain("Late answer after Retinue already marked stalled.");
+  });
+
   it("marks default pending read tool calls as stalled after the bounded read window", async () => {
     const backend = createBackend();
     server!.setAutoAssistantResponses(false);

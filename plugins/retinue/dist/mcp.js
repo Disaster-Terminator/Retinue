@@ -22366,10 +22366,31 @@ var OpenCodeBackend = class {
     if (!meta.externalSessionId) {
       return { jobId: handle.jobId, status: "corrupted", error: "Missing OpenCode session id" };
     }
+    const paths = getJobPaths(this.stateDir, handle.jobId);
+    if (meta.status === "stalled") {
+      const cachedStdout = await readTextIfExists(paths.stdout);
+      if (cachedStdout.trim()) {
+        const cachedStderr = await readTextIfExists(paths.stderr);
+        return {
+          jobId: handle.jobId,
+          status: meta.status,
+          stdout: cachedStdout,
+          stderr: cachedStderr,
+          stdoutPath: paths.stdout,
+          stderrPath: paths.stderr,
+          stdoutBytes: Buffer.byteLength(cachedStdout, "utf8"),
+          stderrBytes: Buffer.byteLength(cachedStderr, "utf8"),
+          stdoutTruncated: false,
+          stderrTruncated: false,
+          sessionId: meta.externalSessionId,
+          parsedStdout: { result: cachedStdout },
+          error: cachedStderr || cachedStdout
+        };
+      }
+    }
     const client = this.clientForMeta(meta);
     const messages = await client.messages(meta.externalSessionId);
     const jobMessages = selectMessagesForMeta(messages, meta);
-    const paths = getJobPaths(this.stateDir, handle.jobId);
     const diagnostic = await this.inspectJob(meta);
     if (meta.status === "stalled") {
       const stderr = createStallMessage(diagnostic);
@@ -22615,6 +22636,12 @@ ${textWarning2}` : stderr;
     return isProblem(current) ? fallback : current;
   }
   async reconcileStatus(meta) {
+    if (meta.status === "stalled") {
+      const cachedStdout = await readTextIfExists(getJobPaths(this.stateDir, meta.jobId).stdout);
+      if (cachedStdout.trim()) {
+        return meta;
+      }
+    }
     if (!meta.externalSessionId || isTerminal2(meta.status) && meta.status !== "stalled" && meta.status !== "killed") {
       return meta;
     }
@@ -23475,6 +23502,16 @@ async function writeJsonAtomic(filePath, value) {
 `, "utf8");
   await fs2.rename(tempPath, filePath);
 }
+async function readTextIfExists(filePath) {
+  try {
+    return await fs2.readFile(filePath, "utf8");
+  } catch (error2) {
+    if (typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === "ENOENT") {
+      return "";
+    }
+    throw error2;
+  }
+}
 function createPromptPreview(prompt) {
   const normalized = prompt.replace(/\s+/g, " ").trim();
   return normalized.length > 120 ? `${normalized.slice(0, 117)}...` : normalized;
@@ -24177,7 +24214,7 @@ async function writeJsonAtomic2(filePath, value) {
 `, "utf8");
   await fs4.rename(tempPath, filePath);
 }
-async function readTextIfExists(filePath) {
+async function readTextIfExists2(filePath) {
   try {
     return await fs4.readFile(filePath, "utf8");
   } catch (error2) {
@@ -24188,7 +24225,7 @@ async function readTextIfExists(filePath) {
   }
 }
 async function readJsonIfExists(filePath) {
-  const text = await readTextIfExists(filePath);
+  const text = await readTextIfExists2(filePath);
   if (!text.trim()) {
     return void 0;
   }

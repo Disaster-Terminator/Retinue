@@ -349,10 +349,31 @@ export class OpenCodeBackend {
         if (!meta.externalSessionId) {
             return { jobId: handle.jobId, status: "corrupted", error: "Missing OpenCode session id" };
         }
+        const paths = getJobPaths(this.stateDir, handle.jobId);
+        if (meta.status === "stalled") {
+            const cachedStdout = await readTextIfExists(paths.stdout);
+            if (cachedStdout.trim()) {
+                const cachedStderr = await readTextIfExists(paths.stderr);
+                return {
+                    jobId: handle.jobId,
+                    status: meta.status,
+                    stdout: cachedStdout,
+                    stderr: cachedStderr,
+                    stdoutPath: paths.stdout,
+                    stderrPath: paths.stderr,
+                    stdoutBytes: Buffer.byteLength(cachedStdout, "utf8"),
+                    stderrBytes: Buffer.byteLength(cachedStderr, "utf8"),
+                    stdoutTruncated: false,
+                    stderrTruncated: false,
+                    sessionId: meta.externalSessionId,
+                    parsedStdout: { result: cachedStdout },
+                    error: cachedStderr || cachedStdout
+                };
+            }
+        }
         const client = this.clientForMeta(meta);
         const messages = await client.messages(meta.externalSessionId);
         const jobMessages = selectMessagesForMeta(messages, meta);
-        const paths = getJobPaths(this.stateDir, handle.jobId);
         const diagnostic = await this.inspectJob(meta);
         if (meta.status === "stalled") {
             const stderr = createStallMessage(diagnostic);
@@ -603,6 +624,12 @@ export class OpenCodeBackend {
         return isProblem(current) ? fallback : current;
     }
     async reconcileStatus(meta) {
+        if (meta.status === "stalled") {
+            const cachedStdout = await readTextIfExists(getJobPaths(this.stateDir, meta.jobId).stdout);
+            if (cachedStdout.trim()) {
+                return meta;
+            }
+        }
         if (!meta.externalSessionId || (isTerminal(meta.status) && meta.status !== "stalled" && meta.status !== "killed")) {
             return meta;
         }
@@ -1523,6 +1550,17 @@ async function writeJsonAtomic(filePath, value) {
     const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
     await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
     await fs.rename(tempPath, filePath);
+}
+async function readTextIfExists(filePath) {
+    try {
+        return await fs.readFile(filePath, "utf8");
+    }
+    catch (error) {
+        if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
+            return "";
+        }
+        throw error;
+    }
 }
 function createPromptPreview(prompt) {
     const normalized = prompt.replace(/\s+/g, " ").trim();
