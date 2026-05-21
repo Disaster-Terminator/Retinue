@@ -113,10 +113,14 @@ async function readTail(filePath, maxBytes) {
 }
 
 function summarizeIssues(events) {
+  const latestStatusByJobId = collectLatestStatusByJobId(events);
   const issuesBySignature = new Map();
   for (const event of events) {
     const diagnostic = isRecord(event.diagnostic) ? event.diagnostic : undefined;
     if (!diagnostic) {
+      continue;
+    }
+    if (typeof event.jobId === "string" && latestStatusByJobId.get(event.jobId) === "completed") {
       continue;
     }
     const status = event.event === "opencode_job_stalled" || diagnostic.stallReason ? "stalled" : undefined;
@@ -173,6 +177,21 @@ function summarizeIssues(events) {
     issuesBySignature.set(signature, current);
   }
   return [...issuesBySignature.values()].sort((left, right) => right.count - left.count || String(right.lastSeen).localeCompare(String(left.lastSeen)));
+}
+
+function collectLatestStatusByJobId(events) {
+  const statuses = new Map();
+  for (const event of events) {
+    if (typeof event.jobId !== "string" || typeof event.status !== "string") {
+      continue;
+    }
+    const timestamp = eventTime(event)?.toISOString() ?? "";
+    const current = statuses.get(event.jobId);
+    if (!current || timestamp >= current.timestamp) {
+      statuses.set(event.jobId, { status: event.status, timestamp });
+    }
+  }
+  return new Map([...statuses].map(([jobId, value]) => [jobId, value.status]));
 }
 
 function createIssueTitle(diagnostic) {

@@ -56,6 +56,7 @@ describe("Retinue log audit script", () => {
             time: "2026-05-20T08:01:00.000Z",
             event: "opencode_job_result_read",
             jobId: "job_b",
+            status: "stalled",
             diagnostic: {
               stallReason: "provider_blank_assistant",
               stallSummary: "OpenCode provider/router produced blank assistant output for 90000ms.",
@@ -63,6 +64,32 @@ describe("Retinue log audit script", () => {
               softStallRescueSourceSummary: "OpenCode produced tool-call rounds with no final text.",
               recoveryStallReason: "provider_blank_assistant",
               recoveryStallSummary: "OpenCode provider/router produced blank assistant output for 90000ms.",
+              lastAssistantProviderID: "litellm",
+              lastAssistantModelID: "semantic-router",
+              lastAssistantAgent: "explore",
+              lastAssistantMode: "explore"
+            }
+          }),
+          JSON.stringify({
+            time: "2026-05-20T08:02:00.000Z",
+            event: "opencode_job_stalled",
+            jobId: "job_c",
+            status: "stalled",
+            diagnostic: {
+              stallReason: "provider_blank_assistant",
+              stallSummary: "OpenCode provider/router produced blank assistant output for 90000ms.",
+              lastAssistantProviderID: "litellm",
+              lastAssistantModelID: "semantic-router",
+              lastAssistantAgent: "explore",
+              lastAssistantMode: "explore"
+            }
+          }),
+          JSON.stringify({
+            time: "2026-05-20T08:03:00.000Z",
+            event: "opencode_job_result_read",
+            jobId: "job_c",
+            status: "completed",
+            diagnostic: {
               lastAssistantProviderID: "litellm",
               lastAssistantModelID: "semantic-router",
               lastAssistantAgent: "explore",
@@ -77,7 +104,7 @@ describe("Retinue log audit script", () => {
       });
       const parsed = JSON.parse(stdout);
 
-      expect(parsed.scannedEvents).toBe(2);
+      expect(parsed.scannedEvents).toBe(4);
       expect(parsed.issueCount).toBe(1);
       expect(parsed.issues[0]).toMatchObject({
         count: 2,

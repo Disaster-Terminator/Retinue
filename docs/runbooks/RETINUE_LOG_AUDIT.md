@@ -8,7 +8,7 @@ Use this when WSL or plugin-host logs contain many Retinue issues and a full sca
 pnpm run audit:logs -- --since 2026-05-20T08:00:00.000Z --max-lines 120
 ```
 
-The script reads only the tail of `logs/retinue.jsonl`, filters by `--since`, deduplicates stalled OpenCode diagnostics by stall reason/provider/model/agent/mode, and emits concise issue candidates.
+The script reads only the tail of `logs/retinue.jsonl`, filters by `--since`, deduplicates terminal stalled OpenCode diagnostics by stall reason/provider/model/agent/mode, and emits concise issue candidates. If a job has a later `completed` event in the scanned window, earlier transient stalled diagnostics for that job are ignored.
 
 Useful options:
 
@@ -20,6 +20,8 @@ Useful options:
 ## Interpretation
 
 Each issue candidate includes a signature, affected job IDs, first/last seen timestamps, and one compact sample with session IDs, cwd, stall reason, recovery source/recovery stall reason, tool-call rounds, blank/zero-progress rounds, and read-only write intent status.
+
+If a job briefly emits `opencode_job_stalled` and then later completes after Retinue's recovery prompt, treat the final completed result as the useful evidence. The audit output intentionally reports only jobs whose latest scanned status is still stalled.
 
 For direct-child OpenCode runs, `sample.sessionId` is the result child session and `sample.parentSessionId` is the unprompted relationship container. If the same job also shows a later `build`/`build` candidate, that is usually the no-tools soft-stall rescue prompt, not the original child runner.
 
