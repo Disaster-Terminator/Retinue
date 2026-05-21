@@ -31,7 +31,7 @@ export interface FakeOpenCodeServer {
   completeSessionWithFinalText(sessionId: string, text: string): void;
   completeSessionWithToolCallTextOnly(sessionId: string): void;
   appendToolCallAssistant(sessionId: string, text?: string): void;
-  appendWriteIntentAssistant(sessionId: string, tool: "write" | "edit" | "apply_patch"): void;
+  appendWriteIntentAssistant(sessionId: string, tool: "write" | "edit" | "apply_patch", text?: string): void;
   appendRunningReadToolAssistant(sessionId: string): void;
   appendPendingReadToolAssistant(sessionId: string): void;
   appendMalformedReadToolAssistant(sessionId: string): void;
@@ -340,7 +340,7 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
         });
       }
     },
-    appendWriteIntentAssistant: (sessionId: string, tool: "write" | "edit" | "apply_patch") => {
+    appendWriteIntentAssistant: (sessionId: string, tool: "write" | "edit" | "apply_patch", text = "") => {
       const session = sessions.get(sessionId);
       if (session) {
         session.omitState = true;
@@ -354,6 +354,7 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
           },
           parts: [
             { type: "step-start" },
+            ...(text ? [{ type: "text", text }] : []),
             { type: "tool", text: `${tool} placeholder`, tool, callID: `call_${nextMessage}`, state: { status: "pending" } },
             { type: "step-finish" }
           ]

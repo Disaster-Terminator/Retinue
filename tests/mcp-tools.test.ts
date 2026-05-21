@@ -969,7 +969,7 @@ describe("MCP tools", () => {
           }
         })
       );
-      fakeOpenCode.appendPatchAssistant(spawn.externalSessionId);
+      fakeOpenCode.appendWriteIntentAssistant(spawn.externalSessionId, "write");
 
       const wait = parseToolJson(
         await connection.client.callTool({

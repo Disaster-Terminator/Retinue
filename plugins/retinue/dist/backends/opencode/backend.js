@@ -519,7 +519,7 @@ export class OpenCodeBackend {
                         const expiredDiagnostic = {
                             ...diagnostic,
                             stallReason: "read_only_write_intent",
-                            stallSummary: "OpenCode read-only job emitted patch/write intent, and recovery did not produce usable final text."
+                            stallSummary: "OpenCode read-only job attempted a write-capable tool, and recovery did not produce usable final text."
                         };
                         const stalled = { ...meta, status: "stalled", updatedAt: new Date().toISOString() };
                         await writeJsonAtomic(getJobPaths(this.stateDir, handle.jobId).meta, stalled);
@@ -742,7 +742,7 @@ export class OpenCodeBackend {
         const messages = await client.messages(sessionId);
         const jobMessages = selectMessagesForMeta(messages, meta);
         const writeIntentMessages = selectReadOnlyWriteIntentMessagesForMeta(jobMessages, meta);
-        return countPatchParts(writeIntentMessages) > 0 || countWriteIntentToolParts(writeIntentMessages) > 0;
+        return countWriteIntentToolParts(writeIntentMessages) > 0;
     }
     async isStalledOpenCodeJob(client, sessionId, meta) {
         const messages = await client.messages(sessionId);
@@ -802,8 +802,7 @@ export class OpenCodeBackend {
             diagnostic.readOnlyPatchPartCount = meta.readOnly === true ? countPatchParts(readOnlyWriteIntentMessages) : 0;
             diagnostic.writeIntentToolPartCount = countWriteIntentToolParts(jobMessages);
             diagnostic.readOnlyWriteIntentToolPartCount = meta.readOnly === true ? countWriteIntentToolParts(readOnlyWriteIntentMessages) : 0;
-            diagnostic.readOnlyWriteIntent =
-                (diagnostic.readOnlyPatchPartCount ?? 0) > 0 || (diagnostic.readOnlyWriteIntentToolPartCount ?? 0) > 0;
+            diagnostic.readOnlyWriteIntent = (diagnostic.readOnlyWriteIntentToolPartCount ?? 0) > 0;
             diagnostic.readOnlyWriteIntentRecoveryJobMessageCount = meta.externalReadOnlyWriteIntentRecoveryJobMessageCount;
             diagnostic.softStallRescueSourceReason = isOpenCodeStallReason(meta.externalSoftStallRescueSourceReason)
                 ? meta.externalSoftStallRescueSourceReason
@@ -841,7 +840,7 @@ export class OpenCodeBackend {
                     diagnostic.recoveryStallSummary = diagnostic.stallSummary;
                 }
                 diagnostic.stallReason = "read_only_write_intent";
-                diagnostic.stallSummary = "OpenCode read-only job emitted patch/write intent, and recovery did not produce usable final text.";
+                diagnostic.stallSummary = "OpenCode read-only job attempted a write-capable tool, and recovery did not produce usable final text.";
             }
         }
         catch (error) {
@@ -1190,7 +1189,7 @@ function computeStallDiagnostic(jobMessages, meta, env) {
                 : "OpenCode provider returned an assistant error."
         };
     }
-    if (meta.readOnly === true && (patchPartCount > 0 || writeIntentToolPartCount > 0)) {
+    if (meta.readOnly === true && writeIntentToolPartCount > 0) {
         return {
             patchPartCount,
             readOnlyPatchPartCount: patchPartCount,
@@ -1198,7 +1197,7 @@ function computeStallDiagnostic(jobMessages, meta, env) {
             readOnlyWriteIntentToolPartCount: writeIntentToolPartCount,
             readOnlyWriteIntent: true,
             stallReason: "read_only_write_intent",
-            stallSummary: "OpenCode read-only job emitted patch/write intent."
+            stallSummary: "OpenCode read-only job attempted a write-capable tool."
         };
     }
     if (activeMessages.some(isCompletedAssistantMessage)) {
@@ -1292,10 +1291,10 @@ function createStallMessage(diagnostic) {
     const providerDetails = formatProviderDetails(diagnostic);
     const rescueDetails = formatSoftStallRescueDetails(diagnostic);
     if (diagnostic.readOnlyWriteIntent === true) {
-        return `OpenCode read-only job emitted patch/write intent; Retinue did not treat the child result as trusted output. Inspect Retinue trace/job diagnostics for message summaries.`;
+        return `OpenCode read-only job attempted a write-capable tool; Retinue did not treat the child result as trusted output. Inspect Retinue trace/job diagnostics for message summaries.`;
     }
     if (diagnostic.stallReason === "read_only_write_intent") {
-        return `OpenCode read-only job emitted patch/write intent; Retinue requested a no-tools prose-only recovery, but no trusted final text was produced. Inspect Retinue trace/job diagnostics for message summaries.`;
+        return `OpenCode read-only job attempted a write-capable tool; Retinue requested a no-tools prose-only recovery, but no trusted final text was produced. Inspect Retinue trace/job diagnostics for message summaries.`;
     }
     if (diagnostic.stallReason === "provider_reasoning_content_error") {
         const preview = diagnostic.lastAssistantError?.preview ?? diagnostic.lastMessageError?.preview;
@@ -1405,7 +1404,7 @@ function createStallSummary(diagnostic) {
     const rescueDetails = formatSoftStallRescueDetails(diagnostic);
     switch (diagnostic.stallReason) {
         case "read_only_write_intent":
-            return "OpenCode read-only job emitted patch/write intent.";
+            return "OpenCode read-only job attempted a write-capable tool.";
         case "provider_error":
             return "OpenCode provider returned an assistant error before final text.";
         case "provider_reasoning_content_error":
