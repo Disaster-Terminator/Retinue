@@ -50,6 +50,8 @@ export declare class OpenCodeBackend implements AgentBackend {
     private submitPromptAsync;
     private refreshNativeChildSessions;
     private getOrCreateSharedRootSession;
+    private listAgents;
+    private buildChildSessionPermission;
     private clientForMeta;
     private targetForContinue;
 }

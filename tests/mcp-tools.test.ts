@@ -316,7 +316,7 @@ describe("MCP tools", () => {
       expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
       const submittedPrompt = extractOpenCodePromptText(fakeOpenCode.promptRequests.at(-1));
       expect(submittedPrompt).toBe("retinue mcp");
-      expect(fakeOpenCode.sessionRequests.at(-1)).not.toHaveProperty("permission");
+      expectTaskCompatibleChildPermission(fakeOpenCode.sessionRequests.at(-1));
       const runningWait = parseToolJson(
         await connection.client.callTool({
           name: "retinue_wait_agent",
@@ -407,7 +407,7 @@ describe("MCP tools", () => {
       expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "explore" });
       expect(extractOpenCodePromptText(fakeOpenCode.promptRequests.at(-1))).toBe("inspect with native explore profile");
       expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
-      expect(fakeOpenCode.sessionRequests.at(-1)).not.toHaveProperty("permission");
+      expectTaskCompatibleChildPermission(fakeOpenCode.sessionRequests.at(-1));
 
       await connection.client.callTool({
         name: "retinue_spawn_agent",
@@ -417,7 +417,7 @@ describe("MCP tools", () => {
       expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "plan" });
       expect(extractOpenCodePromptText(fakeOpenCode.promptRequests.at(-1))).toBe("write the implementation plan");
       expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
-      expect(fakeOpenCode.sessionRequests.at(-1)).not.toHaveProperty("permission");
+      expectTaskCompatibleChildPermission(fakeOpenCode.sessionRequests.at(-1));
 
       await connection.client.callTool({
         name: "retinue_spawn_agent",
@@ -427,7 +427,7 @@ describe("MCP tools", () => {
       expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "build" });
       expect(extractOpenCodePromptText(fakeOpenCode.promptRequests.at(-1))).toBe("make the requested change");
       expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
-      expect(fakeOpenCode.sessionRequests.at(-1)).not.toHaveProperty("permission");
+      expectTaskCompatibleChildPermission(fakeOpenCode.sessionRequests.at(-1));
     } finally {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
@@ -495,7 +495,7 @@ describe("MCP tools", () => {
         arguments: { cwd: tempDir, message: "configured build policy", task_name: "configured-build-policy", agent: "build" }
       });
 
-      expect(fakeOpenCode.sessionRequests.at(-1)).not.toHaveProperty("permission");
+      expectTaskCompatibleChildPermission(fakeOpenCode.sessionRequests.at(-1));
     } finally {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
@@ -1404,6 +1404,16 @@ function extractOpenCodePromptText(request: Record<string, unknown> | undefined)
 function extractOpenCodeSubtaskPart(request: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
   const parts = Array.isArray(request?.parts) ? request.parts : [];
   return parts.find((part): part is Record<string, unknown> => typeof part === "object" && part !== null && part.type === "subtask");
+}
+
+function expectTaskCompatibleChildPermission(request: Record<string, unknown> | undefined): void {
+  expect(request).toMatchObject({
+    permission: expect.arrayContaining([
+      { permission: "edit", pattern: "blocked-by-plan", action: "deny" },
+      { permission: "todowrite", pattern: "*", action: "deny" },
+      { permission: "task", pattern: "*", action: "deny" }
+    ])
+  });
 }
 
 function getToolSchema(

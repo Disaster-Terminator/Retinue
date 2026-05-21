@@ -23,6 +23,9 @@ export class OpenCodeClient {
     health() {
         return this.request("GET", "/global/health");
     }
+    agents() {
+        return this.request("GET", "/agent");
+    }
     createSession(options = {}) {
         return this.request("POST", "/session", {
             title: options.title,

@@ -3,6 +3,7 @@ export interface OpenCodeSession {
     title?: string;
     parentID?: string;
     agent?: string;
+    permission?: OpenCodePermissionRule[];
     directory?: string;
     cwd?: string;
     [key: string]: unknown;
@@ -25,6 +26,16 @@ export interface OpenCodePermissionRule {
     permission: string;
     pattern: string;
     action: "allow" | "deny" | "ask";
+}
+export interface OpenCodeAgentInfo {
+    name: string;
+    mode?: "subagent" | "primary" | "all";
+    permission?: OpenCodePermissionRule[];
+    model?: {
+        providerID?: string;
+        modelID?: string;
+    };
+    [key: string]: unknown;
 }
 export type OpenCodePromptPart = {
     type: "text";
@@ -51,6 +62,7 @@ export declare class OpenCodeClient {
         timeoutMs?: number;
     });
     health(): Promise<unknown>;
+    agents(): Promise<OpenCodeAgentInfo[]>;
     createSession(options?: {
         cwd?: string;
         title?: string;

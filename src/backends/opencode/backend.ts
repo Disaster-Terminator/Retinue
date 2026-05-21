@@ -5,7 +5,7 @@ import { getJobPaths, getRetinueTracePath, resolveStateDir } from "../../core/pa
 import { isCleanupSafeStatus } from "../../core/status.js";
 import type { CleanupOptions, CleanupResult, JobMeta, JobProblem, JobResult, JobStatusResult, RetinueOptions } from "../../core/types.js";
 import type { AgentBackend, AgentContinueOptions, AgentHandle, AgentRunOptions } from "../types.js";
-import { OpenCodeClient, OpenCodeClientError, type OpenCodeMessage, type OpenCodePermissionRule } from "./client.js";
+import { OpenCodeClient, OpenCodeClientError, type OpenCodeAgentInfo, type OpenCodeMessage, type OpenCodePermissionRule } from "./client.js";
 import { scheduleManagedOpenCodeServerIdleShutdown } from "./serverManager.js";
 
 export interface OpenCodeBackendOptions {
@@ -317,6 +317,8 @@ export class OpenCodeBackend implements AgentBackend {
     const readOnlyBashPolicy = resolveReadOnlyBashPolicy(options.readOnlyBashPolicy);
     const runnerMode = resolveRunnerMode(this.env);
     const rootAgent = resolveRootAgent(this.env);
+    const requestedAgent = options.agent ?? "explore";
+    const agents = await this.listAgents(target.client);
     const parentSession =
       runnerMode === "shared-root"
         ? await this.getOrCreateSharedRootSession(target, options.cwd, rootAgent)
@@ -329,9 +331,15 @@ export class OpenCodeBackend implements AgentBackend {
       cwd: options.cwd,
       title: options.title ?? options.name,
       parentID: parentSession.id,
-      agent: options.agent ?? "explore",
+      agent: requestedAgent,
       model: options.model,
-      permission: options.readOnly === true ? buildReadOnlyPermission(readOnlyBashPolicy) : undefined
+      permission: this.buildChildSessionPermission({
+        parentSession,
+        parentAgent: findOpenCodeAgent(agents, rootAgent),
+        childAgent: findOpenCodeAgent(agents, requestedAgent),
+        readOnly: options.readOnly === true,
+        readOnlyBashPolicy
+      })
     });
     const baseline = await this.captureMessageBaseline(target.client, childSession.id);
     const now = new Date().toISOString();
@@ -1115,6 +1123,32 @@ export class OpenCodeBackend implements AgentBackend {
     return session;
   }
 
+  private async listAgents(client: OpenCodeClient): Promise<OpenCodeAgentInfo[]> {
+    try {
+      return await client.agents();
+    } catch {
+      return [];
+    }
+  }
+
+  private buildChildSessionPermission(input: {
+    parentSession: { permission?: OpenCodePermissionRule[] };
+    parentAgent: OpenCodeAgentInfo | undefined;
+    childAgent: OpenCodeAgentInfo | undefined;
+    readOnly: boolean;
+    readOnlyBashPolicy: OpenCodeReadOnlyBashPolicy;
+  }): OpenCodePermissionRule[] | undefined {
+    const derived = deriveSubagentSessionPermission({
+      parentSessionPermission: normalizePermissionRules(input.parentSession.permission),
+      parentAgent: input.parentAgent,
+      subagent: input.childAgent
+    });
+    if (input.readOnly) {
+      return mergePermissionRules(derived, buildReadOnlyPermission(input.readOnlyBashPolicy));
+    }
+    return derived.length > 0 ? derived : undefined;
+  }
+
   private clientForMeta(meta: JobMeta): OpenCodeClient {
     const baseUrl = meta.externalServerUrl?.replace(/\/+$/, "");
     if (baseUrl && baseUrl !== this.baseUrl) {
@@ -1868,6 +1902,53 @@ function buildReadOnlyPermission(bashPolicy: OpenCodeReadOnlyBashPolicy): OpenCo
 
 function buildReadOnlyTools(bashPolicy: OpenCodeReadOnlyBashPolicy): Record<string, boolean> {
   return bashPolicy === "readonly_git" ? OPENCODE_READ_ONLY_TOOLS_WITH_READONLY_GIT_BASH : OPENCODE_READ_ONLY_TOOLS_NO_BASH;
+}
+
+function findOpenCodeAgent(agents: OpenCodeAgentInfo[], name: string): OpenCodeAgentInfo | undefined {
+  return agents.find((agent) => agent.name === name);
+}
+
+function normalizePermissionRules(value: unknown): OpenCodePermissionRule[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isOpenCodePermissionRule);
+}
+
+function isOpenCodePermissionRule(value: unknown): value is OpenCodePermissionRule {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.permission === "string" &&
+    typeof candidate.pattern === "string" &&
+    (candidate.action === "allow" || candidate.action === "deny" || candidate.action === "ask")
+  );
+}
+
+function deriveSubagentSessionPermission(input: {
+  parentSessionPermission: OpenCodePermissionRule[];
+  parentAgent: OpenCodeAgentInfo | undefined;
+  subagent: OpenCodeAgentInfo | undefined;
+}): OpenCodePermissionRule[] {
+  const subagentPermission = normalizePermissionRules(input.subagent?.permission);
+  const canTask = subagentPermission.some((rule) => rule.permission === "task");
+  const canTodo = subagentPermission.some((rule) => rule.permission === "todowrite");
+  const parentAgentDenies = normalizePermissionRules(input.parentAgent?.permission).filter(
+    (rule) => rule.action === "deny" && rule.permission === "edit"
+  );
+  return [
+    ...parentAgentDenies,
+    ...input.parentSessionPermission.filter((rule) => rule.permission === "external_directory" || rule.action === "deny"),
+    ...(canTodo ? [] : [{ permission: "todowrite", pattern: "*", action: "deny" } satisfies OpenCodePermissionRule]),
+    ...(canTask ? [] : [{ permission: "task", pattern: "*", action: "deny" } satisfies OpenCodePermissionRule])
+  ];
+}
+
+function mergePermissionRules(...groups: Array<OpenCodePermissionRule[] | undefined>): OpenCodePermissionRule[] | undefined {
+  const rules = groups.flatMap((group) => group ?? []);
+  return rules.length > 0 ? rules : undefined;
 }
 
 function buildOpenCodePrompt(prompt: string, readOnly: boolean, bashPolicy: OpenCodeReadOnlyBashPolicy): string {

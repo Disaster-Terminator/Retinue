@@ -77,9 +77,18 @@ Abstraction clarification from the 2026-05-20 follow-up discussion:
 - `close_agent` is child-job lifecycle management: it aborts the child OpenCode session only while running, then removes the Retinue MCP slot. It does not delete OpenCode sessions or close a shared root.
 - `shared_root` is most natural for a bounded work group with multiple children such as `explore`, `plan`, and `build`; it should not become a global long-lived root without an explicit group lifecycle.
 
+Follow-up source review on 2026-05-21 clarified the task-tool boundary:
+
+- OpenCode `SubtaskPartInput` does invoke `TaskTool.execute`, but it does so inside the parent session prompt loop.
+- After the subtask completes, the parent loop can continue into a parent-agent assistant generation step that summarizes the task output.
+- Retinue's product default should therefore avoid `SubtaskPartInput` as the normal spawn path when the parent agent/model must remain inactive.
+- The compatible default is a direct child session that mirrors the important `TaskTool` permission behavior: read OpenCode `/agent` metadata, derive child session permissions from the parent session, parent agent, and requested subagent, then prompt and collect results from the child session directly.
+- This preserves the two-party runtime shape, `Codex -> Retinue -> OpenCode child agent`, while reusing OpenCode's existing agent permission model instead of adding a Retinue-owned custom agent framework.
+
 ## Acceptance For The Next Product Change
 
 - Retinue runs OpenCode jobs through a direct native child session and collects child final text.
+- Direct child sessions derive permissions in the same spirit as OpenCode `TaskTool`: parent edit denies, parent session denies/external-directory rules, and default `todowrite`/`task` denies when the requested subagent does not explicitly allow them.
 - Retinue records parent/child session IDs in metadata and diagnostics when OpenCode exposes them.
 - Existing stall diagnostics remain available around the child session stream.
 - The release should describe this as OpenCode-native spawn alignment work, not as a new custom agent framework.

@@ -171,6 +171,8 @@ export class OpenCodeBackend {
         const readOnlyBashPolicy = resolveReadOnlyBashPolicy(options.readOnlyBashPolicy);
         const runnerMode = resolveRunnerMode(this.env);
         const rootAgent = resolveRootAgent(this.env);
+        const requestedAgent = options.agent ?? "explore";
+        const agents = await this.listAgents(target.client);
         const parentSession = runnerMode === "shared-root"
             ? await this.getOrCreateSharedRootSession(target, options.cwd, rootAgent)
             : await target.client.createSession({
@@ -182,9 +184,15 @@ export class OpenCodeBackend {
             cwd: options.cwd,
             title: options.title ?? options.name,
             parentID: parentSession.id,
-            agent: options.agent ?? "explore",
+            agent: requestedAgent,
             model: options.model,
-            permission: options.readOnly === true ? buildReadOnlyPermission(readOnlyBashPolicy) : undefined
+            permission: this.buildChildSessionPermission({
+                parentSession,
+                parentAgent: findOpenCodeAgent(agents, rootAgent),
+                childAgent: findOpenCodeAgent(agents, requestedAgent),
+                readOnly: options.readOnly === true,
+                readOnlyBashPolicy
+            })
         });
         const baseline = await this.captureMessageBaseline(target.client, childSession.id);
         const now = new Date().toISOString();
@@ -940,6 +948,25 @@ export class OpenCodeBackend {
         SHARED_ROOT_SESSIONS.set(key, { id: session.id, baseUrl: target.baseUrl, cwd, agent });
         return session;
     }
+    async listAgents(client) {
+        try {
+            return await client.agents();
+        }
+        catch {
+            return [];
+        }
+    }
+    buildChildSessionPermission(input) {
+        const derived = deriveSubagentSessionPermission({
+            parentSessionPermission: normalizePermissionRules(input.parentSession.permission),
+            parentAgent: input.parentAgent,
+            subagent: input.childAgent
+        });
+        if (input.readOnly) {
+            return mergePermissionRules(derived, buildReadOnlyPermission(input.readOnlyBashPolicy));
+        }
+        return derived.length > 0 ? derived : undefined;
+    }
     clientForMeta(meta) {
         const baseUrl = meta.externalServerUrl?.replace(/\/+$/, "");
         if (baseUrl && baseUrl !== this.baseUrl) {
@@ -1593,6 +1620,40 @@ function buildReadOnlyPermission(bashPolicy) {
 }
 function buildReadOnlyTools(bashPolicy) {
     return bashPolicy === "readonly_git" ? OPENCODE_READ_ONLY_TOOLS_WITH_READONLY_GIT_BASH : OPENCODE_READ_ONLY_TOOLS_NO_BASH;
+}
+function findOpenCodeAgent(agents, name) {
+    return agents.find((agent) => agent.name === name);
+}
+function normalizePermissionRules(value) {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return value.filter(isOpenCodePermissionRule);
+}
+function isOpenCodePermissionRule(value) {
+    if (typeof value !== "object" || value === null) {
+        return false;
+    }
+    const candidate = value;
+    return (typeof candidate.permission === "string" &&
+        typeof candidate.pattern === "string" &&
+        (candidate.action === "allow" || candidate.action === "deny" || candidate.action === "ask"));
+}
+function deriveSubagentSessionPermission(input) {
+    const subagentPermission = normalizePermissionRules(input.subagent?.permission);
+    const canTask = subagentPermission.some((rule) => rule.permission === "task");
+    const canTodo = subagentPermission.some((rule) => rule.permission === "todowrite");
+    const parentAgentDenies = normalizePermissionRules(input.parentAgent?.permission).filter((rule) => rule.action === "deny" && rule.permission === "edit");
+    return [
+        ...parentAgentDenies,
+        ...input.parentSessionPermission.filter((rule) => rule.permission === "external_directory" || rule.action === "deny"),
+        ...(canTodo ? [] : [{ permission: "todowrite", pattern: "*", action: "deny" }]),
+        ...(canTask ? [] : [{ permission: "task", pattern: "*", action: "deny" }])
+    ];
+}
+function mergePermissionRules(...groups) {
+    const rules = groups.flatMap((group) => group ?? []);
+    return rules.length > 0 ? rules : undefined;
 }
 function buildOpenCodePrompt(prompt, readOnly, bashPolicy) {
     if (!readOnly) {

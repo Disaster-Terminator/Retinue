@@ -6,6 +6,7 @@ interface FakeSession {
   title?: string;
   parentID?: string;
   agent?: string;
+  permission?: Array<{ permission: string; pattern: string; action: "allow" | "deny" | "ask" }>;
   directory?: string;
   cwd?: string;
   aborted?: boolean;
@@ -65,6 +66,35 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
       return;
     }
 
+    if (request.method === "GET" && url.pathname === "/agent") {
+      writeJson(response, 200, [
+        {
+          name: "build",
+          mode: "primary",
+          permission: [
+            { permission: "*", pattern: "*", action: "allow" },
+            { permission: "edit", pattern: "blocked-by-plan", action: "deny" }
+          ]
+        },
+        {
+          name: "explore",
+          mode: "subagent",
+          permission: [
+            { permission: "*", pattern: "*", action: "deny" },
+            { permission: "read", pattern: "*", action: "allow" },
+            { permission: "glob", pattern: "*", action: "allow" },
+            { permission: "grep", pattern: "*", action: "allow" }
+          ]
+        },
+        {
+          name: "plan",
+          mode: "primary",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }]
+        }
+      ]);
+      return;
+    }
+
     if (request.method === "POST" && url.pathname === "/session") {
       const body = await readJson(request);
       sessionRequests.push(body);
@@ -73,6 +103,7 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
         title: typeof body.title === "string" ? body.title : undefined,
         parentID: typeof body.parentID === "string" ? body.parentID : undefined,
         agent: typeof body.agent === "string" ? body.agent : undefined,
+        permission: Array.isArray(body.permission) ? body.permission : undefined,
         directory: serverCwd,
         state: "running",
         messages: []
@@ -83,6 +114,7 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
         title: session.title,
         parentID: session.parentID,
         agent: session.agent,
+        permission: session.permission,
         directory: session.directory,
         cwd: session.cwd
       });
@@ -98,6 +130,7 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
           title: session.title,
           parentID: session.parentID,
           agent: session.agent,
+          permission: session.permission,
           directory: session.directory,
           cwd: session.cwd
         }))
@@ -124,6 +157,7 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
         title: session.title,
         parentID: session.parentID,
         agent: session.agent,
+        permission: session.permission,
         directory: session.directory,
         cwd: session.cwd,
         aborted: session.aborted === true,
@@ -205,6 +239,7 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
             title: candidate.title,
             parentID: candidate.parentID,
             agent: candidate.agent,
+            permission: candidate.permission,
             directory: candidate.directory,
             cwd: candidate.cwd
           }))
