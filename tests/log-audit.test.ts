@@ -36,7 +36,16 @@ describe("Retinue log audit script", () => {
               lastAssistantAgent: "explore",
               lastAssistantMode: "explore",
               noCompletedAssistantDurationMs: 90000,
-              blankAssistantRounds: 1
+              blankAssistantRounds: 1,
+              malformedReadToolParts: 1,
+              runningReadToolPartSummaries: [
+                {
+                  tool: "read",
+                  callID: "call_read_empty",
+                  stateStatus: "pending",
+                  stateInput: { type: "object", preview: "{}" }
+                }
+              ]
             }
           }),
           JSON.stringify({
@@ -70,7 +79,16 @@ describe("Retinue log audit script", () => {
           sessionId: "ses_child",
           parentSessionId: "ses_parent",
           childSessionIds: ["ses_child"],
-          stallReason: "provider_blank_assistant"
+          stallReason: "provider_blank_assistant",
+          malformedReadToolParts: 1,
+          runningReadToolPartSummaries: [
+            {
+              tool: "read",
+              callID: "call_read_empty",
+              stateStatus: "pending",
+              stateInput: { type: "object", preview: "{}" }
+            }
+          ]
         }
       });
     } finally {

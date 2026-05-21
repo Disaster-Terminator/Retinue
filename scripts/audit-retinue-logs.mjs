@@ -160,6 +160,8 @@ function summarizeIssues(events) {
       toolCallAssistantRounds: diagnostic.toolCallAssistantRounds,
       blankAssistantRounds: diagnostic.blankAssistantRounds,
       runningReadToolParts: diagnostic.runningReadToolParts,
+      malformedReadToolParts: diagnostic.malformedReadToolParts,
+      runningReadToolPartSummaries: diagnostic.runningReadToolPartSummaries,
       readOnlyWriteIntent: diagnostic.readOnlyWriteIntent
     });
     issuesBySignature.set(signature, current);
