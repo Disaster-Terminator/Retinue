@@ -1,0 +1,6 @@
+{
+  "maxConcurrentAgents": 3,
+  "opencode": {
+    "agent": "explore"
+  }
+}

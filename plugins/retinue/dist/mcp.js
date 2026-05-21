@@ -24417,7 +24417,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
       const backend = await createRetinueBackend(retinue);
       const { evicted, started } = await agentPool.withSpawnLock(async () => {
         const evicted2 = await agentPool.ensureSpawnSlot(retinue, process.env);
-        const agent = args.agent ?? process.env.RETINUE_OPENCODE_AGENT;
+        const agent = args.agent ?? await resolveConfiguredOpenCodeAgent(process.env);
         const started2 = await backend.run({
           cwd: args.cwd ?? process.cwd(),
           prompt: args.message,
@@ -24561,7 +24561,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
       inputSchema: {}
     },
     async () => jsonToolResult({
-      maxAgents: parseMaxConcurrentAgents(process.env),
+      maxAgents: await resolveMaxConcurrentAgents(process.env),
       agents: await agentPool.list(retinue)
     })
   );
@@ -24671,7 +24671,7 @@ function registerBackendTools(server, retinue) {
       description: "Start an OpenCode background job through an attached OpenCode server.",
       inputSchema: opencodeRunSchema()
     },
-    async (args) => jsonToolResult(await (await createOpenCodeBackend(args)).run(withOpenCodeDefaults(args)))
+    async (args) => jsonToolResult(await (await createOpenCodeBackend(args)).run(await withOpenCodeDefaults(args)))
   );
   server.registerTool(
     "opencode_status",
@@ -24716,7 +24716,7 @@ function registerBackendTools(server, retinue) {
     },
     async (args) => jsonToolResult(
       await (await createOpenCodeBackend(args)).continueJob({
-        ...withOpenCodeDefaults(args),
+        ...await withOpenCodeDefaults(args),
         parentJobId: args.jobId,
         parentSessionId: args.externalSessionId
       })
@@ -24771,11 +24771,11 @@ async function createOpenCodeBackend(args) {
     env: process.env
   });
 }
-function withOpenCodeDefaults(args) {
+async function withOpenCodeDefaults(args) {
   return {
     ...args,
     model: args.model ?? process.env.RETINUE_OPENCODE_MODEL,
-    agent: args.agent ?? process.env.RETINUE_OPENCODE_AGENT
+    agent: args.agent ?? await resolveConfiguredOpenCodeAgent(process.env)
   };
 }
 var RetinueAgentPool = class {
@@ -24795,10 +24795,7 @@ var RetinueAgentPool = class {
     }
   }
   async ensureSpawnSlot(retinue, env) {
-    const maxAgents = parseMaxConcurrentAgents(env);
-    if (maxAgents === void 0) {
-      return void 0;
-    }
+    const maxAgents = await resolveMaxConcurrentAgents(env);
     const activeEntries = [];
     for (const entry of [...this.entries.values()]) {
       const backend2 = await createRetinueBackendByKind(entry.backend, retinue);
@@ -24859,13 +24856,66 @@ var RetinueAgentPool = class {
     return agents;
   }
 };
-function parseMaxConcurrentAgents(env) {
-  const configured = parseOptionalNumber(env.RETINUE_MAX_CONCURRENT_AGENTS);
+async function resolveMaxConcurrentAgents(env) {
+  const configured = parseOptionalNumber(env.RETINUE_MAX_CONCURRENT_AGENTS) ?? await readConfiguredMaxConcurrentAgents(env);
   const maxAgents = configured ?? 3;
   if (!Number.isFinite(maxAgents)) {
     return 3;
   }
   return Math.max(1, Math.floor(maxAgents));
+}
+async function resolveConfiguredOpenCodeAgent(env) {
+  const envAgent = env.RETINUE_OPENCODE_AGENT?.trim();
+  if (envAgent) {
+    return envAgent;
+  }
+  const config2 = await readRetinueConfig(env);
+  const value = readNestedConfigValue(config2, ["opencode", "agent"]);
+  if (value === void 0 || value === "") {
+    return void 0;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  throw new Error(`Unsupported opencode.agent in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`);
+}
+async function readConfiguredMaxConcurrentAgents(env) {
+  const config2 = await readRetinueConfig(env);
+  const value = readNestedConfigValue(config2, ["maxConcurrentAgents"]);
+  if (value === void 0 || value === "") {
+    return void 0;
+  }
+  if (typeof value === "number") {
+    return value;
+  }
+  throw new Error(`Unsupported maxConcurrentAgents in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`);
+}
+async function readRetinueConfig(env) {
+  const configPath = env.RETINUE_CONFIG_FILE?.trim();
+  if (!configPath) {
+    return void 0;
+  }
+  try {
+    return JSON.parse(await fs5.readFile(configPath, "utf8"));
+  } catch (error2) {
+    if (isMissingFile3(error2)) {
+      return void 0;
+    }
+    throw new Error(`Failed to read Retinue config ${configPath}: ${error2 instanceof Error ? error2.message : String(error2)}`);
+  }
+}
+function readNestedConfigValue(config2, pathSegments) {
+  let current = config2;
+  for (const segment of pathSegments) {
+    if (typeof current !== "object" || current === null || Array.isArray(current) || !(segment in current)) {
+      return void 0;
+    }
+    current = current[segment];
+  }
+  return current;
+}
+function isMissingFile3(error2) {
+  return typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === "ENOENT";
 }
 async function writeMcpTrace(env, value) {
   const stateDir = resolveStateDir({ explicitStateDir: env.RETINUE_STATE_DIR, env });

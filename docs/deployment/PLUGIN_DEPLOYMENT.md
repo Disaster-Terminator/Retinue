@@ -60,8 +60,7 @@ The plugin MCP config starts the runtime shipped inside the plugin directory:
       "env": {
         "RETINUE_BACKEND": "opencode",
         "RETINUE_OPENCODE_AUTO_SERVE": "1",
-        "RETINUE_OPENCODE_HOST": "127.0.0.1",
-        "RETINUE_OPENCODE_AGENT": "explore"
+        "RETINUE_OPENCODE_HOST": "127.0.0.1"
       }
     }
   }
@@ -75,7 +74,18 @@ The default plugin path manages the local OpenCode server lifecycle. It prefers 
 
 Retinue HTTP calls to the local daemon or OpenCode server have a 30-second timeout by default. Set `RETINUE_HTTP_TIMEOUT_MS` to tune this for unusual local runtimes, or `0` to disable the client-side timeout.
 
-The Codex plugin does not ship an installation-scoped access-mode config. OpenCode profile and agent configuration stay in OpenCode and deployment environment; the product tool exposes only the optional per-spawn OpenCode `agent`.
+The Codex plugin ships `retinue.config.json` beside the bootstrap for Retinue-owned defaults:
+
+```json
+{
+  "maxConcurrentAgents": 3,
+  "opencode": {
+    "agent": "explore"
+  }
+}
+```
+
+OpenCode profile configuration stays in OpenCode. Retinue-owned defaults live in JSON config, while environment variables remain deployment overrides.
 
 ## npm Runtime Path
 
@@ -114,7 +124,6 @@ mcp_servers:
       RETINUE_BACKEND: "opencode"
       RETINUE_OPENCODE_AUTO_SERVE: "1"
       RETINUE_OPENCODE_HOST: "127.0.0.1"
-      RETINUE_OPENCODE_AGENT: "explore"
     timeout: 180
     connect_timeout: 30
 ```

@@ -90,14 +90,24 @@ Use Retinue to spawn an OpenCode explore subagent. Ask it to reply exactly: RETI
 
 ## 默认插件配置
 
-插件默认 MCP 配置位于 `plugins/retinue/.mcp.json`。0.1.0 固定为：
+插件默认 MCP 配置位于 `plugins/retinue/.mcp.json`，Retinue 自有配置位于 `plugins/retinue/retinue.config.json`。0.1.0 的 MCP 环境只负责启动后端：
 
 ```json
 {
   "RETINUE_BACKEND": "opencode",
   "RETINUE_OPENCODE_AUTO_SERVE": "1",
-  "RETINUE_OPENCODE_HOST": "127.0.0.1",
-  "RETINUE_OPENCODE_AGENT": "explore"
+  "RETINUE_OPENCODE_HOST": "127.0.0.1"
+}
+```
+
+Retinue 配置文件默认是：
+
+```json
+{
+  "maxConcurrentAgents": 3,
+  "opencode": {
+    "agent": "explore"
+  }
 }
 ```
 
@@ -110,7 +120,7 @@ Use Retinue to spawn an OpenCode explore subagent. Ask it to reply exactly: RETI
 - OpenCode 使用当前 profile，并按 OpenCode agent/profile 语义决定工具和权限。Retinue 只为直接 child session 派生 TaskTool-compatible session permission，例如按 OpenCode 语义补 `todowrite`/`task` deny。
 - `retinue_spawn_agent` 只接受任务、工作目录、任务名和 OpenCode `agent` 选择。不要传 backend、profile、model、OpenCode server、`access_mode` 或 `bash_policy`。
 - `retinue_wait_agent` 会把单次 MCP wait 限制在宿主安全窗口内，默认最大 180 秒。这个窗口覆盖 OpenCode 默认 45 秒 soft-stall 检测和一次 final-answer rescue；长任务仍可重复调用 wait 轮询，也可用 `RETINUE_MCP_WAIT_MAX_MS` 调整上限。
-- 每个 Retinue MCP server 会话默认最多保留 3 个 active 子代理。超过上限的 active spawn 会关闭最旧的 running 子代理并返回 `evictedJobId`；部署可用 `RETINUE_MAX_CONCURRENT_AGENTS` 调整这个上限。
+- 每个 Retinue MCP server 会话默认最多保留 3 个 active 子代理。超过上限的 active spawn 会关闭最旧的 running 子代理并返回 `evictedJobId`；部署可在 `retinue.config.json` 里调整 `maxConcurrentAgents`，`RETINUE_MAX_CONCURRENT_AGENTS` 仅作为环境变量 override。
 
 当 `retinue_wait_agent` 返回 `status: "running"` 时，子代理仍在运行。继续用同一个 `jobId` 再次调用 `retinue_wait_agent`；只有任务进入 `failed`、`killed`、`stalled` 或其他终态时，才需要按终态处理或重新启动。
 

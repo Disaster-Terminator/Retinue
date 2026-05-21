@@ -91,14 +91,24 @@ Note: Codex CLI 0.128 `codex plugin marketplace add/upgrade/remove` manages mark
 
 ## Default Plugin Config
 
-The plugin MCP config lives at `plugins/retinue/.mcp.json`. Retinue 0.1.0 defaults to:
+The plugin MCP config lives at `plugins/retinue/.mcp.json`; Retinue-owned settings live at `plugins/retinue/retinue.config.json`. The 0.1.0 MCP environment only starts the backend:
 
 ```json
 {
   "RETINUE_BACKEND": "opencode",
   "RETINUE_OPENCODE_AUTO_SERVE": "1",
-  "RETINUE_OPENCODE_HOST": "127.0.0.1",
-  "RETINUE_OPENCODE_AGENT": "explore"
+  "RETINUE_OPENCODE_HOST": "127.0.0.1"
+}
+```
+
+The Retinue config defaults to:
+
+```json
+{
+  "maxConcurrentAgents": 3,
+  "opencode": {
+    "agent": "explore"
+  }
 }
 ```
 
@@ -111,7 +121,7 @@ This means:
 - OpenCode uses the active profile and the selected OpenCode agent/profile semantics for tools and permissions. Retinue only derives TaskTool-compatible session permissions for direct child sessions, such as OpenCode-compatible `todowrite`/`task` deny rules.
 - `retinue_spawn_agent` accepts the task, working directory, task name, and optional OpenCode `agent` choice. Do not pass backend, profile, model, OpenCode server, `access_mode`, or `bash_policy` arguments.
 - `retinue_wait_agent` keeps each MCP wait call inside a host-safe window, 180 seconds by default. That window covers OpenCode's default 45-second soft-stall detection plus one final-answer rescue attempt. Long jobs can still be polled by calling wait again, and deployments can tune the cap with `RETINUE_MCP_WAIT_MAX_MS`.
-- Each Retinue MCP server session keeps up to 3 active child agents by default. An active spawn beyond the limit closes the oldest still-running child and returns `evictedJobId`; deployments can tune the limit with `RETINUE_MAX_CONCURRENT_AGENTS`.
+- Each Retinue MCP server session keeps up to 3 active child agents by default. An active spawn beyond the limit closes the oldest still-running child and returns `evictedJobId`; deployments should tune `maxConcurrentAgents` in `retinue.config.json`, with `RETINUE_MAX_CONCURRENT_AGENTS` reserved as an environment override.
 
 A long child-agent task is still running when `retinue_wait_agent` returns `status: "running"`. Call `retinue_wait_agent` again with the same `jobId`; do not respawn unless the job reaches `failed`, `killed`, `stalled`, or another terminal status.
 

@@ -39,16 +39,15 @@ RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096
 
 The explicit URL must be loopback HTTP. Paths are ignored and normalized to the origin. If both `RETINUE_OPENCODE_BASE_URL` and `RETINUE_OPENCODE_AUTO_SERVE=1` are set, Retinue treats the explicit URL as the preferred attach target and falls back to managed auto-serve when that target is unreachable or does not look like OpenCode. Set only `RETINUE_OPENCODE_BASE_URL` for strict externally managed attach mode.
 
-Model and agent overrides are optional:
+Model override is optional, and agent defaults should normally come from Retinue JSON config:
 
 ```text
 RETINUE_OPENCODE_MODEL=litellm/pro-router
-RETINUE_OPENCODE_AGENT=explore
 ```
 
-CLI/MCP request fields win over environment variables. If neither CLI/MCP input nor environment variable is set, retinue does not send `model` or `agent`; OpenCode keeps ownership of default model and agent selection.
+CLI/MCP request fields win over environment variables, and environment variables win over Retinue JSON config. If none is set, retinue does not send `model` or `agent`; OpenCode keeps ownership of default model and agent selection.
 
-Retinue 0.1.0 plugin deployments set `RETINUE_OPENCODE_AGENT=explore` by default. Retinue follows the active OpenCode profile and selected OpenCode agent semantics. `retinue_spawn_agent` can override the OpenCode agent for one child with `agent`; it does not expose a separate Retinue access-mode layer.
+Retinue 0.1.0 plugin deployments set `opencode.agent: "explore"` in `retinue.config.json` by default. Retinue follows the active OpenCode profile and selected OpenCode agent semantics. `retinue_spawn_agent` can override the OpenCode agent for one child with `agent`; it does not expose a separate Retinue access-mode layer.
 
 ## Profile
 
@@ -96,7 +95,7 @@ Product `retinue_spawn_agent` calls are agent-aware on the OpenCode backend. Ope
 
 Retinue does not submit OpenCode `SubtaskPartInput` as the normal spawn path because that path runs inside the parent prompt loop and can wake the parent agent/model after the subtask completes. Instead, Retinue keeps a direct child session topology and mirrors the important OpenCode `TaskTool` permission behavior: it reads `/agent` metadata, creates the requested child session under the parent, inherits parent edit denies plus parent-session deny/external-directory rules, and denies child `todowrite`/`task` unless the requested OpenCode subagent explicitly allows them.
 
-The Codex plugin no longer ships an installation-scoped access-mode config. `RETINUE_OPENCODE_AGENT` can set the default OpenCode agent for the deployment, and a single `retinue_spawn_agent` call may pass `agent` to choose another OpenCode agent for that child. Backend, profile, model, provider, OpenCode server, `access_mode`, and `bash_policy` are not normal product tool arguments.
+The Codex plugin ships an installation-scoped `retinue.config.json` for Retinue-owned settings such as `maxConcurrentAgents` and `opencode.agent`. A single `retinue_spawn_agent` call may still pass `agent` to choose another OpenCode agent for that child. Backend, profile, model, provider, OpenCode server, `access_mode`, and `bash_policy` are not normal product tool arguments.
 
 If a wait call returns `status: "running"`, keep the same `jobId` and call wait again. Do not spawn a replacement job only because one wait window elapsed.
 
@@ -138,7 +137,7 @@ Implemented:
 - fake OpenCode HTTP server for deterministic tests
 - narrow `OpenCodeClient`
 - `OpenCodeBackend` run/result/continue/abort against the fake server
-- model and agent defaults via `RETINUE_OPENCODE_MODEL` and `RETINUE_OPENCODE_AGENT`
+- model override via `RETINUE_OPENCODE_MODEL` and agent default via Retinue JSON config
 - OpenCode 1.14.35 request compatibility for `prompt_async` structured parts, 204 responses, object-shaped model overrides, and sessions without a `state` field
 - backend metadata fields on job records
 - attach/serve policy helpers

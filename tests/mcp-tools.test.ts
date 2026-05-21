@@ -1041,6 +1041,54 @@ describe("MCP tools", () => {
     }
   });
 
+  it("uses Retinue JSON config for OpenCode agent defaults and session slots", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-json-config-"));
+    const configPath = path.join(tempDir, "retinue.config.json");
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    fakeOpenCode.setAutoAssistantResponses(false);
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      await fs.writeFile(configPath, JSON.stringify({ maxConcurrentAgents: 2, opencode: { agent: "explore" } }), "utf8");
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.RETINUE_CONFIG_FILE = configPath;
+
+      const first = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "configured first", task_name: "configured-first" }
+        })
+      );
+      const second = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "configured second", task_name: "configured-second" }
+        })
+      );
+      const third = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "configured third", task_name: "configured-third" }
+        })
+      );
+
+      expect(first).toMatchObject({ status: "running" });
+      expect(second).toMatchObject({ status: "running" });
+      expect(third).toMatchObject({ status: "running", evictedJobId: first.jobId });
+      expect(fakeOpenCode.promptRequests.at(0)).toMatchObject({ agent: "explore" });
+
+      const list = parseToolJson(await connection.client.callTool({ name: "retinue_list_agents", arguments: {} }));
+      expect(list).toMatchObject({ maxAgents: 2 });
+      expect(list.agents).toHaveLength(2);
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      delete process.env.RETINUE_CONFIG_FILE;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("uses OpenCode model and agent defaults from environment for Retinue OpenCode runs", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-defaults-"));
     const fakeOpenCode = await startFakeOpenCodeServer();

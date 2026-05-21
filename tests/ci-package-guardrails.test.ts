@@ -171,13 +171,13 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(readmeZh).toContain("%USERPROFILE%\\.opencode\\bin\\opencode");
     expect(readmeZh).toContain("默认插件配置会管理本机 OpenCode server 生命周期");
     expect(readmeZh).toContain("`4097` 到 `4127`");
-    expect(readmeZh).toContain('"RETINUE_OPENCODE_AGENT": "explore"');
+    expect(readmeZh).toContain('"agent": "explore"');
     expect(readmeZh).toContain("OpenCode `explore`");
     expect(readmeZh).not.toContain('"RETINUE_OPENCODE_AGENT": "plan"');
     expect(readmeEn).toContain("%USERPROFILE%\\.opencode\\bin\\opencode");
     expect(readmeEn).toContain("The default plugin config manages the local OpenCode server lifecycle");
     expect(readmeEn).toContain("`4097` through `4127`");
-    expect(readmeEn).toContain('"RETINUE_OPENCODE_AGENT": "explore"');
+    expect(readmeEn).toContain('"agent": "explore"');
     expect(readmeEn).toContain("OpenCode `explore`");
     expect(readmeEn).not.toContain('"RETINUE_OPENCODE_AGENT": "plan"');
     expect(readmeZh).not.toContain("端口被外部服务占用时尝试 `4097`。");
@@ -276,9 +276,13 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(mcp.retinue?.env?.RETINUE_OPENCODE_HOST).toBe("127.0.0.1");
     expect(mcp.retinue?.env?.RETINUE_OPENCODE_PORT).toBeUndefined();
     expect(mcp.retinue?.env?.RETINUE_OPENCODE_BASE_URL).toBeUndefined();
-    expect(mcp.retinue?.env?.RETINUE_OPENCODE_AGENT).toBe("explore");
+    expect(mcp.retinue?.env?.RETINUE_OPENCODE_AGENT).toBeUndefined();
     expect(mcp.retinue?.env?.RETINUE_OPENCODE_READ_ONLY).toBeUndefined();
-    expect(existsSync("plugins/retinue/retinue.config.json")).toBe(false);
+    expect(existsSync("plugins/retinue/retinue.config.json")).toBe(true);
+    expect(JSON.parse(readFileSync("plugins/retinue/retinue.config.json", "utf8"))).toMatchObject({
+      maxConcurrentAgents: 3,
+      opencode: { agent: "explore" }
+    });
     expect(mcp.retinue?.env?.RETINUE_DAEMON_DISCOVERY).toBeUndefined();
     expect(mcp.retinue?.env?.RETINUE_EXPOSE_BACKEND_TOOLS).toBeUndefined();
   });

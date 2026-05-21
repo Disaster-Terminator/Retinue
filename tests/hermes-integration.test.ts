@@ -12,7 +12,7 @@ describe("Hermes Agent integration", () => {
     expect(hermesConfig).toContain('command: "retinue-mcp"');
     expect(hermesConfig).toContain('RETINUE_BACKEND: "opencode"');
     expect(hermesConfig).toContain('RETINUE_OPENCODE_AUTO_SERVE: "1"');
-    expect(hermesConfig).toContain('RETINUE_OPENCODE_AGENT: "explore"');
+    expect(hermesConfig).not.toContain("RETINUE_OPENCODE_AGENT");
     expect(hermesConfig).not.toContain("mcpServers");
   });
 

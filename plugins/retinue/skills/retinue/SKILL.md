@@ -25,10 +25,9 @@ Backend selection is deployment state, not a Codex tool argument:
 RETINUE_BACKEND=opencode
 RETINUE_OPENCODE_AUTO_SERVE=1
 RETINUE_OPENCODE_HOST=127.0.0.1
-RETINUE_OPENCODE_AGENT=explore
 ```
 
-The 0.1.0 default OpenCode agent is the built-in `explore` subagent. Retinue follows the active OpenCode profile and selected OpenCode agent semantics; it does not expose a product-level `access_mode` or overlay its own read-only prompt/tool policy on normal OpenCode children. A single spawn may pass `agent` to select an OpenCode agent for that child. Retinue manages the default OpenCode server lifecycle and falls back across local ports `4097` through `4127` when the preferred port `4096` is occupied by an external service. Each Retinue MCP server session keeps up to 3 active child agents by default. A spawn beyond the limit closes the oldest active child and returns `evictedJobId`; deployments can tune this with `RETINUE_MAX_CONCURRENT_AGENTS`. Use `RETINUE_BACKEND=claude-code` only when the deployment should route the same `retinue_*` tools to Claude Code. Do not pass backend, profile, model, OpenCode server, `access_mode`, or `bash_policy` choices in `retinue_*` tool arguments.
+The installed plugin also ships `retinue.config.json` with Retinue-owned defaults: `maxConcurrentAgents: 3` and `opencode.agent: "explore"`. The 0.1.0 default OpenCode agent is the built-in `explore` subagent. Retinue follows the active OpenCode profile and selected OpenCode agent semantics; it does not expose a product-level `access_mode` or overlay its own read-only prompt/tool policy on normal OpenCode children. A single spawn may pass `agent` to select an OpenCode agent for that child. Retinue manages the default OpenCode server lifecycle and falls back across local ports `4097` through `4127` when the preferred port `4096` is occupied by an external service. A spawn beyond the active-child limit closes the oldest active child and returns `evictedJobId`; deployments should tune the config file first, with `RETINUE_MAX_CONCURRENT_AGENTS` reserved as an environment override. Use `RETINUE_BACKEND=claude-code` only when the deployment should route the same `retinue_*` tools to Claude Code. Do not pass backend, profile, model, OpenCode server, `access_mode`, or `bash_policy` choices in `retinue_*` tool arguments.
 
 ## Tool Use
 

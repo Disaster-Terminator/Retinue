@@ -78,7 +78,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
       const backend = await createRetinueBackend(retinue);
       const { evicted, started } = await agentPool.withSpawnLock(async () => {
         const evicted = await agentPool.ensureSpawnSlot(retinue, process.env);
-        const agent = args.agent ?? process.env.RETINUE_OPENCODE_AGENT;
+        const agent = args.agent ?? (await resolveConfiguredOpenCodeAgent(process.env));
         const started = await backend.run({
           cwd: args.cwd ?? process.cwd(),
           prompt: args.message,
@@ -228,7 +228,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
     },
     async () =>
       jsonToolResult({
-        maxAgents: parseMaxConcurrentAgents(process.env),
+        maxAgents: await resolveMaxConcurrentAgents(process.env),
         agents: await agentPool.list(retinue)
       })
   );
@@ -349,7 +349,7 @@ function registerBackendTools(server: McpServer, retinue: RetinueApi): void {
       description: "Start an OpenCode background job through an attached OpenCode server.",
       inputSchema: opencodeRunSchema()
     },
-    async (args) => jsonToolResult(await (await createOpenCodeBackend(args)).run(withOpenCodeDefaults(args)))
+    async (args) => jsonToolResult(await (await createOpenCodeBackend(args)).run(await withOpenCodeDefaults(args)))
   );
 
   server.registerTool(
@@ -399,7 +399,7 @@ function registerBackendTools(server: McpServer, retinue: RetinueApi): void {
     async (args) =>
       jsonToolResult(
         await (await createOpenCodeBackend(args)).continueJob({
-          ...withOpenCodeDefaults(args),
+          ...(await withOpenCodeDefaults(args)),
           parentJobId: args.jobId,
           parentSessionId: args.externalSessionId
         })
@@ -459,11 +459,11 @@ async function createOpenCodeBackend(args: { opencodeBaseUrl?: string }): Promis
   });
 }
 
-function withOpenCodeDefaults<T extends { model?: string; agent?: string }>(args: T): T {
+async function withOpenCodeDefaults<T extends { model?: string; agent?: string }>(args: T): Promise<T> {
   return {
     ...args,
     model: args.model ?? process.env.RETINUE_OPENCODE_MODEL,
-    agent: args.agent ?? process.env.RETINUE_OPENCODE_AGENT
+    agent: args.agent ?? (await resolveConfiguredOpenCodeAgent(process.env))
   };
 }
 
@@ -505,10 +505,7 @@ class RetinueAgentPool {
   }
 
   async ensureSpawnSlot(retinue: RetinueApi, env: NodeJS.ProcessEnv): Promise<RetinueAgentPoolEntry | undefined> {
-    const maxAgents = parseMaxConcurrentAgents(env);
-    if (maxAgents === undefined) {
-      return undefined;
-    }
+    const maxAgents = await resolveMaxConcurrentAgents(env);
 
     const activeEntries: RetinueAgentPoolEntry[] = [];
     for (const entry of [...this.entries.values()]) {
@@ -577,13 +574,67 @@ class RetinueAgentPool {
   }
 }
 
-function parseMaxConcurrentAgents(env: NodeJS.ProcessEnv): number | undefined {
-  const configured = parseOptionalNumber(env.RETINUE_MAX_CONCURRENT_AGENTS);
+async function resolveMaxConcurrentAgents(env: NodeJS.ProcessEnv): Promise<number> {
+  const configured = parseOptionalNumber(env.RETINUE_MAX_CONCURRENT_AGENTS) ?? (await readConfiguredMaxConcurrentAgents(env));
   const maxAgents = configured ?? 3;
   if (!Number.isFinite(maxAgents)) {
     return 3;
   }
   return Math.max(1, Math.floor(maxAgents));
+}
+
+async function resolveConfiguredOpenCodeAgent(env: NodeJS.ProcessEnv): Promise<string | undefined> {
+  const envAgent = env.RETINUE_OPENCODE_AGENT?.trim();
+  if (envAgent) {
+    return envAgent;
+  }
+  const config = await readRetinueConfig(env);
+  const value = readNestedConfigValue(config, ["opencode", "agent"]);
+  if (value === undefined || value === "") {
+    return undefined;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  throw new Error(`Unsupported opencode.agent in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`);
+}
+
+async function readConfiguredMaxConcurrentAgents(env: NodeJS.ProcessEnv): Promise<number | undefined> {
+  const config = await readRetinueConfig(env);
+  const value = readNestedConfigValue(config, ["maxConcurrentAgents"]);
+  if (value === undefined || value === "") {
+    return undefined;
+  }
+  if (typeof value === "number") {
+    return value;
+  }
+  throw new Error(`Unsupported maxConcurrentAgents in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`);
+}
+
+async function readRetinueConfig(env: NodeJS.ProcessEnv): Promise<unknown | undefined> {
+  const configPath = env.RETINUE_CONFIG_FILE?.trim();
+  if (!configPath) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(await fs.readFile(configPath, "utf8")) as unknown;
+  } catch (error) {
+    if (isMissingFile(error)) {
+      return undefined;
+    }
+    throw new Error(`Failed to read Retinue config ${configPath}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function readNestedConfigValue(config: unknown, pathSegments: string[]): unknown {
+  let current = config;
+  for (const segment of pathSegments) {
+    if (typeof current !== "object" || current === null || Array.isArray(current) || !(segment in current)) {
+      return undefined;
+    }
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return current;
 }
 
 function isMissingFile(error: unknown): boolean {
