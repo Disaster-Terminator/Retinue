@@ -31,6 +31,10 @@ describe("Retinue log audit script", () => {
               sessionDirectory: "/repo",
               stallReason: "provider_blank_assistant",
               stallSummary: "OpenCode provider/router produced blank assistant output for 90000ms.",
+              softStallRescueSourceReason: "tool_loop_no_completion",
+              softStallRescueSourceSummary: "OpenCode produced tool-call rounds with no final text.",
+              recoveryStallReason: "provider_blank_assistant",
+              recoveryStallSummary: "OpenCode provider/router produced blank assistant output for 90000ms.",
               lastAssistantProviderID: "litellm",
               lastAssistantModelID: "semantic-router",
               lastAssistantAgent: "explore",
@@ -54,6 +58,11 @@ describe("Retinue log audit script", () => {
             jobId: "job_b",
             diagnostic: {
               stallReason: "provider_blank_assistant",
+              stallSummary: "OpenCode provider/router produced blank assistant output for 90000ms.",
+              softStallRescueSourceReason: "tool_loop_no_completion",
+              softStallRescueSourceSummary: "OpenCode produced tool-call rounds with no final text.",
+              recoveryStallReason: "provider_blank_assistant",
+              recoveryStallSummary: "OpenCode provider/router produced blank assistant output for 90000ms.",
               lastAssistantProviderID: "litellm",
               lastAssistantModelID: "semantic-router",
               lastAssistantAgent: "explore",
@@ -73,13 +82,16 @@ describe("Retinue log audit script", () => {
       expect(parsed.issues[0]).toMatchObject({
         count: 2,
         jobIds: ["job_a", "job_b"],
-        title: "Investigate Retinue provider_blank_assistant on litellm/semantic-router",
+        title: "Investigate Retinue recovery provider_blank_assistant after tool_loop_no_completion on litellm/semantic-router",
+        description: expect.stringContaining("rescueSource=tool_loop_no_completion"),
         sample: {
           jobId: "job_a",
           sessionId: "ses_child",
           parentSessionId: "ses_parent",
           childSessionIds: ["ses_child"],
           stallReason: "provider_blank_assistant",
+          softStallRescueSourceReason: "tool_loop_no_completion",
+          recoveryStallReason: "provider_blank_assistant",
           malformedReadToolParts: 1,
           runningReadToolPartSummaries: [
             {

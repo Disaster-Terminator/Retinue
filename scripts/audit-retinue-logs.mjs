@@ -125,6 +125,8 @@ function summarizeIssues(events) {
     }
     const signature = [
       diagnostic.stallReason ?? "unknown_stall",
+      diagnostic.softStallRescueSourceReason ?? "no_rescue_source",
+      diagnostic.recoveryStallReason ?? "no_recovery_stall",
       diagnostic.lastAssistantProviderID ?? "unknown_provider",
       diagnostic.lastAssistantModelID ?? "unknown_model",
       diagnostic.lastAssistantAgent ?? "unknown_agent",
@@ -156,6 +158,10 @@ function summarizeIssues(events) {
       sessionDirectory: diagnostic.sessionDirectory,
       stallReason: diagnostic.stallReason,
       stallSummary: diagnostic.stallSummary,
+      softStallRescueSourceReason: diagnostic.softStallRescueSourceReason,
+      softStallRescueSourceSummary: diagnostic.softStallRescueSourceSummary,
+      recoveryStallReason: diagnostic.recoveryStallReason,
+      recoveryStallSummary: diagnostic.recoveryStallSummary,
       noCompletedAssistantDurationMs: diagnostic.noCompletedAssistantDurationMs,
       toolCallAssistantRounds: diagnostic.toolCallAssistantRounds,
       blankAssistantRounds: diagnostic.blankAssistantRounds,
@@ -173,12 +179,18 @@ function createIssueTitle(diagnostic) {
   const reason = diagnostic.stallReason ?? "unknown_stall";
   const provider = diagnostic.lastAssistantProviderID ?? "unknown_provider";
   const model = diagnostic.lastAssistantModelID ?? "unknown_model";
+  if (diagnostic.recoveryStallReason) {
+    const source = diagnostic.softStallRescueSourceReason ?? "unknown_rescue_source";
+    return `Investigate Retinue recovery ${diagnostic.recoveryStallReason} after ${source} on ${provider}/${model}`;
+  }
   return `Investigate Retinue ${reason} on ${provider}/${model}`;
 }
 
 function createIssueDescription(diagnostic) {
   const parts = [
     diagnostic.stallSummary,
+    diagnostic.softStallRescueSourceReason ? `rescueSource=${diagnostic.softStallRescueSourceReason}` : undefined,
+    diagnostic.recoveryStallReason ? `recovery=${diagnostic.recoveryStallReason}` : undefined,
     diagnostic.sessionDirectory ? `cwd=${diagnostic.sessionDirectory}` : undefined,
     diagnostic.lastAssistantAgent ? `agent=${diagnostic.lastAssistantAgent}` : undefined,
     diagnostic.lastAssistantMode ? `mode=${diagnostic.lastAssistantMode}` : undefined,
