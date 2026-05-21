@@ -48,7 +48,7 @@ RETINUE_OPENCODE_AGENT=explore
 
 CLI/MCP request fields win over environment variables. If neither CLI/MCP input nor environment variable is set, retinue does not send `model` or `agent`; OpenCode keeps ownership of default model and agent selection.
 
-Retinue 0.1.0 plugin deployments set `RETINUE_OPENCODE_AGENT=explore` by default. Retinue follows the active OpenCode profile when `access_mode` is omitted, including for built-in repository exploration agents such as `explore`, `scout`, and `general`. `retinue_spawn_agent` can still override the agent for one child with `agent`, and can opt into Retinue's stricter read-only safety mode with `access_mode: "read_only"`.
+Retinue 0.1.0 plugin deployments set `RETINUE_OPENCODE_AGENT=explore` by default. Retinue follows the active OpenCode profile and selected OpenCode agent semantics. `retinue_spawn_agent` can override the OpenCode agent for one child with `agent`; it does not expose a separate Retinue access-mode layer.
 
 ## Profile
 
@@ -92,30 +92,11 @@ MCP hosts commonly enforce their own per-tool timeout. Retinue therefore clamps 
 
 Retinue's local HTTP clients also apply a 30-second transport timeout to OpenCode and daemon requests. Set `RETINUE_HTTP_TIMEOUT_MS` when a deployment needs a different local request ceiling; set it to `0` only when another layer already enforces a reliable timeout.
 
-Product `retinue_spawn_agent` calls are agent-aware on the OpenCode backend. The default packaged config uses `profile` access so OpenCode owns the effective permissions, tools, plugins, and agent behavior. When a caller explicitly asks for `access_mode: "read_only"`, Retinue creates the OpenCode session with explicit non-interactive permissions: file edits, patch mode, and nested `task` agents are denied, `doom_loop` and interactive `question` prompts are denied so headless runs do not wait for UI approval, and `bash` is restricted to a small read-only git inspection allowlist. The packaged config does not inject an extra Retinue prompt contract and does not send `tools: false` overrides to `prompt_async`; set `opencode.readOnlyPromptContract: true` or `opencode.readOnlyToolDeny: true` only when a deployment needs stricter Retinue-owned behavior. In explicit read-only mode, the default `readonly_git` bash policy allows commands such as `git status --short`, `git diff --cached`, `git diff --staged`, targeted `git diff -- <path>`, `git show --stat`, `git show --name-only`, `git ls-files`, and `git rev-parse --show-toplevel`; it still blocks shell composition, write-capable git commands, patches, and arbitrary bash. Set `opencode.readOnlyBashPolicy` to `"none"` when a deployment needs no-bash behavior.
+Product `retinue_spawn_agent` calls are agent-aware on the OpenCode backend. OpenCode owns the effective profile, permissions, tools, plugins, and agent behavior. Retinue does not inject a read-only prompt contract, does not send prompt-level tool overrides, and does not expose `access_mode` or `bash_policy` on the product MCP tool.
 
 Retinue does not submit OpenCode `SubtaskPartInput` as the normal spawn path because that path runs inside the parent prompt loop and can wake the parent agent/model after the subtask completes. Instead, Retinue keeps a direct child session topology and mirrors the important OpenCode `TaskTool` permission behavior: it reads `/agent` metadata, creates the requested child session under the parent, inherits parent edit denies plus parent-session deny/external-directory rules, and denies child `todowrite`/`task` unless the requested OpenCode subagent explicitly allows them.
 
-Codex plugin installs read the default from the installation-scoped `retinue.config.json` beside the plugin bootstrap. The shipped default is:
-
-```json
-{
-  "opencode": {
-    "agentPolicies": {
-      "explore": "profile",
-      "scout": "profile",
-      "general": "profile",
-      "plan": "profile",
-      "build": "profile"
-    },
-    "readOnlyBashPolicy": "readonly_git",
-    "readOnlyPromptContract": false,
-    "readOnlyToolDeny": false
-  }
-}
-```
-
-`retinue_spawn_agent` can override the default for one child with `agent`, `access_mode: "read_only"` or `access_mode: "profile"`. The optional `bash_policy` argument can set one child to `"readonly_git"` or `"none"`; the installation-scoped config provides the default when the argument is omitted. `profile` means Retinue does not send read-only session permissions and the child follows the active OpenCode profile. `opencode.defaultAccessMode`, `RETINUE_OPENCODE_ACCESS_MODE`, and the older `RETINUE_OPENCODE_READ_ONLY` remain global overrides for deployments that intentionally want one access mode regardless of agent.
+The Codex plugin no longer ships an installation-scoped access-mode config. `RETINUE_OPENCODE_AGENT` can set the default OpenCode agent for the deployment, and a single `retinue_spawn_agent` call may pass `agent` to choose another OpenCode agent for that child. Backend, profile, model, provider, OpenCode server, `access_mode`, and `bash_policy` are not normal product tool arguments.
 
 If a wait call returns `status: "running"`, keep the same `jobId` and call wait again. Do not spawn a replacement job only because one wait window elapsed.
 
@@ -148,7 +129,7 @@ When `retinue_wait_agent` returns `running` or `stalled`, its response includes 
 
 The `opencode-*` CLI commands and opt-in `opencode_*` MCP tools are raw backend adapter surfaces. They exist for development probes, backend debugging, and compatibility runbooks. They are not the product-level Codex or Hermes delegation contract.
 
-Normal agent delegation should use `retinue_spawn_agent`, `retinue_wait_agent`, `retinue_close_agent`, and `retinue_list_agents`. Those tools apply the deployment-selected backend, Retinue-managed OpenCode server lifecycle, bounded diagnostics, per-spawn `access_mode`, and active child-agent pool semantics. Only expose backend tools with `RETINUE_EXPOSE_BACKEND_TOOLS=1` when intentionally debugging an adapter-specific issue.
+Normal agent delegation should use `retinue_spawn_agent`, `retinue_wait_agent`, `retinue_close_agent`, and `retinue_list_agents`. Those tools apply the deployment-selected backend, Retinue-managed OpenCode server lifecycle, bounded diagnostics, optional per-spawn OpenCode `agent`, and active child-agent pool semantics. Only expose backend tools with `RETINUE_EXPOSE_BACKEND_TOOLS=1` when intentionally debugging an adapter-specific issue.
 
 ## Current Status
 

@@ -52,7 +52,7 @@ Retinue originally stacked several read-only guard layers:
 - It passes prompt-level tool denial to `prompt_async`: `edit`, `write`, `apply_patch`, `patch`, and `task` are disabled.
 - It prepends `createReadOnlyPromptContract()` to tell the child to use read/grep/glob and allowed read-only git only, avoid patch mode, avoid unified diffs, keep inspection bounded, and finish with prose.
 
-The current default keeps the session-level OpenCode permission boundary, but stops injecting the extra Retinue prompt contract and prompt-level `tools: false` map unless `opencode.readOnlyPromptContract` or `opencode.readOnlyToolDeny` is explicitly enabled. This lets the default path exercise OpenCode's native `explore` behavior first, while preserving a strict mode for deployments that need it.
+This research note describes an earlier design. The product path now removes the Retinue-owned access-mode layer and lets OpenCode profile and agent semantics own permissions for normal children.
 
 Current stall classification:
 
@@ -173,7 +173,7 @@ Needed dogfood/E2E:
 - Do not require users to install a custom OpenCode agent before Retinue works.
 - Do not build a Retinue-owned custom agent until the built-in `explore` path has been exhausted.
 - Do not change the default backend away from OpenCode.
-- Do not make `access_mode: profile` the default.
+- Do not reintroduce a product-level `access_mode` switch unless OpenCode-native profile and agent semantics are proven insufficient.
 
 ## Open Questions
 

@@ -24389,15 +24389,6 @@ var OPENCODE_TOOL_NAMES = [
 ];
 var RETINUE_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"];
 var DEFAULT_MCP_WAIT_MAX_MS = 18e4;
-var ACCESS_MODES = ["read_only", "profile"];
-var READ_ONLY_BASH_POLICIES = ["readonly_git", "none"];
-var BUILTIN_OPENCODE_AGENT_ACCESS_MODES = {
-  explore: "profile",
-  scout: "profile",
-  general: "profile",
-  plan: "profile",
-  build: "profile"
-};
 function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
   const agentPool = new RetinueAgentPool();
   const server = new McpServer({
@@ -24418,9 +24409,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
         taskName: external_exports.string().optional(),
         cwd: external_exports.string().optional(),
         title: external_exports.string().optional(),
-        agent: external_exports.string().optional(),
-        access_mode: external_exports.enum(ACCESS_MODES).optional(),
-        bash_policy: external_exports.enum(READ_ONLY_BASH_POLICIES).optional()
+        agent: external_exports.string().optional()
       }
     },
     async (args) => {
@@ -24429,7 +24418,6 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
       const { evicted, started } = await agentPool.withSpawnLock(async () => {
         const evicted2 = await agentPool.ensureSpawnSlot(retinue, process.env);
         const agent = args.agent ?? process.env.RETINUE_OPENCODE_AGENT;
-        const accessMode = backend.kind === "opencode" ? await resolveOpenCodeAccessMode(args.access_mode, agent, process.env) : void 0;
         const started2 = await backend.run({
           cwd: args.cwd ?? process.cwd(),
           prompt: args.message,
@@ -24438,10 +24426,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
           ...backend.kind === "opencode" ? {
             model: process.env.RETINUE_OPENCODE_MODEL,
             agent,
-            readOnly: accessMode === "read_only",
-            readOnlyBashPolicy: await resolveOpenCodeReadOnlyBashPolicy(args.bash_policy, process.env),
-            readOnlyPromptContract: await resolveOpenCodeReadOnlyPromptContract(process.env),
-            readOnlyToolDeny: await resolveOpenCodeReadOnlyToolDeny(process.env)
+            readOnly: false
           } : {}
         });
         agentPool.add({
@@ -24881,140 +24866,6 @@ function parseMaxConcurrentAgents(env) {
     return 3;
   }
   return Math.max(1, Math.floor(maxAgents));
-}
-async function resolveOpenCodeAccessMode(requested, agent, env) {
-  if (requested) {
-    return requested;
-  }
-  const configMode = await readConfiguredOpenCodeAccessMode(env);
-  if (configMode) {
-    return configMode;
-  }
-  const envMode = readOpenCodeAccessModeFromEnv(env);
-  if (envMode) {
-    return envMode;
-  }
-  const configuredAgentMode = await readConfiguredOpenCodeAgentAccessMode(agent, env);
-  if (configuredAgentMode) {
-    return configuredAgentMode;
-  }
-  return readBuiltInOpenCodeAgentAccessMode(agent) ?? "profile";
-}
-async function resolveOpenCodeReadOnlyBashPolicy(requested, env) {
-  if (requested) {
-    return requested;
-  }
-  const configured = await readConfiguredOpenCodeReadOnlyBashPolicy(env);
-  return configured ?? "readonly_git";
-}
-async function readConfiguredOpenCodeAccessMode(env) {
-  const config2 = await readRetinueConfig(env);
-  const value = typeof config2 === "object" && config2 !== null && "opencode" in config2 ? config2.opencode.defaultAccessMode : void 0;
-  if (value === void 0 || value === "") {
-    return void 0;
-  }
-  if (value === "read_only" || value === "profile") {
-    return value;
-  }
-  throw new Error(`Unsupported opencode.defaultAccessMode in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`);
-}
-async function readConfiguredOpenCodeReadOnlyBashPolicy(env) {
-  const config2 = await readRetinueConfig(env);
-  const value = typeof config2 === "object" && config2 !== null && "opencode" in config2 ? config2.opencode.readOnlyBashPolicy : void 0;
-  if (value === void 0 || value === "") {
-    return void 0;
-  }
-  if (value === "readonly_git" || value === "none") {
-    return value;
-  }
-  throw new Error(`Unsupported opencode.readOnlyBashPolicy in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`);
-}
-async function readConfiguredOpenCodeAgentAccessMode(agent, env) {
-  const normalizedAgent = normalizeOpenCodeAgentName(agent);
-  if (!normalizedAgent) {
-    return void 0;
-  }
-  const config2 = await readRetinueConfig(env);
-  const agentPolicies = typeof config2 === "object" && config2 !== null && "opencode" in config2 ? config2.opencode.agentPolicies : void 0;
-  if (agentPolicies === void 0 || agentPolicies === "") {
-    return void 0;
-  }
-  if (typeof agentPolicies !== "object" || agentPolicies === null || Array.isArray(agentPolicies)) {
-    throw new Error(`Unsupported opencode.agentPolicies in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(agentPolicies)}`);
-  }
-  const value = agentPolicies[normalizedAgent];
-  if (value === void 0 || value === "") {
-    return void 0;
-  }
-  if (value === "read_only" || value === "profile") {
-    return value;
-  }
-  throw new Error(
-    `Unsupported opencode.agentPolicies.${normalizedAgent} in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`
-  );
-}
-function readBuiltInOpenCodeAgentAccessMode(agent) {
-  const normalizedAgent = normalizeOpenCodeAgentName(agent);
-  return normalizedAgent ? BUILTIN_OPENCODE_AGENT_ACCESS_MODES[normalizedAgent] : void 0;
-}
-function normalizeOpenCodeAgentName(agent) {
-  const normalized = agent?.trim().toLowerCase();
-  return normalized === "" ? void 0 : normalized;
-}
-async function resolveOpenCodeReadOnlyPromptContract(env) {
-  const configured = await readConfiguredOpenCodeBoolean(env, "readOnlyPromptContract");
-  return configured ?? false;
-}
-async function resolveOpenCodeReadOnlyToolDeny(env) {
-  const configured = await readConfiguredOpenCodeBoolean(env, "readOnlyToolDeny");
-  return configured ?? false;
-}
-async function readConfiguredOpenCodeBoolean(env, key) {
-  const config2 = await readRetinueConfig(env);
-  const value = typeof config2 === "object" && config2 !== null && "opencode" in config2 ? config2.opencode[key] : void 0;
-  if (value === void 0 || value === "") {
-    return void 0;
-  }
-  if (value === true || value === "true" || value === "1" || value === "on") {
-    return true;
-  }
-  if (value === false || value === "false" || value === "0" || value === "off") {
-    return false;
-  }
-  throw new Error(`Unsupported opencode.${key} in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`);
-}
-async function readRetinueConfig(env) {
-  const configPath = env.RETINUE_CONFIG_FILE?.trim();
-  if (!configPath) {
-    return void 0;
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(await fs5.readFile(configPath, "utf8"));
-  } catch (error2) {
-    if (isMissingFile3(error2)) {
-      return void 0;
-    }
-    throw new Error(`Failed to read Retinue config ${configPath}: ${error2 instanceof Error ? error2.message : String(error2)}`);
-  }
-  return parsed;
-}
-function readOpenCodeAccessModeFromEnv(env) {
-  const accessMode = env.RETINUE_OPENCODE_ACCESS_MODE?.trim().toLowerCase();
-  if (accessMode === "read_only" || accessMode === "profile") {
-    return accessMode;
-  }
-  if (accessMode) {
-    throw new Error(`Unsupported RETINUE_OPENCODE_ACCESS_MODE: ${accessMode}`);
-  }
-  const configured = env.RETINUE_OPENCODE_READ_ONLY?.trim().toLowerCase();
-  if (configured === void 0 || configured === "") {
-    return void 0;
-  }
-  return configured === "0" || configured === "false" || configured === "no" || configured === "off" ? "profile" : "read_only";
-}
-function isMissingFile3(error2) {
-  return typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === "ENOENT";
 }
 async function writeMcpTrace(env, value) {
   const stateDir = resolveStateDir({ explicitStateDir: env.RETINUE_STATE_DIR, env });

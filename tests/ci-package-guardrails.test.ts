@@ -278,21 +278,7 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(mcp.retinue?.env?.RETINUE_OPENCODE_BASE_URL).toBeUndefined();
     expect(mcp.retinue?.env?.RETINUE_OPENCODE_AGENT).toBe("explore");
     expect(mcp.retinue?.env?.RETINUE_OPENCODE_READ_ONLY).toBeUndefined();
-    expect(existsSync("plugins/retinue/retinue.config.json")).toBe(true);
-    expect(JSON.parse(readFileSync("plugins/retinue/retinue.config.json", "utf8"))).toMatchObject({
-      opencode: {
-        agentPolicies: {
-          explore: "profile",
-          scout: "profile",
-          general: "profile",
-          plan: "profile",
-          build: "profile"
-        },
-        readOnlyBashPolicy: "readonly_git",
-        readOnlyPromptContract: false,
-        readOnlyToolDeny: false
-      }
-    });
+    expect(existsSync("plugins/retinue/retinue.config.json")).toBe(false);
     expect(mcp.retinue?.env?.RETINUE_DAEMON_DISCOVERY).toBeUndefined();
     expect(mcp.retinue?.env?.RETINUE_EXPOSE_BACKEND_TOOLS).toBeUndefined();
   });

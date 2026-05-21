@@ -36,15 +36,6 @@ export const OPENCODE_TOOL_NAMES = [
 ];
 export const RETINUE_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"];
 const DEFAULT_MCP_WAIT_MAX_MS = 180_000;
-const ACCESS_MODES = ["read_only", "profile"];
-const READ_ONLY_BASH_POLICIES = ["readonly_git", "none"];
-const BUILTIN_OPENCODE_AGENT_ACCESS_MODES = {
-    explore: "profile",
-    scout: "profile",
-    general: "profile",
-    plan: "profile",
-    build: "profile"
-};
 export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
     const agentPool = new RetinueAgentPool();
     const server = new McpServer({
@@ -63,9 +54,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             taskName: z.string().optional(),
             cwd: z.string().optional(),
             title: z.string().optional(),
-            agent: z.string().optional(),
-            access_mode: z.enum(ACCESS_MODES).optional(),
-            bash_policy: z.enum(READ_ONLY_BASH_POLICIES).optional()
+            agent: z.string().optional()
         }
     }, async (args) => {
         const taskName = normalizeTaskName(args);
@@ -73,7 +62,6 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
         const { evicted, started } = await agentPool.withSpawnLock(async () => {
             const evicted = await agentPool.ensureSpawnSlot(retinue, process.env);
             const agent = args.agent ?? process.env.RETINUE_OPENCODE_AGENT;
-            const accessMode = backend.kind === "opencode" ? await resolveOpenCodeAccessMode(args.access_mode, agent, process.env) : undefined;
             const started = await backend.run({
                 cwd: args.cwd ?? process.cwd(),
                 prompt: args.message,
@@ -83,10 +71,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
                     ? {
                         model: process.env.RETINUE_OPENCODE_MODEL,
                         agent,
-                        readOnly: accessMode === "read_only",
-                        readOnlyBashPolicy: await resolveOpenCodeReadOnlyBashPolicy(args.bash_policy, process.env),
-                        readOnlyPromptContract: await resolveOpenCodeReadOnlyPromptContract(process.env),
-                        readOnlyToolDeny: await resolveOpenCodeReadOnlyToolDeny(process.env)
+                        readOnly: false
                     }
                     : {})
             });
@@ -450,144 +435,6 @@ function parseMaxConcurrentAgents(env) {
         return 3;
     }
     return Math.max(1, Math.floor(maxAgents));
-}
-async function resolveOpenCodeAccessMode(requested, agent, env) {
-    if (requested) {
-        return requested;
-    }
-    const configMode = await readConfiguredOpenCodeAccessMode(env);
-    if (configMode) {
-        return configMode;
-    }
-    const envMode = readOpenCodeAccessModeFromEnv(env);
-    if (envMode) {
-        return envMode;
-    }
-    const configuredAgentMode = await readConfiguredOpenCodeAgentAccessMode(agent, env);
-    if (configuredAgentMode) {
-        return configuredAgentMode;
-    }
-    return readBuiltInOpenCodeAgentAccessMode(agent) ?? "profile";
-}
-async function resolveOpenCodeReadOnlyBashPolicy(requested, env) {
-    if (requested) {
-        return requested;
-    }
-    const configured = await readConfiguredOpenCodeReadOnlyBashPolicy(env);
-    return configured ?? "readonly_git";
-}
-async function readConfiguredOpenCodeAccessMode(env) {
-    const config = await readRetinueConfig(env);
-    const value = typeof config === "object" && config !== null && "opencode" in config
-        ? config.opencode.defaultAccessMode
-        : undefined;
-    if (value === undefined || value === "") {
-        return undefined;
-    }
-    if (value === "read_only" || value === "profile") {
-        return value;
-    }
-    throw new Error(`Unsupported opencode.defaultAccessMode in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`);
-}
-async function readConfiguredOpenCodeReadOnlyBashPolicy(env) {
-    const config = await readRetinueConfig(env);
-    const value = typeof config === "object" && config !== null && "opencode" in config
-        ? config.opencode.readOnlyBashPolicy
-        : undefined;
-    if (value === undefined || value === "") {
-        return undefined;
-    }
-    if (value === "readonly_git" || value === "none") {
-        return value;
-    }
-    throw new Error(`Unsupported opencode.readOnlyBashPolicy in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`);
-}
-async function readConfiguredOpenCodeAgentAccessMode(agent, env) {
-    const normalizedAgent = normalizeOpenCodeAgentName(agent);
-    if (!normalizedAgent) {
-        return undefined;
-    }
-    const config = await readRetinueConfig(env);
-    const agentPolicies = typeof config === "object" && config !== null && "opencode" in config
-        ? config.opencode.agentPolicies
-        : undefined;
-    if (agentPolicies === undefined || agentPolicies === "") {
-        return undefined;
-    }
-    if (typeof agentPolicies !== "object" || agentPolicies === null || Array.isArray(agentPolicies)) {
-        throw new Error(`Unsupported opencode.agentPolicies in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(agentPolicies)}`);
-    }
-    const value = agentPolicies[normalizedAgent];
-    if (value === undefined || value === "") {
-        return undefined;
-    }
-    if (value === "read_only" || value === "profile") {
-        return value;
-    }
-    throw new Error(`Unsupported opencode.agentPolicies.${normalizedAgent} in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`);
-}
-function readBuiltInOpenCodeAgentAccessMode(agent) {
-    const normalizedAgent = normalizeOpenCodeAgentName(agent);
-    return normalizedAgent ? BUILTIN_OPENCODE_AGENT_ACCESS_MODES[normalizedAgent] : undefined;
-}
-function normalizeOpenCodeAgentName(agent) {
-    const normalized = agent?.trim().toLowerCase();
-    return normalized === "" ? undefined : normalized;
-}
-async function resolveOpenCodeReadOnlyPromptContract(env) {
-    const configured = await readConfiguredOpenCodeBoolean(env, "readOnlyPromptContract");
-    return configured ?? false;
-}
-async function resolveOpenCodeReadOnlyToolDeny(env) {
-    const configured = await readConfiguredOpenCodeBoolean(env, "readOnlyToolDeny");
-    return configured ?? false;
-}
-async function readConfiguredOpenCodeBoolean(env, key) {
-    const config = await readRetinueConfig(env);
-    const value = typeof config === "object" && config !== null && "opencode" in config
-        ? config.opencode[key]
-        : undefined;
-    if (value === undefined || value === "") {
-        return undefined;
-    }
-    if (value === true || value === "true" || value === "1" || value === "on") {
-        return true;
-    }
-    if (value === false || value === "false" || value === "0" || value === "off") {
-        return false;
-    }
-    throw new Error(`Unsupported opencode.${key} in Retinue config ${env.RETINUE_CONFIG_FILE}: ${String(value)}`);
-}
-async function readRetinueConfig(env) {
-    const configPath = env.RETINUE_CONFIG_FILE?.trim();
-    if (!configPath) {
-        return undefined;
-    }
-    let parsed;
-    try {
-        parsed = JSON.parse(await fs.readFile(configPath, "utf8"));
-    }
-    catch (error) {
-        if (isMissingFile(error)) {
-            return undefined;
-        }
-        throw new Error(`Failed to read Retinue config ${configPath}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    return parsed;
-}
-function readOpenCodeAccessModeFromEnv(env) {
-    const accessMode = env.RETINUE_OPENCODE_ACCESS_MODE?.trim().toLowerCase();
-    if (accessMode === "read_only" || accessMode === "profile") {
-        return accessMode;
-    }
-    if (accessMode) {
-        throw new Error(`Unsupported RETINUE_OPENCODE_ACCESS_MODE: ${accessMode}`);
-    }
-    const configured = env.RETINUE_OPENCODE_READ_ONLY?.trim().toLowerCase();
-    if (configured === undefined || configured === "") {
-        return undefined;
-    }
-    return configured === "0" || configured === "false" || configured === "no" || configured === "off" ? "profile" : "read_only";
 }
 function isMissingFile(error) {
     return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";

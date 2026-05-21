@@ -93,5 +93,5 @@ The real probe creates a temporary workspace with a random `RETINUE_MARKER.txt`,
 
 - This integration does not mutate the Hermes gateway service.
 - Retinue does not receive Hermes provider credentials unless the user explicitly puts them in the MCP server `env`.
-- Backend, model, provider, and OpenCode server choices remain deployment/runtime configuration. `agent` and `access_mode` are per-spawn OpenCode controls: omit `access_mode` to follow the configured agent policy, or set `read_only`/`profile` when one child needs an explicit safety mode.
+- Backend, model, provider, profile, and OpenCode server choices remain deployment/runtime configuration. `agent` is the only per-spawn OpenCode control exposed by the product tool.
 - If Hermes cannot connect to the server, check `~/.hermes/logs/mcp-stderr.log` and Retinue's `<stateDir>/logs/retinue.jsonl`.

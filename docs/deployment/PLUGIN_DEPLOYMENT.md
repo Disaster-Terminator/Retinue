@@ -75,23 +75,7 @@ The default plugin path manages the local OpenCode server lifecycle. It prefers 
 
 Retinue HTTP calls to the local daemon or OpenCode server have a 30-second timeout by default. Set `RETINUE_HTTP_TIMEOUT_MS` to tune this for unusual local runtimes, or `0` to disable the client-side timeout.
 
-The Codex plugin also ships an installation-scoped `retinue.config.json` beside the bootstrap:
-
-```json
-{
-  "opencode": {
-    "agentPolicies": {
-      "explore": "profile",
-      "scout": "profile",
-      "general": "profile",
-      "plan": "profile",
-      "build": "profile"
-    }
-  }
-}
-```
-
-This is global to that installed plugin cache, not project-scoped. The product tool still exposes per-spawn `access_mode` so callers can force `read_only` or `profile` for a single child when the default agent policy is not the right fit.
+The Codex plugin does not ship an installation-scoped access-mode config. OpenCode profile and agent configuration stay in OpenCode and deployment environment; the product tool exposes only the optional per-spawn OpenCode `agent`.
 
 ## npm Runtime Path
 
@@ -157,7 +141,7 @@ Before calling the plugin production-ready, run the real OpenCode lifecycle thro
 3. Use `retinue_spawn_agent` with a deterministic prompt.
 4. Use `retinue_wait_agent` and verify the terminal result.
 5. Use `retinue_close_agent`.
-6. Confirm tool arguments did not include backend, profile, model, or OpenCode server selection. `agent` and `access_mode` may be present only when the probe intentionally exercises a specific child-agent policy.
+6. Confirm tool arguments did not include backend, profile, model, OpenCode server, `access_mode`, or `bash_policy` selection. `agent` may be present only when the probe intentionally exercises a specific OpenCode child agent.
 7. Run the fake Claude parity path with `RETINUE_BACKEND=claude-code`.
 8. When Claude Code is locally usable, run the best-effort real Retinue Claude probe.
 
