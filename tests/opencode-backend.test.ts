@@ -1099,6 +1099,35 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('input={\\"filePath\\":\\"docs/VERIFICATION.md\\"}');
   });
 
+  it("classifies OpenCode external-directory permission waits separately from read-tool stalls", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "risk review reads outside the workspace" });
+    server!.appendPendingReadToolAssistant(started.externalSessionId!);
+    server!.appendExternalDirectoryPermission(started.externalSessionId!, "/home/raystorm/projects/opencode-runner/src/index.ts");
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "stalled",
+      stdout: expect.stringContaining("external_directory permission"),
+      parsedStdout: { result: expect.stringContaining("external_directory permission") },
+      error: expect.stringContaining("external_directory permission")
+    });
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"stallReason":"external_directory_permission_pending"');
+    expect(trace).toContain('"pendingExternalDirectoryPermissionCount":1');
+    expect(trace).toContain('"permission":"external_directory"');
+    expect(trace).toContain("/home/raystorm/projects/opencode-runner/src/index.ts");
+  });
+
   it("classifies pending read tool calls with empty input as malformed provider tool calls", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),

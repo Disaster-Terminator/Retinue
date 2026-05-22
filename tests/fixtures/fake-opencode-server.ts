@@ -19,6 +19,19 @@ interface FakeSession {
   }>;
 }
 
+interface FakePermissionRequest {
+  id: string;
+  sessionID: string;
+  permission: string;
+  patterns: string[];
+  metadata?: Record<string, unknown>;
+  always?: string[];
+  tool?: {
+    messageID?: string;
+    callID?: string;
+  };
+}
+
 export interface FakeOpenCodeServer {
   url: string;
   sessionRequests: Array<Record<string, unknown>>;
@@ -34,6 +47,7 @@ export interface FakeOpenCodeServer {
   appendWriteIntentAssistant(sessionId: string, tool: "write" | "edit" | "apply_patch", text?: string): void;
   appendRunningReadToolAssistant(sessionId: string): void;
   appendPendingReadToolAssistant(sessionId: string): void;
+  appendExternalDirectoryPermission(sessionId: string, filePath: string, callID?: string): void;
   appendMalformedReadToolAssistant(sessionId: string): void;
   appendBlankAssistant(sessionId: string): void;
   appendZeroProgressReasoningAssistant(sessionId: string): void;
@@ -48,6 +62,7 @@ export interface FakeOpenCodeServer {
 
 export async function startFakeOpenCodeServer(options: { serverCwd?: string } = {}): Promise<FakeOpenCodeServer> {
   const sessions = new Map<string, FakeSession>();
+  const pendingPermissions: FakePermissionRequest[] = [];
   const sessionRequests: Array<Record<string, unknown>> = [];
   const promptRequests: Array<Record<string, unknown>> = [];
   const serverCwd = options.serverCwd ?? process.cwd();
@@ -92,6 +107,11 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
           permission: [{ permission: "*", pattern: "*", action: "allow" }]
         }
       ]);
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/permission") {
+      writeJson(response, 200, pendingPermissions);
       return;
     }
 
@@ -423,6 +443,17 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
           ]
         });
       }
+    },
+    appendExternalDirectoryPermission: (sessionId: string, filePath: string, callID = "call_external_read") => {
+      pendingPermissions.push({
+        id: `per_${pendingPermissions.length + 1}`,
+        sessionID: sessionId,
+        permission: "external_directory",
+        patterns: [filePath],
+        always: [filePath],
+        metadata: { filepath: filePath, parentDir: filePath.replace(/\/[^/]*$/, "") },
+        tool: { messageID: `msg_${nextMessage}`, callID }
+      });
     },
     appendMalformedReadToolAssistant: (sessionId: string) => {
       const session = sessions.get(sessionId);

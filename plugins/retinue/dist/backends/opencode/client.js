@@ -26,6 +26,9 @@ export class OpenCodeClient {
     agents() {
         return this.request("GET", "/agent");
     }
+    permissions() {
+        return this.request("GET", "/permission");
+    }
     createSession(options = {}) {
         return this.request("POST", "/session", {
             title: options.title,

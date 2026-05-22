@@ -43,6 +43,7 @@ export declare class OpenCodeBackend implements AgentBackend {
     private hasNewCompletedAssistantMessage;
     private hasReadOnlyWriteIntent;
     private isStalledOpenCodeJob;
+    private pendingPermissionsForJob;
     private inspectJob;
     private maybeScheduleServerIdleShutdown;
     private hasRunningJobsForServer;

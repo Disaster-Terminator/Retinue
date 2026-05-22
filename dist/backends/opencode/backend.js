@@ -747,8 +747,25 @@ export class OpenCodeBackend {
     async isStalledOpenCodeJob(client, sessionId, meta) {
         const messages = await client.messages(sessionId);
         const jobMessages = selectMessagesForMeta(messages, meta);
-        const stall = computeStallDiagnostic(jobMessages, meta, this.env);
+        const pendingPermissions = await this.pendingPermissionsForJob(client, meta);
+        const stall = computeStallDiagnostic(jobMessages, meta, this.env, pendingPermissions);
         return stall !== undefined;
+    }
+    async pendingPermissionsForJob(client, meta) {
+        if (!meta.externalSessionId) {
+            return [];
+        }
+        try {
+            const permissions = await client.permissions();
+            const sessionIds = new Set([meta.externalSessionId, ...(meta.externalChildSessionIds ?? [])].filter(Boolean));
+            return permissions.filter((permission) => sessionIds.has(permission.sessionID));
+        }
+        catch (error) {
+            if (error instanceof OpenCodeClientError && (error.status === 404 || error.status === 405)) {
+                return [];
+            }
+            throw error;
+        }
     }
     async inspectJob(meta) {
         const diagnostic = {
@@ -765,7 +782,11 @@ export class OpenCodeBackend {
         }
         try {
             const client = this.clientForMeta(meta);
-            const [session, messages] = await Promise.all([client.getSession(meta.externalSessionId), client.messages(meta.externalSessionId)]);
+            const [session, messages, pendingPermissions] = await Promise.all([
+                client.getSession(meta.externalSessionId),
+                client.messages(meta.externalSessionId),
+                this.pendingPermissionsForJob(client, meta)
+            ]);
             const jobMessages = selectMessagesForMeta(messages, meta);
             const lastMessage = jobMessages.at(-1) ?? messages.at(-1);
             const lastAssistant = [...jobMessages].reverse().find((message) => message.info?.role === "assistant");
@@ -822,7 +843,7 @@ export class OpenCodeBackend {
                 completed: isCompletedAssistantMessage(message),
                 messageError: diagnosticValuePreview(message.info?.error)
             }));
-            Object.assign(diagnostic, computeStallDiagnostic(jobMessages, meta, this.env));
+            Object.assign(diagnostic, computeStallDiagnostic(jobMessages, meta, this.env, pendingPermissions));
             if (meta.status === "stalled" &&
                 diagnostic.softStallRescueSourceReason &&
                 diagnostic.stallReason &&
@@ -1170,7 +1191,7 @@ function hasReasoningContentProviderError(messages) {
             (errorText.includes("deepseek") || errorText.includes("deepseekexception") || errorText.includes("thinking mode")));
     });
 }
-function computeStallDiagnostic(jobMessages, meta, env) {
+function computeStallDiagnostic(jobMessages, meta, env, pendingPermissions = []) {
     const activeMessages = selectResultMessagesForMeta(jobMessages, meta);
     const writeIntentMessages = selectReadOnlyWriteIntentMessagesForMeta(jobMessages, meta);
     const patchPartCount = countPatchParts(writeIntentMessages);
@@ -1222,6 +1243,8 @@ function computeStallDiagnostic(jobMessages, meta, env) {
     const runningReadToolParts = runningReadToolPartSummaries.length;
     const malformedReadToolParts = runningReadToolPartSummaries.filter(isMalformedReadToolInput).length;
     const runningReadToolCallIds = runningReadToolPartSummaries.flatMap((part) => (part.callID ? [part.callID] : []));
+    const pendingPermissionSummaries = summarizePermissionRequests(pendingPermissions);
+    const pendingExternalDirectoryPermissionSummaries = pendingPermissionSummaries.filter((permission) => permission.permission === "external_directory");
     const lastAssistant = [...activeMessages].reverse().find((message) => message.info?.role === "assistant");
     const incompleteAssistantRound = isIncompleteAssistantMessage(lastAssistant);
     if (toolCallAssistantRounds < roundThreshold &&
@@ -1229,6 +1252,7 @@ function computeStallDiagnostic(jobMessages, meta, env) {
         blankAssistantRounds === 0 &&
         zeroProgressAssistantRounds === 0 &&
         runningReadToolParts === 0 &&
+        pendingExternalDirectoryPermissionSummaries.length === 0 &&
         !incompleteAssistantRound) {
         return undefined;
     }
@@ -1239,6 +1263,7 @@ function computeStallDiagnostic(jobMessages, meta, env) {
     const zeroProgressAssistantStalled = zeroProgressAssistantRounds > 0 && durationMs >= zeroProgressAssistantThresholdMs;
     const readToolStalled = runningReadToolParts > 0 && durationMs >= readToolThresholdMs;
     const readToolInvalidInputStalled = malformedReadToolParts > 0 && durationMs >= readToolThresholdMs;
+    const externalDirectoryPermissionStalled = pendingExternalDirectoryPermissionSummaries.length > 0 && durationMs >= readToolThresholdMs;
     const completedToolLoopStalled = toolCallAssistantRounds >= roundThreshold &&
         runningReadToolParts === 0 &&
         !incompleteAssistantRound &&
@@ -1248,6 +1273,7 @@ function computeStallDiagnostic(jobMessages, meta, env) {
         !blankAssistantStalled &&
         !zeroProgressAssistantStalled &&
         !readToolStalled &&
+        !externalDirectoryPermissionStalled &&
         !completedToolLoopStalled &&
         !incompleteAssistantStalled &&
         durationMs < thresholdMs) {
@@ -1262,6 +1288,10 @@ function computeStallDiagnostic(jobMessages, meta, env) {
         runningReadToolCallIds,
         runningReadToolPartSummaries,
         malformedReadToolParts,
+        pendingPermissionCount: pendingPermissionSummaries.length,
+        pendingPermissions: pendingPermissionSummaries,
+        pendingExternalDirectoryPermissionCount: pendingExternalDirectoryPermissionSummaries.length,
+        pendingExternalDirectoryPermissions: pendingExternalDirectoryPermissionSummaries,
         noCompletedAssistantDurationMs: Math.max(0, durationMs),
         stallThresholdMs: thresholdMs,
         blankAssistantStallThresholdMs: blankAssistantThresholdMs,
@@ -1277,6 +1307,7 @@ function computeStallDiagnostic(jobMessages, meta, env) {
             blankAssistantStalled,
             zeroProgressAssistantStalled,
             readToolInvalidInputStalled,
+            externalDirectoryPermissionStalled,
             readToolStalled,
             completedToolLoopStalled,
             incompleteAssistantStalled
@@ -1317,6 +1348,11 @@ function createStallMessage(diagnostic) {
         const details = formatReadToolStallDetails(diagnostic);
         return `OpenCode job stalled: observed ${malformedReadToolParts} read tool call(s) with missing or invalid input for ${durationMs}ms.${details}${providerDetails}${rescueDetails} The OpenCode provider/model emitted a malformed read tool call; inspect Retinue trace/job diagnostics for full message summaries.`;
     }
+    if (diagnostic.stallReason === "external_directory_permission_pending") {
+        const permissionDetails = formatPendingPermissionDetails(diagnostic);
+        const readDetails = formatReadToolStallDetails(diagnostic);
+        return `OpenCode job is waiting for external_directory permission after ${durationMs}ms.${permissionDetails}${readDetails}${providerDetails}${rescueDetails} Retinue is running headless and did not auto-approve access outside the session directory; inspect Retinue trace/job diagnostics for the pending OpenCode permission request.`;
+    }
     if (diagnostic.recoveryStallReason === "read_tool_stalled" && runningReadToolParts > 0) {
         const details = formatReadToolStallDetails(diagnostic);
         return `OpenCode job stalled: soft-stall rescue reached ${runningReadToolParts} pending/running read tool call(s) with no completed assistant text for ${durationMs}ms.${details}${providerDetails}${rescueDetails} The OpenCode tool executor may be stuck; inspect Retinue trace/job diagnostics for full message summaries.`;
@@ -1343,7 +1379,9 @@ function selectReadOnlyWriteIntentAdvisoryText(jobMessages, meta, diagnostic) {
     return latestAssistantVisibleText(jobMessages);
 }
 function isHardStallDiagnostic(diagnostic) {
-    return diagnostic.readOnlyWriteIntent === true || diagnostic.stallReason === "provider_error";
+    return (diagnostic.readOnlyWriteIntent === true ||
+        diagnostic.stallReason === "provider_error" ||
+        diagnostic.stallReason === "external_directory_permission_pending");
 }
 function isSoftStallRescueEligible(diagnostic) {
     if (diagnostic.readOnlyWriteIntent === true) {
@@ -1378,6 +1416,9 @@ function createReadOnlyAdvisoryWarning() {
 function selectStallReason(stalled) {
     if (stalled.readToolInvalidInputStalled) {
         return "read_tool_invalid_input";
+    }
+    if (stalled.externalDirectoryPermissionStalled) {
+        return "external_directory_permission_pending";
     }
     if (stalled.readToolStalled) {
         return "read_tool_stalled";
@@ -1415,6 +1456,8 @@ function createStallSummary(diagnostic) {
             return `OpenCode provider/router produced zero-progress assistant output for ${durationMs}ms.${rescueDetails}`;
         case "read_tool_invalid_input":
             return `OpenCode provider/model emitted read tool call(s) with missing or invalid input for ${durationMs}ms.${formatReadToolStallDetails(diagnostic)}${rescueDetails}`;
+        case "external_directory_permission_pending":
+            return `OpenCode is waiting for external_directory permission for ${durationMs}ms.${formatPendingPermissionDetails(diagnostic)}${formatReadToolStallDetails(diagnostic)}${rescueDetails}`;
         case "read_tool_stalled":
             return `OpenCode tool executor left read tool call(s) running for ${durationMs}ms.${formatReadToolStallDetails(diagnostic)}${rescueDetails}`;
         case "incomplete_assistant_round":
@@ -1435,6 +1478,7 @@ function isOpenCodeStallReason(value) {
         value === "provider_zero_progress" ||
         value === "read_tool_invalid_input" ||
         value === "read_tool_stalled" ||
+        value === "external_directory_permission_pending" ||
         value === "incomplete_assistant_round" ||
         value === "backend_no_final_text" ||
         value === "tool_loop_no_completion");
@@ -1475,6 +1519,33 @@ function formatReadToolStallDetails(diagnostic) {
         return ` readToolCallIds=${callIds.join(",")}.`;
     }
     return "";
+}
+function summarizePermissionRequests(requests) {
+    return requests.map((request) => ({
+        id: request.id,
+        sessionID: request.sessionID,
+        permission: request.permission,
+        patterns: Array.isArray(request.patterns) ? request.patterns.map(String) : [],
+        always: Array.isArray(request.always) ? request.always.map(String) : undefined,
+        toolCallID: typeof request.tool?.callID === "string" ? request.tool.callID : undefined,
+        metadata: diagnosticValuePreview(request.metadata)
+    }));
+}
+function formatPendingPermissionDetails(diagnostic) {
+    const permissions = diagnostic.pendingExternalDirectoryPermissions ?? diagnostic.pendingPermissions ?? [];
+    const details = permissions
+        .map((permission) => [
+        permission.id,
+        permission.sessionID ? `session=${permission.sessionID}` : undefined,
+        permission.permission,
+        permission.patterns.length > 0 ? `patterns=${permission.patterns.join("|")}` : undefined,
+        permission.toolCallID ? `call=${permission.toolCallID}` : undefined,
+        permission.metadata ? `metadata=${permission.metadata.preview}` : undefined
+    ]
+        .filter(Boolean)
+        .join(":"))
+        .filter((value) => value.length > 0);
+    return details.length > 0 ? ` pendingPermissions=${details.join(",")}.` : "";
 }
 function parseOptionalNonNegativeInt(value, fallback) {
     if (!value) {

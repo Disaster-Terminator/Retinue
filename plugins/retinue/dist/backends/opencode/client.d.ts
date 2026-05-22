@@ -27,6 +27,19 @@ export interface OpenCodePermissionRule {
     pattern: string;
     action: "allow" | "deny" | "ask";
 }
+export interface OpenCodePermissionRequest {
+    id: string;
+    sessionID: string;
+    permission: string;
+    patterns: string[];
+    metadata?: Record<string, unknown>;
+    always?: string[];
+    tool?: {
+        messageID?: string;
+        callID?: string;
+    };
+    [key: string]: unknown;
+}
 export interface OpenCodeAgentInfo {
     name: string;
     mode?: "subagent" | "primary" | "all";
@@ -63,6 +76,7 @@ export declare class OpenCodeClient {
     });
     health(): Promise<unknown>;
     agents(): Promise<OpenCodeAgentInfo[]>;
+    permissions(): Promise<OpenCodePermissionRequest[]>;
     createSession(options?: {
         cwd?: string;
         title?: string;
