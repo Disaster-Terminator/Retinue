@@ -1128,6 +1128,44 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain("/home/raystorm/projects/opencode-runner/src/index.ts");
   });
 
+  it("replies to job-scoped OpenCode permission requests and reopens permission stalls", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "risk review waits for permission" });
+    server!.appendPendingReadToolAssistant(started.externalSessionId!);
+    server!.appendExternalDirectoryPermission(started.externalSessionId!, "/home/raystorm/projects/opencode-runner/src/index.ts");
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    await expect(backend.listPermissions({ jobId: started.jobId })).resolves.toMatchObject({
+      jobId: started.jobId,
+      status: "stalled",
+      permissions: [
+        expect.objectContaining({
+          id: "per_1",
+          permission: "external_directory",
+          patterns: ["/home/raystorm/projects/opencode-runner/src/index.ts"]
+        })
+      ]
+    });
+
+    await expect(backend.replyPermission({ jobId: started.jobId }, { requestId: "per_1", reply: "reject" })).resolves.toMatchObject({
+      jobId: started.jobId,
+      status: "running",
+      repliedRequestId: "per_1",
+      reply: "reject",
+      permissions: []
+    });
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "running" });
+    await expect(backend.listPermissions({ jobId: started.jobId })).resolves.toMatchObject({ permissions: [] });
+  });
+
   it("classifies pending read tool calls with empty input as malformed provider tool calls", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),

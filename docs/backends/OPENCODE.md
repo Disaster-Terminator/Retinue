@@ -124,11 +124,13 @@ If `RETINUE_STATE_DIR` is unset, Linux/WSL/macOS defaults to `$XDG_STATE_HOME/re
 
 When `retinue_wait_agent` returns `running` or `stalled`, its response includes a compact `diagnostic` object plus `tracePath` or job artifact paths where available. Use `diagnostic` for the immediate decision, then inspect the trace path for full OpenCode message summaries, selected model/provider metadata, server URL, and stall diagnostics.
 
+OpenCode permission requests remain OpenCode-owned. Retinue exposes them through an MCP bridge for supervising agents: `retinue_list_permissions` lists pending request ids for a Retinue job, and `retinue_reply_permission` replies through OpenCode's native permission API with `once`, `always`, or `reject`. Retinue validates that the request belongs to the job's OpenCode session or child sessions before replying. It does not auto-approve external directories and does not define a separate permission DSL.
+
 ## Raw Adapter Surfaces
 
 The `opencode-*` CLI commands and opt-in `opencode_*` MCP tools are raw backend adapter surfaces. They exist for development probes, backend debugging, and compatibility runbooks. They are not the product-level Codex or Hermes delegation contract.
 
-Normal agent delegation should use `retinue_spawn_agent`, `retinue_wait_agent`, `retinue_close_agent`, and `retinue_list_agents`. Those tools apply the deployment-selected backend, Retinue-managed OpenCode server lifecycle, bounded diagnostics, optional per-spawn OpenCode `agent`, and active child-agent pool semantics. Only expose backend tools with `RETINUE_EXPOSE_BACKEND_TOOLS=1` when intentionally debugging an adapter-specific issue.
+Normal agent delegation should use `retinue_spawn_agent`, `retinue_wait_agent`, `retinue_close_agent`, `retinue_list_agents`, `retinue_list_permissions`, and `retinue_reply_permission`. Those tools apply the deployment-selected backend, Retinue-managed OpenCode server lifecycle, bounded diagnostics, optional per-spawn OpenCode `agent`, active child-agent pool semantics, and the OpenCode-native permission bridge. Only expose backend tools with `RETINUE_EXPOSE_BACKEND_TOOLS=1` when intentionally debugging an adapter-specific issue.
 
 ## Current Status
 

@@ -156,7 +156,7 @@ Before calling the plugin production-ready, run the real OpenCode lifecycle thro
 
 The Claude real probe is allowed to fail on upstream model, quota, proxy, or Claude Code runtime instability. Treat a failure there as a local backend readiness signal, not as permission to skip fake Claude parity or the OpenCode production E2E.
 
-Backend-specific `opencode_*` and `claude_*` MCP tools are hidden by default in plugin deployments. Developers can opt into them with `RETINUE_EXPOSE_BACKEND_TOOLS=1` for adapter debugging and older runbooks, but they are raw backend surfaces rather than the primary Codex delegation contract. Product use should stay on `retinue_spawn_agent`, `retinue_wait_agent`, `retinue_close_agent`, and `retinue_list_agents`.
+Backend-specific `opencode_*` and `claude_*` MCP tools are hidden by default in plugin deployments. Developers can opt into them with `RETINUE_EXPOSE_BACKEND_TOOLS=1` for adapter debugging and older runbooks, but they are raw backend surfaces rather than the primary Codex delegation contract. Product use should stay on `retinue_spawn_agent`, `retinue_wait_agent`, `retinue_close_agent`, `retinue_list_agents`, `retinue_list_permissions`, and `retinue_reply_permission`.
 
 Record only redacted backend/profile metadata, job id, session id, and observed result. Do not record API keys or provider secrets.
 

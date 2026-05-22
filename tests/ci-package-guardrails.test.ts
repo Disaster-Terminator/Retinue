@@ -318,7 +318,14 @@ describe("Retinue Codex plugin guardrails", () => {
     try {
       await client.connect(transport);
       const tools = await client.listTools();
-      expect(tools.tools.map((tool) => tool.name)).toEqual(["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"]);
+      expect(tools.tools.map((tool) => tool.name)).toEqual([
+        "retinue_spawn_agent",
+        "retinue_wait_agent",
+        "retinue_close_agent",
+        "retinue_list_agents",
+        "retinue_list_permissions",
+        "retinue_reply_permission"
+      ]);
       expect(Buffer.concat(stderrChunks).toString("utf8")).toBe("");
     } finally {
       await Promise.allSettled([client.close(), transport.close()]);
@@ -345,7 +352,14 @@ describe("Retinue Codex plugin guardrails", () => {
     try {
       await client.connect(transport);
       const tools = await client.listTools();
-      expect(tools.tools.map((tool) => tool.name)).toEqual(["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"]);
+      expect(tools.tools.map((tool) => tool.name)).toEqual([
+        "retinue_spawn_agent",
+        "retinue_wait_agent",
+        "retinue_close_agent",
+        "retinue_list_agents",
+        "retinue_list_permissions",
+        "retinue_reply_permission"
+      ]);
     } finally {
       await Promise.allSettled([client.close(), transport.close()]);
       rmSync(pluginCacheDir, { recursive: true, force: true });

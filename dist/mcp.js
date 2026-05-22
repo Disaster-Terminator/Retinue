@@ -34,7 +34,14 @@ export const OPENCODE_TOOL_NAMES = [
     "opencode_kill",
     "opencode_cleanup"
 ];
-export const RETINUE_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"];
+export const RETINUE_TOOL_NAMES = [
+    "retinue_spawn_agent",
+    "retinue_wait_agent",
+    "retinue_close_agent",
+    "retinue_list_agents",
+    "retinue_list_permissions",
+    "retinue_reply_permission"
+];
 const DEFAULT_MCP_WAIT_MAX_MS = 180_000;
 export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
     const agentPool = new RetinueAgentPool();
@@ -195,6 +202,35 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
         maxAgents: await resolveMaxConcurrentAgents(process.env),
         agents: await agentPool.list(retinue)
     }));
+    server.registerTool("retinue_list_permissions", {
+        title: "List Retinue Permissions",
+        description: "List pending OpenCode permission requests for a Retinue child job.",
+        inputSchema: {
+            jobId: z.string()
+        }
+    }, async ({ jobId }) => {
+        const backend = await createRetinueBackendForJob(retinue, jobId);
+        if (!isPermissionBridgeBackend(backend)) {
+            throw new Error(`Retinue backend ${backend.kind} does not expose OpenCode permissions`);
+        }
+        return jsonToolResult(await backend.listPermissions({ jobId }));
+    });
+    server.registerTool("retinue_reply_permission", {
+        title: "Reply To Retinue Permission",
+        description: "Reply to a pending OpenCode permission request for a Retinue child job.",
+        inputSchema: {
+            jobId: z.string(),
+            requestId: z.string(),
+            reply: z.enum(["once", "always", "reject"]),
+            message: z.string().optional()
+        }
+    }, async ({ jobId, requestId, reply, message }) => {
+        const backend = await createRetinueBackendForJob(retinue, jobId);
+        if (!isPermissionBridgeBackend(backend)) {
+            throw new Error(`Retinue backend ${backend.kind} does not expose OpenCode permissions`);
+        }
+        return jsonToolResult(await backend.replyPermission({ jobId }, { requestId, reply, message }));
+    });
     return server;
 }
 function registerBackendTools(server, retinue) {
@@ -345,6 +381,9 @@ async function withOpenCodeDefaults(args) {
         model: args.model ?? process.env.RETINUE_OPENCODE_MODEL,
         agent: args.agent ?? (await resolveConfiguredOpenCodeAgent(process.env))
     };
+}
+function isPermissionBridgeBackend(backend) {
+    return "listPermissions" in backend && "replyPermission" in backend;
 }
 class RetinueAgentPool {
     entries = new Map();
@@ -571,6 +610,10 @@ function summarizeJobDiagnostic(value) {
         runningReadToolParts: numberValue(diagnostic.runningReadToolParts),
         runningReadToolCallIds: stringArrayValue(diagnostic.runningReadToolCallIds),
         runningReadToolPartSummaries: arrayValue(diagnostic.runningReadToolPartSummaries),
+        pendingPermissionCount: numberValue(diagnostic.pendingPermissionCount),
+        pendingPermissions: arrayValue(diagnostic.pendingPermissions),
+        pendingExternalDirectoryPermissionCount: numberValue(diagnostic.pendingExternalDirectoryPermissionCount),
+        pendingExternalDirectoryPermissions: arrayValue(diagnostic.pendingExternalDirectoryPermissions),
         incompleteAssistantRound: booleanValue(diagnostic.incompleteAssistantRound),
         noCompletedAssistantDurationMs: numberValue(diagnostic.noCompletedAssistantDurationMs),
         stateStatus: stringValue(diagnostic.stateStatus),

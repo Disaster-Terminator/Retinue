@@ -21174,6 +21174,12 @@ var OpenCodeClient = class {
   permissions() {
     return this.request("GET", "/permission");
   }
+  replyPermission(requestId, reply, message) {
+    return this.requestVoid("POST", `/permission/${encodeURIComponent(requestId)}/reply`, {
+      reply,
+      message
+    });
+  }
   createSession(options = {}) {
     return this.request("POST", "/session", {
       title: options.title,
@@ -22334,6 +22340,63 @@ var OpenCodeBackend = class {
     }
     return this.reconcileStatus(meta);
   }
+  async listPermissions(handle) {
+    const meta = await this.readMeta(handle.jobId);
+    if (isProblem(meta)) {
+      throw new Error(`Cannot list OpenCode permissions for ${handle.jobId}: ${meta.status}${meta.error ? `: ${meta.error}` : ""}`);
+    }
+    if (!meta.externalSessionId) {
+      throw new Error(`Cannot list OpenCode permissions for ${handle.jobId}: missing OpenCode session id`);
+    }
+    const permissions = await this.pendingPermissionsForJob(this.clientForMeta(meta), meta);
+    return {
+      jobId: handle.jobId,
+      backend: "opencode",
+      status: meta.status,
+      permissions: summarizePermissionRequests(permissions)
+    };
+  }
+  async replyPermission(handle, options) {
+    const meta = await this.readMeta(handle.jobId);
+    if (isProblem(meta)) {
+      throw new Error(`Cannot reply to OpenCode permission for ${handle.jobId}: ${meta.status}${meta.error ? `: ${meta.error}` : ""}`);
+    }
+    if (!meta.externalSessionId) {
+      throw new Error(`Cannot reply to OpenCode permission for ${handle.jobId}: missing OpenCode session id`);
+    }
+    const client = this.clientForMeta(meta);
+    const permissions = await this.pendingPermissionsForJob(client, meta);
+    const request = permissions.find((permission) => permission.id === options.requestId);
+    if (!request) {
+      throw new Error(`OpenCode permission request ${options.requestId} is not pending for Retinue job ${handle.jobId}`);
+    }
+    await client.replyPermission(options.requestId, options.reply, options.message);
+    const activeMeta = await this.reopenExternalPermissionStall(meta, request);
+    const remaining = await this.pendingPermissionsForJob(client, activeMeta);
+    const result = {
+      jobId: handle.jobId,
+      backend: "opencode",
+      status: activeMeta.status,
+      repliedRequestId: options.requestId,
+      reply: options.reply,
+      permissions: summarizePermissionRequests(remaining)
+    };
+    await this.writeJobTrace("opencode_permission_replied", activeMeta, {
+      baseUrl: activeMeta.externalServerUrl ?? this.baseUrl ?? "",
+      sessionId: activeMeta.externalSessionId,
+      pendingPermissionCount: result.permissions.length
+    }, {
+      requestId: options.requestId,
+      reply: options.reply
+    });
+    await appendJobDiagnostic(this.stateDir, handle.jobId, {
+      event: "opencode_permission_replied",
+      requestId: options.requestId,
+      reply: options.reply,
+      remainingPermissionCount: result.permissions.length
+    });
+    return result;
+  }
   async maybeSubmitSoftStallRescue(meta, diagnostic) {
     const recoverReadOnlyWriteIntent = diagnostic.readOnlyWriteIntent === true;
     if (!meta.externalSessionId || meta.externalRescuePromptSubmittedAt || !isSoftStallRescueEligible(diagnostic)) {
@@ -22773,6 +22836,23 @@ ${textWarning2}` : stderr;
       }
       throw error2;
     }
+  }
+  async reopenExternalPermissionStall(meta, request) {
+    if (meta.status !== "stalled" || request.permission !== "external_directory") {
+      return meta;
+    }
+    const updated = {
+      ...meta,
+      status: "running",
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    const paths = getJobPaths(this.stateDir, meta.jobId);
+    await Promise.all([
+      writeJsonAtomic(paths.meta, updated),
+      fs2.rm(paths.stdout, { force: true }),
+      fs2.rm(paths.stderr, { force: true })
+    ]);
+    return updated;
   }
   async inspectJob(meta) {
     const diagnostic = {
@@ -24455,7 +24535,14 @@ var OPENCODE_TOOL_NAMES = [
   "opencode_kill",
   "opencode_cleanup"
 ];
-var RETINUE_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"];
+var RETINUE_TOOL_NAMES = [
+  "retinue_spawn_agent",
+  "retinue_wait_agent",
+  "retinue_close_agent",
+  "retinue_list_agents",
+  "retinue_list_permissions",
+  "retinue_reply_permission"
+];
 var DEFAULT_MCP_WAIT_MAX_MS = 18e4;
 function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
   const agentPool = new RetinueAgentPool();
@@ -24632,6 +24719,43 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
       maxAgents: await resolveMaxConcurrentAgents(process.env),
       agents: await agentPool.list(retinue)
     })
+  );
+  server.registerTool(
+    "retinue_list_permissions",
+    {
+      title: "List Retinue Permissions",
+      description: "List pending OpenCode permission requests for a Retinue child job.",
+      inputSchema: {
+        jobId: external_exports.string()
+      }
+    },
+    async ({ jobId }) => {
+      const backend = await createRetinueBackendForJob(retinue, jobId);
+      if (!isPermissionBridgeBackend(backend)) {
+        throw new Error(`Retinue backend ${backend.kind} does not expose OpenCode permissions`);
+      }
+      return jsonToolResult(await backend.listPermissions({ jobId }));
+    }
+  );
+  server.registerTool(
+    "retinue_reply_permission",
+    {
+      title: "Reply To Retinue Permission",
+      description: "Reply to a pending OpenCode permission request for a Retinue child job.",
+      inputSchema: {
+        jobId: external_exports.string(),
+        requestId: external_exports.string(),
+        reply: external_exports.enum(["once", "always", "reject"]),
+        message: external_exports.string().optional()
+      }
+    },
+    async ({ jobId, requestId, reply, message }) => {
+      const backend = await createRetinueBackendForJob(retinue, jobId);
+      if (!isPermissionBridgeBackend(backend)) {
+        throw new Error(`Retinue backend ${backend.kind} does not expose OpenCode permissions`);
+      }
+      return jsonToolResult(await backend.replyPermission({ jobId }, { requestId, reply, message }));
+    }
   );
   return server;
 }
@@ -24845,6 +24969,9 @@ async function withOpenCodeDefaults(args) {
     model: args.model ?? process.env.RETINUE_OPENCODE_MODEL,
     agent: args.agent ?? await resolveConfiguredOpenCodeAgent(process.env)
   };
+}
+function isPermissionBridgeBackend(backend) {
+  return "listPermissions" in backend && "replyPermission" in backend;
 }
 var RetinueAgentPool = class {
   entries = /* @__PURE__ */ new Map();
@@ -25065,6 +25192,10 @@ function summarizeJobDiagnostic(value) {
     runningReadToolParts: numberValue(diagnostic.runningReadToolParts),
     runningReadToolCallIds: stringArrayValue(diagnostic.runningReadToolCallIds),
     runningReadToolPartSummaries: arrayValue(diagnostic.runningReadToolPartSummaries),
+    pendingPermissionCount: numberValue(diagnostic.pendingPermissionCount),
+    pendingPermissions: arrayValue(diagnostic.pendingPermissions),
+    pendingExternalDirectoryPermissionCount: numberValue(diagnostic.pendingExternalDirectoryPermissionCount),
+    pendingExternalDirectoryPermissions: arrayValue(diagnostic.pendingExternalDirectoryPermissions),
     incompleteAssistantRound: booleanValue(diagnostic.incompleteAssistantRound),
     noCompletedAssistantDurationMs: numberValue(diagnostic.noCompletedAssistantDurationMs),
     stateStatus: stringValue(diagnostic.stateStatus),

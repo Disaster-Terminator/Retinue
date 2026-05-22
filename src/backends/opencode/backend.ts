@@ -4,7 +4,16 @@ import { resolveHttpTimeoutMs } from "../../core/http.js";
 import { getJobPaths, getRetinueTracePath, resolveStateDir } from "../../core/paths.js";
 import { isCleanupSafeStatus } from "../../core/status.js";
 import type { CleanupOptions, CleanupResult, JobMeta, JobProblem, JobResult, JobStatusResult, RetinueOptions } from "../../core/types.js";
-import type { AgentBackend, AgentContinueOptions, AgentHandle, AgentRunOptions } from "../types.js";
+import type {
+  AgentBackend,
+  AgentContinueOptions,
+  AgentHandle,
+  AgentPermissionListResult,
+  AgentPermissionReply,
+  AgentPermissionReplyResult,
+  AgentPermissionRequest,
+  AgentRunOptions
+} from "../types.js";
 import {
   OpenCodeClient,
   OpenCodeClientError,
@@ -182,7 +191,7 @@ interface OpenCodePartSummary {
   textBytes?: number;
 }
 
-interface OpenCodePermissionSummary {
+interface OpenCodePermissionSummary extends AgentPermissionRequest {
   id: string;
   sessionID?: string;
   permission: string;
@@ -476,6 +485,68 @@ export class OpenCodeBackend implements AgentBackend {
       return meta;
     }
     return this.reconcileStatus(meta);
+  }
+
+  async listPermissions(handle: AgentHandle): Promise<AgentPermissionListResult> {
+    const meta = await this.readMeta(handle.jobId);
+    if (isProblem(meta)) {
+      throw new Error(`Cannot list OpenCode permissions for ${handle.jobId}: ${meta.status}${meta.error ? `: ${meta.error}` : ""}`);
+    }
+    if (!meta.externalSessionId) {
+      throw new Error(`Cannot list OpenCode permissions for ${handle.jobId}: missing OpenCode session id`);
+    }
+    const permissions = await this.pendingPermissionsForJob(this.clientForMeta(meta), meta);
+    return {
+      jobId: handle.jobId,
+      backend: "opencode",
+      status: meta.status,
+      permissions: summarizePermissionRequests(permissions)
+    };
+  }
+
+  async replyPermission(
+    handle: AgentHandle,
+    options: { requestId: string; reply: AgentPermissionReply; message?: string }
+  ): Promise<AgentPermissionReplyResult> {
+    const meta = await this.readMeta(handle.jobId);
+    if (isProblem(meta)) {
+      throw new Error(`Cannot reply to OpenCode permission for ${handle.jobId}: ${meta.status}${meta.error ? `: ${meta.error}` : ""}`);
+    }
+    if (!meta.externalSessionId) {
+      throw new Error(`Cannot reply to OpenCode permission for ${handle.jobId}: missing OpenCode session id`);
+    }
+    const client = this.clientForMeta(meta);
+    const permissions = await this.pendingPermissionsForJob(client, meta);
+    const request = permissions.find((permission) => permission.id === options.requestId);
+    if (!request) {
+      throw new Error(`OpenCode permission request ${options.requestId} is not pending for Retinue job ${handle.jobId}`);
+    }
+    await client.replyPermission(options.requestId, options.reply, options.message);
+    const activeMeta = await this.reopenExternalPermissionStall(meta, request);
+    const remaining = await this.pendingPermissionsForJob(client, activeMeta);
+    const result: AgentPermissionReplyResult = {
+      jobId: handle.jobId,
+      backend: "opencode",
+      status: activeMeta.status,
+      repliedRequestId: options.requestId,
+      reply: options.reply,
+      permissions: summarizePermissionRequests(remaining)
+    };
+    await this.writeJobTrace("opencode_permission_replied", activeMeta, {
+      baseUrl: activeMeta.externalServerUrl ?? this.baseUrl ?? "",
+      sessionId: activeMeta.externalSessionId,
+      pendingPermissionCount: result.permissions.length
+    }, {
+      requestId: options.requestId,
+      reply: options.reply
+    });
+    await appendJobDiagnostic(this.stateDir, handle.jobId, {
+      event: "opencode_permission_replied",
+      requestId: options.requestId,
+      reply: options.reply,
+      remainingPermissionCount: result.permissions.length
+    });
+    return result;
   }
 
   private async maybeSubmitSoftStallRescue(meta: JobMeta, diagnostic: Partial<OpenCodeJobDiagnostic>): Promise<void> {
@@ -950,6 +1021,24 @@ export class OpenCodeBackend implements AgentBackend {
       }
       throw error;
     }
+  }
+
+  private async reopenExternalPermissionStall(meta: JobMeta, request: OpenCodePermissionRequest): Promise<JobMeta> {
+    if (meta.status !== "stalled" || request.permission !== "external_directory") {
+      return meta;
+    }
+    const updated: JobMeta = {
+      ...meta,
+      status: "running",
+      updatedAt: new Date().toISOString()
+    };
+    const paths = getJobPaths(this.stateDir, meta.jobId);
+    await Promise.all([
+      writeJsonAtomic(paths.meta, updated),
+      fs.rm(paths.stdout, { force: true }),
+      fs.rm(paths.stderr, { force: true })
+    ]);
+    return updated;
   }
 
   private async inspectJob(meta: JobMeta): Promise<OpenCodeJobDiagnostic> {

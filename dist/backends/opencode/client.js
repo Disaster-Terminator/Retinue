@@ -29,6 +29,12 @@ export class OpenCodeClient {
     permissions() {
         return this.request("GET", "/permission");
     }
+    replyPermission(requestId, reply, message) {
+        return this.requestVoid("POST", `/permission/${encodeURIComponent(requestId)}/reply`, {
+            reply,
+            message
+        });
+    }
     createSession(options = {}) {
         return this.request("POST", "/session", {
             title: options.title,

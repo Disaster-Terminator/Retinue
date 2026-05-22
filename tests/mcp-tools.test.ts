@@ -55,7 +55,14 @@ describe("MCP tools", () => {
   });
 
   it("declares the Retinue Codex-like spawn tools", () => {
-    expect(RETINUE_TOOL_NAMES).toEqual(["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"]);
+    expect(RETINUE_TOOL_NAMES).toEqual([
+      "retinue_spawn_agent",
+      "retinue_wait_agent",
+      "retinue_close_agent",
+      "retinue_list_agents",
+      "retinue_list_permissions",
+      "retinue_reply_permission"
+    ]);
   });
 
   it("creates a server instance with registered tools", () => {
@@ -285,6 +292,11 @@ describe("MCP tools", () => {
       assertRequiredFields(tools.tools, "retinue_close_agent", ["jobId"]);
       assertAbsentFields(tools.tools, "retinue_close_agent", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
       assertAbsentFields(tools.tools, "retinue_list_agents", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
+      assertRequiredFields(tools.tools, "retinue_list_permissions", ["jobId"]);
+      assertAbsentFields(tools.tools, "retinue_list_permissions", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
+      assertRequiredFields(tools.tools, "retinue_reply_permission", ["jobId", "requestId", "reply"]);
+      assertOptionalField(tools.tools, "retinue_reply_permission", "message");
+      assertAbsentFields(tools.tools, "retinue_reply_permission", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
     } finally {
       await closeMcpClient(connection);
     }
@@ -601,6 +613,64 @@ describe("MCP tools", () => {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
       delete process.env.RETINUE_OPENCODE_STALL_READ_TOOL_MS;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("exposes an agent-facing OpenCode permission bridge for Retinue jobs", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-permission-bridge-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    fakeOpenCode.setAutoAssistantResponses(false);
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+
+      const spawn = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue permission bridge", task_name: "permission-bridge" }
+        })
+      );
+      fakeOpenCode.appendExternalDirectoryPermission(spawn.externalSessionId, "/home/raystorm/projects/opencode/*", "call_read");
+
+      const list = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_list_permissions",
+          arguments: { jobId: spawn.jobId }
+        })
+      );
+      expect(list).toMatchObject({
+        jobId: spawn.jobId,
+        backend: "opencode",
+        permissions: [
+          expect.objectContaining({
+            id: "per_1",
+            sessionID: spawn.externalSessionId,
+            permission: "external_directory",
+            patterns: ["/home/raystorm/projects/opencode/*"],
+            toolCallID: "call_read"
+          })
+        ]
+      });
+
+      const reply = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_reply_permission",
+          arguments: { jobId: spawn.jobId, requestId: "per_1", reply: "reject", message: "headless deny" }
+        })
+      );
+      expect(reply).toMatchObject({
+        jobId: spawn.jobId,
+        backend: "opencode",
+        repliedRequestId: "per_1",
+        reply: "reject",
+        permissions: []
+      });
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });
     }

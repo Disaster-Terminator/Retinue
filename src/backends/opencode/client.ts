@@ -46,6 +46,8 @@ export interface OpenCodePermissionRequest {
   [key: string]: unknown;
 }
 
+export type OpenCodePermissionReply = "once" | "always" | "reject";
+
 export interface OpenCodeAgentInfo {
   name: string;
   mode?: "subagent" | "primary" | "all";
@@ -93,6 +95,13 @@ export class OpenCodeClient {
 
   permissions(): Promise<OpenCodePermissionRequest[]> {
     return this.request("GET", "/permission");
+  }
+
+  replyPermission(requestId: string, reply: OpenCodePermissionReply, message?: string): Promise<void> {
+    return this.requestVoid("POST", `/permission/${encodeURIComponent(requestId)}/reply`, {
+      reply,
+      message
+    });
   }
 
   createSession(

@@ -85,6 +85,26 @@ describe("OpenCodeClient", () => {
     await expect(client.getSession(session.id)).resolves.toMatchObject({ aborted: true });
   });
 
+  it("lists and replies to OpenCode permission requests", async () => {
+    server = await startFakeOpenCodeServer();
+    const client = new OpenCodeClient(server.url);
+    const session = await client.createSession();
+    server.appendExternalDirectoryPermission(session.id, "/home/raystorm/projects/opencode/*", "call_read");
+
+    await expect(client.permissions()).resolves.toContainEqual(
+      expect.objectContaining({
+        id: "per_1",
+        sessionID: session.id,
+        permission: "external_directory",
+        patterns: ["/home/raystorm/projects/opencode/*"],
+        tool: expect.objectContaining({ callID: "call_read" })
+      })
+    );
+
+    await expect(client.replyPermission("per_1", "reject", "headless deny")).resolves.toBeUndefined();
+    await expect(client.permissions()).resolves.toEqual([]);
+  });
+
   it("throws typed HTTP errors", async () => {
     server = await startFakeOpenCodeServer();
     const client = new OpenCodeClient(server.url);

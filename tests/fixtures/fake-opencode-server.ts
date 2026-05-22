@@ -115,6 +115,43 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
       return;
     }
 
+    const permissionReplyMatch = /^\/permission\/([^/]+)\/reply$/.exec(url.pathname);
+    if (request.method === "POST" && permissionReplyMatch) {
+      await readJson(request);
+      const requestId = decodeURIComponent(permissionReplyMatch[1]);
+      const index = pendingPermissions.findIndex((permission) => permission.id === requestId);
+      if (index < 0) {
+        writeJson(response, 404, { error: { message: "Missing permission request" } });
+        return;
+      }
+      const [permission] = pendingPermissions.splice(index, 1);
+      const permissionSession = sessions.get(permission.sessionID);
+      let updatedToolState = false;
+      for (const message of permissionSession?.messages ?? []) {
+        for (const part of message.parts) {
+          if (part.type !== "tool" || !part.state || (part.state.status !== "pending" && part.state.status !== "running")) {
+            continue;
+          }
+          if (permission.tool?.callID && part.callID !== permission.tool.callID) {
+            continue;
+          }
+          part.state.status = "error";
+          updatedToolState = true;
+        }
+      }
+      if (!updatedToolState) {
+        for (const message of permissionSession?.messages ?? []) {
+          for (const part of message.parts) {
+            if (part.type === "tool" && part.state && (part.state.status === "pending" || part.state.status === "running")) {
+              part.state.status = "error";
+            }
+          }
+        }
+      }
+      writeJson(response, 200, true);
+      return;
+    }
+
     if (request.method === "POST" && url.pathname === "/session") {
       const body = await readJson(request);
       sessionRequests.push(body);

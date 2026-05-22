@@ -17,7 +17,15 @@ import { getJobPaths, getRetinueTracePath, resolveStateDir } from "./core/paths.
 import { ClaudeRetinue } from "./core/retinue.js";
 import { isActivePoolStatus } from "./core/status.js";
 import type { AgentBackendKind, JobMeta, JobProblemStatus, JobStatusResult, RetinueApi, WaitResult } from "./core/types.js";
-import type { AgentBackend, AgentContinueOptions, AgentHandle, AgentRunOptions } from "./backends/types.js";
+import type {
+  AgentBackend,
+  AgentContinueOptions,
+  AgentHandle,
+  AgentPermissionListResult,
+  AgentPermissionReply,
+  AgentPermissionReplyResult,
+  AgentRunOptions
+} from "./backends/types.js";
 
 export const CLAUDE_TOOL_NAMES = [
   "claude_run",
@@ -40,7 +48,14 @@ export const OPENCODE_TOOL_NAMES = [
   "opencode_cleanup"
 ] as const;
 
-export const RETINUE_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"] as const;
+export const RETINUE_TOOL_NAMES = [
+  "retinue_spawn_agent",
+  "retinue_wait_agent",
+  "retinue_close_agent",
+  "retinue_list_agents",
+  "retinue_list_permissions",
+  "retinue_reply_permission"
+] as const;
 
 const DEFAULT_MCP_WAIT_MAX_MS = 180_000;
 
@@ -231,6 +246,45 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
         maxAgents: await resolveMaxConcurrentAgents(process.env),
         agents: await agentPool.list(retinue)
       })
+  );
+
+  server.registerTool(
+    "retinue_list_permissions",
+    {
+      title: "List Retinue Permissions",
+      description: "List pending OpenCode permission requests for a Retinue child job.",
+      inputSchema: {
+        jobId: z.string()
+      }
+    },
+    async ({ jobId }) => {
+      const backend = await createRetinueBackendForJob(retinue, jobId);
+      if (!isPermissionBridgeBackend(backend)) {
+        throw new Error(`Retinue backend ${backend.kind} does not expose OpenCode permissions`);
+      }
+      return jsonToolResult(await backend.listPermissions({ jobId }));
+    }
+  );
+
+  server.registerTool(
+    "retinue_reply_permission",
+    {
+      title: "Reply To Retinue Permission",
+      description: "Reply to a pending OpenCode permission request for a Retinue child job.",
+      inputSchema: {
+        jobId: z.string(),
+        requestId: z.string(),
+        reply: z.enum(["once", "always", "reject"]),
+        message: z.string().optional()
+      }
+    },
+    async ({ jobId, requestId, reply, message }) => {
+      const backend = await createRetinueBackendForJob(retinue, jobId);
+      if (!isPermissionBridgeBackend(backend)) {
+        throw new Error(`Retinue backend ${backend.kind} does not expose OpenCode permissions`);
+      }
+      return jsonToolResult(await backend.replyPermission({ jobId }, { requestId, reply, message }));
+    }
   );
 
   return server;
@@ -470,6 +524,18 @@ async function withOpenCodeDefaults<T extends { model?: string; agent?: string }
 type RetinueBackend = AgentBackend & {
   wait(handle: AgentHandle, timeoutMs?: number): Promise<Pick<WaitResult, "jobId" | "status">>;
 };
+
+type RetinuePermissionBridgeBackend = RetinueBackend & {
+  listPermissions(handle: AgentHandle): Promise<AgentPermissionListResult>;
+  replyPermission(
+    handle: AgentHandle,
+    options: { requestId: string; reply: AgentPermissionReply; message?: string }
+  ): Promise<AgentPermissionReplyResult>;
+};
+
+function isPermissionBridgeBackend(backend: RetinueBackend): backend is RetinuePermissionBridgeBackend {
+  return "listPermissions" in backend && "replyPermission" in backend;
+}
 
 interface RetinueAgentPoolEntry {
   jobId: string;
@@ -726,6 +792,10 @@ function summarizeJobDiagnostic(value: unknown): Record<string, unknown> | undef
     runningReadToolParts: numberValue(diagnostic.runningReadToolParts),
     runningReadToolCallIds: stringArrayValue(diagnostic.runningReadToolCallIds),
     runningReadToolPartSummaries: arrayValue(diagnostic.runningReadToolPartSummaries),
+    pendingPermissionCount: numberValue(diagnostic.pendingPermissionCount),
+    pendingPermissions: arrayValue(diagnostic.pendingPermissions),
+    pendingExternalDirectoryPermissionCount: numberValue(diagnostic.pendingExternalDirectoryPermissionCount),
+    pendingExternalDirectoryPermissions: arrayValue(diagnostic.pendingExternalDirectoryPermissions),
     incompleteAssistantRound: booleanValue(diagnostic.incompleteAssistantRound),
     noCompletedAssistantDurationMs: numberValue(diagnostic.noCompletedAssistantDurationMs),
     stateStatus: stringValue(diagnostic.stateStatus),
