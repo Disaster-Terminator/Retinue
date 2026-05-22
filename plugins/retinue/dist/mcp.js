@@ -3225,8 +3225,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path4) {
-      let input = path4;
+    function removeDotSegments(path5) {
+      let input = path5;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3469,8 +3469,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path4, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path4 && path4 !== "/" ? path4 : void 0;
+        const [path5, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path5 && path5 !== "/" ? path5 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -6830,12 +6830,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs6, exportName) {
+    function addFormats(ajv, list, fs7, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs6[f]);
+        ajv.addFormat(f, fs7[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -6844,8 +6844,8 @@ var require_dist = __commonJS({
 });
 
 // src/mcp.ts
-import fs5 from "node:fs/promises";
-import path3 from "node:path";
+import fs6 from "node:fs/promises";
+import path4 from "node:path";
 import { fileURLToPath } from "node:url";
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/external.js
@@ -7326,8 +7326,8 @@ function getErrorMap() {
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path4, errorMaps, issueData } = params;
-  const fullPath = [...path4, ...issueData.path || []];
+  const { data, path: path5, errorMaps, issueData } = params;
+  const fullPath = [...path5, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7443,11 +7443,11 @@ var errorUtil;
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path4, key) {
+  constructor(parent, value, path5, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path4;
+    this._path = path5;
     this._key = key;
   }
   get path() {
@@ -11084,10 +11084,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path4) {
-  if (!path4)
+function getElementAtPath(obj, path5) {
+  if (!path5)
     return obj;
-  return path4.reduce((acc, key) => acc?.[key], obj);
+  return path5.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -11407,11 +11407,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path4, issues) {
+function prefixIssues(path5, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path4);
+    iss.path.unshift(path5);
     return iss;
   });
 }
@@ -21145,11 +21145,11 @@ function isActivePoolStatus(status) {
 
 // src/backends/opencode/client.ts
 var OpenCodeClientError = class extends Error {
-  constructor(message, code, status, path4, details) {
+  constructor(message, code, status, path5, details) {
     super(message);
     this.code = code;
     this.status = status;
-    this.path = path4;
+    this.path = path5;
     this.details = details;
     this.name = "OpenCodeClientError";
   }
@@ -21214,41 +21214,41 @@ var OpenCodeClient = class {
   abort(sessionId) {
     return this.request("POST", `/session/${encodeURIComponent(sessionId)}/abort`, {});
   }
-  async request(method, path4, body) {
-    const response = await this.fetch(method, path4, body);
+  async request(method, path5, body) {
+    const response = await this.fetch(method, path5, body);
     const text = await response.text();
     if (!response.ok) {
       const parsed2 = parseJson(text);
       const details = parsed2.ok ? parsed2.value : text;
       const message = parsed2.ok ? extractErrorMessage(parsed2.value) : void 0;
-      throw new OpenCodeClientError(message ?? `OpenCode request failed with HTTP ${response.status}`, "http_error", response.status, path4, details);
+      throw new OpenCodeClientError(message ?? `OpenCode request failed with HTTP ${response.status}`, "http_error", response.status, path5, details);
     }
     const parsed = parseJson(text);
     if (!parsed.ok) {
-      throw new OpenCodeClientError("OpenCode response was not valid JSON", "invalid_json", response.status, path4, text);
+      throw new OpenCodeClientError("OpenCode response was not valid JSON", "invalid_json", response.status, path5, text);
     }
     return parsed.value;
   }
-  async requestVoid(method, path4, body) {
-    const response = await this.fetch(method, path4, body);
+  async requestVoid(method, path5, body) {
+    const response = await this.fetch(method, path5, body);
     if (!response.ok) {
       const text = await response.text();
       const parsed = parseJson(text);
       const details = parsed.ok ? parsed.value : text;
       const message = parsed.ok ? extractErrorMessage(parsed.value) : void 0;
-      throw new OpenCodeClientError(message ?? `OpenCode request failed with HTTP ${response.status}`, "http_error", response.status, path4, details);
+      throw new OpenCodeClientError(message ?? `OpenCode request failed with HTTP ${response.status}`, "http_error", response.status, path5, details);
     }
   }
-  async fetch(method, path4, body) {
+  async fetch(method, path5, body) {
     let response;
     try {
-      response = await fetchWithTimeout(`${this.baseUrl}${path4}`, {
+      response = await fetchWithTimeout(`${this.baseUrl}${path5}`, {
         method,
         headers: method === "POST" ? { "content-type": "application/json" } : void 0,
         body: method === "POST" ? JSON.stringify(body ?? {}) : void 0
       }, this.timeoutMs);
     } catch (error2) {
-      throw new OpenCodeClientError(error2 instanceof Error ? error2.message : String(error2), "transport_error", 0, path4);
+      throw new OpenCodeClientError(error2 instanceof Error ? error2.message : String(error2), "transport_error", 0, path5);
     }
     return response;
   }
@@ -23829,17 +23829,17 @@ var DaemonClient = class {
   cleanup(options = {}) {
     return this.post("/v1/jobs/cleanup", options);
   }
-  async post(path4, body) {
+  async post(path5, body) {
     let response;
     try {
-      response = await fetchWithTimeout(`${this.baseUrl}${path4}`, {
+      response = await fetchWithTimeout(`${this.baseUrl}${path5}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body)
       }, this.timeoutMs);
     } catch (error2) {
       const transport = classifyTransportError(error2);
-      throw new DaemonClientError(transport.message, { code: transport.code, status: 0, path: path4 });
+      throw new DaemonClientError(transport.message, { code: transport.code, status: 0, path: path5 });
     }
     const text = await response.text();
     const parsed = parseJson3(text);
@@ -23849,7 +23849,7 @@ var DaemonClient = class {
       throw new DaemonClientError(message, {
         code: error2?.code,
         status: response.status,
-        path: path4,
+        path: path5,
         details: parsed.ok ? parsed.value : text
       });
     }
@@ -23857,7 +23857,7 @@ var DaemonClient = class {
       throw new DaemonClientError("Daemon response was not valid JSON", {
         code: "invalid_json",
         status: response.status,
-        path: path4,
+        path: path5,
         details: text
       });
     }
@@ -24030,10 +24030,209 @@ function isMissingFile(error2) {
   return typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === "ENOENT";
 }
 
+// src/core/logAudit.ts
+import fs4 from "node:fs/promises";
+import os2 from "node:os";
+import path3 from "node:path";
+var DEFAULT_LOG_AUDIT_MAX_BYTES = 1024 * 1024;
+var DEFAULT_LOG_AUDIT_MAX_LINES = 500;
+async function auditRetinueLogs(options = {}) {
+  const stateDir = options.stateDir ?? path3.join(os2.homedir(), ".local/state/retinue");
+  const tracePath = options.tracePath ?? path3.join(stateDir, "logs", "retinue.jsonl");
+  const events = await readRecentJsonl(tracePath, {
+    maxBytes: options.maxBytes ?? DEFAULT_LOG_AUDIT_MAX_BYTES,
+    maxLines: options.maxLines ?? DEFAULT_LOG_AUDIT_MAX_LINES,
+    since: options.since
+  });
+  const latestStatusByJobId = collectLatestStatusByJobId(events);
+  const issues = summarizeIssues(events, latestStatusByJobId);
+  return {
+    ok: true,
+    tracePath,
+    since: options.since?.toISOString(),
+    scannedEvents: events.length,
+    ignoredCompletedJobIds: completedJobIds(latestStatusByJobId),
+    issueCount: issues.length,
+    issues
+  };
+}
+async function readRecentJsonl(filePath, options) {
+  const text = await readTail(filePath, options.maxBytes);
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(-options.maxLines);
+  const events = [];
+  for (const line of lines) {
+    try {
+      const event = JSON.parse(line);
+      if (!isRecord(event)) {
+        continue;
+      }
+      const timestamp = eventTime(event);
+      if (options.since && timestamp && timestamp < options.since) {
+        continue;
+      }
+      events.push(event);
+    } catch {
+    }
+  }
+  return events;
+}
+async function readTail(filePath, maxBytes) {
+  const handle = await fs4.open(filePath, "r");
+  try {
+    const stats = await handle.stat();
+    const length = Math.min(stats.size, maxBytes);
+    const buffer = Buffer.alloc(length);
+    await handle.read(buffer, 0, length, stats.size - length);
+    return buffer.toString("utf8").replace(/^\uFFFD+/, "");
+  } finally {
+    await handle.close();
+  }
+}
+function summarizeIssues(events, latestStatusByJobId) {
+  const issuesBySignature = /* @__PURE__ */ new Map();
+  for (const event of events) {
+    const diagnostic = isRecord(event.diagnostic) ? event.diagnostic : void 0;
+    if (!diagnostic) {
+      continue;
+    }
+    if (typeof event.jobId === "string" && latestStatusByJobId.get(event.jobId) === "completed") {
+      continue;
+    }
+    const status = event.event === "opencode_job_stalled" || typeof diagnostic.stallReason === "string" ? "stalled" : void 0;
+    if (status !== "stalled") {
+      continue;
+    }
+    const signature = [
+      diagnostic.stallReason ?? "unknown_stall",
+      diagnostic.softStallRescueSourceReason ?? "no_rescue_source",
+      diagnostic.recoveryStallReason ?? "no_recovery_stall",
+      diagnostic.lastAssistantProviderID ?? "unknown_provider",
+      diagnostic.lastAssistantModelID ?? "unknown_model",
+      diagnostic.lastAssistantAgent ?? "unknown_agent",
+      diagnostic.lastAssistantMode ?? "unknown_mode"
+    ].join("|");
+    const current = issuesBySignature.get(signature) ?? {
+      signature,
+      title: createIssueTitle(diagnostic),
+      description: createIssueDescription(diagnostic),
+      count: 0,
+      firstSeen: void 0,
+      lastSeen: void 0,
+      jobIds: [],
+      sample: void 0
+    };
+    current.count += 1;
+    const timestamp = eventTime(event)?.toISOString();
+    current.firstSeen = earlier(current.firstSeen, timestamp);
+    current.lastSeen = later(current.lastSeen, timestamp);
+    if (typeof event.jobId === "string" && !current.jobIds.includes(event.jobId)) {
+      current.jobIds.push(event.jobId);
+    }
+    current.sample ??= compact({
+      jobId: event.jobId,
+      event: event.event,
+      sessionId: diagnostic.sessionId,
+      parentSessionId: diagnostic.parentSessionId,
+      childSessionIds: diagnostic.childSessionIds,
+      sessionDirectory: diagnostic.sessionDirectory,
+      stallReason: diagnostic.stallReason,
+      stallSummary: diagnostic.stallSummary,
+      softStallRescueSourceReason: diagnostic.softStallRescueSourceReason,
+      softStallRescueSourceSummary: diagnostic.softStallRescueSourceSummary,
+      recoveryStallReason: diagnostic.recoveryStallReason,
+      recoveryStallSummary: diagnostic.recoveryStallSummary,
+      noCompletedAssistantDurationMs: diagnostic.noCompletedAssistantDurationMs,
+      toolCallAssistantRounds: diagnostic.toolCallAssistantRounds,
+      blankAssistantRounds: diagnostic.blankAssistantRounds,
+      runningReadToolParts: diagnostic.runningReadToolParts,
+      malformedReadToolParts: diagnostic.malformedReadToolParts,
+      runningReadToolPartSummaries: diagnostic.runningReadToolPartSummaries,
+      pendingPermissionCount: diagnostic.pendingPermissionCount,
+      pendingExternalDirectoryPermissionCount: diagnostic.pendingExternalDirectoryPermissionCount,
+      readOnlyWriteIntent: diagnostic.readOnlyWriteIntent
+    });
+    issuesBySignature.set(signature, current);
+  }
+  return [...issuesBySignature.values()].sort(
+    (left, right) => right.count - left.count || String(right.lastSeen).localeCompare(String(left.lastSeen))
+  );
+}
+function completedJobIds(latestStatusByJobId) {
+  return [...latestStatusByJobId.entries()].filter(([, status]) => status === "completed").map(([jobId]) => jobId).sort();
+}
+function collectLatestStatusByJobId(events) {
+  const statuses = /* @__PURE__ */ new Map();
+  for (const event of events) {
+    if (typeof event.jobId !== "string" || typeof event.status !== "string") {
+      continue;
+    }
+    const timestamp = eventTime(event)?.toISOString() ?? "";
+    const current = statuses.get(event.jobId);
+    if (!current || timestamp >= current.timestamp) {
+      statuses.set(event.jobId, { status: event.status, timestamp });
+    }
+  }
+  return new Map([...statuses].map(([jobId, value]) => [jobId, value.status]));
+}
+function createIssueTitle(diagnostic) {
+  const reason = diagnostic.stallReason ?? "unknown_stall";
+  const provider = diagnostic.lastAssistantProviderID ?? "unknown_provider";
+  const model = diagnostic.lastAssistantModelID ?? "unknown_model";
+  if (diagnostic.recoveryStallReason) {
+    const source = diagnostic.softStallRescueSourceReason ?? "unknown_rescue_source";
+    return `Investigate Retinue recovery ${String(diagnostic.recoveryStallReason)} after ${String(source)} on ${String(provider)}/${String(model)}`;
+  }
+  return `Investigate Retinue ${String(reason)} on ${String(provider)}/${String(model)}`;
+}
+function createIssueDescription(diagnostic) {
+  const parts = [
+    diagnostic.stallSummary,
+    diagnostic.softStallRescueSourceReason ? `rescueSource=${String(diagnostic.softStallRescueSourceReason)}` : void 0,
+    diagnostic.recoveryStallReason ? `recovery=${String(diagnostic.recoveryStallReason)}` : void 0,
+    diagnostic.sessionDirectory ? `cwd=${String(diagnostic.sessionDirectory)}` : void 0,
+    diagnostic.lastAssistantAgent ? `agent=${String(diagnostic.lastAssistantAgent)}` : void 0,
+    diagnostic.lastAssistantMode ? `mode=${String(diagnostic.lastAssistantMode)}` : void 0,
+    typeof diagnostic.noCompletedAssistantDurationMs === "number" && Number.isFinite(diagnostic.noCompletedAssistantDurationMs) ? `durationMs=${diagnostic.noCompletedAssistantDurationMs}` : void 0
+  ].filter(Boolean);
+  return parts.join("; ");
+}
+function eventTime(event) {
+  const raw = typeof event.time === "string" ? event.time : typeof event.timestamp === "string" ? event.timestamp : void 0;
+  if (!raw) {
+    return void 0;
+  }
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? void 0 : parsed;
+}
+function earlier(left, right) {
+  if (!left) {
+    return right;
+  }
+  if (!right) {
+    return left;
+  }
+  return left < right ? left : right;
+}
+function later(left, right) {
+  if (!left) {
+    return right;
+  }
+  if (!right) {
+    return left;
+  }
+  return left > right ? left : right;
+}
+function compact(record2) {
+  return Object.fromEntries(Object.entries(record2).filter(([, value]) => value !== void 0));
+}
+function isRecord(value) {
+  return typeof value === "object" && value !== null;
+}
+
 // src/core/retinue.ts
 import { spawn as spawn2 } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import fs4 from "node:fs/promises";
+import fs5 from "node:fs/promises";
 import { createHash as createHash3, randomUUID as randomUUID3 } from "node:crypto";
 import { finished } from "node:stream/promises";
 
@@ -24091,8 +24290,8 @@ var ClaudeRetinue = class {
     }
     const jobId = `job_${randomUUID3()}`;
     const paths = getJobPaths(this.stateDir, jobId);
-    await fs4.mkdir(paths.dir, { recursive: true });
-    await fs4.writeFile(paths.prompt, options.prompt, "utf8");
+    await fs5.mkdir(paths.dir, { recursive: true });
+    await fs5.writeFile(paths.prompt, options.prompt, "utf8");
     const claudeArgs = buildClaudeArgs(options);
     const args = [...this.claudePrefixArgs, ...claudeArgs];
     const stdout = createWriteStream(paths.stdout, { flags: "a" });
@@ -24358,7 +24557,7 @@ var ClaudeRetinue = class {
       }
       const paths = getJobPaths(this.stateDir, jobId);
       removedTempFiles.push(...await listTempFiles2(paths.dir));
-      await fs4.rm(paths.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      await fs5.rm(paths.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
       removedJobIds.push(jobId);
     }
     return { removedJobIds, removedTempFiles };
@@ -24387,7 +24586,7 @@ var ClaudeRetinue = class {
   async readMeta(jobId) {
     const paths = getJobPaths(this.stateDir, jobId);
     try {
-      return normalizeMeta(JSON.parse(await fs4.readFile(paths.meta, "utf8")));
+      return normalizeMeta(JSON.parse(await fs5.readFile(paths.meta, "utf8")));
     } catch (error2) {
       if (isMissingFile2(error2)) {
         return { jobId, status: "not_found" };
@@ -24419,15 +24618,15 @@ function normalizeMeta(meta) {
   };
 }
 async function writeJsonAtomic2(filePath, value) {
-  await fs4.mkdir(filePath.replace(/[\\/][^\\/]+$/, ""), { recursive: true });
+  await fs5.mkdir(filePath.replace(/[\\/][^\\/]+$/, ""), { recursive: true });
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID3()}.tmp`;
-  await fs4.writeFile(tempPath, `${JSON.stringify(value, null, 2)}
+  await fs5.writeFile(tempPath, `${JSON.stringify(value, null, 2)}
 `, "utf8");
-  await fs4.rename(tempPath, filePath);
+  await fs5.rename(tempPath, filePath);
 }
 async function readTextIfExists2(filePath) {
   try {
-    return await fs4.readFile(filePath, "utf8");
+    return await fs5.readFile(filePath, "utf8");
   } catch (error2) {
     if (isMissingFile2(error2)) {
       return "";
@@ -24496,7 +24695,7 @@ function getJobsDir2(stateDir) {
 }
 async function readDirIfExists3(dirPath) {
   try {
-    return await fs4.readdir(dirPath, { withFileTypes: true });
+    return await fs5.readdir(dirPath, { withFileTypes: true });
   } catch (error2) {
     if (isMissingFile2(error2)) {
       return [];
@@ -24543,6 +24742,7 @@ var RETINUE_TOOL_NAMES = [
   "retinue_list_permissions",
   "retinue_reply_permission"
 ];
+var RETINUE_DIAGNOSTIC_TOOL_NAMES = ["retinue_audit_logs"];
 var DEFAULT_MCP_WAIT_MAX_MS = 18e4;
 function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
   const agentPool = new RetinueAgentPool();
@@ -24757,7 +24957,44 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
       return jsonToolResult(await backend.replyPermission({ jobId }, { requestId, reply, message }));
     }
   );
+  if (options.exposeDiagnosticTools ?? process.env.RETINUE_EXPOSE_DIAGNOSTIC_TOOLS === "1") {
+    registerDiagnosticTools(server);
+  }
   return server;
+}
+function registerDiagnosticTools(server) {
+  server.registerTool(
+    "retinue_audit_logs",
+    {
+      title: "Audit Retinue Logs",
+      description: "Developer diagnostic tool for summarizing recent Retinue/OpenCode stall logs. Hidden from the default product tool surface.",
+      inputSchema: {
+        since: external_exports.string().optional(),
+        maxLines: external_exports.number().int().positive().optional(),
+        maxBytes: external_exports.number().int().positive().optional(),
+        stateDir: external_exports.string().optional(),
+        tracePath: external_exports.string().optional()
+      }
+    },
+    async ({ since, maxLines, maxBytes, stateDir, tracePath }) => {
+      const parsedSince = since ? new Date(since) : void 0;
+      if (parsedSince && Number.isNaN(parsedSince.getTime())) {
+        throw new Error("since must be an ISO timestamp");
+      }
+      return jsonToolResult(
+        await auditRetinueLogs({
+          stateDir: stateDir ?? resolveStateDir({
+            explicitStateDir: process.env.RETINUE_STATE_DIR,
+            env: process.env
+          }),
+          tracePath,
+          since: parsedSince,
+          maxLines,
+          maxBytes
+        })
+      );
+    }
+  );
 }
 function registerBackendTools(server, retinue) {
   server.registerTool(
@@ -25091,7 +25328,7 @@ async function readRetinueConfig(env) {
     return void 0;
   }
   try {
-    return JSON.parse(await fs5.readFile(configPath, "utf8"));
+    return JSON.parse(await fs6.readFile(configPath, "utf8"));
   } catch (error2) {
     if (isMissingFile3(error2)) {
       return void 0;
@@ -25115,8 +25352,8 @@ function isMissingFile3(error2) {
 async function writeMcpTrace(env, value) {
   const stateDir = resolveStateDir({ explicitStateDir: env.RETINUE_STATE_DIR, env });
   const tracePath = getRetinueTracePath(stateDir);
-  await fs5.mkdir(path3.dirname(tracePath), { recursive: true });
-  await fs5.appendFile(tracePath, `${JSON.stringify({ timestamp: (/* @__PURE__ */ new Date()).toISOString(), ...value })}
+  await fs6.mkdir(path4.dirname(tracePath), { recursive: true });
+  await fs6.appendFile(tracePath, `${JSON.stringify({ timestamp: (/* @__PURE__ */ new Date()).toISOString(), ...value })}
 `, "utf8");
 }
 async function readLatestJobDiagnostic(filePath) {
@@ -25139,10 +25376,10 @@ async function readLatestJobDiagnostic(filePath) {
   return void 0;
 }
 function summarizeJobDiagnostic(value) {
-  if (!isRecord(value)) {
+  if (!isRecord2(value)) {
     return void 0;
   }
-  const diagnostic = isRecord(value.diagnostic) ? value.diagnostic : void 0;
+  const diagnostic = isRecord2(value.diagnostic) ? value.diagnostic : void 0;
   if (!diagnostic) {
     return void 0;
   }
@@ -25248,7 +25485,7 @@ function createDiagnosticSummaryMessage(event, diagnostic) {
 function compactRecord(record2) {
   return Object.fromEntries(Object.entries(record2).filter(([, value]) => value !== void 0));
 }
-function isRecord(value) {
+function isRecord2(value) {
   return typeof value === "object" && value !== null;
 }
 function stringValue(value) {
@@ -25301,7 +25538,7 @@ async function readRetinueJobBackendKind(jobId) {
     env: process.env
   });
   try {
-    const meta = JSON.parse(await fs5.readFile(getJobPaths(stateDir, jobId).meta, "utf8"));
+    const meta = JSON.parse(await fs6.readFile(getJobPaths(stateDir, jobId).meta, "utf8"));
     return meta.backend === "opencode" || meta.backend === "claude-code" ? meta.backend : void 0;
   } catch {
     return void 0;
@@ -25410,6 +25647,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
 export {
   CLAUDE_TOOL_NAMES,
   OPENCODE_TOOL_NAMES,
+  RETINUE_DIAGNOSTIC_TOOL_NAMES,
   RETINUE_TOOL_NAMES,
   createMcpRetinueFromEnv,
   createMcpServer,

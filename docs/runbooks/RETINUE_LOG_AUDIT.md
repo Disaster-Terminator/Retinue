@@ -10,6 +10,8 @@ pnpm run audit:logs -- --since 2026-05-20T08:00:00.000Z --max-lines 120
 
 The script reads only the tail of `logs/retinue.jsonl`, filters by `--since`, deduplicates terminal stalled OpenCode diagnostics by stall reason/provider/model/agent/mode, and emits concise issue candidates. If a job has a later `completed` event in the scanned window, earlier transient stalled diagnostics for that job are ignored.
 
+This is a developer/operations diagnostic surface, not part of the default Retinue product MCP tool set. Default MCP hosts expose only child-agent lifecycle and permission bridge tools. When an agent host is explicitly dogfooding or investigating Retinue itself, set `RETINUE_EXPOSE_DIAGNOSTIC_TOOLS=1` to expose `retinue_audit_logs`; otherwise use the CLI command above from the repository.
+
 Useful options:
 
 - `--state-dir <dir>`: Retinue state directory. Defaults to `RETINUE_STATE_DIR` or `~/.local/state/retinue`.

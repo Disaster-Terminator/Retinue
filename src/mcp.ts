@@ -13,6 +13,7 @@ import { DaemonClient } from "./daemon/client.js";
 import { readDaemonDiscoverySync } from "./daemon/discovery.js";
 import { readTextTailIfExists } from "./core/fileTail.js";
 import { resolveHttpTimeoutMs } from "./core/http.js";
+import { auditRetinueLogs } from "./core/logAudit.js";
 import { getJobPaths, getRetinueTracePath, resolveStateDir } from "./core/paths.js";
 import { ClaudeRetinue } from "./core/retinue.js";
 import { isActivePoolStatus } from "./core/status.js";
@@ -57,10 +58,13 @@ export const RETINUE_TOOL_NAMES = [
   "retinue_reply_permission"
 ] as const;
 
+export const RETINUE_DIAGNOSTIC_TOOL_NAMES = ["retinue_audit_logs"] as const;
+
 const DEFAULT_MCP_WAIT_MAX_MS = 180_000;
 
 export interface CreateMcpServerOptions {
   exposeBackendTools?: boolean;
+  exposeDiagnosticTools?: boolean;
 }
 
 export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(), options: CreateMcpServerOptions = {}): McpServer {
@@ -287,7 +291,48 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
     }
   );
 
+  if (options.exposeDiagnosticTools ?? process.env.RETINUE_EXPOSE_DIAGNOSTIC_TOOLS === "1") {
+    registerDiagnosticTools(server);
+  }
+
   return server;
+}
+
+function registerDiagnosticTools(server: McpServer): void {
+  server.registerTool(
+    "retinue_audit_logs",
+    {
+      title: "Audit Retinue Logs",
+      description: "Developer diagnostic tool for summarizing recent Retinue/OpenCode stall logs. Hidden from the default product tool surface.",
+      inputSchema: {
+        since: z.string().optional(),
+        maxLines: z.number().int().positive().optional(),
+        maxBytes: z.number().int().positive().optional(),
+        stateDir: z.string().optional(),
+        tracePath: z.string().optional()
+      }
+    },
+    async ({ since, maxLines, maxBytes, stateDir, tracePath }) => {
+      const parsedSince = since ? new Date(since) : undefined;
+      if (parsedSince && Number.isNaN(parsedSince.getTime())) {
+        throw new Error("since must be an ISO timestamp");
+      }
+      return jsonToolResult(
+        await auditRetinueLogs({
+          stateDir:
+            stateDir ??
+            resolveStateDir({
+              explicitStateDir: process.env.RETINUE_STATE_DIR,
+              env: process.env
+            }),
+          tracePath,
+          since: parsedSince,
+          maxLines,
+          maxBytes
+        })
+      );
+    }
+  );
 }
 
 function registerBackendTools(server: McpServer, retinue: RetinueApi): void {

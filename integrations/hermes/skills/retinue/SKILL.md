@@ -43,6 +43,8 @@ Retinue selects the backend from deployment configuration. The default Hermes in
 
 For read-only review tasks, require the child to state its working directory and use absolute paths for file-existence claims. Treat "file not found" or "missing documentation" conclusions as candidates until independently checked.
 
+Retinue log-audit diagnostics are hidden from the default product MCP tool surface. Developers can explicitly enable `RETINUE_EXPOSE_DIAGNOSTIC_TOOLS=1` to expose `mcp_retinue_retinue_audit_logs` while dogfooding or investigating Retinue itself; normal child-agent delegation should use the default tools above.
+
 ## Verification
 
 Ask the child to reply with a deterministic marker, then confirm `retinue_wait_agent` returns a completed result containing that marker.

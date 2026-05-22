@@ -12,6 +12,7 @@ import { writeDaemonDiscovery } from "../src/daemon/discovery.js";
 import {
   CLAUDE_TOOL_NAMES,
   OPENCODE_TOOL_NAMES,
+  RETINUE_DIAGNOSTIC_TOOL_NAMES,
   RETINUE_TOOL_NAMES,
   createMcpServer,
   createMcpRetinueFromEnv,
@@ -65,6 +66,11 @@ describe("MCP tools", () => {
     ]);
   });
 
+  it("declares Retinue diagnostic tools separately from the default product tools", () => {
+    expect(RETINUE_DIAGNOSTIC_TOOL_NAMES).toEqual(["retinue_audit_logs"]);
+    expect(RETINUE_TOOL_NAMES).not.toContain("retinue_audit_logs");
+  });
+
   it("creates a server instance with registered tools", () => {
     const server = createMcpServer(new ClaudeRetinue({ stateDir: "unused" }));
 
@@ -77,6 +83,19 @@ describe("MCP tools", () => {
     try {
       const toolNames = (await connection.client.listTools()).tools.map((tool) => tool.name);
       expect(toolNames).toEqual([...RETINUE_TOOL_NAMES]);
+    } finally {
+      await closeMcpClient(connection);
+    }
+  });
+
+  it("publishes Retinue diagnostic tools only when explicitly enabled", async () => {
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }), {
+      exposeBackendTools: false,
+      exposeDiagnosticTools: true
+    });
+    try {
+      const toolNames = (await connection.client.listTools()).tools.map((tool) => tool.name);
+      expect(toolNames).toEqual([...RETINUE_TOOL_NAMES, ...RETINUE_DIAGNOSTIC_TOOL_NAMES]);
     } finally {
       await closeMcpClient(connection);
     }
@@ -299,6 +318,104 @@ describe("MCP tools", () => {
       assertAbsentFields(tools.tools, "retinue_reply_permission", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
     } finally {
       await closeMcpClient(connection);
+    }
+  });
+
+  it("publishes concrete input schemas for diagnostic tools only when enabled", async () => {
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }), {
+      exposeBackendTools: false,
+      exposeDiagnosticTools: true
+    });
+    try {
+      const tools = await connection.client.listTools();
+      assertOptionalField(tools.tools, "retinue_audit_logs", "since");
+      assertOptionalField(tools.tools, "retinue_audit_logs", "maxLines");
+      assertOptionalField(tools.tools, "retinue_audit_logs", "maxBytes");
+      assertOptionalField(tools.tools, "retinue_audit_logs", "stateDir");
+      assertOptionalField(tools.tools, "retinue_audit_logs", "tracePath");
+      assertAbsentFields(tools.tools, "retinue_audit_logs", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
+    } finally {
+      await closeMcpClient(connection);
+    }
+  });
+
+  it("audits Retinue logs through the opt-in diagnostic MCP tool", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-log-audit-"));
+    const tracePath = path.join(tempDir, "retinue.jsonl");
+    await fs.writeFile(
+      tracePath,
+      [
+        JSON.stringify({
+          time: "2026-05-22T08:13:56.000Z",
+          event: "opencode_job_stalled",
+          jobId: "job_malformed",
+          status: "stalled",
+          diagnostic: {
+            stallReason: "read_tool_invalid_input",
+            stallSummary: "OpenCode provider/model emitted read tool call(s) with missing or invalid input. readToolCalls=call_read:pending:input={}.",
+            softStallRescueSourceReason: "provider_zero_progress",
+            recoveryStallReason: "read_tool_invalid_input",
+            lastAssistantProviderID: "litellm",
+            lastAssistantModelID: "doubao-seed-2.0-lite",
+            lastAssistantAgent: "explore",
+            lastAssistantMode: "explore",
+            runningReadToolPartSummaries: [
+              {
+                tool: "read",
+                callID: "call_read",
+                stateStatus: "pending",
+                stateInput: { type: "object", preview: "{}" }
+              }
+            ],
+            malformedReadToolParts: 1,
+            pendingPermissionCount: 0,
+            pendingExternalDirectoryPermissionCount: 0
+          }
+        }),
+        JSON.stringify({
+          time: "2026-05-22T08:14:56.000Z",
+          event: "opencode_job_result_read",
+          jobId: "job_completed_later",
+          status: "completed",
+          diagnostic: {
+            stallReason: "provider_zero_progress",
+            lastAssistantProviderID: "litellm",
+            lastAssistantModelID: "doubao-seed-2.0-lite"
+          }
+        })
+      ].join("\n")
+    );
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }), {
+      exposeBackendTools: false,
+      exposeDiagnosticTools: true
+    });
+    try {
+      const audit = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_audit_logs",
+          arguments: { tracePath, since: "2026-05-22T08:00:00.000Z" }
+        })
+      );
+      expect(audit.issueCount).toBe(1);
+      expect(audit.ignoredCompletedJobIds).toEqual(["job_completed_later"]);
+      expect(audit.issues[0]).toMatchObject({
+        jobIds: ["job_malformed"],
+        sample: {
+          stallReason: "read_tool_invalid_input",
+          recoveryStallReason: "read_tool_invalid_input",
+          pendingPermissionCount: 0,
+          pendingExternalDirectoryPermissionCount: 0,
+          runningReadToolPartSummaries: [
+            {
+              tool: "read",
+              stateInput: { preview: "{}" }
+            }
+          ]
+        }
+      });
+    } finally {
+      await closeMcpClient(connection);
+      await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
 
@@ -1244,10 +1361,14 @@ async function connectMcpClient(daemonUrl: string) {
   return { client, clientTransport, serverTransport };
 }
 
-async function connectMcpClientWithRetinue(retinue: ClaudeRetinue, exposeBackendTools = true) {
+async function connectMcpClientWithRetinue(
+  retinue: ClaudeRetinue,
+  options: boolean | { exposeBackendTools?: boolean; exposeDiagnosticTools?: boolean } = true
+) {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "retinue-test-client", version: "0.1.0" });
-  const mcpServer = createMcpServer(retinue, { exposeBackendTools });
+  const mcpOptions = typeof options === "boolean" ? { exposeBackendTools: options } : options;
+  const mcpServer = createMcpServer(retinue, mcpOptions);
   await Promise.all([mcpServer.connect(serverTransport), client.connect(clientTransport)]);
   return { client, clientTransport, serverTransport };
 }

@@ -144,7 +144,7 @@ describe("package.json guardrails", () => {
   });
 
   it("packages the Codex plugin surface", () => {
-    expect(packageJson.files).toEqual(expect.arrayContaining(["plugins/**", ".agents/plugins/**"]));
+    expect(packageJson.files).toEqual(expect.arrayContaining(["plugins/**", ".agents/plugins/**", "dist/cli/**"]));
   });
 
   it("packages the Hermes integration surface", () => {

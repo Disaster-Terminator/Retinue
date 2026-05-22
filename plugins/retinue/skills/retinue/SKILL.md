@@ -46,7 +46,7 @@ If `retinue_wait_agent` returns `running`, treat it as a workflow event, not a d
 
 If `diagnostic.stallReason` is `external_directory_permission_pending`, use `retinue_list_permissions` to fetch structured OpenCode permission request ids for the job. Use `retinue_reply_permission` with OpenCode's native `reply` values (`once`, `always`, or `reject`) only after the supervising agent has decided how to handle the request. Retinue does not auto-approve external paths and does not define its own permission policy.
 
-Backend-specific `opencode_*` and `claude_*` tools are adapter/debug surfaces and are hidden by default in plugin deployments. If a developer explicitly enables `RETINUE_EXPOSE_BACKEND_TOOLS=1`, do not prefer those tools for product-level Codex subagent delegation unless debugging a backend-specific issue.
+Backend-specific `opencode_*` and `claude_*` tools are adapter/debug surfaces and are hidden by default in plugin deployments. Retinue log-audit diagnostics are also hidden by default; developers can explicitly enable `RETINUE_EXPOSE_DIAGNOSTIC_TOOLS=1` to expose `retinue_audit_logs` while dogfooding or investigating Retinue itself. Do not prefer hidden debug tools for product-level Codex subagent delegation unless debugging Retinue or a backend-specific issue.
 
 ## Production E2E Gate
 

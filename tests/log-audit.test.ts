@@ -1,13 +1,11 @@
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { auditRetinueLogs } from "../src/core/logAudit.js";
 
-const scriptPath = path.resolve("scripts/audit-retinue-logs.mjs");
-
-describe("Retinue log audit script", () => {
-  it("summarizes recent stalled diagnostics into deduplicated issue candidates", () => {
+describe("Retinue log audit", () => {
+  it("summarizes recent stalled diagnostics into deduplicated issue candidates", async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-"));
     try {
       const tracePath = path.join(tempDir, "retinue.jsonl");
@@ -99,12 +97,10 @@ describe("Retinue log audit script", () => {
         ].join("\n")
       );
 
-      const stdout = execFileSync(process.execPath, [scriptPath, "--trace", tracePath, "--since", "2026-05-20T07:30:00.000Z"], {
-        encoding: "utf8"
-      });
-      const parsed = JSON.parse(stdout);
+      const parsed = await auditRetinueLogs({ tracePath, since: new Date("2026-05-20T07:30:00.000Z") });
 
       expect(parsed.scannedEvents).toBe(4);
+      expect(parsed.ignoredCompletedJobIds).toEqual(["job_c"]);
       expect(parsed.issueCount).toBe(1);
       expect(parsed.issues[0]).toMatchObject({
         count: 2,
