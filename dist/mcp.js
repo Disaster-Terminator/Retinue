@@ -166,6 +166,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
                 stdoutTailTruncated: stdoutTail.truncated,
                 stderrTailTruncated: stderrTail.truncated,
                 diagnostic,
+                ...attentionFields(diagnostic),
                 tracePath: getRetinueTracePath(stateDir),
                 requestedTimeoutMs: timeoutMs,
                 effectiveTimeoutMs
@@ -186,7 +187,8 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             attemptChain: result.attemptChain ?? waited.attemptChain,
             status: responseStatus,
             result,
-            diagnostic
+            diagnostic,
+            ...attentionFields(diagnostic, result)
         });
     });
     server.registerTool("retinue_close_agent", {
@@ -671,6 +673,46 @@ function summarizeJobDiagnostic(value) {
         stateStatus: stringValue(diagnostic.stateStatus),
         sessionState: diagnostic.sessionState
     });
+}
+function attentionFields(diagnostic, fallback) {
+    if (fallback?.attentionRequired) {
+        return {
+            attentionRequired: fallback.attentionRequired,
+            permissionRequired: fallback.permissionRequired,
+            permissions: fallback.permissions
+        };
+    }
+    if (!diagnostic || diagnostic.stallReason !== "external_directory_permission_pending") {
+        return {};
+    }
+    const permissions = permissionRequestsFromDiagnostic(diagnostic.pendingExternalDirectoryPermissions);
+    if (permissions.length === 0) {
+        return {};
+    }
+    return {
+        attentionRequired: {
+            kind: "permission",
+            backend: "opencode",
+            reason: "external_directory_permission_pending",
+            permissions,
+            replyOptions: ["once", "always", "reject"]
+        },
+        permissionRequired: true,
+        permissions
+    };
+}
+function permissionRequestsFromDiagnostic(value) {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return value.filter(isPermissionRequest);
+}
+function isPermissionRequest(value) {
+    return (isRecord(value) &&
+        typeof value.id === "string" &&
+        typeof value.permission === "string" &&
+        Array.isArray(value.patterns) &&
+        value.patterns.every((pattern) => typeof pattern === "string"));
 }
 function resolveDiagnosticStatus(event, diagnostic) {
     if (event === "opencode_job_soft_stall_deferred") {

@@ -11,6 +11,7 @@ import type {
   JobProblem,
   JobResult,
   JobStatusResult,
+  RetinueAttentionRequired,
   RetinueOptions,
   WaitResult
 } from "../../core/types.js";
@@ -763,6 +764,7 @@ export class OpenCodeBackend implements AgentBackend {
           stderrTruncated: false,
           sessionId: meta.externalSessionId,
           parsedStdout: { result: cachedStdout },
+          ...permissionAttentionFields(await this.inspectJob(meta)),
           error: cachedStderr || cachedStdout
         }, meta);
       }
@@ -810,6 +812,7 @@ export class OpenCodeBackend implements AgentBackend {
         stderrTruncated: false,
         sessionId: meta.externalSessionId,
         parsedStdout: { result: stdout },
+        ...permissionAttentionFields(diagnostic),
         error: stderrText
       }, meta);
     }
@@ -945,7 +948,7 @@ export class OpenCodeBackend implements AgentBackend {
               toStatus: "stalled",
               diagnostic: expiredDiagnostic
             });
-            return { jobId: handle.jobId, status: "stalled" };
+            return { jobId: handle.jobId, status: "stalled", ...permissionAttentionFields(expiredDiagnostic) };
           }
           if (diagnostic.stallReason) {
             if (this.isSoftStallRescuePending(meta, diagnostic)) {
@@ -980,7 +983,7 @@ export class OpenCodeBackend implements AgentBackend {
             if (isHardStallDiagnostic(diagnostic)) {
               await this.maybeScheduleServerIdleShutdown(stalled);
             }
-            return { jobId: handle.jobId, status: "stalled" };
+            return { jobId: handle.jobId, status: "stalled", ...permissionAttentionFields(diagnostic) };
           }
           await this.writeJobTrace("opencode_job_wait_timeout", meta, diagnostic);
           await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_wait_timeout", diagnostic });
@@ -2082,6 +2085,27 @@ function summarizePermissionRequests(requests: OpenCodePermissionRequest[]): Ope
     toolCallID: typeof request.tool?.callID === "string" ? request.tool.callID : undefined,
     metadata: diagnosticValuePreview(request.metadata)
   }));
+}
+
+function permissionAttentionFields(
+  diagnostic: OpenCodeJobDiagnostic
+): Pick<JobResult, "attentionRequired" | "permissionRequired" | "permissions"> {
+  const permissions = diagnostic.pendingExternalDirectoryPermissions ?? [];
+  if (diagnostic.stallReason !== "external_directory_permission_pending" || permissions.length === 0) {
+    return {};
+  }
+  const attentionRequired: RetinueAttentionRequired = {
+    kind: "permission",
+    backend: "opencode",
+    reason: "external_directory_permission_pending",
+    permissions,
+    replyOptions: ["once", "always", "reject"]
+  };
+  return {
+    attentionRequired,
+    permissionRequired: true,
+    permissions
+  };
 }
 
 function formatPendingPermissionDetails(diagnostic: Partial<OpenCodeJobDiagnostic>): string {

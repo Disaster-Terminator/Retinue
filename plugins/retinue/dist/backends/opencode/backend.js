@@ -559,6 +559,7 @@ export class OpenCodeBackend {
                     stderrTruncated: false,
                     sessionId: meta.externalSessionId,
                     parsedStdout: { result: cachedStdout },
+                    ...permissionAttentionFields(await this.inspectJob(meta)),
                     error: cachedStderr || cachedStdout
                 }, meta);
             }
@@ -605,6 +606,7 @@ export class OpenCodeBackend {
                 stderrTruncated: false,
                 sessionId: meta.externalSessionId,
                 parsedStdout: { result: stdout },
+                ...permissionAttentionFields(diagnostic),
                 error: stderrText
             }, meta);
         }
@@ -737,7 +739,7 @@ export class OpenCodeBackend {
                             toStatus: "stalled",
                             diagnostic: expiredDiagnostic
                         });
-                        return { jobId: handle.jobId, status: "stalled" };
+                        return { jobId: handle.jobId, status: "stalled", ...permissionAttentionFields(expiredDiagnostic) };
                     }
                     if (diagnostic.stallReason) {
                         if (this.isSoftStallRescuePending(meta, diagnostic)) {
@@ -772,7 +774,7 @@ export class OpenCodeBackend {
                         if (isHardStallDiagnostic(diagnostic)) {
                             await this.maybeScheduleServerIdleShutdown(stalled);
                         }
-                        return { jobId: handle.jobId, status: "stalled" };
+                        return { jobId: handle.jobId, status: "stalled", ...permissionAttentionFields(diagnostic) };
                     }
                     await this.writeJobTrace("opencode_job_wait_timeout", meta, diagnostic);
                     await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_wait_timeout", diagnostic });
@@ -1763,6 +1765,24 @@ function summarizePermissionRequests(requests) {
         toolCallID: typeof request.tool?.callID === "string" ? request.tool.callID : undefined,
         metadata: diagnosticValuePreview(request.metadata)
     }));
+}
+function permissionAttentionFields(diagnostic) {
+    const permissions = diagnostic.pendingExternalDirectoryPermissions ?? [];
+    if (diagnostic.stallReason !== "external_directory_permission_pending" || permissions.length === 0) {
+        return {};
+    }
+    const attentionRequired = {
+        kind: "permission",
+        backend: "opencode",
+        reason: "external_directory_permission_pending",
+        permissions,
+        replyOptions: ["once", "always", "reject"]
+    };
+    return {
+        attentionRequired,
+        permissionRequired: true,
+        permissions
+    };
 }
 function formatPendingPermissionDetails(diagnostic) {
     const permissions = diagnostic.pendingExternalDirectoryPermissions ?? diagnostic.pendingPermissions ?? [];

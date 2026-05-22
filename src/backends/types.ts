@@ -1,4 +1,4 @@
-import type { JobMeta, JobResult, JobStatusResult, RunOptions } from "../core/types.js";
+import type { JobMeta, JobResult, JobStatusResult, PermissionReplyOption, RetinuePermissionRequest, RunOptions } from "../core/types.js";
 
 export interface AgentHandle {
   jobId: string;
@@ -21,17 +21,8 @@ export interface AgentContinueOptions extends AgentRunOptions {
 export type AgentRunStart = JobMeta;
 export type AgentBackendStatus = JobStatusResult;
 export type AgentBackendResult = JobResult;
-export type AgentPermissionReply = "once" | "always" | "reject";
-
-export interface AgentPermissionRequest {
-  id: string;
-  sessionID?: string;
-  permission: string;
-  patterns: string[];
-  always?: string[];
-  toolCallID?: string;
-  metadata?: unknown;
-}
+export type AgentPermissionReply = PermissionReplyOption;
+export type AgentPermissionRequest = RetinuePermissionRequest;
 
 export interface AgentPermissionListResult {
   jobId: string;

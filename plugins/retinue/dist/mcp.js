@@ -22588,6 +22588,7 @@ var OpenCodeBackend = class {
           stderrTruncated: false,
           sessionId: meta.externalSessionId,
           parsedStdout: { result: cachedStdout },
+          ...permissionAttentionFields(await this.inspectJob(meta)),
           error: cachedStderr || cachedStdout
         }, meta);
       }
@@ -22635,6 +22636,7 @@ ${textWarning2}` : stderr;
         stderrTruncated: false,
         sessionId: meta.externalSessionId,
         parsedStdout: { result: stdout },
+        ...permissionAttentionFields(diagnostic),
         error: stderrText
       }, meta);
     }
@@ -22765,7 +22767,7 @@ ${textWarning2}` : stderr;
               toStatus: "stalled",
               diagnostic: expiredDiagnostic
             });
-            return { jobId: handle.jobId, status: "stalled" };
+            return { jobId: handle.jobId, status: "stalled", ...permissionAttentionFields(expiredDiagnostic) };
           }
           if (diagnostic.stallReason) {
             if (this.isSoftStallRescuePending(meta, diagnostic)) {
@@ -22800,7 +22802,7 @@ ${textWarning2}` : stderr;
             if (isHardStallDiagnostic(diagnostic)) {
               await this.maybeScheduleServerIdleShutdown(stalled);
             }
-            return { jobId: handle.jobId, status: "stalled" };
+            return { jobId: handle.jobId, status: "stalled", ...permissionAttentionFields(diagnostic) };
           }
           await this.writeJobTrace("opencode_job_wait_timeout", meta, diagnostic);
           await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_wait_timeout", diagnostic });
@@ -23722,6 +23724,24 @@ function summarizePermissionRequests(requests) {
     toolCallID: typeof request.tool?.callID === "string" ? request.tool.callID : void 0,
     metadata: diagnosticValuePreview(request.metadata)
   }));
+}
+function permissionAttentionFields(diagnostic) {
+  const permissions = diagnostic.pendingExternalDirectoryPermissions ?? [];
+  if (diagnostic.stallReason !== "external_directory_permission_pending" || permissions.length === 0) {
+    return {};
+  }
+  const attentionRequired = {
+    kind: "permission",
+    backend: "opencode",
+    reason: "external_directory_permission_pending",
+    permissions,
+    replyOptions: ["once", "always", "reject"]
+  };
+  return {
+    attentionRequired,
+    permissionRequired: true,
+    permissions
+  };
 }
 function formatPendingPermissionDetails(diagnostic) {
   const permissions = diagnostic.pendingExternalDirectoryPermissions ?? diagnostic.pendingPermissions ?? [];
@@ -25095,6 +25115,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
           stdoutTailTruncated: stdoutTail.truncated,
           stderrTailTruncated: stderrTail.truncated,
           diagnostic: diagnostic2,
+          ...attentionFields(diagnostic2),
           tracePath: getRetinueTracePath(stateDir2),
           requestedTimeoutMs: timeoutMs,
           effectiveTimeoutMs
@@ -25115,7 +25136,8 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
         attemptChain: result.attemptChain ?? waited.attemptChain,
         status: responseStatus,
         result,
-        diagnostic
+        diagnostic,
+        ...attentionFields(diagnostic, result)
       });
     }
   );
@@ -25678,6 +25700,42 @@ function summarizeJobDiagnostic(value) {
     stateStatus: stringValue(diagnostic.stateStatus),
     sessionState: diagnostic.sessionState
   });
+}
+function attentionFields(diagnostic, fallback) {
+  if (fallback?.attentionRequired) {
+    return {
+      attentionRequired: fallback.attentionRequired,
+      permissionRequired: fallback.permissionRequired,
+      permissions: fallback.permissions
+    };
+  }
+  if (!diagnostic || diagnostic.stallReason !== "external_directory_permission_pending") {
+    return {};
+  }
+  const permissions = permissionRequestsFromDiagnostic(diagnostic.pendingExternalDirectoryPermissions);
+  if (permissions.length === 0) {
+    return {};
+  }
+  return {
+    attentionRequired: {
+      kind: "permission",
+      backend: "opencode",
+      reason: "external_directory_permission_pending",
+      permissions,
+      replyOptions: ["once", "always", "reject"]
+    },
+    permissionRequired: true,
+    permissions
+  };
+}
+function permissionRequestsFromDiagnostic(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isPermissionRequest);
+}
+function isPermissionRequest(value) {
+  return isRecord2(value) && typeof value.id === "string" && typeof value.permission === "string" && Array.isArray(value.patterns) && value.patterns.every((pattern) => typeof pattern === "string");
 }
 function resolveDiagnosticStatus(event, diagnostic) {
   if (event === "opencode_job_soft_stall_deferred") {

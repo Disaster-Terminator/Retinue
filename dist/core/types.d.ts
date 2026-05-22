@@ -36,6 +36,24 @@ export interface JobAttemptSummary {
     externalParentSessionId?: string;
     externalRootSessionId?: string;
 }
+export type PermissionReplyOption = "once" | "always" | "reject";
+export interface RetinuePermissionRequest {
+    id: string;
+    sessionID?: string;
+    permission: string;
+    patterns: string[];
+    always?: string[];
+    toolCallID?: string;
+    metadata?: unknown;
+}
+export interface PermissionAttentionRequired {
+    kind: "permission";
+    backend: AgentBackendKind;
+    reason: string;
+    permissions: RetinuePermissionRequest[];
+    replyOptions: PermissionReplyOption[];
+}
+export type RetinueAttentionRequired = PermissionAttentionRequired;
 export interface RetinueOptions {
     claudeCommand?: string;
     claudePrefixArgs?: string[];
@@ -117,6 +135,9 @@ export interface WaitResult {
     requestedJobId?: string;
     selectedAttemptJobId?: string;
     attemptChain?: JobAttemptSummary[];
+    attentionRequired?: RetinueAttentionRequired;
+    permissionRequired?: boolean;
+    permissions?: RetinuePermissionRequest[];
     exitCode?: number | null;
     signal?: NodeJS.Signals | null;
 }
@@ -136,6 +157,9 @@ export interface JobResult {
     exitStatus?: ExitStatus;
     selectedAttemptJobId?: string;
     attemptChain?: JobAttemptSummary[];
+    attentionRequired?: RetinueAttentionRequired;
+    permissionRequired?: boolean;
+    permissions?: RetinuePermissionRequest[];
     error?: string;
 }
 export interface PeekOptions {

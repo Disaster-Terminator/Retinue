@@ -17,7 +17,16 @@ import { auditRetinueLogs } from "./core/logAudit.js";
 import { getJobPaths, getRetinueTracePath, resolveStateDir } from "./core/paths.js";
 import { ClaudeRetinue } from "./core/retinue.js";
 import { isActivePoolStatus } from "./core/status.js";
-import type { AgentBackendKind, JobMeta, JobProblemStatus, JobStatusResult, RetinueApi, WaitResult } from "./core/types.js";
+import type {
+  AgentBackendKind,
+  JobMeta,
+  JobProblemStatus,
+  JobStatusResult,
+  RetinueApi,
+  RetinueAttentionRequired,
+  RetinuePermissionRequest,
+  WaitResult
+} from "./core/types.js";
 import type {
   AgentBackend,
   AgentContinueOptions,
@@ -201,6 +210,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
           stdoutTailTruncated: stdoutTail.truncated,
           stderrTailTruncated: stderrTail.truncated,
           diagnostic,
+          ...attentionFields(diagnostic),
           tracePath: getRetinueTracePath(stateDir),
           requestedTimeoutMs: timeoutMs,
           effectiveTimeoutMs
@@ -221,7 +231,8 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
         attemptChain: result.attemptChain ?? waited.attemptChain,
         status: responseStatus,
         result,
-        diagnostic
+        diagnostic,
+        ...attentionFields(diagnostic, result)
       });
     }
   );
@@ -865,6 +876,58 @@ function summarizeJobDiagnostic(value: unknown): Record<string, unknown> | undef
     stateStatus: stringValue(diagnostic.stateStatus),
     sessionState: diagnostic.sessionState
   });
+}
+
+function attentionFields(
+  diagnostic: Record<string, unknown> | undefined,
+  fallback?: { attentionRequired?: RetinueAttentionRequired; permissionRequired?: boolean; permissions?: RetinuePermissionRequest[] }
+): {
+  attentionRequired?: RetinueAttentionRequired;
+  permissionRequired?: boolean;
+  permissions?: RetinuePermissionRequest[];
+} {
+  if (fallback?.attentionRequired) {
+    return {
+      attentionRequired: fallback.attentionRequired,
+      permissionRequired: fallback.permissionRequired,
+      permissions: fallback.permissions
+    };
+  }
+  if (!diagnostic || diagnostic.stallReason !== "external_directory_permission_pending") {
+    return {};
+  }
+  const permissions = permissionRequestsFromDiagnostic(diagnostic.pendingExternalDirectoryPermissions);
+  if (permissions.length === 0) {
+    return {};
+  }
+  return {
+    attentionRequired: {
+      kind: "permission",
+      backend: "opencode",
+      reason: "external_directory_permission_pending",
+      permissions,
+      replyOptions: ["once", "always", "reject"]
+    },
+    permissionRequired: true,
+    permissions
+  };
+}
+
+function permissionRequestsFromDiagnostic(value: unknown): RetinuePermissionRequest[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isPermissionRequest);
+}
+
+function isPermissionRequest(value: unknown): value is RetinuePermissionRequest {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.permission === "string" &&
+    Array.isArray(value.patterns) &&
+    value.patterns.every((pattern) => typeof pattern === "string")
+  );
 }
 
 function resolveDiagnosticStatus(event: string | undefined, diagnostic: Record<string, unknown>): "running" | "completed" | "failed" | "stalled" {

@@ -822,6 +822,7 @@ describe("MCP tools", () => {
     try {
       process.env.RETINUE_STATE_DIR = tempDir;
       process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.RETINUE_OPENCODE_STALL_READ_TOOL_MS = "1";
 
       const spawn = parseToolJson(
         await connection.client.callTool({
@@ -829,7 +830,46 @@ describe("MCP tools", () => {
           arguments: { cwd: tempDir, message: "retinue permission bridge", task_name: "permission-bridge" }
         })
       );
+      fakeOpenCode.appendPendingReadToolAssistant(spawn.externalSessionId);
       fakeOpenCode.appendExternalDirectoryPermission(spawn.externalSessionId, "/home/raystorm/projects/opencode/*", "call_read");
+
+      const wait = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_wait_agent",
+          arguments: { jobId: spawn.jobId, timeoutMs: 5000 }
+        })
+      );
+      expect(wait).toMatchObject({
+        jobId: spawn.jobId,
+        status: "stalled",
+        permissionRequired: true,
+        permissions: [
+          expect.objectContaining({
+            id: "per_1",
+            permission: "external_directory",
+            patterns: ["/home/raystorm/projects/opencode/*"],
+            toolCallID: "call_read"
+          })
+        ],
+        attentionRequired: {
+          kind: "permission",
+          backend: "opencode",
+          reason: "external_directory_permission_pending",
+          replyOptions: ["once", "always", "reject"],
+          permissions: [
+            expect.objectContaining({
+              id: "per_1",
+              permission: "external_directory",
+              patterns: ["/home/raystorm/projects/opencode/*"],
+              toolCallID: "call_read"
+            })
+          ]
+        },
+        diagnostic: {
+          stallReason: "external_directory_permission_pending",
+          pendingExternalDirectoryPermissionCount: 1
+        }
+      });
 
       const list = parseToolJson(
         await connection.client.callTool({
@@ -867,6 +907,7 @@ describe("MCP tools", () => {
     } finally {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
+      delete process.env.RETINUE_OPENCODE_STALL_READ_TOOL_MS;
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });
     }

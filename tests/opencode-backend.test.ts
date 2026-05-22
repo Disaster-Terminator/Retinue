@@ -1169,6 +1169,27 @@ describe("OpenCodeBackend", () => {
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
       status: "stalled",
+      permissionRequired: true,
+      permissions: [
+        expect.objectContaining({
+          id: "per_1",
+          permission: "external_directory",
+          patterns: ["/home/raystorm/projects/opencode-runner/src/index.ts"]
+        })
+      ],
+      attentionRequired: {
+        kind: "permission",
+        backend: "opencode",
+        reason: "external_directory_permission_pending",
+        permissions: [
+          expect.objectContaining({
+            id: "per_1",
+            permission: "external_directory",
+            patterns: ["/home/raystorm/projects/opencode-runner/src/index.ts"]
+          })
+        ],
+        replyOptions: ["once", "always", "reject"]
+      },
       stdout: expect.stringContaining("external_directory permission"),
       parsedStdout: { result: expect.stringContaining("external_directory permission") },
       error: expect.stringContaining("external_directory permission")
