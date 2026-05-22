@@ -941,13 +941,63 @@ describe("OpenCodeBackend", () => {
     expect(server!.promptRequests).toHaveLength(2);
   });
 
+  it("starts a fresh task-level attempt when zero-progress rescue stays stuck", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "audit keeps thinking without final text", agent: "explore" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source two");
+    server!.appendZeroProgressReasoningAssistant(started.externalSessionId!);
+    await expect(backend.wait({ jobId: started.jobId }, 100)).resolves.toMatchObject({ status: "running" });
+    await waitForPromptCount(2);
+    server!.setAutoAssistantResponses(true);
+
+    const waited = await backend.wait({ jobId: started.jobId }, 1000);
+
+    expect(waited).toMatchObject({
+      requestedJobId: started.jobId,
+      selectedAttemptJobId: expect.stringMatching(/^job_/)
+    });
+    expect(waited.jobId).not.toBe(started.jobId);
+    const attempt = JSON.parse(await fs.readFile(getJobPaths(tempDir, waited.jobId).meta, "utf8")) as JobMeta;
+    expect(attempt).toMatchObject({
+      recoveredFromJobId: started.jobId,
+      attempt: 1,
+      recoveryReason: "rescue_provider_zero_progress",
+      recoveryPolicy: "fresh_task_attempt",
+      originalStallReason: "provider_zero_progress",
+      recoveryStallReason: "provider_zero_progress"
+    });
+    server!.completeSession(attempt.externalSessionId!);
+    await expect(backend.result({ jobId: waited.jobId })).resolves.toMatchObject({
+      attemptChain: [
+        expect.objectContaining({ jobId: started.jobId, attempt: 0, status: "stalled" }),
+        expect.objectContaining({ jobId: waited.jobId, attempt: 1, selected: true })
+      ]
+    });
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
+    expect(trace).toContain('"event":"opencode_task_level_attempt_started"');
+    expect(trace).toContain('"recoveryReason":"rescue_provider_zero_progress"');
+  });
+
   it("marks default zero-progress placeholders as stalled after the bounded no-progress window", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);

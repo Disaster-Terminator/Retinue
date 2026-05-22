@@ -23773,6 +23773,9 @@ function selectTaskLevelAttemptReason(meta, diagnostic) {
   if (diagnostic.recoveryStallReason) {
     return `rescue_${diagnostic.recoveryStallReason}`;
   }
+  if (meta.externalRescuePromptSubmittedAt && (diagnostic.stallReason === "provider_zero_progress" || diagnostic.stallReason === "provider_blank_assistant")) {
+    return `rescue_${diagnostic.stallReason}`;
+  }
   if (meta.externalRescuePromptSubmittedAt && diagnostic.stallReason === "incomplete_assistant_round") {
     return "rescue_incomplete_assistant_round";
   }
