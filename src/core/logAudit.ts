@@ -154,6 +154,8 @@ function summarizeIssues(events: Record<string, unknown>[], latestStatusByJobId:
       recoveryStallReason: diagnostic.recoveryStallReason,
       recoveryStallSummary: diagnostic.recoveryStallSummary,
       noCompletedAssistantDurationMs: diagnostic.noCompletedAssistantDurationMs,
+      selectedAttemptJobId: event.selectedAttemptJobId,
+      attemptChainPresent: Array.isArray(event.attemptChain),
       toolCallAssistantRounds: diagnostic.toolCallAssistantRounds,
       blankAssistantRounds: diagnostic.blankAssistantRounds,
       runningReadToolParts: diagnostic.runningReadToolParts,

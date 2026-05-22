@@ -9,7 +9,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
         maxBytes: options.maxBytes,
         maxLines: options.maxLines
     });
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    process.stdout.write(options.compact ? renderCompactAuditResult(result) : `${JSON.stringify(result, null, 2)}\n`);
 }
 function parseArgs(args) {
     const options = {
@@ -45,6 +45,9 @@ function parseArgs(args) {
         else if (arg === "--max-bytes") {
             options.maxBytes = parsePositiveInt(next(), "--max-bytes");
         }
+        else if (arg === "--compact" || arg === "-c") {
+            options.compact = true;
+        }
         else if (arg === "--help" || arg === "-h") {
             process.stdout.write(helpText());
             process.exit(0);
@@ -66,7 +69,59 @@ function parsePositiveInt(value, label) {
     return parsed;
 }
 function helpText() {
-    return `Usage: retinue-audit-logs [options]\n\nOptions:\n  --state-dir <dir>    Retinue state directory. Defaults to RETINUE_STATE_DIR or ~/.local/state/retinue.\n  --trace <file>       Explicit Retinue trace JSONL path.\n  --since <iso>        Only include events at or after this timestamp.\n  --max-lines <n>      Maximum recent JSONL lines to inspect. Default: ${DEFAULT_LOG_AUDIT_MAX_LINES}.\n  --max-bytes <n>      Maximum bytes to read from the tail. Default: ${DEFAULT_LOG_AUDIT_MAX_BYTES}.\n`;
+    return `Usage: retinue-audit-logs [options]\n\nOptions:\n  --state-dir <dir>    Retinue state directory. Defaults to RETINUE_STATE_DIR or ~/.local/state/retinue.\n  --trace <file>       Explicit Retinue trace JSONL path.\n  --since <iso>        Only include events at or after this timestamp.\n  --max-lines <n>      Maximum recent JSONL lines to inspect. Default: ${DEFAULT_LOG_AUDIT_MAX_LINES}.\n  --max-bytes <n>      Maximum bytes to read from the tail. Default: ${DEFAULT_LOG_AUDIT_MAX_BYTES}.\n  --compact, -c        Print compact agent-facing text instead of full JSON.\n`;
+}
+export function renderCompactAuditResult(result) {
+    const lines = [
+        `Retinue log audit: issues=${result.issueCount} scanned=${result.scannedEvents} ignoredCompleted=${result.ignoredCompletedJobIds.length}`,
+        `trace=${result.tracePath}`
+    ];
+    if (result.since) {
+        lines.push(`since=${result.since}`);
+    }
+    for (const [index, issue] of result.issues.entries()) {
+        lines.push(renderCompactIssue(issue, index + 1));
+    }
+    return `${lines.join("\n")}\n`;
+}
+function renderCompactIssue(issue, index) {
+    const sample = issue.sample ?? {};
+    const summary = [
+        `reason=${stringField(sample.stallReason)}`,
+        stringField(sample.softStallRescueSourceReason) ? `source=${stringField(sample.softStallRescueSourceReason)}` : undefined,
+        stringField(sample.recoveryStallReason) ? `recovery=${stringField(sample.recoveryStallReason)}` : undefined,
+        `provider=${providerModel(issue)}`,
+        stringField(sample.sessionDirectory) ? `cwd=${stringField(sample.sessionDirectory)}` : undefined,
+        `agent=${agentMode(issue)}`,
+        numericField(sample.noCompletedAssistantDurationMs) ? `durationMs=${numericField(sample.noCompletedAssistantDurationMs)}` : undefined,
+        stringField(sample.selectedAttemptJobId) ? `selectedAttempt=${stringField(sample.selectedAttemptJobId)}` : undefined,
+        sample.attemptChainPresent === true ? "attemptChain=true" : undefined,
+        numericField(sample.malformedReadToolParts) ? `malformedRead=${numericField(sample.malformedReadToolParts)}` : undefined,
+        numericField(sample.pendingPermissionCount) ? `permissions=${numericField(sample.pendingPermissionCount)}` : undefined,
+        sample.readOnlyWriteIntent === true ? "readOnlyWriteIntent=true" : undefined
+    ]
+        .filter((part) => Boolean(part))
+        .join(" ");
+    return [
+        `#${index} count=${issue.count} jobs=${issue.jobIds.join(",") || "none"}`,
+        `  ${summary}`,
+        `  title=${issue.title}`,
+        `  diagnosis=${issue.description || "No diagnosis available."}`
+    ].join("\n");
+}
+function providerModel(issue) {
+    const parts = issue.signature.split("|");
+    return `${parts[3] ?? "unknown_provider"}/${parts[4] ?? "unknown_model"}`;
+}
+function agentMode(issue) {
+    const parts = issue.signature.split("|");
+    return `${parts[5] ?? "unknown_agent"}/${parts[6] ?? "unknown_mode"}`;
+}
+function stringField(value) {
+    return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+function numericField(value) {
+    return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 if (process.argv[1] && import.meta.url === new URL(process.argv[1], "file:").href) {
     main().catch((error) => {

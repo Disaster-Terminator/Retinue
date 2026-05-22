@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { renderCompactAuditResult } from "../src/cli/auditRetinueLogs.js";
 import { auditRetinueLogs } from "../src/core/logAudit.js";
 
 describe("Retinue log audit", () => {
@@ -22,6 +23,8 @@ describe("Retinue log audit", () => {
             time: "2026-05-20T08:00:00.000Z",
             event: "opencode_job_stalled",
             jobId: "job_a",
+            selectedAttemptJobId: "job_attempt",
+            attemptChain: [{ jobId: "job_a" }, { jobId: "job_attempt" }],
             diagnostic: {
               sessionId: "ses_child",
               parentSessionId: "ses_parent",
@@ -104,7 +107,7 @@ describe("Retinue log audit", () => {
       expect(parsed.issueCount).toBe(1);
       expect(parsed.issues[0]).toMatchObject({
         count: 2,
-        jobIds: ["job_a", "job_b"],
+          jobIds: ["job_a", "job_b"],
         title: "Investigate Retinue recovery provider_blank_assistant after tool_loop_no_completion on litellm/semantic-router",
         description: expect.stringContaining("rescueSource=tool_loop_no_completion"),
         sample: {
@@ -115,6 +118,8 @@ describe("Retinue log audit", () => {
           stallReason: "provider_blank_assistant",
           softStallRescueSourceReason: "tool_loop_no_completion",
           recoveryStallReason: "provider_blank_assistant",
+          selectedAttemptJobId: "job_attempt",
+          attemptChainPresent: true,
           malformedReadToolParts: 1,
           runningReadToolPartSummaries: [
             {
@@ -126,6 +131,20 @@ describe("Retinue log audit", () => {
           ]
         }
       });
+
+      const compact = renderCompactAuditResult(parsed);
+      expect(compact).toContain("Retinue log audit: issues=1 scanned=4 ignoredCompleted=1");
+      expect(compact).toContain("#1 count=2 jobs=job_a,job_b");
+      expect(compact).toContain("reason=provider_blank_assistant");
+      expect(compact).toContain("source=tool_loop_no_completion");
+      expect(compact).toContain("recovery=provider_blank_assistant");
+      expect(compact).toContain("provider=litellm/semantic-router");
+      expect(compact).toContain("agent=explore/explore");
+      expect(compact).toContain("selectedAttempt=job_attempt");
+      expect(compact).toContain("attemptChain=true");
+      expect(compact).toContain("malformedRead=1");
+      expect(compact).toContain("title=Investigate Retinue recovery provider_blank_assistant after tool_loop_no_completion on litellm/semantic-router");
+      expect(compact).not.toContain("runningReadToolPartSummaries");
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }

@@ -5,10 +5,10 @@ Use this when WSL or plugin-host logs contain many Retinue issues and a full sca
 ## Command
 
 ```bash
-pnpm run audit:logs -- --since 2026-05-20T08:00:00.000Z --max-lines 120
+pnpm run audit:logs -- --compact --since 2026-05-20T08:00:00.000Z --max-lines 120
 ```
 
-The script reads only the tail of `logs/retinue.jsonl`, filters by `--since`, deduplicates terminal stalled OpenCode diagnostics by stall reason/provider/model/agent/mode, and emits concise issue candidates. If a job has a later `completed` event in the scanned window, earlier transient stalled diagnostics for that job are ignored.
+The script reads only the tail of `logs/retinue.jsonl`, filters by `--since`, deduplicates terminal stalled OpenCode diagnostics by stall reason/provider/model/agent/mode, and emits concise issue candidates. If a job has a later `completed` event in the scanned window, earlier transient stalled diagnostics for that job are ignored. Use `--compact` for agent-facing triage; omit it when you need the full JSON sample payload.
 
 This is a developer/operations diagnostic surface, not part of the default Retinue product MCP tool set. Default MCP hosts expose only child-agent lifecycle and permission bridge tools. When an agent host is explicitly dogfooding or investigating Retinue itself, set `RETINUE_EXPOSE_DIAGNOSTIC_TOOLS=1` to expose `retinue_audit_logs`; otherwise use the CLI command above from the repository.
 
@@ -18,6 +18,7 @@ Useful options:
 - `--trace <file>`: explicit trace JSONL path.
 - `--since <iso>`: ignore older events from previous baselines.
 - `--max-lines <n>` and `--max-bytes <n>`: bound input size.
+- `--compact` or `-c`: print short text with issue counts, job IDs, stall/recovery reason, provider/model, agent/mode, cwd, selected attempt markers, and one-line diagnosis.
 
 ## Interpretation
 
