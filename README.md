@@ -126,7 +126,7 @@ Retinue 配置文件默认是：
 
 `running` 响应会包含 `stdoutTail`、`stderrTail`、`tracePath` 和 job artifact 路径。先看 tail 字段；复杂 OpenCode 任务可能会连续几分钟处在 tool-call 阶段，单次 wait 超时不等于子代理失败。
 
-OpenCode 空输出或未完成 assistant 循环超过诊断阈值后，Retinue 会把任务报告为 `stalled`。默认长兜底阈值是 10 分钟；blank provider placeholder、zero-progress assistant placeholder、未完成的最新 assistant round、pending/running `read` tool call，以及完成工具调用但没有最终文本的循环，默认窗口都是 45 秒。部署可以用 `RETINUE_OPENCODE_STALL_MS`、`RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS`、`RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS`、`RETINUE_OPENCODE_STALL_READ_TOOL_MS`、`RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS`、`RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS`、`RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS` 和 `RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS` 调整。
+OpenCode 空输出或未完成 assistant 循环超过诊断阈值后，Retinue 会把任务报告为 `stalled`。默认长兜底阈值是 10 分钟；blank provider placeholder、zero-progress assistant placeholder、未完成的最新 assistant round、pending/running `read` tool call，以及完成工具调用但没有最终文本的循环，默认窗口都是 45 秒。malformed read 或 finalization rescue 失败时，Retinue 可以启动一次新的 task-level attempt；原 job 仍是 `stalled` 非证据，wait 响应会带 `requestedJobId`、`selectedAttemptJobId` 和 `attemptChain`。部署可以用 `RETINUE_OPENCODE_TASK_ATTEMPT_MAX=0` 关闭 fresh attempt，用 `RETINUE_OPENCODE_STALL_MS`、`RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS`、`RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS`、`RETINUE_OPENCODE_STALL_READ_TOOL_MS`、`RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS`、`RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS`、`RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS` 和 `RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS` 调整诊断窗口。
 
 `retinue_spawn_agent` 会同时返回请求的 `cwd` 和 OpenCode 实际 session 的 `externalSessionDirectory`。如果两者不一致，先关闭这个子代理，再用目标仓库的绝对路径重新 spawn；在此之前不要相信仓库相关结论。
 

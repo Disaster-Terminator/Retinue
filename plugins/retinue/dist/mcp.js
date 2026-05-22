@@ -22098,6 +22098,7 @@ var OPENCODE_SOFT_STALL_RESCUE_PROMPT = [
   "If the available information is insufficient, state the limitation clearly instead of inspecting more files.",
   "Return concise plain text only. Do not emit patch blocks, unified diffs, or apply-ready replacement snippets."
 ].join("\n");
+var DEFAULT_TASK_ATTEMPT_MAX = 1;
 function createReadOnlyPromptContract(bashPolicy) {
   const allowsReadonlyGit = bashPolicy === "readonly_git";
   return [
@@ -22259,6 +22260,12 @@ var OpenCodeBackend = class {
       externalCompletedAssistantBaselineCount: baseline.completedAssistantCount,
       parentJobId: options.parentJobId,
       parentSessionId: options.parentSessionId,
+      recoveredFromJobId: options.recoveredFromJobId,
+      attempt: options.attempt,
+      recoveryReason: options.recoveryReason,
+      recoveryPolicy: options.recoveryPolicy,
+      originalStallReason: options.originalStallReason,
+      recoveryStallReason: options.recoveryStallReason,
       args: [],
       createdAt: now,
       updatedAt: now
@@ -22290,6 +22297,12 @@ var OpenCodeBackend = class {
         readOnlyBashPolicy: options.readOnlyBashPolicy,
         parentJobId: options.parentJobId,
         parentSessionId: options.parentSessionId ?? options.externalSessionId,
+        recoveredFromJobId: options.recoveredFromJobId,
+        attempt: options.attempt,
+        recoveryReason: options.recoveryReason,
+        recoveryPolicy: options.recoveryPolicy,
+        originalStallReason: options.originalStallReason,
+        recoveryStallReason: options.recoveryStallReason,
         maxTurns: options.maxTurns,
         permissionMode: options.permissionMode,
         timeoutMs: options.timeoutMs
@@ -22324,6 +22337,12 @@ var OpenCodeBackend = class {
       externalCompletedAssistantBaselineCount: baseline.completedAssistantCount,
       parentJobId: options.parentJobId,
       parentSessionId: options.parentSessionId,
+      recoveredFromJobId: options.recoveredFromJobId,
+      attempt: options.attempt,
+      recoveryReason: options.recoveryReason,
+      recoveryPolicy: options.recoveryPolicy,
+      originalStallReason: options.originalStallReason,
+      recoveryStallReason: options.recoveryStallReason,
       args: [],
       createdAt: now,
       updatedAt: now
@@ -22435,10 +22454,118 @@ var OpenCodeBackend = class {
       });
     }
   }
+  async maybeStartTaskLevelAttempt(meta, diagnostic) {
+    const recoveryReason = selectTaskLevelAttemptReason(meta, diagnostic);
+    if (!recoveryReason || (meta.attempt ?? 0) >= resolveTaskAttemptMax(this.env)) {
+      return void 0;
+    }
+    const current = await this.readCurrentMetaOrFallback(meta.jobId, meta);
+    if (current.selectedAttemptJobId) {
+      const existing = await this.readMeta(current.selectedAttemptJobId);
+      return isProblem(existing) ? void 0 : existing;
+    }
+    const originalPrompt = await readTextIfExists(current.promptPath);
+    if (!originalPrompt.trim()) {
+      return void 0;
+    }
+    const attemptNumber = (current.attempt ?? 0) + 1;
+    const attemptPrompt = createTaskLevelAttemptPrompt(originalPrompt, recoveryReason, diagnostic);
+    const started = await this.run({
+      cwd: current.cwd,
+      prompt: attemptPrompt,
+      name: current.name,
+      title: current.title ?? current.name,
+      model: current.model,
+      agent: current.agent,
+      readOnly: current.readOnly,
+      parentJobId: current.jobId,
+      parentSessionId: current.externalSessionId ?? current.parentSessionId,
+      recoveredFromJobId: current.jobId,
+      attempt: attemptNumber,
+      recoveryReason,
+      recoveryPolicy: "fresh_task_attempt",
+      originalStallReason: diagnostic.softStallRescueSourceReason ?? diagnostic.stallReason,
+      recoveryStallReason: diagnostic.recoveryStallReason ?? diagnostic.stallReason
+    });
+    const updated = {
+      ...current,
+      attemptJobIds: [...current.attemptJobIds ?? [], started.jobId],
+      selectedAttemptJobId: started.jobId,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    await writeJsonAtomic(getJobPaths(this.stateDir, current.jobId).meta, updated);
+    const event = {
+      event: "opencode_task_level_attempt_started",
+      attemptJobId: started.jobId,
+      attempt: started.attempt,
+      recoveryReason,
+      originalStallReason: started.originalStallReason,
+      recoveryStallReason: started.recoveryStallReason
+    };
+    await this.writeJobTrace("opencode_task_level_attempt_started", updated, await this.inspectJob(updated), event);
+    await appendJobDiagnostic(this.stateDir, current.jobId, event);
+    await appendJobDiagnostic(this.stateDir, started.jobId, {
+      event: "opencode_task_level_attempt_child",
+      recoveredFromJobId: current.jobId,
+      attempt: started.attempt,
+      recoveryReason
+    });
+    return started;
+  }
+  async selectedAttemptFor(meta) {
+    if (!meta.selectedAttemptJobId) {
+      return void 0;
+    }
+    const selected = await this.readMeta(meta.selectedAttemptJobId);
+    return isProblem(selected) ? void 0 : selected;
+  }
+  async buildAttemptChain(meta) {
+    const root = await this.findAttemptRoot(meta);
+    const chain = [summarizeAttempt(root, root.selectedAttemptJobId)];
+    for (const jobId of root.attemptJobIds ?? []) {
+      const attempt = await this.readMeta(jobId);
+      if (!isProblem(attempt)) {
+        chain.push(summarizeAttempt(attempt, root.selectedAttemptJobId));
+      }
+    }
+    if (meta.recoveredFromJobId && !chain.some((attempt) => attempt.jobId === meta.jobId)) {
+      chain.push(summarizeAttempt(meta, root.selectedAttemptJobId));
+    }
+    return chain;
+  }
+  async findAttemptRoot(meta) {
+    let current = meta;
+    const seen = /* @__PURE__ */ new Set();
+    while (current.recoveredFromJobId && !seen.has(current.recoveredFromJobId)) {
+      seen.add(current.jobId);
+      const parent = await this.readMeta(current.recoveredFromJobId);
+      if (isProblem(parent)) {
+        return current;
+      }
+      current = parent;
+    }
+    return current;
+  }
+  async decorateResultWithAttemptChain(result, meta) {
+    const chain = await this.buildAttemptChain(meta);
+    if (chain.length <= 1 && !meta.selectedAttemptJobId && !meta.recoveredFromJobId) {
+      return result;
+    }
+    const root = await this.findAttemptRoot(meta);
+    return {
+      ...result,
+      selectedAttemptJobId: root.selectedAttemptJobId,
+      attemptChain: chain
+    };
+  }
   async result(handle) {
     const meta = await this.status(handle);
     if (isProblem(meta)) {
       return { jobId: handle.jobId, status: meta.status, error: meta.error };
+    }
+    const selectedAttempt = await this.selectedAttemptFor(meta);
+    if (selectedAttempt) {
+      return this.decorateResultWithAttemptChain(await this.result({ jobId: selectedAttempt.jobId }), meta);
     }
     if (!meta.externalSessionId) {
       return { jobId: handle.jobId, status: "corrupted", error: "Missing OpenCode session id" };
@@ -22448,7 +22575,7 @@ var OpenCodeBackend = class {
       const cachedStdout = await readTextIfExists(paths.stdout);
       if (cachedStdout.trim()) {
         const cachedStderr = await readTextIfExists(paths.stderr);
-        return {
+        return this.decorateResultWithAttemptChain({
           jobId: handle.jobId,
           status: meta.status,
           stdout: cachedStdout,
@@ -22462,7 +22589,7 @@ var OpenCodeBackend = class {
           sessionId: meta.externalSessionId,
           parsedStdout: { result: cachedStdout },
           error: cachedStderr || cachedStdout
-        };
+        }, meta);
       }
     }
     const client = this.clientForMeta(meta);
@@ -22495,7 +22622,7 @@ ${textWarning2}` : stderr;
       }
       await this.writeJobTrace("opencode_job_result_read", meta, diagnostic);
       await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_result_read", diagnostic });
-      return {
+      return this.decorateResultWithAttemptChain({
         jobId: handle.jobId,
         status: meta.status,
         stdout,
@@ -22509,7 +22636,7 @@ ${textWarning2}` : stderr;
         sessionId: meta.externalSessionId,
         parsedStdout: { result: stdout },
         error: stderrText
-      };
+      }, meta);
     }
     const resultMessages = selectResultMessagesForMeta(jobMessages, meta);
     const text = meta.externalMessageBaselineCount === void 0 && resultMessages === jobMessages ? latestAssistantMessageText(messages) : latestAssistantMessageText(resultMessages);
@@ -22526,7 +22653,7 @@ ${textWarning2}` : stderr;
     }
     await this.writeJobTrace("opencode_job_result_read", meta, diagnostic);
     await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_result_read", diagnostic });
-    return {
+    return this.decorateResultWithAttemptChain({
       jobId: handle.jobId,
       status: meta.status,
       stdout: text,
@@ -22539,7 +22666,7 @@ ${textWarning2}` : stderr;
       stderrTruncated: false,
       sessionId: meta.externalSessionId,
       parsedStdout: { result: text }
-    };
+    }, meta);
   }
   async abort(handle) {
     const meta = await this.readMeta(handle.jobId);
@@ -22572,6 +22699,16 @@ ${textWarning2}` : stderr;
       if (isProblem(status)) {
         return { jobId: handle.jobId, status: status.status };
       }
+      const selectedAttempt = await this.selectedAttemptFor(status);
+      if (selectedAttempt) {
+        const waited = await this.wait({ jobId: selectedAttempt.jobId }, Math.max(0, deadline - Date.now()));
+        return {
+          ...waited,
+          requestedJobId: handle.jobId,
+          selectedAttemptJobId: selectedAttempt.jobId,
+          attemptChain: await this.buildAttemptChain(status)
+        };
+      }
       if (status.status === "stalled") {
         const diagnostic = await this.inspectJob(status);
         const canDeferStall = isSoftStallRescueEligible(diagnostic) || diagnostic.readOnlyWriteIntent === true && status.externalRescuePromptSubmittedAt === void 0;
@@ -22589,6 +22726,17 @@ ${textWarning2}` : stderr;
           await this.writeJobTrace("opencode_job_soft_stall_rescue_pending", status, diagnostic);
           await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_soft_stall_rescue_pending", diagnostic });
           return { jobId: handle.jobId, status: "running" };
+        }
+        const attempt = await this.maybeStartTaskLevelAttempt(status, diagnostic);
+        if (attempt) {
+          const waited = await this.wait({ jobId: attempt.jobId }, Math.max(0, deadline - Date.now()));
+          const updatedRoot = await this.readCurrentMetaOrFallback(status.jobId, status);
+          return {
+            ...waited,
+            requestedJobId: handle.jobId,
+            selectedAttemptJobId: attempt.jobId,
+            attemptChain: await this.buildAttemptChain(updatedRoot)
+          };
         }
         await this.maybeScheduleServerIdleShutdown(status);
         return { jobId: handle.jobId, status: status.status };
@@ -22638,6 +22786,17 @@ ${textWarning2}` : stderr;
               toStatus: "stalled",
               diagnostic
             });
+            const attempt = await this.maybeStartTaskLevelAttempt(stalled, diagnostic);
+            if (attempt) {
+              const waited = await this.wait({ jobId: attempt.jobId }, Math.max(0, deadline - Date.now()));
+              const updatedRoot = await this.readCurrentMetaOrFallback(stalled.jobId, stalled);
+              return {
+                ...waited,
+                requestedJobId: handle.jobId,
+                selectedAttemptJobId: attempt.jobId,
+                attemptChain: await this.buildAttemptChain(updatedRoot)
+              };
+            }
             if (isHardStallDiagnostic(diagnostic)) {
               await this.maybeScheduleServerIdleShutdown(stalled);
             }
@@ -23598,6 +23757,60 @@ function resolveSoftStallRescueAgent(currentAgent, env) {
   }
   return configured || "build";
 }
+function resolveTaskAttemptMax(env) {
+  return parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_TASK_ATTEMPT_MAX, DEFAULT_TASK_ATTEMPT_MAX);
+}
+function selectTaskLevelAttemptReason(meta, diagnostic) {
+  if (diagnostic.readOnlyWriteIntent === true || diagnostic.stallReason === "read_only_write_intent") {
+    return void 0;
+  }
+  if (diagnostic.stallReason === "external_directory_permission_pending") {
+    return void 0;
+  }
+  if (diagnostic.stallReason === "read_tool_invalid_input") {
+    return diagnostic.softStallRescueSourceReason ? "rescue_malformed_read_tool_call" : "malformed_read_tool_call";
+  }
+  if (diagnostic.recoveryStallReason) {
+    return `rescue_${diagnostic.recoveryStallReason}`;
+  }
+  if (meta.externalRescuePromptSubmittedAt && diagnostic.stallReason === "incomplete_assistant_round") {
+    return "rescue_incomplete_assistant_round";
+  }
+  return void 0;
+}
+function createTaskLevelAttemptPrompt(originalPrompt, recoveryReason, diagnostic) {
+  const stall = diagnostic.stallReason ? `stallReason=${diagnostic.stallReason}` : "stallReason=unknown";
+  const source = diagnostic.softStallRescueSourceReason ? ` rescueSource=${diagnostic.softStallRescueSourceReason}` : "";
+  const recovery = diagnostic.recoveryStallReason ? ` recovery=${diagnostic.recoveryStallReason}` : "";
+  const readHint = diagnostic.stallReason === "read_tool_invalid_input" || diagnostic.recoveryStallReason === "read_tool_invalid_input" ? "The previous attempt emitted a malformed OpenCode read tool call. Prefer grep/glob or read-only shell inspection over the OpenCode read tool when source inspection is needed." : "Use a smaller inspection path and produce a final answer as soon as enough evidence is available.";
+  return [
+    "Retinue task-level retry request:",
+    `Previous attempt failed as non-evidence (${stall}${source}${recovery}; recoveryReason=${recoveryReason}).`,
+    "Start a fresh controlled attempt. Do not rely on the previous stalled output as evidence.",
+    readHint,
+    "Do not modify files. Return a concise final answer with path evidence when applicable.",
+    "",
+    "Original task:",
+    originalPrompt
+  ].join("\n");
+}
+function summarizeAttempt(meta, selectedAttemptJobId) {
+  return {
+    jobId: meta.jobId,
+    attempt: meta.attempt ?? 0,
+    status: meta.status,
+    recoveredFromJobId: meta.recoveredFromJobId,
+    recoveryReason: meta.recoveryReason,
+    recoveryPolicy: meta.recoveryPolicy,
+    originalStallReason: meta.originalStallReason,
+    recoveryStallReason: meta.recoveryStallReason,
+    selected: meta.jobId === selectedAttemptJobId,
+    backend: meta.backend,
+    externalSessionId: meta.externalSessionId,
+    externalParentSessionId: meta.externalParentSessionId,
+    externalRootSessionId: meta.externalRootSessionId
+  };
+}
 function hasToolPart(message) {
   return Array.isArray(message.parts) && message.parts.some((part) => part?.type === "tool");
 }
@@ -24321,6 +24534,12 @@ var ClaudeRetinue = class {
       resume: options.resume,
       parentJobId: options.parentJobId,
       parentSessionId: options.parentSessionId,
+      recoveredFromJobId: options.recoveredFromJobId,
+      attempt: options.attempt,
+      recoveryReason: options.recoveryReason,
+      recoveryPolicy: options.recoveryPolicy,
+      originalStallReason: options.originalStallReason,
+      recoveryStallReason: options.recoveryStallReason,
       runtimeTimeoutMs,
       args: claudeArgs,
       createdAt: now,
@@ -24831,14 +25050,18 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
       const backend = await createRetinueBackendForJob(retinue, jobId);
       const effectiveTimeoutMs = resolveMcpWaitTimeoutMs(timeoutMs, process.env);
       const waited = await backend.wait({ jobId }, effectiveTimeoutMs);
-      const status = await backend.status({ jobId });
+      const responseJobId = waited.jobId;
+      if (responseJobId !== jobId) {
+        agentPool.replace(jobId, responseJobId);
+      }
+      const status = await backend.status({ jobId: responseJobId });
       const responseStatus = isJobMeta(status) ? status.status : waited.status;
       if (responseStatus === "running") {
         const stateDir2 = resolveStateDir({
           explicitStateDir: process.env.RETINUE_STATE_DIR,
           env: process.env
         });
-        const paths2 = getJobPaths(stateDir2, jobId);
+        const paths2 = getJobPaths(stateDir2, responseJobId);
         const [stdoutTail, stderrTail, diagnostic2] = await Promise.all([
           readTextTailIfExists(paths2.stdout, 4096),
           readTextTailIfExists(paths2.stderr, 4096),
@@ -24846,7 +25069,10 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
         ]);
         return jsonToolResult({
           task_name: isJobMeta(status) ? status.name : void 0,
-          jobId,
+          jobId: responseJobId,
+          requestedJobId: responseJobId === jobId ? void 0 : jobId,
+          selectedAttemptJobId: waited.selectedAttemptJobId,
+          attemptChain: waited.attemptChain,
           status: waited.status,
           backend: isJobMeta(status) ? status.backend : void 0,
           cwd: isJobMeta(status) ? status.cwd : void 0,
@@ -24875,12 +25101,15 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
         explicitStateDir: process.env.RETINUE_STATE_DIR,
         env: process.env
       });
-      const paths = getJobPaths(stateDir, jobId);
-      const result = await backend.result({ jobId });
+      const paths = getJobPaths(stateDir, responseJobId);
+      const result = await backend.result({ jobId: responseJobId });
       const diagnostic = await readLatestJobDiagnostic(paths.stderr);
       return jsonToolResult({
         task_name: isJobMeta(status) ? status.name : void 0,
-        jobId,
+        jobId: responseJobId,
+        requestedJobId: responseJobId === jobId ? void 0 : jobId,
+        selectedAttemptJobId: result.selectedAttemptJobId ?? waited.selectedAttemptJobId,
+        attemptChain: result.attemptChain ?? waited.attemptChain,
         status: responseStatus,
         result,
         diagnostic
@@ -25260,6 +25489,14 @@ var RetinueAgentPool = class {
   }
   add(entry) {
     this.entries.set(entry.jobId, entry);
+  }
+  replace(fromJobId, toJobId) {
+    const entry = this.entries.get(fromJobId);
+    if (!entry || fromJobId === toJobId) {
+      return;
+    }
+    this.entries.delete(fromJobId);
+    this.entries.set(toJobId, { ...entry, jobId: toJobId });
   }
   remove(jobId) {
     this.entries.delete(jobId);

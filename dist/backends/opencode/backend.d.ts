@@ -1,4 +1,4 @@
-import type { CleanupOptions, CleanupResult, JobMeta, JobResult, JobStatusResult, RetinueOptions } from "../../core/types.js";
+import type { CleanupOptions, CleanupResult, JobMeta, JobResult, JobStatusResult, RetinueOptions, WaitResult } from "../../core/types.js";
 import type { AgentBackend, AgentContinueOptions, AgentHandle, AgentPermissionListResult, AgentPermissionReply, AgentPermissionReplyResult, AgentRunOptions } from "../types.js";
 import { OpenCodeClient } from "./client.js";
 export interface OpenCodeBackendOptions {
@@ -33,12 +33,14 @@ export declare class OpenCodeBackend implements AgentBackend {
         message?: string;
     }): Promise<AgentPermissionReplyResult>;
     private maybeSubmitSoftStallRescue;
+    private maybeStartTaskLevelAttempt;
+    private selectedAttemptFor;
+    private buildAttemptChain;
+    private findAttemptRoot;
+    private decorateResultWithAttemptChain;
     result(handle: AgentHandle): Promise<JobResult>;
     abort(handle: AgentHandle): Promise<void>;
-    wait(handle: AgentHandle, timeoutMs?: number): Promise<{
-        jobId: string;
-        status: JobStatusResult["status"];
-    }>;
+    wait(handle: AgentHandle, timeoutMs?: number): Promise<WaitResult>;
     private isSoftStallRescuePending;
     private isReadOnlyWriteIntentRecoveryExpired;
     cleanup(options?: CleanupOptions): Promise<CleanupResult>;

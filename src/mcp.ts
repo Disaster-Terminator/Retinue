@@ -159,14 +159,18 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
       const backend = await createRetinueBackendForJob(retinue, jobId);
       const effectiveTimeoutMs = resolveMcpWaitTimeoutMs(timeoutMs, process.env);
       const waited = await backend.wait({ jobId }, effectiveTimeoutMs);
-      const status = await backend.status({ jobId });
+      const responseJobId = waited.jobId;
+      if (responseJobId !== jobId) {
+        agentPool.replace(jobId, responseJobId);
+      }
+      const status = await backend.status({ jobId: responseJobId });
       const responseStatus = isJobMeta(status) ? status.status : waited.status;
       if (responseStatus === "running") {
         const stateDir = resolveStateDir({
           explicitStateDir: process.env.RETINUE_STATE_DIR,
           env: process.env
         });
-        const paths = getJobPaths(stateDir, jobId);
+        const paths = getJobPaths(stateDir, responseJobId);
         const [stdoutTail, stderrTail, diagnostic] = await Promise.all([
           readTextTailIfExists(paths.stdout, 4096),
           readTextTailIfExists(paths.stderr, 4096),
@@ -174,7 +178,10 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
         ]);
         return jsonToolResult({
           task_name: isJobMeta(status) ? status.name : undefined,
-          jobId,
+          jobId: responseJobId,
+          requestedJobId: responseJobId === jobId ? undefined : jobId,
+          selectedAttemptJobId: waited.selectedAttemptJobId,
+          attemptChain: waited.attemptChain,
           status: waited.status,
           backend: isJobMeta(status) ? status.backend : undefined,
           cwd: isJobMeta(status) ? status.cwd : undefined,
@@ -203,12 +210,15 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
         explicitStateDir: process.env.RETINUE_STATE_DIR,
         env: process.env
       });
-      const paths = getJobPaths(stateDir, jobId);
-      const result = await backend.result({ jobId });
+      const paths = getJobPaths(stateDir, responseJobId);
+      const result = await backend.result({ jobId: responseJobId });
       const diagnostic = await readLatestJobDiagnostic(paths.stderr);
       return jsonToolResult({
         task_name: isJobMeta(status) ? status.name : undefined,
-        jobId,
+        jobId: responseJobId,
+        requestedJobId: responseJobId === jobId ? undefined : jobId,
+        selectedAttemptJobId: result.selectedAttemptJobId ?? waited.selectedAttemptJobId,
+        attemptChain: result.attemptChain ?? waited.attemptChain,
         status: responseStatus,
         result,
         diagnostic
@@ -567,7 +577,7 @@ async function withOpenCodeDefaults<T extends { model?: string; agent?: string }
 }
 
 type RetinueBackend = AgentBackend & {
-  wait(handle: AgentHandle, timeoutMs?: number): Promise<Pick<WaitResult, "jobId" | "status">>;
+  wait(handle: AgentHandle, timeoutMs?: number): Promise<WaitResult>;
 };
 
 type RetinuePermissionBridgeBackend = RetinueBackend & {
@@ -654,6 +664,15 @@ class RetinueAgentPool {
 
   add(entry: RetinueAgentPoolEntry): void {
     this.entries.set(entry.jobId, entry);
+  }
+
+  replace(fromJobId: string, toJobId: string): void {
+    const entry = this.entries.get(fromJobId);
+    if (!entry || fromJobId === toJobId) {
+      return;
+    }
+    this.entries.delete(fromJobId);
+    this.entries.set(toJobId, { ...entry, jobId: toJobId });
   }
 
   remove(jobId: string): void {

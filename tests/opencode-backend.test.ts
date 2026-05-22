@@ -982,7 +982,8 @@ describe("OpenCodeBackend", () => {
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
-        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1"
+        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -1021,7 +1022,8 @@ describe("OpenCodeBackend", () => {
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
-        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1"
+        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -1074,7 +1076,8 @@ describe("OpenCodeBackend", () => {
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
-        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1"
+        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -1172,7 +1175,8 @@ describe("OpenCodeBackend", () => {
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
-        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1"
+        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -1192,6 +1196,61 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('input={}');
   });
 
+  it("starts a fresh task-level attempt for malformed read tool calls", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "risk review emits empty read input", agent: "explore" });
+    server!.appendMalformedReadToolAssistant(started.externalSessionId!);
+    server!.setAutoAssistantResponses(true);
+
+    const waited = await backend.wait({ jobId: started.jobId }, 1000);
+
+    expect(waited).toMatchObject({
+      requestedJobId: started.jobId,
+      selectedAttemptJobId: expect.stringMatching(/^job_/),
+      status: "running"
+    });
+    expect(waited.jobId).not.toBe(started.jobId);
+    const original = JSON.parse(await fs.readFile(getJobPaths(tempDir, started.jobId).meta, "utf8")) as JobMeta;
+    const attempt = JSON.parse(await fs.readFile(getJobPaths(tempDir, waited.jobId).meta, "utf8")) as JobMeta;
+    expect(original).toMatchObject({
+      status: "stalled",
+      selectedAttemptJobId: waited.jobId,
+      attemptJobIds: [waited.jobId]
+    });
+    expect(attempt).toMatchObject({
+      status: "running",
+      recoveredFromJobId: started.jobId,
+      attempt: 1,
+      recoveryReason: "malformed_read_tool_call",
+      recoveryPolicy: "fresh_task_attempt",
+      originalStallReason: "read_tool_invalid_input"
+    });
+    server!.completeSession(attempt.externalSessionId!);
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({
+      jobId: waited.jobId,
+      requestedJobId: started.jobId,
+      status: "completed"
+    });
+    await expect(backend.result({ jobId: waited.jobId })).resolves.toMatchObject({
+      status: "completed",
+      parsedStdout: { result: expect.stringContaining("Retinue task-level retry request") },
+      attemptChain: [
+        expect.objectContaining({ jobId: started.jobId, attempt: 0, status: "stalled" }),
+        expect.objectContaining({ jobId: waited.jobId, attempt: 1, selected: true })
+      ]
+    });
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_task_level_attempt_started"');
+  });
+
   it("preserves the source stall reason when a soft-stall rescue stalls in a read tool", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
@@ -1200,7 +1259,8 @@ describe("OpenCodeBackend", () => {
       env: {
         RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1",
         RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "1000"
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "1000",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -1255,7 +1315,8 @@ describe("OpenCodeBackend", () => {
         RETINUE_OPENCODE_STALL_MS: "600000",
         RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS: "1",
         RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -1345,7 +1406,8 @@ describe("OpenCodeBackend", () => {
       stateDir: tempDir,
       env: {
         RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -1374,7 +1436,8 @@ describe("OpenCodeBackend", () => {
       stateDir: tempDir,
       env: {
         RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -1407,7 +1470,8 @@ describe("OpenCodeBackend", () => {
       stateDir: tempDir,
       env: {
         RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);

@@ -12,9 +12,33 @@ export interface RunOptions {
   resume?: string;
   parentJobId?: string;
   parentSessionId?: string;
+  recoveredFromJobId?: string;
+  attempt?: number;
+  recoveryReason?: string;
+  recoveryPolicy?: AttemptRecoveryPolicy;
+  originalStallReason?: string;
+  recoveryStallReason?: string;
   maxTurns?: number;
   permissionMode?: PermissionMode;
   timeoutMs?: number;
+}
+
+export type AttemptRecoveryPolicy = "fresh_task_attempt" | "fresh_task_reroute" | "same_session_finalization_rescue";
+
+export interface JobAttemptSummary {
+  jobId: string;
+  attempt: number;
+  status: JobStatus;
+  recoveredFromJobId?: string;
+  recoveryReason?: string;
+  recoveryPolicy?: AttemptRecoveryPolicy;
+  originalStallReason?: string;
+  recoveryStallReason?: string;
+  selected?: boolean;
+  backend?: AgentBackendKind;
+  externalSessionId?: string;
+  externalParentSessionId?: string;
+  externalRootSessionId?: string;
 }
 
 export interface RetinueOptions {
@@ -41,6 +65,14 @@ export interface JobMeta {
   resume?: string;
   parentJobId?: string;
   parentSessionId?: string;
+  recoveredFromJobId?: string;
+  attempt?: number;
+  recoveryReason?: string;
+  recoveryPolicy?: AttemptRecoveryPolicy;
+  originalStallReason?: string;
+  recoveryStallReason?: string;
+  attemptJobIds?: string[];
+  selectedAttemptJobId?: string;
   sessionId?: string;
   externalSessionId?: string;
   externalRunnerMode?: "per-spawn" | "shared-root";
@@ -93,6 +125,9 @@ export interface WaitOptions {
 export interface WaitResult {
   jobId: string;
   status: JobStatus;
+  requestedJobId?: string;
+  selectedAttemptJobId?: string;
+  attemptChain?: JobAttemptSummary[];
   exitCode?: number | null;
   signal?: NodeJS.Signals | null;
 }
@@ -111,6 +146,8 @@ export interface JobResult {
   sessionId?: string;
   parsedStdout?: unknown;
   exitStatus?: ExitStatus;
+  selectedAttemptJobId?: string;
+  attemptChain?: JobAttemptSummary[];
   error?: string;
 }
 

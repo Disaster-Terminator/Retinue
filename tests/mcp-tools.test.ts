@@ -503,6 +503,84 @@ describe("MCP tools", () => {
     }
   });
 
+  it("re-keys Retinue wait responses to a fresh task-level attempt", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-attempt-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    const previousEnv = {
+      RETINUE_STATE_DIR: process.env.RETINUE_STATE_DIR,
+      RETINUE_OPENCODE_BASE_URL: process.env.RETINUE_OPENCODE_BASE_URL,
+      RETINUE_MCP_WAIT_MAX_MS: process.env.RETINUE_MCP_WAIT_MAX_MS,
+      RETINUE_OPENCODE_STALL_READ_TOOL_MS: process.env.RETINUE_OPENCODE_STALL_READ_TOOL_MS
+    };
+    try {
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.RETINUE_MCP_WAIT_MAX_MS = "5000";
+      process.env.RETINUE_OPENCODE_STALL_READ_TOOL_MS = "1";
+      fakeOpenCode.setAutoAssistantResponses(false);
+
+      const spawn = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue malformed read retry", task_name: "attempt-smoke", agent: "explore" }
+        })
+      );
+      fakeOpenCode.appendMalformedReadToolAssistant(spawn.externalSessionId);
+      fakeOpenCode.setAutoAssistantResponses(true);
+
+      const wait = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_wait_agent",
+          arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
+        })
+      );
+
+      expect(wait).toMatchObject({
+        task_name: "attempt-smoke",
+        requestedJobId: spawn.jobId,
+        selectedAttemptJobId: expect.stringMatching(/^job_/),
+        status: "running",
+        attemptChain: [
+          expect.objectContaining({ jobId: spawn.jobId, status: "stalled" }),
+          expect.objectContaining({ jobId: wait.jobId, attempt: 1, selected: true })
+        ]
+      });
+      expect(wait.jobId).not.toBe(spawn.jobId);
+      const attemptMeta = JSON.parse(await fs.readFile(path.join(tempDir, "jobs", wait.jobId, "meta.json"), "utf8")) as { externalSessionId: string };
+      fakeOpenCode.completeSession(attemptMeta.externalSessionId);
+
+      const completed = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_wait_agent",
+          arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
+        })
+      );
+      expect(completed).toMatchObject({
+        task_name: "attempt-smoke",
+        jobId: wait.jobId,
+        requestedJobId: spawn.jobId,
+        selectedAttemptJobId: wait.jobId,
+        status: "completed",
+        result: {
+          status: "completed",
+          parsedStdout: { result: expect.stringContaining("Retinue task-level retry request") }
+        },
+        attemptChain: [
+          expect.objectContaining({ jobId: spawn.jobId, status: "stalled" }),
+          expect.objectContaining({ jobId: wait.jobId, attempt: 1, selected: true })
+        ]
+      });
+    } finally {
+      restoreEnv("RETINUE_STATE_DIR", previousEnv.RETINUE_STATE_DIR);
+      restoreEnv("RETINUE_OPENCODE_BASE_URL", previousEnv.RETINUE_OPENCODE_BASE_URL);
+      restoreEnv("RETINUE_MCP_WAIT_MAX_MS", previousEnv.RETINUE_MCP_WAIT_MAX_MS);
+      restoreEnv("RETINUE_OPENCODE_STALL_READ_TOOL_MS", previousEnv.RETINUE_OPENCODE_STALL_READ_TOOL_MS);
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("follows OpenCode agent semantics without a Retinue access-mode layer", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-agent-policy-"));
     const fakeOpenCode = await startFakeOpenCodeServer();
@@ -556,6 +634,7 @@ describe("MCP tools", () => {
     try {
       process.env.RETINUE_STATE_DIR = tempDir;
       process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.RETINUE_MCP_WAIT_MAX_MS = "5";
 
       const spawn = parseToolJson(
         await connection.client.callTool({
@@ -1429,6 +1508,14 @@ function extractOpenCodePromptText(request: Record<string, unknown> | undefined)
 function extractOpenCodeSubtaskPart(request: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
   const parts = Array.isArray(request?.parts) ? request.parts : [];
   return parts.find((part): part is Record<string, unknown> => typeof part === "object" && part !== null && part.type === "subtask");
+}
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
 }
 
 function expectTaskCompatibleChildPermission(request: Record<string, unknown> | undefined): void {
