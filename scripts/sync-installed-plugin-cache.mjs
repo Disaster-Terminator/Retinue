@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { cp, mkdir, readdir, readFile, rename, rm } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
@@ -45,7 +45,9 @@ async function main() {
 
   const synced = [];
   for (const target of targets) {
+    const preserved = await readPreservedFiles(target.path, ["retinue.config.json"]);
     await replaceDirectory(sourceDir, target.path);
+    await restorePreservedFiles(target.path, preserved);
     synced.push(target);
   }
 
@@ -241,6 +243,28 @@ async function replaceDirectory(sourceDir, targetDir) {
   await cp(sourceDir, tempDir, { recursive: true });
   await rm(targetDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rename(tempDir, targetDir);
+}
+
+async function readPreservedFiles(targetDir, relativePaths) {
+  const preserved = [];
+  for (const relativePath of relativePaths) {
+    try {
+      preserved.push({ relativePath, content: await readFile(path.join(targetDir, relativePath), "utf8") });
+    } catch (error) {
+      if (!isMissing(error)) {
+        throw error;
+      }
+    }
+  }
+  return preserved;
+}
+
+async function restorePreservedFiles(targetDir, preserved) {
+  for (const file of preserved) {
+    const destination = path.join(targetDir, file.relativePath);
+    await mkdir(path.dirname(destination), { recursive: true });
+    await writeFile(destination, file.content, "utf8");
+  }
 }
 
 function isMissing(error) {

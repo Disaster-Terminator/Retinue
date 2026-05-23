@@ -67,6 +67,33 @@ describe("sync-installed-plugin-cache script", () => {
     }
   });
 
+  it("preserves installed Retinue config when applied", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "retinue-cache-sync-config-test-"));
+    try {
+      const sourceDir = path.join(tempDir, "source", "retinue");
+      const cacheRoot = path.join(tempDir, "cache");
+      createPlugin(sourceDir, { marker: "new-retinue", maxConcurrentAgents: 3 });
+      createPlugin(path.join(cacheRoot, "retinue-local", "retinue", "0.1.0"), {
+        marker: "old-retinue",
+        maxConcurrentAgents: 5
+      });
+
+      const result = spawnSync(
+        process.execPath,
+        [scriptPath, "--source-dir", sourceDir, "--cache-root", cacheRoot, "--version", "0.1.0", "--apply", "--json"],
+        { encoding: "utf8" }
+      );
+
+      expect(result.status).toBe(0);
+      expect(await readFile(path.join(cacheRoot, "retinue-local", "retinue", "0.1.0", "marker.txt"), "utf8")).toBe("new-retinue\n");
+      expect(JSON.parse(await readFile(path.join(cacheRoot, "retinue-local", "retinue", "0.1.0", "retinue.config.json"), "utf8"))).toMatchObject({
+        maxConcurrentAgents: 5
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("prints compact human output by default", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "retinue-cache-sync-compact-test-"));
     try {
@@ -89,7 +116,7 @@ describe("sync-installed-plugin-cache script", () => {
   });
 });
 
-function createPlugin(dir: string, options: { name?: string; marker: string }): void {
+function createPlugin(dir: string, options: { name?: string; marker: string; maxConcurrentAgents?: number }): void {
   const name = options.name ?? "retinue";
   mkdirSync(path.join(dir, ".codex-plugin"), { recursive: true });
   writeFileSync(
@@ -106,4 +133,10 @@ function createPlugin(dir: string, options: { name?: string; marker: string }): 
   );
   writeFileSync(path.join(dir, "mcp-bootstrap.mjs"), "#!/usr/bin/env node\n");
   writeFileSync(path.join(dir, "marker.txt"), `${options.marker}\n`);
+  if (options.maxConcurrentAgents !== undefined) {
+    writeFileSync(
+      path.join(dir, "retinue.config.json"),
+      `${JSON.stringify({ maxConcurrentAgents: options.maxConcurrentAgents, opencode: { agent: "explore" } }, null, 2)}\n`
+    );
+  }
 }
