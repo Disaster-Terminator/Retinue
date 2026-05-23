@@ -1902,7 +1902,7 @@ function isEmptyStopAssistantMessage(message) {
         return false;
     }
     const partTypes = message.parts?.map((part) => part?.type ?? "unknown") ?? [];
-    return partTypes.length > 0 && partTypes.every((type) => type === "step-start" || type === "step-finish");
+    return partTypes.length > 0 && partTypes.every((type) => type === "step-start" || type === "reasoning" || type === "step-finish");
 }
 function isBlankAssistantPlaceholder(message) {
     if (message.info?.role !== "assistant") {

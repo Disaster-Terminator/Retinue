@@ -636,22 +636,26 @@ describe("OpenCodeBackend", () => {
     });
   });
 
-  it("does not complete from reasoning-only assistant messages", async () => {
-    const backend = createBackend();
+  it("marks reasoning-only stop assistant messages as stalled", async () => {
+    const backend = createBackend({ RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0" } as NodeJS.ProcessEnv);
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "visible answer please" });
     server!.completeSessionWithReasoningOnly(started.externalSessionId!);
 
-    await expect(backend.wait({ jobId: started.jobId }, 1)).resolves.toMatchObject({ status: "running" });
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
-    expect(trace).toContain('"event":"opencode_job_wait_timeout"');
+    expect(trace).toContain('"event":"opencode_job_stalled"');
+    expect(trace).toContain('"stallReason":"backend_no_final_text"');
+    expect(trace).toContain('"emptyAssistantRounds":1');
     expect(trace).toContain('"baselineMessageCount":0');
     expect(trace).toContain('"lastMessageInfoKeys":["finish","id","role","sessionID","time"]');
-    expect(trace).toContain('"lastAssistantPartTypes":["reasoning"]');
-    await expect(fs.readFile(getJobPaths(tempDir, started.jobId).stderr, "utf8")).resolves.toContain('"event":"opencode_job_wait_timeout"');
+    expect(trace).toContain('"lastAssistantPartTypes":["step-start","reasoning","step-finish"]');
+    await expect(fs.readFile(getJobPaths(tempDir, started.jobId).stderr, "utf8")).resolves.toContain('"event":"opencode_job_stalled"');
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
-      status: "running",
-      parsedStdout: { result: "" }
+      status: "stalled",
+      stdout: expect.stringContaining("empty assistant round"),
+      parsedStdout: { result: expect.stringContaining("empty assistant round") },
+      error: expect.stringContaining("empty assistant round")
     });
   });
 

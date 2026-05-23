@@ -654,7 +654,7 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
         session.omitState = true;
         session.messages.push({
           info: { id: `msg_${nextMessage++}`, sessionID: session.id, role: "assistant", time: { completed: Date.now() }, finish: "stop" },
-          parts: [{ type: "reasoning", text: "internal reasoning only" }]
+          parts: [{ type: "step-start" }, { type: "reasoning", text: "internal reasoning only" }, { type: "step-finish" }]
         });
       }
     },
