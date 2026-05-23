@@ -976,7 +976,7 @@ export class OpenCodeBackend {
         }
         try {
             const permissions = await client.permissions();
-            const sessionIds = new Set([meta.externalSessionId, ...(meta.externalChildSessionIds ?? [])].filter(Boolean));
+            const sessionIds = new Set([meta.externalSessionId].filter(Boolean));
             return permissions.filter((permission) => sessionIds.has(permission.sessionID));
         }
         catch (error) {

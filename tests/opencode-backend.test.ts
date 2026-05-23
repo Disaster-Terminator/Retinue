@@ -1283,6 +1283,38 @@ describe("OpenCodeBackend", () => {
     await expect(backend.listPermissions({ jobId: started.jobId })).resolves.toMatchObject({ permissions: [] });
   });
 
+  it("does not expose sibling child permissions in shared-root mode", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_ROOT_BINDING_MODE: "shared_root",
+        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const first = await backend.run({ cwd: tempDir, prompt: "first review waits for permission" });
+    const second = await backend.run({ cwd: tempDir, prompt: "second review stays isolated" });
+    server!.appendPendingReadToolAssistant(first.externalSessionId!);
+    server!.appendExternalDirectoryPermission(first.externalSessionId!, "/home/raystorm/projects/opencode-runner/src/index.ts");
+
+    await expect(fs.readFile(getJobPaths(tempDir, second.jobId).meta, "utf8").then(JSON.parse)).resolves.toMatchObject({
+      externalChildSessionIds: expect.arrayContaining([first.externalSessionId, second.externalSessionId])
+    });
+    await expect(backend.wait({ jobId: first.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    await expect(backend.listPermissions({ jobId: second.jobId })).resolves.toMatchObject({
+      jobId: second.jobId,
+      permissions: []
+    });
+    await expect(backend.replyPermission({ jobId: second.jobId }, { requestId: "per_1", reply: "reject" })).rejects.toThrow(
+      "not pending for Retinue job"
+    );
+    await expect(backend.listPermissions({ jobId: first.jobId })).resolves.toMatchObject({
+      permissions: [expect.objectContaining({ id: "per_1", permission: "external_directory" })]
+    });
+  });
+
   it("classifies pending read tool calls with empty input as malformed provider tool calls", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),

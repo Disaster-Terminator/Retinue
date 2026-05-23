@@ -1194,7 +1194,7 @@ export class OpenCodeBackend implements AgentBackend {
     }
     try {
       const permissions = await client.permissions();
-      const sessionIds = new Set([meta.externalSessionId, ...(meta.externalChildSessionIds ?? [])].filter(Boolean));
+      const sessionIds = new Set([meta.externalSessionId].filter(Boolean));
       return permissions.filter((permission) => sessionIds.has(permission.sessionID));
     } catch (error) {
       if (error instanceof OpenCodeClientError && (error.status === 404 || error.status === 405)) {

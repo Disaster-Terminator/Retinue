@@ -22990,7 +22990,7 @@ ${textWarning2}` : stderr;
     }
     try {
       const permissions = await client.permissions();
-      const sessionIds = new Set([meta.externalSessionId, ...meta.externalChildSessionIds ?? []].filter(Boolean));
+      const sessionIds = new Set([meta.externalSessionId].filter(Boolean));
       return permissions.filter((permission) => sessionIds.has(permission.sessionID));
     } catch (error2) {
       if (error2 instanceof OpenCodeClientError && (error2.status === 404 || error2.status === 405)) {
