@@ -199,6 +199,61 @@ describe("dogfood probe classification", () => {
     ]);
   });
 
+  it("classifies external directory permission waits as action-required instead of provider stalls", () => {
+    const wait = classifyDogfoodWait(
+      {
+        task_name: "permission",
+        jobId: "job_permission",
+        status: "stalled",
+        stallReason: "external_directory_permission_pending",
+        stallSummary: "OpenCode is waiting for external_directory permission.",
+        permissionRequired: true,
+        attentionRequiredKind: "permission",
+        permissionCount: 2,
+        permissions: [
+          { id: "per_home", permission: "external_directory", patterns: ["/home/raystorm/*"] },
+          { id: "per_config", permission: "external_directory", patterns: ["/home/raystorm/.config/*"] }
+        ],
+        lastAssistantProviderID: "litellm",
+        lastAssistantModelID: "semantic-router"
+      },
+      "RETINUE_DOGFOOD_PERMISSION_DONE"
+    );
+
+    expect(wait).toMatchObject({
+      usable: false,
+      permissionRequired: true,
+      failureReason: "permission_required:external_directory"
+    });
+
+    const summary = summarizeDogfoodResults([{ agent: "explore", waits: [wait] }]);
+    expect(summary).toMatchObject({
+      ok: false,
+      stalled: 1,
+      actionRequired: 1,
+      failed: 1,
+      failureReasons: {
+        "permission_required:external_directory": 1
+      },
+      failedJobs: [
+        {
+          task_name: "permission",
+          jobId: "job_permission",
+          status: "stalled",
+          stallReason: "external_directory_permission_pending",
+          permissionRequired: true,
+          attentionRequiredKind: "permission",
+          permissionCount: 2,
+          permissions: [
+            { id: "per_home", permission: "external_directory", patterns: ["/home/raystorm/*"] },
+            { id: "per_config", permission: "external_directory", patterns: ["/home/raystorm/.config/*"] }
+          ],
+          failureReason: "permission_required:external_directory"
+        }
+      ]
+    });
+  });
+
   it("classifies Deepseek thinking-mode provider errors separately from generic Retinue stalls", () => {
     const wait = classifyDogfoodWait(
       {

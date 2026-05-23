@@ -1,16 +1,22 @@
 export function classifyDogfoodWait(wait, expectedMarker) {
   const status = wait?.status ?? "unknown";
   const stallReason = wait?.stallReason ?? wait?.diagnostic?.stallReason;
+  const permissionRequired =
+    wait?.permissionRequired === true ||
+    wait?.attentionRequired?.kind === "permission" ||
+    wait?.attentionRequiredKind === "permission" ||
+    stallReason === "external_directory_permission_pending";
   const readOnlyWriteIntent = wait?.readOnlyWriteIntent === true || wait?.diagnostic?.readOnlyWriteIntent === true;
   const stdoutText = firstString(wait?.stdoutText, wait?.stdout, wait?.stdoutPreview);
   const stdoutPreview = typeof wait?.stdoutPreview === "string" ? wait.stdoutPreview : "";
   const providerError = classifyProviderError({ stallReason, stdoutText });
-  const failureReason = selectFailureReason({ status, stallReason, readOnlyWriteIntent, stdoutText, expectedMarker, providerError });
+  const failureReason = selectFailureReason({ status, stallReason, permissionRequired, readOnlyWriteIntent, stdoutText, expectedMarker, providerError });
   const { stdoutText: _stdoutText, stdout: _stdout, ...publicWait } = wait ?? {};
 
   return {
     ...publicWait,
     expectedMarker,
+    permissionRequired,
     usable: failureReason === undefined,
     failureReason,
     ...(providerError
@@ -30,34 +36,44 @@ export function summarizeDogfoodResults(agentResults) {
     completed: waits.filter((wait) => wait.status === "completed").length,
     stalled: waits.filter((wait) => wait.status === "stalled").length,
     running: waits.filter((wait) => wait.status === "running").length,
+    actionRequired: waits.filter((wait) => wait.permissionRequired === true).length,
     failed: failures.length,
     failureReasons: countBy(failures.map((wait) => wait.failureReason ?? "unknown")),
-    failedJobs: failures.map((wait) => ({
-      task_name: wait.task_name,
-      jobId: wait.jobId,
-      status: wait.status,
-      stallReason: wait.stallReason,
-      stallSummary: wait.stallSummary,
-      readOnlyWriteIntent: wait.readOnlyWriteIntent,
-      failureReason: wait.failureReason,
-      providerErrorKind: wait.providerErrorKind,
-      providerErrorHint: wait.providerErrorHint,
-      lastAssistantAgent: wait.lastAssistantAgent,
-      lastAssistantMode: wait.lastAssistantMode,
-      lastAssistantProviderID: wait.lastAssistantProviderID,
-      lastAssistantModelID: wait.lastAssistantModelID,
-      toolCallAssistantRounds: wait.toolCallAssistantRounds,
-      runningReadToolParts: wait.runningReadToolParts,
-      runningReadToolCallIds: wait.runningReadToolCallIds,
-      runningReadToolPartSummaries: wait.runningReadToolPartSummaries,
-      stdoutPath: wait.stdoutPath,
-      stderrPath: wait.stderrPath,
-      stdoutPreview: wait.stdoutPreview
-    }))
+    failedJobs: failures.map((wait) =>
+      compactObject({
+        task_name: wait.task_name,
+        jobId: wait.jobId,
+        status: wait.status,
+        stallReason: wait.stallReason,
+        stallSummary: wait.stallSummary,
+        permissionRequired: wait.permissionRequired === true ? true : undefined,
+        attentionRequiredKind: wait.attentionRequiredKind,
+        permissionCount: wait.permissionCount,
+        permissions: wait.permissions,
+        readOnlyWriteIntent: wait.readOnlyWriteIntent,
+        failureReason: wait.failureReason,
+        providerErrorKind: wait.providerErrorKind,
+        providerErrorHint: wait.providerErrorHint,
+        lastAssistantAgent: wait.lastAssistantAgent,
+        lastAssistantMode: wait.lastAssistantMode,
+        lastAssistantProviderID: wait.lastAssistantProviderID,
+        lastAssistantModelID: wait.lastAssistantModelID,
+        toolCallAssistantRounds: wait.toolCallAssistantRounds,
+        runningReadToolParts: wait.runningReadToolParts,
+        runningReadToolCallIds: wait.runningReadToolCallIds,
+        runningReadToolPartSummaries: wait.runningReadToolPartSummaries,
+        stdoutPath: wait.stdoutPath,
+        stderrPath: wait.stderrPath,
+        stdoutPreview: wait.stdoutPreview
+      })
+    )
   };
 }
 
-function selectFailureReason({ status, stallReason, readOnlyWriteIntent, stdoutText, expectedMarker, providerError }) {
+function selectFailureReason({ status, stallReason, permissionRequired, readOnlyWriteIntent, stdoutText, expectedMarker, providerError }) {
+  if (permissionRequired) {
+    return stallReason === "external_directory_permission_pending" ? "permission_required:external_directory" : "permission_required";
+  }
   if (readOnlyWriteIntent) {
     return "read_only_write_intent";
   }
@@ -136,4 +152,8 @@ function countBy(values) {
     counts[value] = (counts[value] ?? 0) + 1;
     return counts;
   }, {});
+}
+
+function compactObject(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
 }
