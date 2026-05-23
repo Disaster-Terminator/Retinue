@@ -43,6 +43,21 @@ export interface JobAttemptSummary {
 
 export type PermissionReplyOption = "once" | "always" | "reject";
 
+export interface RetinuePermissionDecisionOption {
+  reply: PermissionReplyOption;
+  label: string;
+  effect: string;
+  requiresConfirmation?: boolean;
+}
+
+export interface RetinuePermissionApprovalRequest {
+  kind: "opencode_permission";
+  title: string;
+  lines: string[];
+  guidance: string[];
+  options: RetinuePermissionDecisionOption[];
+}
+
 export interface RetinuePermissionRequest {
   id: string;
   sessionID?: string;
@@ -51,6 +66,7 @@ export interface RetinuePermissionRequest {
   always?: string[];
   toolCallID?: string;
   metadata?: unknown;
+  approval?: RetinuePermissionApprovalRequest;
 }
 
 export interface PermissionAttentionRequired {

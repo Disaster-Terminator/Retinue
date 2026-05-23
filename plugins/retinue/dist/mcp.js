@@ -23731,8 +23731,56 @@ function summarizePermissionRequests(requests) {
     patterns: Array.isArray(request.patterns) ? request.patterns.map(String) : [],
     always: Array.isArray(request.always) ? request.always.map(String) : void 0,
     toolCallID: typeof request.tool?.callID === "string" ? request.tool.callID : void 0,
-    metadata: diagnosticValuePreview(request.metadata)
+    metadata: diagnosticValuePreview(request.metadata),
+    approval: buildPermissionApprovalRequest(request)
   }));
+}
+function buildPermissionApprovalRequest(request) {
+  const patterns = Array.isArray(request.patterns) ? request.patterns.map(String) : [];
+  const always = Array.isArray(request.always) ? request.always.map(String) : [];
+  const title = request.permission === "external_directory" ? `Access external directory ${formatExternalDirectoryPermissionTarget(request, patterns)}` : request.permission === "doom_loop" ? "Continue after repeated failures" : `Call OpenCode tool ${request.permission}`;
+  const lines = request.permission === "external_directory" ? patterns.map((pattern) => `Pattern: ${pattern}`) : request.permission === "doom_loop" ? ["This keeps the OpenCode child session running despite repeated failures."] : [`Tool: ${request.permission}`, ...patterns.map((pattern) => `Pattern: ${pattern}`)];
+  const alwaysEffect = always.length === 1 && always[0] === "*" ? `Allow ${request.permission} until OpenCode is restarted.` : always.length > 0 ? `Allow matching patterns until OpenCode is restarted: ${always.join(", ")}` : "Allow matching requests until OpenCode is restarted.";
+  return {
+    kind: "opencode_permission",
+    title,
+    lines,
+    guidance: [
+      "Treat this as a supervisor decision for the blocked OpenCode child, not as child review evidence.",
+      "Prefer reply=once when the requested scope is needed for the current task.",
+      "Use reply=always only when the listed patterns are expected to repeat and remain trusted.",
+      "Use reply=reject when the path or tool is outside the delegated task scope."
+    ],
+    options: [
+      {
+        reply: "once",
+        label: "Allow once",
+        effect: "Resume this blocked OpenCode tool call only."
+      },
+      {
+        reply: "always",
+        label: "Allow always",
+        effect: alwaysEffect,
+        requiresConfirmation: true
+      },
+      {
+        reply: "reject",
+        label: "Reject",
+        effect: "Deny this OpenCode tool call; an optional message may be sent back to the child."
+      }
+    ]
+  };
+}
+function formatExternalDirectoryPermissionTarget(request, patterns) {
+  const metadata = request.metadata && typeof request.metadata === "object" && !Array.isArray(request.metadata) ? request.metadata : {};
+  const raw = typeof metadata.parentDir === "string" ? metadata.parentDir : typeof metadata.filepath === "string" ? metadata.filepath : patterns[0] ?? "";
+  if (!raw) {
+    return "(unknown)";
+  }
+  if (!raw.includes("*")) {
+    return raw;
+  }
+  return raw.slice(0, raw.indexOf("*")).replace(/[\\/]+$/, "");
 }
 function permissionAttentionFields(diagnostic) {
   const permissions = diagnostic.pendingExternalDirectoryPermissions ?? [];

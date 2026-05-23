@@ -953,7 +953,17 @@ describe("MCP tools", () => {
             id: "per_1",
             permission: "external_directory",
             patterns: ["/home/raystorm/projects/opencode/*"],
-            toolCallID: "call_read"
+            toolCallID: "call_read",
+            approval: expect.objectContaining({
+              kind: "opencode_permission",
+              title: "Access external directory /home/raystorm/projects/opencode",
+              lines: ["Pattern: /home/raystorm/projects/opencode/*"],
+              options: [
+                expect.objectContaining({ reply: "once", label: "Allow once" }),
+                expect.objectContaining({ reply: "always", label: "Allow always", requiresConfirmation: true }),
+                expect.objectContaining({ reply: "reject", label: "Reject" })
+              ]
+            })
           })
         ],
         attentionRequired: {
@@ -966,7 +976,14 @@ describe("MCP tools", () => {
               id: "per_1",
               permission: "external_directory",
               patterns: ["/home/raystorm/projects/opencode/*"],
-              toolCallID: "call_read"
+              toolCallID: "call_read",
+              approval: expect.objectContaining({
+                title: "Access external directory /home/raystorm/projects/opencode",
+                guidance: expect.arrayContaining([
+                  "Prefer reply=once when the requested scope is needed for the current task.",
+                  "Use reply=reject when the path or tool is outside the delegated task scope."
+                ])
+              })
             })
           ]
         },
@@ -991,7 +1008,15 @@ describe("MCP tools", () => {
             sessionID: spawn.externalSessionId,
             permission: "external_directory",
             patterns: ["/home/raystorm/projects/opencode/*"],
-            toolCallID: "call_read"
+            toolCallID: "call_read",
+            approval: expect.objectContaining({
+              title: "Access external directory /home/raystorm/projects/opencode",
+              options: [
+                expect.objectContaining({ reply: "once", effect: "Resume this blocked OpenCode tool call only." }),
+                expect.objectContaining({ reply: "always", requiresConfirmation: true }),
+                expect.objectContaining({ reply: "reject" })
+              ]
+            })
           })
         ]
       });

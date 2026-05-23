@@ -1221,7 +1221,17 @@ describe("OpenCodeBackend", () => {
         expect.objectContaining({
           id: "per_1",
           permission: "external_directory",
-          patterns: ["/home/raystorm/projects/opencode-runner/src/index.ts"]
+          patterns: ["/home/raystorm/projects/opencode-runner/src/index.ts"],
+          approval: expect.objectContaining({
+            kind: "opencode_permission",
+            title: "Access external directory /home/raystorm/projects/opencode-runner/src",
+            lines: ["Pattern: /home/raystorm/projects/opencode-runner/src/index.ts"],
+            options: [
+              expect.objectContaining({ reply: "once", label: "Allow once" }),
+              expect.objectContaining({ reply: "always", label: "Allow always", requiresConfirmation: true }),
+              expect.objectContaining({ reply: "reject", label: "Reject" })
+            ]
+          })
         })
       ],
       attentionRequired: {
@@ -1232,7 +1242,13 @@ describe("OpenCodeBackend", () => {
           expect.objectContaining({
             id: "per_1",
             permission: "external_directory",
-            patterns: ["/home/raystorm/projects/opencode-runner/src/index.ts"]
+            patterns: ["/home/raystorm/projects/opencode-runner/src/index.ts"],
+            approval: expect.objectContaining({
+              guidance: expect.arrayContaining([
+                "Treat this as a supervisor decision for the blocked OpenCode child, not as child review evidence.",
+                "Use reply=reject when the path or tool is outside the delegated task scope."
+              ])
+            })
           })
         ],
         replyOptions: ["once", "always", "reject"]
@@ -1273,7 +1289,10 @@ describe("OpenCodeBackend", () => {
         expect.objectContaining({
           id: "per_1",
           permission: "external_directory",
-          patterns: ["/home/raystorm/projects/opencode-runner/src/index.ts"]
+          patterns: ["/home/raystorm/projects/opencode-runner/src/index.ts"],
+          approval: expect.objectContaining({
+            title: "Access external directory /home/raystorm/projects/opencode-runner/src"
+          })
         })
       ]
     });
