@@ -1426,11 +1426,12 @@ describe("OpenCodeBackend", () => {
     const started = await backend.run({ cwd: tempDir, prompt: "review stalls blank after tool progress" });
     server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
     server!.appendBlankAssistant(started.externalSessionId!);
+    const readAfterRescue = waitForPromptCount(2).then(() => {
+      server!.appendPendingReadToolAssistant(started.externalSessionId!);
+    });
 
-    await expect(backend.wait({ jobId: started.jobId }, 100)).resolves.toMatchObject({ status: "running" });
-    await waitForPromptCount(2);
-    server!.appendPendingReadToolAssistant(started.externalSessionId!);
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    await readAfterRescue;
     const result = await backend.result({ jobId: started.jobId });
     expect(result.status).toBe("stalled");
     expect(result.stdout).toContain("pending/running read tool call");
