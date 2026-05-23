@@ -1720,6 +1720,31 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"toStatus":"completed"');
   });
 
+  it("does not return early while a soft-stall rescue can still expire within the wait budget", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "20",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "complex audit rescue remains blank" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source before zero progress");
+    server!.appendZeroProgressReasoningAssistant(started.externalSessionId!);
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    await expect(backend.wait({ jobId: started.jobId }, 250)).resolves.toMatchObject({ status: "stalled" });
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
+    expect(trace).toContain('"event":"opencode_job_soft_stall_deferred"');
+    expect(trace).toContain('"event":"opencode_job_stalled"');
+  });
+
   it("submits a no-tools final-answer rescue prompt for recoverable OpenCode stalls", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),

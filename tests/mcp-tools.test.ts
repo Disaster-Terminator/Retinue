@@ -754,6 +754,7 @@ describe("MCP tools", () => {
       process.env.RETINUE_STATE_DIR = tempDir;
       process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
       process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS = "1";
+      process.env.RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS = "1000";
 
       const spawn = parseToolJson(
         await connection.client.callTool({
@@ -768,7 +769,7 @@ describe("MCP tools", () => {
       const wait = parseToolJson(
         await connection.client.callTool({
           name: "retinue_wait_agent",
-          arguments: { jobId: spawn.jobId, timeoutMs: 5000 }
+          arguments: { jobId: spawn.jobId, timeoutMs: 100 }
         })
       );
 
@@ -789,6 +790,7 @@ describe("MCP tools", () => {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
       delete process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS;
+      delete process.env.RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS;
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });
     }

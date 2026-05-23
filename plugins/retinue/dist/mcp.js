@@ -22728,6 +22728,10 @@ ${textWarning2}` : stderr;
         if (this.isSoftStallRescuePending(status, diagnostic)) {
           await this.writeJobTrace("opencode_job_soft_stall_rescue_pending", status, diagnostic);
           await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_soft_stall_rescue_pending", diagnostic });
+          if (Date.now() < deadline) {
+            await sleep2(DEFAULT_WAIT_POLL_MS);
+            continue;
+          }
           return { jobId: handle.jobId, status: "running" };
         }
         const attempt = await this.maybeStartTaskLevelAttempt(status, diagnostic);
