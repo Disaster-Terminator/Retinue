@@ -1255,7 +1255,9 @@ describe("OpenCodeBackend", () => {
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
-        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1"
+        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1",
+        RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS: "1",
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -1285,6 +1287,13 @@ describe("OpenCodeBackend", () => {
     });
     await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "running" });
     await expect(backend.listPermissions({ jobId: started.jobId })).resolves.toMatchObject({ permissions: [] });
+
+    server!.appendFailedToolCallAssistant(started.externalSessionId!);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"stallReason":"tool_loop_no_completion"');
+    expect(trace).toContain('"failedToolCallAssistantRounds":2');
   });
 
   it("does not expose sibling child permissions in shared-root mode", async () => {

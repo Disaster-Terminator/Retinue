@@ -1476,6 +1476,7 @@ function computeStallDiagnostic(jobMessages, meta, env, pendingPermissions = [])
     const roundThreshold = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS, DEFAULT_STALL_TOOL_CALL_ROUNDS);
     const emptyAssistantThreshold = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS, DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS);
     const toolCallAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isToolCallAssistantMessage(message)).length;
+    const failedToolCallAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isFailedToolCallAssistantMessage(message)).length;
     const emptyAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isEmptyStopAssistantMessage(message)).length;
     const blankAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isBlankAssistantPlaceholder(message)).length;
     const zeroProgressAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isZeroProgressAssistantPlaceholder(message)).length;
@@ -1488,6 +1489,7 @@ function computeStallDiagnostic(jobMessages, meta, env, pendingPermissions = [])
     const lastAssistant = [...activeMessages].reverse().find((message) => message.info?.role === "assistant");
     const incompleteAssistantRound = isIncompleteAssistantMessage(lastAssistant);
     if (toolCallAssistantRounds < roundThreshold &&
+        failedToolCallAssistantRounds === 0 &&
         emptyAssistantRounds < emptyAssistantThreshold &&
         blankAssistantRounds === 0 &&
         zeroProgressAssistantRounds === 0 &&
@@ -1504,7 +1506,7 @@ function computeStallDiagnostic(jobMessages, meta, env, pendingPermissions = [])
     const readToolStalled = runningReadToolParts > 0 && durationMs >= readToolThresholdMs;
     const readToolInvalidInputStalled = malformedReadToolParts > 0 && durationMs >= readToolThresholdMs;
     const externalDirectoryPermissionStalled = pendingExternalDirectoryPermissionSummaries.length > 0 && durationMs >= readToolThresholdMs;
-    const completedToolLoopStalled = toolCallAssistantRounds >= roundThreshold &&
+    const completedToolLoopStalled = (toolCallAssistantRounds >= roundThreshold || failedToolCallAssistantRounds > 0) &&
         runningReadToolParts === 0 &&
         !incompleteAssistantRound &&
         durationMs >= completedToolLoopThresholdMs;
@@ -1521,6 +1523,7 @@ function computeStallDiagnostic(jobMessages, meta, env, pendingPermissions = [])
     }
     const diagnostic = {
         toolCallAssistantRounds,
+        failedToolCallAssistantRounds,
         emptyAssistantRounds,
         blankAssistantRounds,
         zeroProgressAssistantRounds,
@@ -1887,6 +1890,13 @@ function summarizeAttempt(meta, selectedAttemptJobId) {
 }
 function hasToolPart(message) {
     return Array.isArray(message.parts) && message.parts.some((part) => part?.type === "tool");
+}
+function isFailedToolCallAssistantMessage(message) {
+    if (!isToolCallAssistantMessage(message) || extractMessageText(message).length > 0) {
+        return false;
+    }
+    const toolParts = summarizeMessageParts(message)?.filter((part) => part.type === "tool") ?? [];
+    return toolParts.length > 0 && toolParts.every((part) => part.stateStatus === "error");
 }
 function collectRunningReadToolPartSummaries(messages) {
     return messages.flatMap((message) => summarizeMessageParts(message)?.filter((part) => part.type === "tool" && part.tool === "read" && isActiveToolState(part.stateStatus)) ?? []);

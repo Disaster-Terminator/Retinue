@@ -47,6 +47,7 @@ export interface FakeOpenCodeServer {
   appendWriteIntentAssistant(sessionId: string, tool: "write" | "edit" | "apply_patch", text?: string): void;
   appendRunningReadToolAssistant(sessionId: string): void;
   appendPendingReadToolAssistant(sessionId: string): void;
+  appendFailedToolCallAssistant(sessionId: string): void;
   appendExternalDirectoryPermission(sessionId: string, filePath: string, callID?: string): void;
   appendMalformedReadToolAssistant(sessionId: string): void;
   appendBlankAssistant(sessionId: string): void;
@@ -477,6 +478,37 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
               callID: `call_${nextMessage}`,
               state: { status: "pending", input: { filePath: "docs/VERIFICATION.md" } }
             }
+          ]
+        });
+      }
+    },
+    appendFailedToolCallAssistant: (sessionId: string) => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.omitState = true;
+        session.messages.push({
+          info: {
+            id: `msg_${nextMessage++}`,
+            sessionID: session.id,
+            role: "assistant",
+            finish: "tool-calls",
+            providerID: "litellm",
+            modelID: "semantic-router",
+            agent: "explore",
+            mode: "explore"
+          },
+          parts: [
+            { type: "step-start" },
+            { type: "reasoning", text: "The requested external path was rejected." },
+            {
+              type: "tool",
+              text: "read placeholder",
+              tool: "read",
+              callID: `call_${nextMessage}`,
+              state: { status: "error", input: { filePath: "/home/raystudio/projects/Retinue/src/backends/opencode/backend.ts" } }
+            },
+            { type: "step-finish" },
+            { type: "patch" }
           ]
         });
       }

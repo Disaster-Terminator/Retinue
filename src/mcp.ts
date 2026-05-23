@@ -860,6 +860,7 @@ function summarizeJobDiagnostic(value: unknown): Record<string, unknown> | undef
     stallReason: stringValue(diagnostic.stallReason),
     stallSummary: stringValue(diagnostic.stallSummary),
     toolCallAssistantRounds: numberValue(diagnostic.toolCallAssistantRounds),
+    failedToolCallAssistantRounds: numberValue(diagnostic.failedToolCallAssistantRounds),
     emptyAssistantRounds: numberValue(diagnostic.emptyAssistantRounds),
     blankAssistantRounds: numberValue(diagnostic.blankAssistantRounds),
     zeroProgressAssistantRounds: numberValue(diagnostic.zeroProgressAssistantRounds),

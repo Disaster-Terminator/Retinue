@@ -277,6 +277,7 @@ interface OpenCodeJobDiagnostic {
   selectedAssistantSha256?: string;
   selectedAssistantPreview?: string;
   toolCallAssistantRounds?: number;
+  failedToolCallAssistantRounds?: number;
   emptyAssistantRounds?: number;
   blankAssistantRounds?: number;
   zeroProgressAssistantRounds?: number;
@@ -1756,6 +1757,9 @@ function computeStallDiagnostic(
   const roundThreshold = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS, DEFAULT_STALL_TOOL_CALL_ROUNDS);
   const emptyAssistantThreshold = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS, DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS);
   const toolCallAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isToolCallAssistantMessage(message)).length;
+  const failedToolCallAssistantRounds = activeMessages.filter(
+    (message) => message.info?.role === "assistant" && isFailedToolCallAssistantMessage(message)
+  ).length;
   const emptyAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isEmptyStopAssistantMessage(message)).length;
   const blankAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isBlankAssistantPlaceholder(message)).length;
   const zeroProgressAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isZeroProgressAssistantPlaceholder(message)).length;
@@ -1771,6 +1775,7 @@ function computeStallDiagnostic(
   const incompleteAssistantRound = isIncompleteAssistantMessage(lastAssistant);
   if (
     toolCallAssistantRounds < roundThreshold &&
+    failedToolCallAssistantRounds === 0 &&
     emptyAssistantRounds < emptyAssistantThreshold &&
     blankAssistantRounds === 0 &&
     zeroProgressAssistantRounds === 0 &&
@@ -1789,7 +1794,7 @@ function computeStallDiagnostic(
   const readToolInvalidInputStalled = malformedReadToolParts > 0 && durationMs >= readToolThresholdMs;
   const externalDirectoryPermissionStalled = pendingExternalDirectoryPermissionSummaries.length > 0 && durationMs >= readToolThresholdMs;
   const completedToolLoopStalled =
-    toolCallAssistantRounds >= roundThreshold &&
+    (toolCallAssistantRounds >= roundThreshold || failedToolCallAssistantRounds > 0) &&
     runningReadToolParts === 0 &&
     !incompleteAssistantRound &&
     durationMs >= completedToolLoopThresholdMs;
@@ -1808,6 +1813,7 @@ function computeStallDiagnostic(
   }
   const diagnostic = {
     toolCallAssistantRounds,
+    failedToolCallAssistantRounds,
     emptyAssistantRounds,
     blankAssistantRounds,
     zeroProgressAssistantRounds,
@@ -2231,6 +2237,14 @@ function summarizeAttempt(meta: JobMeta, selectedAttemptJobId: string | undefine
 
 function hasToolPart(message: OpenCodeMessage): boolean {
   return Array.isArray(message.parts) && message.parts.some((part) => part?.type === "tool");
+}
+
+function isFailedToolCallAssistantMessage(message: OpenCodeMessage): boolean {
+  if (!isToolCallAssistantMessage(message) || extractMessageText(message).length > 0) {
+    return false;
+  }
+  const toolParts = summarizeMessageParts(message)?.filter((part) => part.type === "tool") ?? [];
+  return toolParts.length > 0 && toolParts.every((part) => part.stateStatus === "error");
 }
 
 function collectRunningReadToolPartSummaries(messages: OpenCodeMessage[]): OpenCodePartSummary[] {
