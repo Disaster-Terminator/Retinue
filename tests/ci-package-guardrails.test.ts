@@ -3,7 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import os from "node:os";
 import path from "node:path";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 
 type RetinueMcpServerConfig = {
   command: string;
@@ -270,6 +270,8 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(mcp.retinue?.cwd).toBe(".");
     expect(existsSync(path.join("plugins/retinue", mcp.retinue?.args?.[0] ?? ""))).toBe(true);
     expect(readFileSync("plugins/retinue/mcp-bootstrap.mjs", "utf8")).toContain("process.chdir");
+    expect(readFileSync("plugins/retinue/mcp-bootstrap.mjs", "utf8")).toContain("loadCodexEnvOverrides");
+    expect(readFileSync("plugins/retinue/mcp-bootstrap.mjs", "utf8")).toContain("RETINUE_");
     expect(mcp.retinue?.startup_timeout_sec).toBe(30);
     expect(mcp.retinue?.env?.RETINUE_BACKEND).toBe("opencode");
     expect(mcp.retinue?.env?.RETINUE_OPENCODE_AUTO_SERVE).toBe("1");
@@ -333,6 +335,33 @@ describe("Retinue Codex plugin guardrails", () => {
     }
   });
 
+  it("applies Retinue Codex env overrides from CODEX_HOME config during plugin bootstrap", async () => {
+    const pluginCacheDir = mkdtempSync(path.join(os.tmpdir(), "retinue-plugin-cache-"));
+    const codexHome = mkdtempSync(path.join(os.tmpdir(), "retinue-codex-home-"));
+    cpSync("plugins/retinue", pluginCacheDir, { recursive: true });
+    writeFileSync(path.join(codexHome, "config.toml"), '[env]\nRETINUE_MAX_CONCURRENT_AGENTS = "5"\n', "utf8");
+    const mcp = loadPluginMcpConfig(pluginCacheDir);
+    const retinue = resolvePluginMcpServer(pluginCacheDir, mcp.retinue);
+    const transport = new StdioClientTransport({
+      command: retinue.command,
+      args: retinue.args,
+      cwd: retinue.cwd,
+      env: { ...retinue.env, CODEX_HOME: codexHome },
+      stderr: "pipe"
+    });
+    const client = new Client({ name: "retinue-plugin-codex-env-test", version: "0.1.0" });
+
+    try {
+      await client.connect(transport);
+      const listed = parseToolJson(await client.callTool({ name: "retinue_list_agents", arguments: {} }));
+      expect(listed).toMatchObject({ maxAgents: 5, agents: [] });
+    } finally {
+      await Promise.allSettled([client.close(), transport.close()]);
+      rmSync(pluginCacheDir, { recursive: true, force: true });
+      rmSync(codexHome, { recursive: true, force: true });
+    }
+  });
+
   it("starts from an isolated plugin cache even when the Codex conversation cwd is elsewhere", async () => {
     const pluginCacheDir = mkdtempSync(path.join(os.tmpdir(), "retinue-plugin-cache-"));
     const conversationCwd = mkdtempSync(path.join(os.tmpdir(), "retinue-conversation-cwd-"));
@@ -367,3 +396,11 @@ describe("Retinue Codex plugin guardrails", () => {
     }
   });
 });
+
+function parseToolJson(result: Awaited<ReturnType<Client["callTool"]>>): Record<string, unknown> {
+  const text = result.content.find((item) => item.type === "text")?.text;
+  if (!text) {
+    throw new Error("Tool result did not include text content");
+  }
+  return JSON.parse(text) as Record<string, unknown>;
+}

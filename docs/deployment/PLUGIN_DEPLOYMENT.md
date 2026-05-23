@@ -85,7 +85,7 @@ The Codex plugin ships `retinue.config.json` beside the bootstrap for Retinue-ow
 }
 ```
 
-OpenCode profile configuration stays in OpenCode. Retinue-owned defaults live in JSON config, while environment variables remain deployment overrides.
+OpenCode profile configuration stays in OpenCode. Retinue-owned defaults live in JSON config, while environment variables remain deployment overrides. In Codex plugin deployments, `mcp-bootstrap.mjs` also reads `RETINUE_*` values from `$CODEX_HOME/config.toml` under `[env]` before starting the MCP runtime, so workstation-level overrides survive plugin cache refreshes that restore the packaged `retinue.config.json` defaults.
 
 ## npm Runtime Path
 

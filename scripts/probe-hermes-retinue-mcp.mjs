@@ -40,6 +40,7 @@ async function main() {
     assertToolList(toolNames);
 
     if (process.env[REAL_PROBE_ENV] !== "1") {
+      const pool = parseToolJson(await client.callTool({ name: "retinue_list_agents", arguments: {} }));
       printResult({
         ok: true,
         mode: "tool-list",
@@ -48,6 +49,7 @@ async function main() {
         args: options.args,
         cwd: options.cwd,
         tools: toolNames,
+        maxAgents: pool.maxAgents,
         hermesToolNames: toolNames.map((name) => `mcp_retinue_${name}`),
         stateDir,
         stderr: Buffer.concat(stderrChunks).toString("utf8")
