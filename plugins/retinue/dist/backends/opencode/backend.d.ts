@@ -8,11 +8,19 @@ export interface OpenCodeBackendOptions {
     stateDir?: string;
     env?: RetinueOptions["env"];
     onServerIdle?: (baseUrl: string, cwd: string | undefined) => void;
+    sharedRootSessions?: OpenCodeSharedRootSessionStore;
 }
 export interface OpenCodeBackendTarget {
     client: OpenCodeClient;
     baseUrl: string;
 }
+interface SharedRootSession {
+    id: string;
+    baseUrl: string;
+    cwd?: string;
+    agent: string;
+}
+export type OpenCodeSharedRootSessionStore = Map<string, SharedRootSession>;
 export declare class OpenCodeBackend implements AgentBackend {
     readonly kind: "opencode";
     private readonly client?;
@@ -22,6 +30,7 @@ export declare class OpenCodeBackend implements AgentBackend {
     private readonly env?;
     private readonly httpTimeoutMs;
     private readonly onServerIdle;
+    private readonly sharedRootSessions;
     constructor(options: OpenCodeBackendOptions);
     run(options: AgentRunOptions): Promise<JobMeta>;
     continueJob(options: AgentContinueOptions): Promise<JobMeta>;
@@ -65,3 +74,4 @@ export declare class OpenCodeBackend implements AgentBackend {
     private clientForMeta;
     private targetForContinue;
 }
+export {};

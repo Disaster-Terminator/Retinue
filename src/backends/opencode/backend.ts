@@ -42,6 +42,7 @@ export interface OpenCodeBackendOptions {
   stateDir?: string;
   env?: RetinueOptions["env"];
   onServerIdle?: (baseUrl: string, cwd: string | undefined) => void;
+  sharedRootSessions?: OpenCodeSharedRootSessionStore;
 }
 export interface OpenCodeBackendTarget {
   client: OpenCodeClient;
@@ -57,7 +58,7 @@ interface SharedRootSession {
   agent: string;
 }
 
-const SHARED_ROOT_SESSIONS = new Map<string, SharedRootSession>();
+export type OpenCodeSharedRootSessionStore = Map<string, SharedRootSession>;
 
 const OPENCODE_READ_ONLY_TOOLS_NO_BASH: Record<string, boolean> = {
   bash: false,
@@ -326,6 +327,7 @@ export class OpenCodeBackend implements AgentBackend {
   private readonly env?: RetinueOptions["env"];
   private readonly httpTimeoutMs: number;
   private readonly onServerIdle: (baseUrl: string, cwd: string | undefined) => void;
+  private readonly sharedRootSessions: OpenCodeSharedRootSessionStore;
 
   constructor(options: OpenCodeBackendOptions) {
     this.client = options.client;
@@ -341,6 +343,7 @@ export class OpenCodeBackend implements AgentBackend {
     this.stateDir = resolveStateDir({ explicitStateDir: options.stateDir, env: options.env });
     this.env = options.env;
     this.httpTimeoutMs = resolveHttpTimeoutMs(options.env);
+    this.sharedRootSessions = options.sharedRootSessions ?? new Map();
     this.onServerIdle =
       options.onServerIdle ??
       ((baseUrl, cwd) =>
@@ -1414,13 +1417,13 @@ export class OpenCodeBackend implements AgentBackend {
 
   private async getOrCreateSharedRootSession(target: OpenCodeBackendTarget, cwd: string | undefined, agent: string) {
     const key = [target.baseUrl, cwd ?? "", agent].join("\0");
-    const existing = SHARED_ROOT_SESSIONS.get(key);
+    const existing = this.sharedRootSessions.get(key);
     if (existing) {
       try {
         const session = await target.client.getSession(existing.id);
         return session;
       } catch {
-        SHARED_ROOT_SESSIONS.delete(key);
+        this.sharedRootSessions.delete(key);
       }
     }
     const session = await target.client.createSession({
@@ -1428,7 +1431,7 @@ export class OpenCodeBackend implements AgentBackend {
       title: "retinue-shared-root",
       agent
     });
-    SHARED_ROOT_SESSIONS.set(key, { id: session.id, baseUrl: target.baseUrl, cwd, agent });
+    this.sharedRootSessions.set(key, { id: session.id, baseUrl: target.baseUrl, cwd, agent });
     return session;
   }
 

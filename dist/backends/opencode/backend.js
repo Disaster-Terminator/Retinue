@@ -5,7 +5,6 @@ import { getJobPaths, getRetinueTracePath, resolveStateDir } from "../../core/pa
 import { isCleanupSafeStatus } from "../../core/status.js";
 import { OpenCodeClient, OpenCodeClientError } from "./client.js";
 import { scheduleManagedOpenCodeServerIdleShutdown } from "./serverManager.js";
-const SHARED_ROOT_SESSIONS = new Map();
 const OPENCODE_READ_ONLY_TOOLS_NO_BASH = {
     bash: false,
     edit: false,
@@ -141,6 +140,7 @@ export class OpenCodeBackend {
     env;
     httpTimeoutMs;
     onServerIdle;
+    sharedRootSessions;
     constructor(options) {
         this.client = options.client;
         this.baseUrl = options.baseUrl?.replace(/\/+$/, "");
@@ -155,6 +155,7 @@ export class OpenCodeBackend {
         this.stateDir = resolveStateDir({ explicitStateDir: options.stateDir, env: options.env });
         this.env = options.env;
         this.httpTimeoutMs = resolveHttpTimeoutMs(options.env);
+        this.sharedRootSessions = options.sharedRootSessions ?? new Map();
         this.onServerIdle =
             options.onServerIdle ??
                 ((baseUrl, cwd) => scheduleManagedOpenCodeServerIdleShutdown(baseUrl, {
@@ -1185,14 +1186,14 @@ export class OpenCodeBackend {
     }
     async getOrCreateSharedRootSession(target, cwd, agent) {
         const key = [target.baseUrl, cwd ?? "", agent].join("\0");
-        const existing = SHARED_ROOT_SESSIONS.get(key);
+        const existing = this.sharedRootSessions.get(key);
         if (existing) {
             try {
                 const session = await target.client.getSession(existing.id);
                 return session;
             }
             catch {
-                SHARED_ROOT_SESSIONS.delete(key);
+                this.sharedRootSessions.delete(key);
             }
         }
         const session = await target.client.createSession({
@@ -1200,7 +1201,7 @@ export class OpenCodeBackend {
             title: "retinue-shared-root",
             agent
         });
-        SHARED_ROOT_SESSIONS.set(key, { id: session.id, baseUrl: target.baseUrl, cwd, agent });
+        this.sharedRootSessions.set(key, { id: session.id, baseUrl: target.baseUrl, cwd, agent });
         return session;
     }
     async listAgents(client) {

@@ -25,7 +25,7 @@ RETINUE_DOGFOOD_OPENCODE_ACCESS_MODE=profile \
 pnpm run probe:dogfood:opencode
 ```
 
-`RETINUE_OPENCODE_ROOT_BINDING_MODE=shared_root` is an experimental opt-in. The default remains `per_spawn`, where each Retinue job gets its own unprompted OpenCode root session plus one prompted child session. In `shared_root`, jobs with the same OpenCode server URL, cwd, and root agent reuse one unprompted root session and create separate prompted child sessions under it.
+`RETINUE_OPENCODE_ROOT_BINDING_MODE=shared_root` is an experimental opt-in. The default remains `per_spawn`, where each Retinue job gets its own unprompted OpenCode root session plus one prompted child session. In `shared_root`, jobs in the same Retinue MCP server session with the same OpenCode server URL, cwd, and root agent reuse one unprompted root session and create separate prompted child sessions under it. Separate MCP server sessions do not share roots.
 
 The default root agent is `build`. Set `RETINUE_OPENCODE_ROOT_AGENT=<agent>` only when validating a different OpenCode primary/root agent as the unprompted container; the Retinue child agent still comes from `RETINUE_OPENCODE_AGENT` or the MCP `agent` argument.
 

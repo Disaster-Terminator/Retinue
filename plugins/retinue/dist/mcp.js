@@ -22059,7 +22059,6 @@ function parseRequiredPort(value) {
 }
 
 // src/backends/opencode/backend.ts
-var SHARED_ROOT_SESSIONS = /* @__PURE__ */ new Map();
 var OPENCODE_READ_ONLY_TOOLS_NO_BASH = {
   bash: false,
   edit: false,
@@ -22181,6 +22180,7 @@ var OpenCodeBackend = class {
   env;
   httpTimeoutMs;
   onServerIdle;
+  sharedRootSessions;
   constructor(options) {
     this.client = options.client;
     this.baseUrl = options.baseUrl?.replace(/\/+$/, "");
@@ -22193,6 +22193,7 @@ var OpenCodeBackend = class {
     this.stateDir = resolveStateDir({ explicitStateDir: options.stateDir, env: options.env });
     this.env = options.env;
     this.httpTimeoutMs = resolveHttpTimeoutMs(options.env);
+    this.sharedRootSessions = options.sharedRootSessions ?? /* @__PURE__ */ new Map();
     this.onServerIdle = options.onServerIdle ?? ((baseUrl, cwd) => scheduleManagedOpenCodeServerIdleShutdown(baseUrl, {
       stateDir: this.stateDir,
       cwd,
@@ -23184,13 +23185,13 @@ ${textWarning2}` : stderr;
   }
   async getOrCreateSharedRootSession(target, cwd, agent) {
     const key = [target.baseUrl, cwd ?? "", agent].join("\0");
-    const existing = SHARED_ROOT_SESSIONS.get(key);
+    const existing = this.sharedRootSessions.get(key);
     if (existing) {
       try {
         const session2 = await target.client.getSession(existing.id);
         return session2;
       } catch {
-        SHARED_ROOT_SESSIONS.delete(key);
+        this.sharedRootSessions.delete(key);
       }
     }
     const session = await target.client.createSession({
@@ -23198,7 +23199,7 @@ ${textWarning2}` : stderr;
       title: "retinue-shared-root",
       agent
     });
-    SHARED_ROOT_SESSIONS.set(key, { id: session.id, baseUrl: target.baseUrl, cwd, agent });
+    this.sharedRootSessions.set(key, { id: session.id, baseUrl: target.baseUrl, cwd, agent });
     return session;
   }
   async listAgents(client) {
@@ -24990,6 +24991,7 @@ var RETINUE_DIAGNOSTIC_TOOL_NAMES = ["retinue_audit_logs"];
 var DEFAULT_MCP_WAIT_MAX_MS = 18e4;
 function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
   const agentPool = new RetinueAgentPool();
+  const openCodeSharedRootSessions = /* @__PURE__ */ new Map();
   const server = new McpServer({
     name: "retinue",
     version: "0.1.0"
@@ -25013,7 +25015,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
     },
     async (args) => {
       const taskName = normalizeTaskName(args);
-      const backend = await createRetinueBackend(retinue);
+      const backend = await createRetinueBackend(retinue, openCodeSharedRootSessions);
       const { evicted, started } = await agentPool.withSpawnLock(async () => {
         const evicted2 = await agentPool.ensureSpawnSlot(retinue, process.env);
         const agent = args.agent ?? await resolveConfiguredOpenCodeAgent(process.env);
@@ -25072,7 +25074,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
       }
     },
     async ({ jobId, timeoutMs }) => {
-      const backend = await createRetinueBackendForJob(retinue, jobId);
+      const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions);
       const effectiveTimeoutMs = resolveMcpWaitTimeoutMs(timeoutMs, process.env);
       const waited = await backend.wait({ jobId }, effectiveTimeoutMs);
       const responseJobId = waited.jobId;
@@ -25153,7 +25155,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
       }
     },
     async ({ jobId }) => {
-      const backend = await createRetinueBackendForJob(retinue, jobId);
+      const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions);
       const status = await backend.status({ jobId });
       if (isJobMeta(status) && status.status === "running") {
         await backend.abort({ jobId });
@@ -25186,7 +25188,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
       }
     },
     async ({ jobId }) => {
-      const backend = await createRetinueBackendForJob(retinue, jobId);
+      const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions);
       if (!isPermissionBridgeBackend(backend)) {
         throw new Error(`Retinue backend ${backend.kind} does not expose OpenCode permissions`);
       }
@@ -25206,7 +25208,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
       }
     },
     async ({ jobId, requestId, reply, message }) => {
-      const backend = await createRetinueBackendForJob(retinue, jobId);
+      const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions);
       if (!isPermissionBridgeBackend(backend)) {
         throw new Error(`Retinue backend ${backend.kind} does not expose OpenCode permissions`);
       }
@@ -25453,7 +25455,8 @@ async function createOpenCodeBackend(args) {
       return { client: new OpenCodeClient(target.baseUrl, { timeoutMs: resolveHttpTimeoutMs(env) }), baseUrl: target.baseUrl };
     },
     stateDir,
-    env: process.env
+    env: process.env,
+    sharedRootSessions: args.sharedRootSessions
   });
 }
 async function withOpenCodeDefaults(args) {
@@ -25803,19 +25806,19 @@ function arrayValue(value) {
 function stringArrayValue(value) {
   return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : void 0;
 }
-async function createRetinueBackend(retinue) {
-  return createRetinueBackendByKind(readRetinueBackendKindFromEnv(), retinue);
+async function createRetinueBackend(retinue, sharedRootSessions) {
+  return createRetinueBackendByKind(readRetinueBackendKindFromEnv(), retinue, sharedRootSessions);
 }
-async function createRetinueBackendForJob(retinue, jobId) {
+async function createRetinueBackendForJob(retinue, jobId, sharedRootSessions) {
   const recordedKind = await readRetinueJobBackendKind(jobId);
   if (recordedKind) {
-    return createRetinueBackendByKind(recordedKind, retinue);
+    return createRetinueBackendByKind(recordedKind, retinue, sharedRootSessions);
   }
-  return createRetinueBackend(retinue);
+  return createRetinueBackend(retinue, sharedRootSessions);
 }
-async function createRetinueBackendByKind(kind, retinue) {
+async function createRetinueBackendByKind(kind, retinue, sharedRootSessions) {
   if (kind === "opencode") {
-    return createOpenCodeBackend({});
+    return createOpenCodeBackend({ sharedRootSessions });
   }
   if (kind === "claude-code") {
     return new RetinueAgentBackend(retinue);

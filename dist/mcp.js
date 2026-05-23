@@ -47,6 +47,7 @@ export const RETINUE_DIAGNOSTIC_TOOL_NAMES = ["retinue_audit_logs"];
 const DEFAULT_MCP_WAIT_MAX_MS = 180_000;
 export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
     const agentPool = new RetinueAgentPool();
+    const openCodeSharedRootSessions = new Map();
     const server = new McpServer({
         name: "retinue",
         version: "0.1.0"
@@ -67,7 +68,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
         }
     }, async (args) => {
         const taskName = normalizeTaskName(args);
-        const backend = await createRetinueBackend(retinue);
+        const backend = await createRetinueBackend(retinue, openCodeSharedRootSessions);
         const { evicted, started } = await agentPool.withSpawnLock(async () => {
             const evicted = await agentPool.ensureSpawnSlot(retinue, process.env);
             const agent = args.agent ?? (await resolveConfiguredOpenCodeAgent(process.env));
@@ -121,7 +122,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             timeoutMs: z.number().int().nonnegative().optional()
         }
     }, async ({ jobId, timeoutMs }) => {
-        const backend = await createRetinueBackendForJob(retinue, jobId);
+        const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions);
         const effectiveTimeoutMs = resolveMcpWaitTimeoutMs(timeoutMs, process.env);
         const waited = await backend.wait({ jobId }, effectiveTimeoutMs);
         const responseJobId = waited.jobId;
@@ -198,7 +199,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             jobId: z.string()
         }
     }, async ({ jobId }) => {
-        const backend = await createRetinueBackendForJob(retinue, jobId);
+        const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions);
         const status = await backend.status({ jobId });
         if (isJobMeta(status) && status.status === "running") {
             await backend.abort({ jobId });
@@ -223,7 +224,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             jobId: z.string()
         }
     }, async ({ jobId }) => {
-        const backend = await createRetinueBackendForJob(retinue, jobId);
+        const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions);
         if (!isPermissionBridgeBackend(backend)) {
             throw new Error(`Retinue backend ${backend.kind} does not expose OpenCode permissions`);
         }
@@ -239,7 +240,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             message: z.string().optional()
         }
     }, async ({ jobId, requestId, reply, message }) => {
-        const backend = await createRetinueBackendForJob(retinue, jobId);
+        const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions);
         if (!isPermissionBridgeBackend(backend)) {
             throw new Error(`Retinue backend ${backend.kind} does not expose OpenCode permissions`);
         }
@@ -418,7 +419,8 @@ async function createOpenCodeBackend(args) {
             return { client: new OpenCodeClient(target.baseUrl, { timeoutMs: resolveHttpTimeoutMs(env) }), baseUrl: target.baseUrl };
         },
         stateDir,
-        env: process.env
+        env: process.env,
+        sharedRootSessions: args.sharedRootSessions
     });
 }
 async function withOpenCodeDefaults(args) {
@@ -778,19 +780,19 @@ function arrayValue(value) {
 function stringArrayValue(value) {
     return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined;
 }
-async function createRetinueBackend(retinue) {
-    return createRetinueBackendByKind(readRetinueBackendKindFromEnv(), retinue);
+async function createRetinueBackend(retinue, sharedRootSessions) {
+    return createRetinueBackendByKind(readRetinueBackendKindFromEnv(), retinue, sharedRootSessions);
 }
-async function createRetinueBackendForJob(retinue, jobId) {
+async function createRetinueBackendForJob(retinue, jobId, sharedRootSessions) {
     const recordedKind = await readRetinueJobBackendKind(jobId);
     if (recordedKind) {
-        return createRetinueBackendByKind(recordedKind, retinue);
+        return createRetinueBackendByKind(recordedKind, retinue, sharedRootSessions);
     }
-    return createRetinueBackend(retinue);
+    return createRetinueBackend(retinue, sharedRootSessions);
 }
-async function createRetinueBackendByKind(kind, retinue) {
+async function createRetinueBackendByKind(kind, retinue, sharedRootSessions) {
     if (kind === "opencode") {
-        return createOpenCodeBackend({});
+        return createOpenCodeBackend({ sharedRootSessions });
     }
     if (kind === "claude-code") {
         return new RetinueAgentBackend(retinue);

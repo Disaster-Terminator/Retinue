@@ -7,6 +7,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { OpenCodeBackend } from "./backends/opencode/backend.js";
+import type { OpenCodeSharedRootSessionStore } from "./backends/opencode/backend.js";
 import { OpenCodeClient } from "./backends/opencode/client.js";
 import { ensureOpenCodeServer, resolveOpenCodeServerFromEnv } from "./backends/opencode/serverManager.js";
 import { DaemonClient } from "./daemon/client.js";
@@ -78,6 +79,7 @@ export interface CreateMcpServerOptions {
 
 export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(), options: CreateMcpServerOptions = {}): McpServer {
   const agentPool = new RetinueAgentPool();
+  const openCodeSharedRootSessions: OpenCodeSharedRootSessionStore = new Map();
   const server = new McpServer({
     name: "retinue",
     version: "0.1.0"
@@ -103,7 +105,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
     },
     async (args) => {
       const taskName = normalizeTaskName(args);
-      const backend = await createRetinueBackend(retinue);
+      const backend = await createRetinueBackend(retinue, openCodeSharedRootSessions);
       const { evicted, started } = await agentPool.withSpawnLock(async () => {
         const evicted = await agentPool.ensureSpawnSlot(retinue, process.env);
         const agent = args.agent ?? (await resolveConfiguredOpenCodeAgent(process.env));
@@ -165,7 +167,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
       }
     },
     async ({ jobId, timeoutMs }) => {
-      const backend = await createRetinueBackendForJob(retinue, jobId);
+      const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions);
       const effectiveTimeoutMs = resolveMcpWaitTimeoutMs(timeoutMs, process.env);
       const waited = await backend.wait({ jobId }, effectiveTimeoutMs);
       const responseJobId = waited.jobId;
@@ -247,7 +249,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
       }
     },
     async ({ jobId }) => {
-      const backend = await createRetinueBackendForJob(retinue, jobId);
+      const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions);
       const status = await backend.status({ jobId });
       if (isJobMeta(status) && status.status === "running") {
         await backend.abort({ jobId });
@@ -283,7 +285,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
       }
     },
     async ({ jobId }) => {
-      const backend = await createRetinueBackendForJob(retinue, jobId);
+      const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions);
       if (!isPermissionBridgeBackend(backend)) {
         throw new Error(`Retinue backend ${backend.kind} does not expose OpenCode permissions`);
       }
@@ -304,7 +306,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
       }
     },
     async ({ jobId, requestId, reply, message }) => {
-      const backend = await createRetinueBackendForJob(retinue, jobId);
+      const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions);
       if (!isPermissionBridgeBackend(backend)) {
         throw new Error(`Retinue backend ${backend.kind} does not expose OpenCode permissions`);
       }
@@ -562,7 +564,7 @@ function opencodeRunSchema() {
   };
 }
 
-async function createOpenCodeBackend(args: { opencodeBaseUrl?: string }): Promise<OpenCodeBackend> {
+async function createOpenCodeBackend(args: { opencodeBaseUrl?: string; sharedRootSessions?: OpenCodeSharedRootSessionStore }): Promise<OpenCodeBackend> {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     RETINUE_OPENCODE_BASE_URL: args.opencodeBaseUrl ?? process.env.RETINUE_OPENCODE_BASE_URL
@@ -575,7 +577,8 @@ async function createOpenCodeBackend(args: { opencodeBaseUrl?: string }): Promis
       return { client: new OpenCodeClient(target.baseUrl, { timeoutMs: resolveHttpTimeoutMs(env) }), baseUrl: target.baseUrl };
     },
     stateDir,
-    env: process.env
+    env: process.env,
+    sharedRootSessions: args.sharedRootSessions
   });
 }
 
@@ -1003,21 +1006,29 @@ function stringArrayValue(value: unknown): string[] | undefined {
   return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined;
 }
 
-async function createRetinueBackend(retinue: RetinueApi): Promise<RetinueBackend> {
-  return createRetinueBackendByKind(readRetinueBackendKindFromEnv(), retinue);
+async function createRetinueBackend(retinue: RetinueApi, sharedRootSessions: OpenCodeSharedRootSessionStore): Promise<RetinueBackend> {
+  return createRetinueBackendByKind(readRetinueBackendKindFromEnv(), retinue, sharedRootSessions);
 }
 
-async function createRetinueBackendForJob(retinue: RetinueApi, jobId: string): Promise<RetinueBackend> {
+async function createRetinueBackendForJob(
+  retinue: RetinueApi,
+  jobId: string,
+  sharedRootSessions: OpenCodeSharedRootSessionStore
+): Promise<RetinueBackend> {
   const recordedKind = await readRetinueJobBackendKind(jobId);
   if (recordedKind) {
-    return createRetinueBackendByKind(recordedKind, retinue);
+    return createRetinueBackendByKind(recordedKind, retinue, sharedRootSessions);
   }
-  return createRetinueBackend(retinue);
+  return createRetinueBackend(retinue, sharedRootSessions);
 }
 
-async function createRetinueBackendByKind(kind: AgentBackendKind, retinue: RetinueApi): Promise<RetinueBackend> {
+async function createRetinueBackendByKind(
+  kind: AgentBackendKind,
+  retinue: RetinueApi,
+  sharedRootSessions?: OpenCodeSharedRootSessionStore
+): Promise<RetinueBackend> {
   if (kind === "opencode") {
-    return createOpenCodeBackend({});
+    return createOpenCodeBackend({ sharedRootSessions });
   }
   if (kind === "claude-code") {
     return new RetinueAgentBackend(retinue);
