@@ -685,8 +685,8 @@ export class OpenCodeBackend {
             }
             if (status.status === "stalled") {
                 const diagnostic = await this.inspectJob(status);
-                const canDeferStall = isSoftStallRescueEligible(diagnostic) ||
-                    (diagnostic.readOnlyWriteIntent === true && status.externalRescuePromptSubmittedAt === undefined);
+                const canDeferStall = status.externalRescuePromptSubmittedAt === undefined &&
+                    (isSoftStallRescueEligible(diagnostic) || diagnostic.readOnlyWriteIntent === true);
                 if (canDeferStall && Date.now() < deadline) {
                     await this.maybeSubmitSoftStallRescue(status, diagnostic);
                     if (!deferredSoftStall) {

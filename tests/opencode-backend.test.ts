@@ -990,6 +990,49 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"recoveryReason":"rescue_provider_zero_progress"');
   });
 
+  it("does not keep deferring an expired zero-progress rescue", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "1"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "audit expires after rescue", agent: "explore" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source");
+    server!.appendZeroProgressReasoningAssistant(started.externalSessionId!);
+    await expect(backend.wait({ jobId: started.jobId }, 100)).resolves.toMatchObject({ status: "running" });
+    await waitForPromptCount(2);
+
+    const paths = getJobPaths(tempDir, started.jobId);
+    const rescued = JSON.parse(await fs.readFile(paths.meta, "utf8")) as JobMeta;
+    await fs.writeFile(
+      paths.meta,
+      `${JSON.stringify({
+        ...rescued,
+        status: "stalled",
+        externalRescuePromptSubmittedAt: new Date(Date.now() - 60_000).toISOString()
+      })}\n`,
+      "utf8"
+    );
+    server!.setAutoAssistantResponses(true);
+
+    const waited = await backend.wait({ jobId: started.jobId }, 1000);
+
+    expect(waited).toMatchObject({
+      requestedJobId: started.jobId,
+      selectedAttemptJobId: expect.stringMatching(/^job_/),
+      attemptChain: [
+        expect.objectContaining({ jobId: started.jobId, attempt: 0 }),
+        expect.objectContaining({ attempt: 1, recoveryReason: "rescue_provider_zero_progress", selected: true })
+      ]
+    });
+    expect(waited.jobId).not.toBe(started.jobId);
+  });
+
   it("marks default zero-progress placeholders as stalled after the bounded no-progress window", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
