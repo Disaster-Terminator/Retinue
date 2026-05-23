@@ -25081,14 +25081,14 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
       if (responseJobId !== jobId) {
         agentPool.replace(jobId, responseJobId);
       }
-      const status = await backend.status({ jobId: responseJobId });
-      const responseStatus = isJobMeta(status) ? status.status : waited.status;
+      const stateDir = resolveStateDir({
+        explicitStateDir: process.env.RETINUE_STATE_DIR,
+        env: process.env
+      });
+      const status = waited.status === "running" ? await readRetinueJobMeta(stateDir, responseJobId) : await backend.status({ jobId: responseJobId });
+      const responseStatus = waited.status === "running" ? "running" : isJobMeta(status) ? status.status : waited.status;
       if (responseStatus === "running") {
-        const stateDir2 = resolveStateDir({
-          explicitStateDir: process.env.RETINUE_STATE_DIR,
-          env: process.env
-        });
-        const paths2 = getJobPaths(stateDir2, responseJobId);
+        const paths2 = getJobPaths(stateDir, responseJobId);
         const [stdoutTail, stderrTail, diagnostic2] = await Promise.all([
           readTextTailIfExists(paths2.stdout, 4096),
           readTextTailIfExists(paths2.stderr, 4096),
@@ -25107,7 +25107,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
           updatedAt: isJobMeta(status) ? status.updatedAt : void 0,
           externalSessionId: isJobMeta(status) ? status.externalSessionId : void 0,
           externalServerUrl: isJobMeta(status) ? status.externalServerUrl : void 0,
-          stateDir: stateDir2,
+          stateDir,
           jobDir: paths2.dir,
           promptPath: paths2.prompt,
           stdoutPath: paths2.stdout,
@@ -25120,15 +25120,11 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
           stderrTailTruncated: stderrTail.truncated,
           diagnostic: diagnostic2,
           ...attentionFields(diagnostic2),
-          tracePath: getRetinueTracePath(stateDir2),
+          tracePath: getRetinueTracePath(stateDir),
           requestedTimeoutMs: timeoutMs,
           effectiveTimeoutMs
         });
       }
-      const stateDir = resolveStateDir({
-        explicitStateDir: process.env.RETINUE_STATE_DIR,
-        env: process.env
-      });
       const paths = getJobPaths(stateDir, responseJobId);
       const result = await backend.result({ jobId: responseJobId });
       const diagnostic = await readLatestJobDiagnostic(paths.stderr);
@@ -25843,6 +25839,13 @@ async function readRetinueJobBackendKind(jobId) {
   try {
     const meta = JSON.parse(await fs6.readFile(getJobPaths(stateDir, jobId).meta, "utf8"));
     return meta.backend === "opencode" || meta.backend === "claude-code" ? meta.backend : void 0;
+  } catch {
+    return void 0;
+  }
+}
+async function readRetinueJobMeta(stateDir, jobId) {
+  try {
+    return JSON.parse(await fs6.readFile(getJobPaths(stateDir, jobId).meta, "utf8"));
   } catch {
     return void 0;
   }

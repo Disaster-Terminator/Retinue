@@ -104,16 +104,7 @@ async function runAgentProbe({ agent, rootStateDir, timeoutMs }) {
     const waits = await Promise.all(
       spawns.map(async (spawn) => {
         try {
-          const wait = parseToolJson(
-            await client.callTool(
-              {
-                name: "retinue_wait_agent",
-                arguments: { jobId: spawn.jobId, timeoutMs }
-              },
-              undefined,
-              { timeout: timeoutMs + 30_000 }
-            )
-          );
+          const wait = await waitForTerminal(client, spawn.jobId, timeoutMs);
           return summarizeWait(spawn, wait);
         } catch (error) {
           return {
@@ -173,6 +164,39 @@ function summarizeWait(spawn, wait) {
     readOnlyWriteIntent: wait.diagnostic?.readOnlyWriteIntent,
     stdoutPreview: typeof stdout === "string" ? stdout.slice(0, 240) : ""
   };
+}
+
+async function waitForTerminal(client, jobId, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let lastWait;
+  for (;;) {
+    const remaining = Math.max(0, deadline - Date.now());
+    if (remaining === 0 && lastWait) {
+      return lastWait;
+    }
+    const waitTimeoutMs = Math.max(1, remaining);
+    lastWait = parseToolJson(
+      await client.callTool(
+        {
+          name: "retinue_wait_agent",
+          arguments: { jobId, timeoutMs: waitTimeoutMs }
+        },
+        undefined,
+        { timeout: waitTimeoutMs + 30_000 }
+      )
+    );
+    if (lastWait.status !== "running") {
+      return lastWait;
+    }
+    if (Date.now() >= deadline) {
+      return lastWait;
+    }
+    await sleep(500);
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function ensureStateDir(stateDir) {

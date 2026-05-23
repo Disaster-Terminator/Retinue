@@ -129,13 +129,13 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
         if (responseJobId !== jobId) {
             agentPool.replace(jobId, responseJobId);
         }
-        const status = await backend.status({ jobId: responseJobId });
-        const responseStatus = isJobMeta(status) ? status.status : waited.status;
+        const stateDir = resolveStateDir({
+            explicitStateDir: process.env.RETINUE_STATE_DIR,
+            env: process.env
+        });
+        const status = waited.status === "running" ? await readRetinueJobMeta(stateDir, responseJobId) : await backend.status({ jobId: responseJobId });
+        const responseStatus = waited.status === "running" ? "running" : isJobMeta(status) ? status.status : waited.status;
         if (responseStatus === "running") {
-            const stateDir = resolveStateDir({
-                explicitStateDir: process.env.RETINUE_STATE_DIR,
-                env: process.env
-            });
             const paths = getJobPaths(stateDir, responseJobId);
             const [stdoutTail, stderrTail, diagnostic] = await Promise.all([
                 readTextTailIfExists(paths.stdout, 4096),
@@ -173,10 +173,6 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
                 effectiveTimeoutMs
             });
         }
-        const stateDir = resolveStateDir({
-            explicitStateDir: process.env.RETINUE_STATE_DIR,
-            env: process.env
-        });
         const paths = getJobPaths(stateDir, responseJobId);
         const result = await backend.result({ jobId: responseJobId });
         const diagnostic = await readLatestJobDiagnostic(paths.stderr);
@@ -817,6 +813,14 @@ async function readRetinueJobBackendKind(jobId) {
     try {
         const meta = JSON.parse(await fs.readFile(getJobPaths(stateDir, jobId).meta, "utf8"));
         return meta.backend === "opencode" || meta.backend === "claude-code" ? meta.backend : undefined;
+    }
+    catch {
+        return undefined;
+    }
+}
+async function readRetinueJobMeta(stateDir, jobId) {
+    try {
+        return JSON.parse(await fs.readFile(getJobPaths(stateDir, jobId).meta, "utf8"));
     }
     catch {
         return undefined;
