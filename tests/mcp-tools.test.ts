@@ -311,7 +311,7 @@ describe("MCP tools", () => {
       assertRequiredFields(tools.tools, "retinue_close_agent", ["jobId"]);
       assertAbsentFields(tools.tools, "retinue_close_agent", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
       assertAbsentFields(tools.tools, "retinue_list_agents", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
-      assertRequiredFields(tools.tools, "retinue_list_permissions", ["jobId"]);
+      assertOptionalField(tools.tools, "retinue_list_permissions", "jobId");
       assertAbsentFields(tools.tools, "retinue_list_permissions", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
       assertRequiredFields(tools.tools, "retinue_reply_permission", ["jobId", "requestId", "reply"]);
       assertOptionalField(tools.tools, "retinue_reply_permission", "message");
@@ -987,6 +987,44 @@ describe("MCP tools", () => {
         backend: "opencode",
         permissions: [
           expect.objectContaining({
+            id: "per_1",
+            sessionID: spawn.externalSessionId,
+            permission: "external_directory",
+            patterns: ["/home/raystorm/projects/opencode/*"],
+            toolCallID: "call_read"
+          })
+        ]
+      });
+
+      const allPermissions = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_list_permissions",
+          arguments: {}
+        })
+      );
+      expect(allPermissions).toMatchObject({
+        scope: "known_jobs",
+        agents: [
+          expect.objectContaining({
+            jobId: spawn.jobId,
+            backend: "opencode",
+            status: "stalled",
+            permissions: [
+              expect.objectContaining({
+                id: "per_1",
+                sessionID: spawn.externalSessionId,
+                permission: "external_directory",
+                patterns: ["/home/raystorm/projects/opencode/*"],
+                toolCallID: "call_read"
+              })
+            ]
+          })
+        ],
+        permissions: [
+          expect.objectContaining({
+            jobId: spawn.jobId,
+            backend: "opencode",
+            status: "stalled",
             id: "per_1",
             sessionID: spawn.externalSessionId,
             permission: "external_directory",

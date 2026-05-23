@@ -275,12 +275,43 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
     "retinue_list_permissions",
     {
       title: "List Retinue Permissions",
-      description: "List pending OpenCode permission requests for a Retinue child job.",
+      description: "List pending OpenCode permission requests for one Retinue child job, or all known jobs when jobId is omitted.",
       inputSchema: {
-        jobId: z.string()
+        jobId: z.string().optional()
       }
     },
     async ({ jobId }) => {
+      if (jobId === undefined) {
+        const agents = await agentPool.listKnown(retinue);
+        const results = [];
+        for (const agent of agents) {
+          const backend = await createRetinueBackendForJob(retinue, agent.jobId, openCodeSharedRootSessions);
+          if (!isPermissionBridgeBackend(backend)) {
+            continue;
+          }
+          const list = await backend.listPermissions({ jobId: agent.jobId });
+          results.push({
+            jobId: agent.jobId,
+            backend: agent.backend,
+            status: agent.status,
+            task_name: agent.task_name,
+            permissions: list.permissions
+          });
+        }
+        return jsonToolResult({
+          scope: "known_jobs",
+          agents: results,
+          permissions: results.flatMap((result) =>
+            result.permissions.map((permission) => ({
+              ...permission,
+              jobId: result.jobId,
+              backend: result.backend,
+              status: result.status,
+              task_name: result.task_name
+            }))
+          )
+        });
+      }
       const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions);
       if (!isPermissionBridgeBackend(backend)) {
         throw new Error(`Retinue backend ${backend.kind} does not expose OpenCode permissions`);
@@ -699,6 +730,26 @@ class RetinueAgentPool {
         continue;
       }
       if (!isActivePoolStatus(status.status)) {
+        this.entries.delete(entry.jobId);
+        continue;
+      }
+      agents.push({
+        jobId: entry.jobId,
+        task_name: entry.taskName,
+        backend: entry.backend,
+        status: status.status,
+        createdAt: new Date(entry.createdAt).toISOString()
+      });
+    }
+    return agents;
+  }
+
+  async listKnown(retinue: RetinueApi): Promise<ListedRetinueAgent[]> {
+    const agents: ListedRetinueAgent[] = [];
+    for (const entry of [...this.entries.values()].sort((left, right) => left.createdAt - right.createdAt)) {
+      const backend = await createRetinueBackendByKind(entry.backend, retinue);
+      const status = await backend.status({ jobId: entry.jobId });
+      if (!isJobMeta(status)) {
         this.entries.delete(entry.jobId);
         continue;
       }
