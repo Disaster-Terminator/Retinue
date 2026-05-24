@@ -873,6 +873,8 @@ function summarizeJobDiagnostic(value: unknown): Record<string, unknown> | undef
   }
   const event = typeof value.event === "string" ? value.event : undefined;
   const readOnlyWriteIntent = diagnostic.readOnlyWriteIntent === true;
+  const patchPartSummary = createPatchPartSummary(diagnostic, readOnlyWriteIntent);
+  const patchPartsWithoutWriteIntent = patchPartSummary !== undefined;
   return compactRecord({
     event,
     backend: "opencode",
@@ -899,8 +901,9 @@ function summarizeJobDiagnostic(value: unknown): Record<string, unknown> | undef
     lastAssistantModelID: stringValue(diagnostic.lastAssistantModelID),
     lastAssistantAgent: stringValue(diagnostic.lastAssistantAgent),
     lastAssistantMode: stringValue(diagnostic.lastAssistantMode),
-    patchPartCount: numberValue(diagnostic.patchPartCount),
-    readOnlyPatchPartCount: numberValue(diagnostic.readOnlyPatchPartCount),
+    patchPartCount: patchPartsWithoutWriteIntent ? undefined : numberValue(diagnostic.patchPartCount),
+    readOnlyPatchPartCount: patchPartsWithoutWriteIntent ? undefined : numberValue(diagnostic.readOnlyPatchPartCount),
+    patchPartSummary,
     readOnlyWriteIntent,
     readOnlyWriteIntentRecoveryJobMessageCount: numberValue(diagnostic.readOnlyWriteIntentRecoveryJobMessageCount),
     recoveredFromReadOnlyWriteIntent: booleanValue(diagnostic.recoveredFromReadOnlyWriteIntent),
@@ -1005,6 +1008,7 @@ function createDiagnosticSummaryMessage(event: string | undefined, diagnostic: R
   if (diagnostic.readOnlyWriteIntent === true) {
     return "OpenCode read-only job emitted patch/write intent; treat the child output as untrusted and inspect diagnostics.";
   }
+  const patchPartSummary = createPatchPartSummary(diagnostic, false);
   if (event === "opencode_job_stalled") {
     return "OpenCode job was classified as stalled by Retinue stall rules.";
   }
@@ -1015,6 +1019,9 @@ function createDiagnosticSummaryMessage(event: string | undefined, diagnostic: R
     return "OpenCode prompt submission failed before the child job became usable.";
   }
   if (event === "opencode_job_result_read") {
+    if (patchPartSummary) {
+      return `OpenCode job result was read successfully. ${patchPartSummary}`;
+    }
     return "OpenCode job result was read successfully.";
   }
   const rounds = numberValue(diagnostic.toolCallAssistantRounds) ?? 0;
@@ -1024,6 +1031,14 @@ function createDiagnosticSummaryMessage(event: string | undefined, diagnostic: R
   const runningReadToolParts = numberValue(diagnostic.runningReadToolParts) ?? 0;
   const incomplete = diagnostic.incompleteAssistantRound === true;
   return `OpenCode job is still running after wait timeout; toolCallAssistantRounds=${rounds}, emptyAssistantRounds=${emptyRounds}, blankAssistantRounds=${blankRounds}, zeroProgressAssistantRounds=${zeroProgressRounds}, runningReadToolParts=${runningReadToolParts}, incompleteAssistantRound=${incomplete}.`;
+}
+
+function createPatchPartSummary(diagnostic: Record<string, unknown>, readOnlyWriteIntent: boolean): string | undefined {
+  const patchPartCount = numberValue(diagnostic.patchPartCount) ?? 0;
+  if (patchPartCount <= 0 || readOnlyWriteIntent) {
+    return undefined;
+  }
+  return "OpenCode patch part(s) were observed, but no write-capable tool call was detected; do not treat patchPartCount alone as write intent.";
 }
 
 function compactRecord(record: Record<string, unknown>): Record<string, unknown> {

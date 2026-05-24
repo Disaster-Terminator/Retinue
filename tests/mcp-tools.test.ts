@@ -503,6 +503,54 @@ describe("MCP tools", () => {
     }
   });
 
+  it("clarifies OpenCode patch parts without write intent in agent-facing diagnostics", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-opencode-patch-summary-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    fakeOpenCode.setAutoAssistantResponses(false);
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+
+      const spawn = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "read-only review", task_name: "patch-summary" }
+        })
+      );
+      fakeOpenCode.appendPatchAssistant(spawn.externalSessionId, "review text");
+      fakeOpenCode.completeSessionWithFinalText(spawn.externalSessionId, "final review");
+
+      const wait = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_wait_agent",
+          arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
+        })
+      );
+
+      expect(wait).toMatchObject({
+        task_name: "patch-summary",
+        jobId: spawn.jobId,
+        status: "completed",
+        diagnostic: {
+          event: "opencode_job_result_read",
+          status: "completed",
+          readOnlyWriteIntent: false,
+          patchPartSummary: expect.stringContaining("do not treat patchPartCount alone as write intent")
+        }
+      });
+      expect(wait.diagnostic).not.toHaveProperty("patchPartCount");
+      expect(wait.diagnostic).not.toHaveProperty("readOnlyPatchPartCount");
+      expect(wait.diagnostic.message).toContain("OpenCode job result was read successfully");
+      expect(wait.diagnostic.message).toContain("do not treat patchPartCount alone as write intent");
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("scopes shared OpenCode roots to one MCP server session", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-shared-root-"));
     const fakeOpenCode = await startFakeOpenCodeServer();
