@@ -6,6 +6,7 @@ export interface AuditRetinueLogsOptions {
     since?: Date;
     maxBytes?: number;
     maxLines?: number;
+    reconcileStatus?: (jobId: string, meta: Record<string, unknown>) => Promise<string | undefined>;
 }
 export interface RetinueLogAuditIssue {
     signature: string;

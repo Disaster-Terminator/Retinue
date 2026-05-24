@@ -430,4 +430,60 @@ describe("Retinue log audit", () => {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("uses an injected reconciler to suppress live-completed stale stalled jobs", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-live-reconcile-"));
+    try {
+      const tracePath = path.join(tempDir, "logs", "retinue.jsonl");
+      fs.mkdirSync(path.dirname(tracePath), { recursive: true });
+      fs.mkdirSync(path.join(tempDir, "jobs", "job_late_completed"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tempDir, "jobs", "job_late_completed", "meta.json"),
+        JSON.stringify({
+          jobId: "job_late_completed",
+          backend: "opencode",
+          status: "stalled",
+          externalServerUrl: "http://127.0.0.1:4096",
+          externalSessionId: "ses_late_completed",
+          updatedAt: "2026-05-24T16:39:33.000Z"
+        })
+      );
+      fs.writeFileSync(
+        tracePath,
+        [
+          JSON.stringify({
+            time: "2026-05-24T16:39:33.000Z",
+            event: "opencode_job_stalled",
+            jobId: "job_late_completed",
+            status: "stalled",
+            diagnostic: {
+              stallReason: "provider_zero_progress",
+              stallSummary: "OpenCode provider/router produced zero-progress assistant output for 60056ms.",
+              lastAssistantProviderID: "litellm",
+              lastAssistantModelID: "intentmux",
+              lastAssistantAgent: "explore",
+              lastAssistantMode: "explore"
+            }
+          })
+        ].join("\n")
+      );
+      const reconciled: string[] = [];
+
+      const parsed = await auditRetinueLogs({
+        stateDir: tempDir,
+        tracePath,
+        since: new Date("2026-05-24T16:30:00.000Z"),
+        reconcileStatus: async (jobId, meta) => {
+          reconciled.push(`${jobId}:${String(meta.externalSessionId)}`);
+          return "completed";
+        }
+      });
+
+      expect(reconciled).toEqual(["job_late_completed:ses_late_completed"]);
+      expect(parsed.issueCount).toBe(0);
+      expect(parsed.ignoredCompletedJobIds).toEqual(["job_late_completed"]);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });

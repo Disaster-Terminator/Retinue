@@ -11,7 +11,7 @@ export async function auditRetinueLogs(options = {}) {
         maxLines: options.maxLines ?? DEFAULT_LOG_AUDIT_MAX_LINES,
         since: options.since
     });
-    const latestStatusByJobId = await collectLatestStatusByJobId(events, stateDir);
+    const latestStatusByJobId = await collectLatestStatusByJobId(events, stateDir, options.reconcileStatus);
     const latestEventByJobId = collectLatestEventByJobId(events);
     const attemptRootByJobId = await collectAttemptRoots(events, stateDir);
     const issues = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId);
@@ -252,7 +252,7 @@ function completedJobIds(latestStatusByJobId) {
         .map(([jobId]) => jobId)
         .sort();
 }
-async function collectLatestStatusByJobId(events, stateDir) {
+async function collectLatestStatusByJobId(events, stateDir, reconcileStatus) {
     const statuses = new Map();
     const eventJobIds = new Set();
     for (const event of events) {
@@ -274,10 +274,15 @@ async function collectLatestStatusByJobId(events, stateDir) {
         if (!meta || typeof meta.status !== "string") {
             continue;
         }
+        const reconciledStatus = await reconcileStatus?.(jobId, meta);
+        const status = reconciledStatus ?? meta.status;
+        if (typeof status !== "string") {
+            continue;
+        }
         const timestamp = typeof meta.updatedAt === "string" ? meta.updatedAt : "";
         const current = statuses.get(jobId);
-        if (!current || meta.status === "completed" || timestamp >= current.timestamp) {
-            statuses.set(jobId, { status: meta.status, timestamp });
+        if (!current || status === "completed" || timestamp >= current.timestamp) {
+            statuses.set(jobId, { status, timestamp });
         }
     }
     return new Map([...statuses].map(([jobId, value]) => [jobId, value.status]));

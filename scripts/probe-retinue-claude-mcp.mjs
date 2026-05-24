@@ -24,6 +24,8 @@ async function main() {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "retinue-claude-real-probe", version: "0.1.0" });
   const server = createMcpServer();
+  let spawnedJobId;
+  let close;
 
   try {
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
@@ -37,6 +39,7 @@ async function main() {
         }
       })
     );
+    spawnedJobId = spawn.jobId;
 
     const wait = permissionProbe
       ? await waitThroughPermission(client, spawn.jobId, options.timeoutMs)
@@ -48,12 +51,13 @@ async function main() {
         );
     const actual = assertExpectedResult(wait.result, permissionProbe ? "RETINUE_CLAUDE_PERMISSION_OK" : options.expected);
 
-    const close = parseToolJson(
+    close = parseToolJson(
       await client.callTool({
         name: "retinue_close_agent",
         arguments: { jobId: spawn.jobId }
       })
     );
+    spawnedJobId = undefined;
 
     process.stdout.write(
       `${JSON.stringify(
@@ -75,9 +79,23 @@ async function main() {
       )}\n`
     );
   } finally {
+    if (spawnedJobId) {
+      await bestEffortClose(client, spawnedJobId);
+    }
     await Promise.allSettled([client.close(), clientTransport.close(), serverTransport.close()]);
     restoreEnv("RETINUE_STATE_DIR", previousStateDir);
     restoreEnv("RETINUE_BACKEND", previousBackend);
+  }
+}
+
+async function bestEffortClose(client, jobId) {
+  try {
+    await client.callTool({
+      name: "retinue_close_agent",
+      arguments: { jobId }
+    });
+  } catch {
+    // Preserve the original probe failure.
   }
 }
 

@@ -58713,7 +58713,7 @@ async function auditRetinueLogs(options = {}) {
     maxLines: options.maxLines ?? DEFAULT_LOG_AUDIT_MAX_LINES,
     since: options.since
   });
-  const latestStatusByJobId = await collectLatestStatusByJobId(events, stateDir);
+  const latestStatusByJobId = await collectLatestStatusByJobId(events, stateDir, options.reconcileStatus);
   const latestEventByJobId = collectLatestEventByJobId(events);
   const attemptRootByJobId = await collectAttemptRoots(events, stateDir);
   const issues = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId);
@@ -58945,7 +58945,7 @@ function sampleSpecificityScore(sample) {
 function completedJobIds(latestStatusByJobId) {
   return [...latestStatusByJobId.entries()].filter(([, status]) => status === "completed").map(([jobId]) => jobId).sort();
 }
-async function collectLatestStatusByJobId(events, stateDir) {
+async function collectLatestStatusByJobId(events, stateDir, reconcileStatus) {
   const statuses = /* @__PURE__ */ new Map();
   const eventJobIds = /* @__PURE__ */ new Set();
   for (const event of events) {
@@ -58967,10 +58967,15 @@ async function collectLatestStatusByJobId(events, stateDir) {
     if (!meta3 || typeof meta3.status !== "string") {
       continue;
     }
+    const reconciledStatus = await reconcileStatus?.(jobId, meta3);
+    const status = reconciledStatus ?? meta3.status;
+    if (typeof status !== "string") {
+      continue;
+    }
     const timestamp = typeof meta3.updatedAt === "string" ? meta3.updatedAt : "";
     const current = statuses.get(jobId);
-    if (!current || meta3.status === "completed" || timestamp >= current.timestamp) {
-      statuses.set(jobId, { status: meta3.status, timestamp });
+    if (!current || status === "completed" || timestamp >= current.timestamp) {
+      statuses.set(jobId, { status, timestamp });
     }
   }
   return new Map([...statuses].map(([jobId, value]) => [jobId, value.status]));

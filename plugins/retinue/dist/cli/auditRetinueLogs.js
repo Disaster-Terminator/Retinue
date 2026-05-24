@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { DEFAULT_LOG_AUDIT_MAX_BYTES, DEFAULT_LOG_AUDIT_MAX_LINES, auditRetinueLogs } from "../core/logAudit.js";
+import { OpenCodeBackend } from "../backends/opencode/backend.js";
+import { OpenCodeClient } from "../backends/opencode/client.js";
 export async function main(args = process.argv.slice(2), env = process.env) {
     const options = parseArgs(args);
     const result = await auditRetinueLogs({
@@ -7,7 +9,8 @@ export async function main(args = process.argv.slice(2), env = process.env) {
         tracePath: options.tracePath,
         since: options.since,
         maxBytes: options.maxBytes,
-        maxLines: options.maxLines
+        maxLines: options.maxLines,
+        reconcileStatus: options.liveReconcile === false ? undefined : createOpenCodeStatusReconciler(options.stateDir ?? env.RETINUE_STATE_DIR, env)
     });
     process.stdout.write(options.compact ? renderCompactAuditResult(result) : `${JSON.stringify(result, null, 2)}\n`);
 }
@@ -48,6 +51,9 @@ function parseArgs(args) {
         else if (arg === "--compact" || arg === "-c") {
             options.compact = true;
         }
+        else if (arg === "--no-live-reconcile") {
+            options.liveReconcile = false;
+        }
         else if (arg === "--help" || arg === "-h") {
             process.stdout.write(helpText());
             process.exit(0);
@@ -69,7 +75,39 @@ function parsePositiveInt(value, label) {
     return parsed;
 }
 function helpText() {
-    return `Usage: retinue-audit-logs [options]\n\nOptions:\n  --state-dir <dir>    Retinue state directory. Defaults to RETINUE_STATE_DIR or ~/.local/state/retinue.\n  --trace <file>       Explicit Retinue trace JSONL path.\n  --since <iso>        Only include events at or after this timestamp.\n  --max-lines <n>      Maximum recent JSONL lines to inspect. Default: ${DEFAULT_LOG_AUDIT_MAX_LINES}.\n  --max-bytes <n>      Maximum bytes to read from the tail. Default: ${DEFAULT_LOG_AUDIT_MAX_BYTES}.\n  --compact, -c        Print compact agent-facing text instead of full JSON.\n`;
+    return `Usage: retinue-audit-logs [options]\n\nOptions:\n  --state-dir <dir>    Retinue state directory. Defaults to RETINUE_STATE_DIR or ~/.local/state/retinue.\n  --trace <file>       Explicit Retinue trace JSONL path.\n  --since <iso>        Only include events at or after this timestamp.\n  --max-lines <n>      Maximum recent JSONL lines to inspect. Default: ${DEFAULT_LOG_AUDIT_MAX_LINES}.\n  --max-bytes <n>      Maximum bytes to read from the tail. Default: ${DEFAULT_LOG_AUDIT_MAX_BYTES}.\n  --compact, -c        Print compact agent-facing text instead of full JSON.\n  --no-live-reconcile  Skip live OpenCode status reconciliation for stale stalled jobs.\n`;
+}
+function createOpenCodeStatusReconciler(stateDir, env) {
+    const backendsByBaseUrl = new Map();
+    return async (jobId, meta) => {
+        if (meta.backend !== "opencode" && meta.backend !== "kilo") {
+            return undefined;
+        }
+        if (meta.status === "completed" || typeof meta.externalServerUrl !== "string" || typeof meta.externalSessionId !== "string") {
+            return undefined;
+        }
+        const baseUrl = meta.externalServerUrl.replace(/\/+$/, "");
+        const existing = backendsByBaseUrl.get(baseUrl);
+        const backend = existing ??
+            new OpenCodeBackend({
+                kind: meta.backend,
+                baseUrl,
+                client: new OpenCodeClient(baseUrl),
+                stateDir,
+                env,
+                onServerIdle: () => { }
+            });
+        if (!existing) {
+            backendsByBaseUrl.set(baseUrl, backend);
+        }
+        try {
+            const status = await backend.status({ jobId });
+            return "status" in status ? status.status : undefined;
+        }
+        catch {
+            return undefined;
+        }
+    };
 }
 export function renderCompactAuditResult(result) {
     const lines = [
