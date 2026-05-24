@@ -1,109 +1,101 @@
-import { fetchWithTimeout } from "../../core/http.js";
+import { createOpencodeClient, type OpencodeClient } from "@opencode-ai/sdk/v2/client";
+import type { AgentPartInput, FilePartInput, SubtaskPartInput, TextPartInput } from "@opencode-ai/sdk/v2/client";
+import type {
+  OpenCodeAgentInfo,
+  OpenCodeMessage,
+  OpenCodePermissionReply,
+  OpenCodePermissionRequest,
+  OpenCodePermissionRule,
+  OpenCodePromptPart,
+  OpenCodeSession
+} from "./legacyClient.js";
+import { OpenCodeClient as LegacyOpenCodeClient, OpenCodeClientError } from "./legacyClient.js";
 
-export interface OpenCodeSession {
-  id: string;
-  title?: string;
-  parentID?: string;
-  agent?: string;
-  permission?: OpenCodePermissionRule[];
-  directory?: string;
-  cwd?: string;
-  [key: string]: unknown;
-}
+export type {
+  OpenCodeAgentInfo,
+  OpenCodeMessage,
+  OpenCodePermissionReply,
+  OpenCodePermissionRequest,
+  OpenCodePermissionRule,
+  OpenCodePromptPart,
+  OpenCodeSession
+} from "./legacyClient.js";
+export { OpenCodeClientError } from "./legacyClient.js";
 
-export interface OpenCodeMessage {
-  info?: {
-    id?: string;
-    sessionID?: string;
-    role?: string;
-    [key: string]: unknown;
-  };
-  parts?: Array<{
-    type?: string;
-    text?: string;
-    [key: string]: unknown;
-  }>;
-  [key: string]: unknown;
-}
-
-export interface OpenCodePermissionRule {
-  permission: string;
-  pattern: string;
-  action: "allow" | "deny" | "ask";
-}
-
-export interface OpenCodePermissionRequest {
-  id: string;
-  sessionID: string;
-  permission: string;
-  patterns: string[];
-  metadata?: Record<string, unknown>;
-  always?: string[];
-  tool?: {
-    messageID?: string;
-    callID?: string;
-  };
-  [key: string]: unknown;
-}
-
-export type OpenCodePermissionReply = "once" | "always" | "reject";
-
-export interface OpenCodeAgentInfo {
-  name: string;
-  mode?: "subagent" | "primary" | "all";
-  permission?: OpenCodePermissionRule[];
-  model?: {
-    providerID?: string;
-    modelID?: string;
-  };
-  [key: string]: unknown;
-}
-
-export type OpenCodePromptPart =
-  | { type: "text"; text: string }
-  | { type: "subtask"; description: string; agent: string; prompt: string; model?: string; command?: string };
-
-export class OpenCodeClientError extends Error {
-  constructor(
-    message: string,
-    readonly code: string,
-    readonly status?: number,
-    readonly path?: string,
-    readonly details?: unknown
-  ) {
-    super(message);
-    this.name = "OpenCodeClientError";
-  }
-}
+type OpenCodeClientImplementation = "sdk" | "legacy";
+type ModelOverrideFormat = "provider-model" | "model-id";
+type SdkPromptPart = TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput;
+type SdkRequestResult<T> =
+  | {
+      data: T;
+      error: undefined;
+      request: Request;
+      response: Response;
+    }
+  | {
+      data: undefined;
+      error: unknown;
+      request: Request;
+      response: Response;
+    };
 
 export class OpenCodeClient {
-  private readonly baseUrl: string;
+  private readonly implementation: OpenCodeClientImplementation;
+  private readonly legacy?: LegacyOpenCodeClient;
+  private readonly sdk?: OpencodeClient;
   private readonly timeoutMs: number;
-  private readonly modelOverrideFormat: "provider-model" | "model-id";
+  private readonly modelOverrideFormat: ModelOverrideFormat;
 
-  constructor(baseUrl: string, options: { timeoutMs?: number; modelOverrideFormat?: "provider-model" | "model-id" } = {}) {
-    this.baseUrl = baseUrl.replace(/\/+$/, "");
+  constructor(
+    baseUrl: string,
+    options: {
+      timeoutMs?: number;
+      modelOverrideFormat?: ModelOverrideFormat;
+      implementation?: OpenCodeClientImplementation;
+    } = {}
+  ) {
     this.timeoutMs = options.timeoutMs ?? 30_000;
     this.modelOverrideFormat = options.modelOverrideFormat ?? "provider-model";
+    this.implementation = resolveImplementation(options.implementation, this.modelOverrideFormat);
+    if (this.implementation === "legacy") {
+      this.legacy = new LegacyOpenCodeClient(baseUrl, {
+        timeoutMs: this.timeoutMs,
+        modelOverrideFormat: this.modelOverrideFormat
+      });
+      return;
+    }
+    this.sdk = createOpencodeClient({
+      baseUrl,
+      fetch: createTimeoutFetch(this.timeoutMs)
+    });
   }
 
   health(): Promise<unknown> {
-    return this.request("GET", "/global/health");
+    if (this.legacy) {
+      return this.legacy.health();
+    }
+    return this.unwrap("/global/health", this.sdk!.global.health());
   }
 
   agents(): Promise<OpenCodeAgentInfo[]> {
-    return this.request("GET", "/agent");
+    if (this.legacy) {
+      return this.legacy.agents();
+    }
+    return this.unwrap("/agent", this.sdk!.app.agents()) as Promise<OpenCodeAgentInfo[]>;
   }
 
   permissions(): Promise<OpenCodePermissionRequest[]> {
-    return this.request("GET", "/permission");
+    if (this.legacy) {
+      return this.legacy.permissions();
+    }
+    return this.unwrap("/permission", this.sdk!.permission.list()) as Promise<OpenCodePermissionRequest[]>;
   }
 
-  replyPermission(requestId: string, reply: OpenCodePermissionReply, message?: string): Promise<void> {
-    return this.requestVoid("POST", `/permission/${encodeURIComponent(requestId)}/reply`, {
-      reply,
-      message
-    });
+  async replyPermission(requestId: string, reply: OpenCodePermissionReply, message?: string): Promise<void> {
+    if (this.legacy) {
+      return this.legacy.replyPermission(requestId, reply, message);
+    }
+    await this.unwrap(`/permission/${encodeURIComponent(requestId)}/reply`, this.sdk!.permission.reply({ requestID: requestId, reply, message }));
   }
 
   createSession(
@@ -117,124 +109,177 @@ export class OpenCodeClient {
       permission?: OpenCodePermissionRule[];
     } = {}
   ): Promise<OpenCodeSession> {
-    return this.request("POST", "/session", {
-      title: options.title,
-      parentID: options.parentID,
-      agent: options.agent,
-      model: formatModelOverride(options.model, this.modelOverrideFormat),
-      workspaceID: options.workspaceID,
-      permission: options.permission,
-      directory: options.cwd
-    });
+    if (this.legacy) {
+      return this.legacy.createSession(options);
+    }
+    const model = formatSessionModel(formatModelOverride(options.model, this.modelOverrideFormat));
+    return this.unwrap(
+      "/session",
+      this.sdk!.session.create({
+        directory: options.cwd,
+        title: options.title,
+        parentID: options.parentID,
+        agent: options.agent,
+        model,
+        workspaceID: options.workspaceID,
+        permission: options.permission
+      })
+    ) as Promise<OpenCodeSession>;
   }
 
   listSessions(): Promise<OpenCodeSession[]> {
-    return this.request("GET", "/session");
+    if (this.legacy) {
+      return this.legacy.listSessions();
+    }
+    return this.unwrap("/session", this.sdk!.session.list()) as Promise<OpenCodeSession[]>;
   }
 
   getSession(sessionId: string): Promise<OpenCodeSession> {
-    return this.request("GET", `/session/${encodeURIComponent(sessionId)}`);
+    if (this.legacy) {
+      return this.legacy.getSession(sessionId);
+    }
+    return this.unwrap(`/session/${encodeURIComponent(sessionId)}`, this.sdk!.session.get({ sessionID: sessionId })) as Promise<OpenCodeSession>;
   }
 
   children(sessionId: string): Promise<OpenCodeSession[]> {
-    return this.request("GET", `/session/${encodeURIComponent(sessionId)}/children`);
+    if (this.legacy) {
+      return this.legacy.children(sessionId);
+    }
+    return this.unwrap(`/session/${encodeURIComponent(sessionId)}/children`, this.sdk!.session.children({ sessionID: sessionId })) as Promise<
+      OpenCodeSession[]
+    >;
   }
 
-  promptAsync(
+  async promptAsync(
     sessionId: string,
     options: { prompt?: string; parts?: OpenCodePromptPart[]; model?: string; agent?: string; tools?: Record<string, boolean> }
   ): Promise<void> {
-    return this.requestVoid("POST", `/session/${encodeURIComponent(sessionId)}/prompt_async`, {
-      model: formatModelOverride(options.model, this.modelOverrideFormat),
-      agent: options.agent,
-      tools: options.tools,
-      parts: options.parts ?? [{ type: "text", text: options.prompt ?? "" }]
-    });
+    if (this.legacy) {
+      return this.legacy.promptAsync(sessionId, options);
+    }
+    await this.unwrap(
+      `/session/${encodeURIComponent(sessionId)}/prompt_async`,
+      this.sdk!.session.promptAsync({
+        sessionID: sessionId,
+        model: formatSdkPromptModel(formatModelOverride(options.model, this.modelOverrideFormat)),
+        agent: options.agent,
+        tools: options.tools,
+        parts: formatPromptParts(options.parts ?? [{ type: "text", text: options.prompt ?? "" }])
+      })
+    );
   }
 
   messages(sessionId: string): Promise<OpenCodeMessage[]> {
-    return this.request("GET", `/session/${encodeURIComponent(sessionId)}/message`);
+    if (this.legacy) {
+      return this.legacy.messages(sessionId);
+    }
+    return this.unwrap(`/session/${encodeURIComponent(sessionId)}/message`, this.sdk!.session.messages({ sessionID: sessionId })) as Promise<
+      OpenCodeMessage[]
+    >;
   }
 
   abort(sessionId: string): Promise<unknown> {
-    return this.request("POST", `/session/${encodeURIComponent(sessionId)}/abort`, {});
+    if (this.legacy) {
+      return this.legacy.abort(sessionId);
+    }
+    return this.unwrap(`/session/${encodeURIComponent(sessionId)}/abort`, this.sdk!.session.abort({ sessionID: sessionId }));
   }
 
-  private async request<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
-    const response = await this.fetch(method, path, body);
-    const text = await response.text();
-    if (!response.ok) {
-      const parsed = parseJson(text);
-      const details = parsed.ok ? parsed.value : text;
-      const message = parsed.ok ? extractErrorMessage(parsed.value) : undefined;
-      throw new OpenCodeClientError(message ?? `OpenCode request failed with HTTP ${response.status}`, "http_error", response.status, path, details);
-    }
-    const parsed = parseJson(text);
-    if (!parsed.ok) {
-      throw new OpenCodeClientError("OpenCode response was not valid JSON", "invalid_json", response.status, path, text);
-    }
-    return parsed.value as T;
-  }
-
-  private async requestVoid(method: "GET" | "POST", path: string, body?: unknown): Promise<void> {
-    const response = await this.fetch(method, path, body);
-    if (!response.ok) {
-      const text = await response.text();
-      const parsed = parseJson(text);
-      const details = parsed.ok ? parsed.value : text;
-      const message = parsed.ok ? extractErrorMessage(parsed.value) : undefined;
-      throw new OpenCodeClientError(message ?? `OpenCode request failed with HTTP ${response.status}`, "http_error", response.status, path, details);
-    }
-  }
-
-  private async fetch(method: "GET" | "POST", path: string, body?: unknown): Promise<Response> {
-    let response: Response;
+  private async unwrap<T>(path: string, promise: Promise<SdkRequestResult<T>>): Promise<T> {
     try {
-      response = await fetchWithTimeout(`${this.baseUrl}${path}`, {
-        method,
-        headers: method === "POST" ? { "content-type": "application/json" } : undefined,
-        body: method === "POST" ? JSON.stringify(body ?? {}) : undefined
-      }, this.timeoutMs);
+      const result = await promise;
+      if (result.error !== undefined) {
+        throw new OpenCodeClientError(
+          extractErrorMessage(result.error) ?? `OpenCode request failed with HTTP ${result.response.status}`,
+          "http_error",
+          result.response.status,
+          path,
+          result.error
+        );
+      }
+      return result.data as T;
     } catch (error) {
-      throw new OpenCodeClientError(error instanceof Error ? error.message : String(error), "transport_error", 0, path);
+      if (error instanceof OpenCodeClientError) {
+        throw error;
+      }
+      throw new OpenCodeClientError(error instanceof Error ? error.message : String(error), "transport_error", 0, path, error);
     }
-    return response;
   }
 }
 
-function parseJson(text: string): { ok: true; value: unknown } | { ok: false } {
-  if (!text.trim()) {
-    return { ok: true, value: null };
+function resolveImplementation(explicit: OpenCodeClientImplementation | undefined, modelOverrideFormat: ModelOverrideFormat): OpenCodeClientImplementation {
+  if (explicit) {
+    return explicit;
   }
-  try {
-    return { ok: true, value: JSON.parse(text) as unknown };
-  } catch {
-    return { ok: false };
+  const configured = process.env.RETINUE_OPENCODE_CLIENT?.trim().toLowerCase();
+  if (configured === "legacy" || configured === "http") {
+    return "legacy";
   }
+  if (configured === "sdk") {
+    return "sdk";
+  }
+  return modelOverrideFormat === "model-id" ? "legacy" : "sdk";
 }
 
-function extractErrorMessage(value: unknown): string | undefined {
-  if (typeof value !== "object" || value === null) {
+function createTimeoutFetch(timeoutMs: number): typeof fetch {
+  return async (input, init) => {
+    if (timeoutMs <= 0) {
+      return fetch(input, init);
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(input, {
+        ...init,
+        signal: init?.signal ?? controller.signal
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+}
+
+function formatPromptParts(parts: OpenCodePromptPart[]): SdkPromptPart[] {
+  return parts.map((part) => {
+    if (part.type !== "subtask" || part.model === undefined) {
+      return part as SdkPromptPart;
+    }
+    return {
+      ...part,
+      model: formatModelOverride(part.model)
+    } as SdkPromptPart;
+  });
+}
+
+function formatSessionModel(model: { providerID?: string; modelID: string } | undefined): { providerID: string; id: string } | undefined {
+  if (model === undefined) {
     return undefined;
   }
-  if ("message" in value) {
-    return String(value.message);
+  if (!model.providerID) {
+    throw new OpenCodeClientError("OpenCode SDK session model override requires provider/model", "invalid_model");
   }
-  if ("error" in value) {
-    const error = value.error;
-    if (typeof error === "string") {
-      return error;
-    }
-    if (typeof error === "object" && error !== null && "message" in error) {
-      return String(error.message);
-    }
+  return {
+    providerID: model.providerID,
+    id: model.modelID
+  };
+}
+
+function formatSdkPromptModel(model: { providerID?: string; modelID: string } | undefined): { providerID: string; modelID: string } | undefined {
+  if (model === undefined) {
+    return undefined;
   }
-  return undefined;
+  if (!model.providerID) {
+    throw new OpenCodeClientError("OpenCode SDK prompt model override requires provider/model", "invalid_model");
+  }
+  return {
+    providerID: model.providerID,
+    modelID: model.modelID
+  };
 }
 
 function formatModelOverride(
   model: string | undefined,
-  format: "provider-model" | "model-id" = "provider-model"
+  format: ModelOverrideFormat = "provider-model"
 ): { providerID?: string; modelID: string } | undefined {
   if (model === undefined) {
     return undefined;
@@ -250,4 +295,23 @@ function formatModelOverride(
     providerID: model.slice(0, separator),
     modelID: model.slice(separator + 1)
   };
+}
+
+function extractErrorMessage(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null) {
+    return typeof value === "string" ? value : undefined;
+  }
+  if ("message" in value) {
+    return String(value.message);
+  }
+  if ("error" in value) {
+    const error = value.error;
+    if (typeof error === "string") {
+      return error;
+    }
+    if (typeof error === "object" && error !== null && "message" in error) {
+      return String(error.message);
+    }
+  }
+  return undefined;
 }

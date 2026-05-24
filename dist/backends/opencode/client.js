@@ -1,144 +1,190 @@
-import { fetchWithTimeout } from "../../core/http.js";
-export class OpenCodeClientError extends Error {
-    code;
-    status;
-    path;
-    details;
-    constructor(message, code, status, path, details) {
-        super(message);
-        this.code = code;
-        this.status = status;
-        this.path = path;
-        this.details = details;
-        this.name = "OpenCodeClientError";
-    }
-}
+import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
+import { OpenCodeClient as LegacyOpenCodeClient, OpenCodeClientError } from "./legacyClient.js";
+export { OpenCodeClientError } from "./legacyClient.js";
 export class OpenCodeClient {
-    baseUrl;
+    implementation;
+    legacy;
+    sdk;
     timeoutMs;
     modelOverrideFormat;
     constructor(baseUrl, options = {}) {
-        this.baseUrl = baseUrl.replace(/\/+$/, "");
         this.timeoutMs = options.timeoutMs ?? 30_000;
         this.modelOverrideFormat = options.modelOverrideFormat ?? "provider-model";
-    }
-    health() {
-        return this.request("GET", "/global/health");
-    }
-    agents() {
-        return this.request("GET", "/agent");
-    }
-    permissions() {
-        return this.request("GET", "/permission");
-    }
-    replyPermission(requestId, reply, message) {
-        return this.requestVoid("POST", `/permission/${encodeURIComponent(requestId)}/reply`, {
-            reply,
-            message
+        this.implementation = resolveImplementation(options.implementation, this.modelOverrideFormat);
+        if (this.implementation === "legacy") {
+            this.legacy = new LegacyOpenCodeClient(baseUrl, {
+                timeoutMs: this.timeoutMs,
+                modelOverrideFormat: this.modelOverrideFormat
+            });
+            return;
+        }
+        this.sdk = createOpencodeClient({
+            baseUrl,
+            fetch: createTimeoutFetch(this.timeoutMs)
         });
     }
+    health() {
+        if (this.legacy) {
+            return this.legacy.health();
+        }
+        return this.unwrap("/global/health", this.sdk.global.health());
+    }
+    agents() {
+        if (this.legacy) {
+            return this.legacy.agents();
+        }
+        return this.unwrap("/agent", this.sdk.app.agents());
+    }
+    permissions() {
+        if (this.legacy) {
+            return this.legacy.permissions();
+        }
+        return this.unwrap("/permission", this.sdk.permission.list());
+    }
+    async replyPermission(requestId, reply, message) {
+        if (this.legacy) {
+            return this.legacy.replyPermission(requestId, reply, message);
+        }
+        await this.unwrap(`/permission/${encodeURIComponent(requestId)}/reply`, this.sdk.permission.reply({ requestID: requestId, reply, message }));
+    }
     createSession(options = {}) {
-        return this.request("POST", "/session", {
+        if (this.legacy) {
+            return this.legacy.createSession(options);
+        }
+        const model = formatSessionModel(formatModelOverride(options.model, this.modelOverrideFormat));
+        return this.unwrap("/session", this.sdk.session.create({
+            directory: options.cwd,
             title: options.title,
             parentID: options.parentID,
             agent: options.agent,
-            model: formatModelOverride(options.model, this.modelOverrideFormat),
+            model,
             workspaceID: options.workspaceID,
-            permission: options.permission,
-            directory: options.cwd
-        });
+            permission: options.permission
+        }));
     }
     listSessions() {
-        return this.request("GET", "/session");
+        if (this.legacy) {
+            return this.legacy.listSessions();
+        }
+        return this.unwrap("/session", this.sdk.session.list());
     }
     getSession(sessionId) {
-        return this.request("GET", `/session/${encodeURIComponent(sessionId)}`);
+        if (this.legacy) {
+            return this.legacy.getSession(sessionId);
+        }
+        return this.unwrap(`/session/${encodeURIComponent(sessionId)}`, this.sdk.session.get({ sessionID: sessionId }));
     }
     children(sessionId) {
-        return this.request("GET", `/session/${encodeURIComponent(sessionId)}/children`);
+        if (this.legacy) {
+            return this.legacy.children(sessionId);
+        }
+        return this.unwrap(`/session/${encodeURIComponent(sessionId)}/children`, this.sdk.session.children({ sessionID: sessionId }));
     }
-    promptAsync(sessionId, options) {
-        return this.requestVoid("POST", `/session/${encodeURIComponent(sessionId)}/prompt_async`, {
-            model: formatModelOverride(options.model, this.modelOverrideFormat),
+    async promptAsync(sessionId, options) {
+        if (this.legacy) {
+            return this.legacy.promptAsync(sessionId, options);
+        }
+        await this.unwrap(`/session/${encodeURIComponent(sessionId)}/prompt_async`, this.sdk.session.promptAsync({
+            sessionID: sessionId,
+            model: formatSdkPromptModel(formatModelOverride(options.model, this.modelOverrideFormat)),
             agent: options.agent,
             tools: options.tools,
-            parts: options.parts ?? [{ type: "text", text: options.prompt ?? "" }]
-        });
+            parts: formatPromptParts(options.parts ?? [{ type: "text", text: options.prompt ?? "" }])
+        }));
     }
     messages(sessionId) {
-        return this.request("GET", `/session/${encodeURIComponent(sessionId)}/message`);
+        if (this.legacy) {
+            return this.legacy.messages(sessionId);
+        }
+        return this.unwrap(`/session/${encodeURIComponent(sessionId)}/message`, this.sdk.session.messages({ sessionID: sessionId }));
     }
     abort(sessionId) {
-        return this.request("POST", `/session/${encodeURIComponent(sessionId)}/abort`, {});
-    }
-    async request(method, path, body) {
-        const response = await this.fetch(method, path, body);
-        const text = await response.text();
-        if (!response.ok) {
-            const parsed = parseJson(text);
-            const details = parsed.ok ? parsed.value : text;
-            const message = parsed.ok ? extractErrorMessage(parsed.value) : undefined;
-            throw new OpenCodeClientError(message ?? `OpenCode request failed with HTTP ${response.status}`, "http_error", response.status, path, details);
+        if (this.legacy) {
+            return this.legacy.abort(sessionId);
         }
-        const parsed = parseJson(text);
-        if (!parsed.ok) {
-            throw new OpenCodeClientError("OpenCode response was not valid JSON", "invalid_json", response.status, path, text);
-        }
-        return parsed.value;
+        return this.unwrap(`/session/${encodeURIComponent(sessionId)}/abort`, this.sdk.session.abort({ sessionID: sessionId }));
     }
-    async requestVoid(method, path, body) {
-        const response = await this.fetch(method, path, body);
-        if (!response.ok) {
-            const text = await response.text();
-            const parsed = parseJson(text);
-            const details = parsed.ok ? parsed.value : text;
-            const message = parsed.ok ? extractErrorMessage(parsed.value) : undefined;
-            throw new OpenCodeClientError(message ?? `OpenCode request failed with HTTP ${response.status}`, "http_error", response.status, path, details);
-        }
-    }
-    async fetch(method, path, body) {
-        let response;
+    async unwrap(path, promise) {
         try {
-            response = await fetchWithTimeout(`${this.baseUrl}${path}`, {
-                method,
-                headers: method === "POST" ? { "content-type": "application/json" } : undefined,
-                body: method === "POST" ? JSON.stringify(body ?? {}) : undefined
-            }, this.timeoutMs);
+            const result = await promise;
+            if (result.error !== undefined) {
+                throw new OpenCodeClientError(extractErrorMessage(result.error) ?? `OpenCode request failed with HTTP ${result.response.status}`, "http_error", result.response.status, path, result.error);
+            }
+            return result.data;
         }
         catch (error) {
-            throw new OpenCodeClientError(error instanceof Error ? error.message : String(error), "transport_error", 0, path);
+            if (error instanceof OpenCodeClientError) {
+                throw error;
+            }
+            throw new OpenCodeClientError(error instanceof Error ? error.message : String(error), "transport_error", 0, path, error);
         }
-        return response;
     }
 }
-function parseJson(text) {
-    if (!text.trim()) {
-        return { ok: true, value: null };
+function resolveImplementation(explicit, modelOverrideFormat) {
+    if (explicit) {
+        return explicit;
     }
-    try {
-        return { ok: true, value: JSON.parse(text) };
+    const configured = process.env.RETINUE_OPENCODE_CLIENT?.trim().toLowerCase();
+    if (configured === "legacy" || configured === "http") {
+        return "legacy";
     }
-    catch {
-        return { ok: false };
+    if (configured === "sdk") {
+        return "sdk";
     }
+    return modelOverrideFormat === "model-id" ? "legacy" : "sdk";
 }
-function extractErrorMessage(value) {
-    if (typeof value !== "object" || value === null) {
+function createTimeoutFetch(timeoutMs) {
+    return async (input, init) => {
+        if (timeoutMs <= 0) {
+            return fetch(input, init);
+        }
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            return await fetch(input, {
+                ...init,
+                signal: init?.signal ?? controller.signal
+            });
+        }
+        finally {
+            clearTimeout(timeout);
+        }
+    };
+}
+function formatPromptParts(parts) {
+    return parts.map((part) => {
+        if (part.type !== "subtask" || part.model === undefined) {
+            return part;
+        }
+        return {
+            ...part,
+            model: formatModelOverride(part.model)
+        };
+    });
+}
+function formatSessionModel(model) {
+    if (model === undefined) {
         return undefined;
     }
-    if ("message" in value) {
-        return String(value.message);
+    if (!model.providerID) {
+        throw new OpenCodeClientError("OpenCode SDK session model override requires provider/model", "invalid_model");
     }
-    if ("error" in value) {
-        const error = value.error;
-        if (typeof error === "string") {
-            return error;
-        }
-        if (typeof error === "object" && error !== null && "message" in error) {
-            return String(error.message);
-        }
+    return {
+        providerID: model.providerID,
+        id: model.modelID
+    };
+}
+function formatSdkPromptModel(model) {
+    if (model === undefined) {
+        return undefined;
     }
-    return undefined;
+    if (!model.providerID) {
+        throw new OpenCodeClientError("OpenCode SDK prompt model override requires provider/model", "invalid_model");
+    }
+    return {
+        providerID: model.providerID,
+        modelID: model.modelID
+    };
 }
 function formatModelOverride(model, format = "provider-model") {
     if (model === undefined) {
@@ -155,5 +201,23 @@ function formatModelOverride(model, format = "provider-model") {
         providerID: model.slice(0, separator),
         modelID: model.slice(separator + 1)
     };
+}
+function extractErrorMessage(value) {
+    if (typeof value !== "object" || value === null) {
+        return typeof value === "string" ? value : undefined;
+    }
+    if ("message" in value) {
+        return String(value.message);
+    }
+    if ("error" in value) {
+        const error = value.error;
+        if (typeof error === "string") {
+            return error;
+        }
+        if (typeof error === "object" && error !== null && "message" in error) {
+            return String(error.message);
+        }
+    }
+    return undefined;
 }
 //# sourceMappingURL=client.js.map

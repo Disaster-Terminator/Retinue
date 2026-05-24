@@ -81,7 +81,7 @@ describe("OpenCodeBackend", () => {
       title: "native demo",
       parentID: started.externalParentSessionId,
       agent: "explore",
-      model: { providerID: "local", modelID: "test" }
+      model: { providerID: "local", id: "test" }
     });
     expect(server!.promptRequests.at(-1)).toMatchObject({
       agent: "explore",

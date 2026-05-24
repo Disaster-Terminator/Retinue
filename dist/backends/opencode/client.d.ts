@@ -1,81 +1,18 @@
-export interface OpenCodeSession {
-    id: string;
-    title?: string;
-    parentID?: string;
-    agent?: string;
-    permission?: OpenCodePermissionRule[];
-    directory?: string;
-    cwd?: string;
-    [key: string]: unknown;
-}
-export interface OpenCodeMessage {
-    info?: {
-        id?: string;
-        sessionID?: string;
-        role?: string;
-        [key: string]: unknown;
-    };
-    parts?: Array<{
-        type?: string;
-        text?: string;
-        [key: string]: unknown;
-    }>;
-    [key: string]: unknown;
-}
-export interface OpenCodePermissionRule {
-    permission: string;
-    pattern: string;
-    action: "allow" | "deny" | "ask";
-}
-export interface OpenCodePermissionRequest {
-    id: string;
-    sessionID: string;
-    permission: string;
-    patterns: string[];
-    metadata?: Record<string, unknown>;
-    always?: string[];
-    tool?: {
-        messageID?: string;
-        callID?: string;
-    };
-    [key: string]: unknown;
-}
-export type OpenCodePermissionReply = "once" | "always" | "reject";
-export interface OpenCodeAgentInfo {
-    name: string;
-    mode?: "subagent" | "primary" | "all";
-    permission?: OpenCodePermissionRule[];
-    model?: {
-        providerID?: string;
-        modelID?: string;
-    };
-    [key: string]: unknown;
-}
-export type OpenCodePromptPart = {
-    type: "text";
-    text: string;
-} | {
-    type: "subtask";
-    description: string;
-    agent: string;
-    prompt: string;
-    model?: string;
-    command?: string;
-};
-export declare class OpenCodeClientError extends Error {
-    readonly code: string;
-    readonly status?: number | undefined;
-    readonly path?: string | undefined;
-    readonly details?: unknown | undefined;
-    constructor(message: string, code: string, status?: number | undefined, path?: string | undefined, details?: unknown | undefined);
-}
+import type { OpenCodeAgentInfo, OpenCodeMessage, OpenCodePermissionReply, OpenCodePermissionRequest, OpenCodePermissionRule, OpenCodePromptPart, OpenCodeSession } from "./legacyClient.js";
+export type { OpenCodeAgentInfo, OpenCodeMessage, OpenCodePermissionReply, OpenCodePermissionRequest, OpenCodePermissionRule, OpenCodePromptPart, OpenCodeSession } from "./legacyClient.js";
+export { OpenCodeClientError } from "./legacyClient.js";
+type OpenCodeClientImplementation = "sdk" | "legacy";
+type ModelOverrideFormat = "provider-model" | "model-id";
 export declare class OpenCodeClient {
-    private readonly baseUrl;
+    private readonly implementation;
+    private readonly legacy?;
+    private readonly sdk?;
     private readonly timeoutMs;
     private readonly modelOverrideFormat;
     constructor(baseUrl: string, options?: {
         timeoutMs?: number;
-        modelOverrideFormat?: "provider-model" | "model-id";
+        modelOverrideFormat?: ModelOverrideFormat;
+        implementation?: OpenCodeClientImplementation;
     });
     health(): Promise<unknown>;
     agents(): Promise<OpenCodeAgentInfo[]>;
@@ -102,7 +39,5 @@ export declare class OpenCodeClient {
     }): Promise<void>;
     messages(sessionId: string): Promise<OpenCodeMessage[]>;
     abort(sessionId: string): Promise<unknown>;
-    private request;
-    private requestVoid;
-    private fetch;
+    private unwrap;
 }

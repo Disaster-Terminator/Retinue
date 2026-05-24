@@ -117,6 +117,7 @@ This means:
 - Codex calls Retinue and does not choose the concrete backend.
 - Retinue manages the OpenCode server lifecycle by default. It prefers `127.0.0.1:4096` and tries `4097` through `4127` when earlier ports are occupied by external services.
 - OpenCode uses the active local profile for provider, model, login, plugins, and skills.
+- Retinue calls the local OpenCode server through the official OpenCode SDK; the handwritten HTTP client remains only as a deployment diagnostic and compatibility fallback. This does not change OpenCode ownership of provider and model selection.
 - `explore` is the 0.1.0 default agent. Retinue no longer exposes a product-level `access_mode`, and it no longer overlays its own read-only prompt or tool policy on normal OpenCode children.
 - OpenCode uses the active profile and the selected OpenCode agent/profile semantics for tools and permissions. Retinue only derives TaskTool-compatible session permissions for direct child sessions, such as OpenCode-compatible `todowrite`/`task` deny rules.
 - `retinue_spawn_agent` accepts the task, working directory, task name, and optional OpenCode `agent` choice. Do not pass backend, profile, model, OpenCode server, `access_mode`, or `bash_policy` arguments.

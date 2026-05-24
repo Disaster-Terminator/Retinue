@@ -42,6 +42,32 @@ describe("OpenCodeClient", () => {
     );
   });
 
+  it("leaves the OpenCode model unset by default", async () => {
+    server = await startFakeOpenCodeServer();
+    const client = new OpenCodeClient(server.url);
+    const session = await client.createSession({ cwd: "G:/repository/retinue", title: "model default" });
+
+    expect(server.sessionRequests.at(-1)).not.toHaveProperty("model");
+
+    await client.promptAsync(session.id, { prompt: "model default", agent: "explore" });
+    expect(server.promptRequests.at(-1)).not.toHaveProperty("model");
+  });
+
+  it("can use the legacy HTTP implementation as an explicit fallback", async () => {
+    server = await startFakeOpenCodeServer({ serverCwd: "C:/server-cwd" });
+    const client = new OpenCodeClient(server.url, { implementation: "legacy" });
+
+    const session = await client.createSession({ cwd: "G:/repository/retinue", title: "legacy session" });
+    expect(server.sessionRequests.at(-1)).toMatchObject({ directory: "G:/repository/retinue", title: "legacy session" });
+
+    await client.promptAsync(session.id, { prompt: "legacy hello", model: "local/test", agent: "build" });
+    expect(server.promptRequests.at(-1)).toMatchObject({
+      model: { providerID: "local", modelID: "test" },
+      agent: "build",
+      parts: [{ type: "text", text: "legacy hello" }]
+    });
+  });
+
   it("supports OpenCode native parent/child sessions and subtask prompt parts", async () => {
     server = await startFakeOpenCodeServer({ serverCwd: "G:/repository/retinue" });
     const client = new OpenCodeClient(server.url);

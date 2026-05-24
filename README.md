@@ -116,6 +116,7 @@ Use Retinue to spawn an OpenCode explore subagent. Ask it to reply exactly: RETI
 - Codex 只调用 Retinue，不选择具体后端。
 - Retinue 默认管理 OpenCode server 生命周期，优先使用 `127.0.0.1:4096`，端口被外部服务占用时尝试 `4097` 到 `4127`。
 - OpenCode 使用当前本机 profile，包括 provider、model、login、plugin 和 skill。
+- Retinue 通过官方 OpenCode SDK 调用本机 OpenCode server；手写 HTTP client 只保留为部署诊断/兼容回退。这个选择不改变 OpenCode 对 provider 和 model 的所有权。
 - `explore` 是 0.1.0 的默认 agent。Retinue 不再提供产品级 `access_mode`，也不再用自己的 read-only prompt/tool 覆盖 OpenCode 行为。
 - OpenCode 使用当前 profile，并按 OpenCode agent/profile 语义决定工具和权限。Retinue 只为直接 child session 派生 TaskTool-compatible session permission，例如按 OpenCode 语义补 `todowrite`/`task` deny。
 - `retinue_spawn_agent` 只接受任务、工作目录、任务名和 OpenCode `agent` 选择。不要传 backend、profile、model、OpenCode server、`access_mode` 或 `bash_policy`。

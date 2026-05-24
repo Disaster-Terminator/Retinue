@@ -155,7 +155,8 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
 
     if (request.method === "POST" && url.pathname === "/session") {
       const body = await readJson(request);
-      sessionRequests.push(body);
+      const requestedDirectory = url.searchParams.get("directory") ?? (typeof body.directory === "string" ? body.directory : undefined);
+      sessionRequests.push({ ...body, directory: requestedDirectory });
       const session: FakeSession = {
         id: `ses_${nextSession++}`,
         title: typeof body.title === "string" ? body.title : undefined,
