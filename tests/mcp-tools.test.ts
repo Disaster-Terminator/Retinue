@@ -927,7 +927,7 @@ describe("MCP tools", () => {
     try {
       process.env.RETINUE_STATE_DIR = tempDir;
       process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
-      process.env.RETINUE_OPENCODE_STALL_READ_TOOL_MS = "1";
+      process.env.RETINUE_OPENCODE_STALL_READ_TOOL_MS = "600000";
 
       const spawn = parseToolJson(
         await connection.client.callTool({

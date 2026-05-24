@@ -1505,7 +1505,7 @@ function computeStallDiagnostic(jobMessages, meta, env, pendingPermissions = [])
     const zeroProgressAssistantStalled = zeroProgressAssistantRounds > 0 && durationMs >= zeroProgressAssistantThresholdMs;
     const readToolStalled = runningReadToolParts > 0 && durationMs >= readToolThresholdMs;
     const readToolInvalidInputStalled = malformedReadToolParts > 0 && durationMs >= readToolThresholdMs;
-    const externalDirectoryPermissionStalled = pendingExternalDirectoryPermissionSummaries.length > 0 && durationMs >= readToolThresholdMs;
+    const externalDirectoryPermissionStalled = pendingExternalDirectoryPermissionSummaries.length > 0;
     const completedToolLoopStalled = (toolCallAssistantRounds >= roundThreshold || failedToolCallAssistantRounds > 0) &&
         runningReadToolParts === 0 &&
         !incompleteAssistantRound &&
