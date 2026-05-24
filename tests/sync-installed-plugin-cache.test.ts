@@ -67,7 +67,7 @@ describe("sync-installed-plugin-cache script", () => {
     }
   });
 
-  it("preserves installed Retinue config when applied", async () => {
+  it("refreshes installed Retinue config from the package default", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "retinue-cache-sync-config-test-"));
     try {
       const sourceDir = path.join(tempDir, "source", "retinue");
@@ -87,7 +87,7 @@ describe("sync-installed-plugin-cache script", () => {
       expect(result.status).toBe(0);
       expect(await readFile(path.join(cacheRoot, "retinue-local", "retinue", "0.1.0", "marker.txt"), "utf8")).toBe("new-retinue\n");
       expect(JSON.parse(await readFile(path.join(cacheRoot, "retinue-local", "retinue", "0.1.0", "retinue.config.json"), "utf8"))).toMatchObject({
-        maxConcurrentAgents: 5
+        maxConcurrentAgents: 3
       });
     } finally {
       await rm(tempDir, { recursive: true, force: true });

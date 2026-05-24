@@ -74,7 +74,7 @@ The default plugin path manages the local OpenCode server lifecycle. It prefers 
 
 Retinue HTTP calls to the local daemon or OpenCode server have a 30-second timeout by default. Set `RETINUE_HTTP_TIMEOUT_MS` to tune this for unusual local runtimes, or `0` to disable the client-side timeout.
 
-The Codex plugin ships `retinue.config.json` beside the bootstrap for Retinue-owned defaults:
+The Codex plugin ships `retinue.config.json` beside the bootstrap as a package default:
 
 ```json
 {
@@ -85,7 +85,7 @@ The Codex plugin ships `retinue.config.json` beside the bootstrap for Retinue-ow
 }
 ```
 
-OpenCode profile configuration stays in OpenCode. Retinue-owned defaults live in JSON config, while environment variables remain deployment overrides. In Codex plugin deployments, `mcp-bootstrap.mjs` also reads `RETINUE_*` values from `$CODEX_HOME/config.toml` under `[env]` before starting the MCP runtime, so workstation-level overrides survive plugin cache refreshes that restore the packaged `retinue.config.json` defaults.
+OpenCode profile configuration stays in OpenCode. The cached `retinue.config.json` is not persistent user state: plugin updates, reinstalls, and development cache syncs may restore the packaged copy. Persistent Retinue overrides should use environment variables. In Codex plugin deployments, `mcp-bootstrap.mjs` reads `RETINUE_*` values from `$CODEX_HOME/config.toml` under `[env]` before starting the MCP runtime, so workstation-level overrides survive plugin cache refreshes that restore the packaged `retinue.config.json` defaults.
 
 ## npm Runtime Path
 
