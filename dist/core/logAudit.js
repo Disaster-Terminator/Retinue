@@ -11,9 +11,10 @@ export async function auditRetinueLogs(options = {}) {
         maxLines: options.maxLines ?? DEFAULT_LOG_AUDIT_MAX_LINES,
         since: options.since
     });
-    const latestStatusByJobId = collectLatestStatusByJobId(events);
+    const latestStatusByJobId = await collectLatestStatusByJobId(events, stateDir);
+    const latestEventByJobId = collectLatestEventByJobId(events);
     const attemptRootByJobId = await collectAttemptRoots(events, stateDir);
-    const issues = summarizeIssues(events, latestStatusByJobId, attemptRootByJobId);
+    const issues = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId);
     return {
         ok: true,
         tracePath,
@@ -63,15 +64,20 @@ async function readTail(filePath, maxBytes) {
         await handle.close();
     }
 }
-function summarizeIssues(events, latestStatusByJobId, attemptRootByJobId) {
+function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId) {
     const issuesBySignature = new Map();
     for (const event of events) {
         const diagnostic = isRecord(event.diagnostic) ? event.diagnostic : undefined;
         if (!diagnostic) {
             continue;
         }
-        if (typeof event.jobId === "string" && latestStatusByJobId.get(event.jobId) === "completed") {
-            continue;
+        if (typeof event.jobId === "string") {
+            if (latestStatusByJobId.get(event.jobId) === "completed") {
+                continue;
+            }
+            if (isNonTerminalSoftStallEvent(latestEventByJobId.get(event.jobId))) {
+                continue;
+            }
         }
         const status = event.event === "opencode_job_stalled" || typeof diagnostic.stallReason === "string" ? "stalled" : undefined;
         if (status !== "stalled") {
@@ -246,10 +252,15 @@ function completedJobIds(latestStatusByJobId) {
         .map(([jobId]) => jobId)
         .sort();
 }
-function collectLatestStatusByJobId(events) {
+async function collectLatestStatusByJobId(events, stateDir) {
     const statuses = new Map();
+    const eventJobIds = new Set();
     for (const event of events) {
-        if (typeof event.jobId !== "string" || typeof event.status !== "string") {
+        if (typeof event.jobId !== "string") {
+            continue;
+        }
+        eventJobIds.add(event.jobId);
+        if (typeof event.status !== "string") {
             continue;
         }
         const timestamp = eventTime(event)?.toISOString() ?? "";
@@ -258,7 +269,37 @@ function collectLatestStatusByJobId(events) {
             statuses.set(event.jobId, { status: event.status, timestamp });
         }
     }
+    for (const jobId of eventJobIds) {
+        const meta = await readJobMeta(stateDir, jobId);
+        if (!meta || typeof meta.status !== "string") {
+            continue;
+        }
+        const timestamp = typeof meta.updatedAt === "string" ? meta.updatedAt : "";
+        const current = statuses.get(jobId);
+        if (!current || meta.status === "completed" || timestamp >= current.timestamp) {
+            statuses.set(jobId, { status: meta.status, timestamp });
+        }
+    }
     return new Map([...statuses].map(([jobId, value]) => [jobId, value.status]));
+}
+function collectLatestEventByJobId(events) {
+    const latest = new Map();
+    for (const event of events) {
+        if (typeof event.jobId !== "string" || typeof event.event !== "string") {
+            continue;
+        }
+        const timestamp = eventTime(event)?.toISOString() ?? "";
+        const current = latest.get(event.jobId);
+        if (!current || timestamp >= current.timestamp) {
+            latest.set(event.jobId, { event: event.event, timestamp });
+        }
+    }
+    return new Map([...latest].map(([jobId, value]) => [jobId, value.event]));
+}
+function isNonTerminalSoftStallEvent(event) {
+    return (event === "opencode_job_soft_stall_deferred" ||
+        event === "opencode_job_soft_stall_rescue_submitted" ||
+        event === "opencode_job_soft_stall_rescue_pending");
 }
 function createIssueTitle(diagnostic) {
     const reason = diagnostic.stallReason ?? "unknown_stall";

@@ -323,4 +323,111 @@ describe("Retinue log audit", () => {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("does not report jobs whose latest trace event is still soft-stall rescue pending", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-pending-rescue-"));
+    try {
+      const tracePath = path.join(tempDir, "logs", "retinue.jsonl");
+      fs.mkdirSync(path.dirname(tracePath), { recursive: true });
+      fs.writeFileSync(
+        tracePath,
+        [
+          JSON.stringify({
+            time: "2026-05-24T16:39:33.000Z",
+            event: "opencode_job_stalled",
+            jobId: "job_pending",
+            status: "stalled",
+            diagnostic: {
+              stallReason: "incomplete_assistant_round",
+              stallSummary: "OpenCode left the latest assistant round incomplete for 45188ms.",
+              lastAssistantProviderID: "litellm",
+              lastAssistantModelID: "intentmux",
+              lastAssistantAgent: "explore",
+              lastAssistantMode: "explore"
+            }
+          }),
+          JSON.stringify({
+            time: "2026-05-24T16:39:34.000Z",
+            event: "opencode_job_soft_stall_rescue_submitted",
+            jobId: "job_pending",
+            status: "running",
+            diagnostic: {
+              stallReason: "incomplete_assistant_round",
+              softStallRescueSourceReason: "incomplete_assistant_round",
+              lastAssistantProviderID: "litellm",
+              lastAssistantModelID: "intentmux",
+              lastAssistantAgent: "explore",
+              lastAssistantMode: "explore"
+            }
+          }),
+          JSON.stringify({
+            time: "2026-05-24T16:39:48.000Z",
+            event: "opencode_job_soft_stall_rescue_pending",
+            jobId: "job_pending",
+            status: "stalled",
+            diagnostic: {
+              stallReason: "provider_zero_progress",
+              stallSummary: "OpenCode provider/router produced zero-progress assistant output for 60056ms.",
+              softStallRescueSourceReason: "incomplete_assistant_round",
+              recoveryStallReason: "provider_zero_progress",
+              lastAssistantProviderID: "litellm",
+              lastAssistantModelID: "intentmux",
+              lastAssistantAgent: "build",
+              lastAssistantMode: "build"
+            }
+          })
+        ].join("\n")
+      );
+
+      const parsed = await auditRetinueLogs({ stateDir: tempDir, tracePath, since: new Date("2026-05-24T16:30:00.000Z") });
+
+      expect(parsed.issueCount).toBe(0);
+      expect(parsed.ignoredCompletedJobIds).toEqual([]);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses persisted completed job metadata to suppress stale stalled trace events", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-completed-meta-"));
+    try {
+      const tracePath = path.join(tempDir, "logs", "retinue.jsonl");
+      fs.mkdirSync(path.dirname(tracePath), { recursive: true });
+      fs.mkdirSync(path.join(tempDir, "jobs", "job_completed"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tempDir, "jobs", "job_completed", "meta.json"),
+        JSON.stringify({
+          jobId: "job_completed",
+          status: "completed",
+          updatedAt: "2026-05-24T16:42:08.000Z"
+        })
+      );
+      fs.writeFileSync(
+        tracePath,
+        [
+          JSON.stringify({
+            time: "2026-05-24T16:39:33.000Z",
+            event: "opencode_job_stalled",
+            jobId: "job_completed",
+            status: "stalled",
+            diagnostic: {
+              stallReason: "provider_zero_progress",
+              stallSummary: "OpenCode provider/router produced zero-progress assistant output for 60056ms.",
+              lastAssistantProviderID: "litellm",
+              lastAssistantModelID: "intentmux",
+              lastAssistantAgent: "build",
+              lastAssistantMode: "build"
+            }
+          })
+        ].join("\n")
+      );
+
+      const parsed = await auditRetinueLogs({ stateDir: tempDir, tracePath, since: new Date("2026-05-24T16:30:00.000Z") });
+
+      expect(parsed.issueCount).toBe(0);
+      expect(parsed.ignoredCompletedJobIds).toEqual(["job_completed"]);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });

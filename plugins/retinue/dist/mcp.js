@@ -58713,9 +58713,10 @@ async function auditRetinueLogs(options = {}) {
     maxLines: options.maxLines ?? DEFAULT_LOG_AUDIT_MAX_LINES,
     since: options.since
   });
-  const latestStatusByJobId = collectLatestStatusByJobId(events);
+  const latestStatusByJobId = await collectLatestStatusByJobId(events, stateDir);
+  const latestEventByJobId = collectLatestEventByJobId(events);
   const attemptRootByJobId = await collectAttemptRoots(events, stateDir);
-  const issues = summarizeIssues(events, latestStatusByJobId, attemptRootByJobId);
+  const issues = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId);
   return {
     ok: true,
     tracePath,
@@ -58758,15 +58759,20 @@ async function readTail(filePath, maxBytes) {
     await handle.close();
   }
 }
-function summarizeIssues(events, latestStatusByJobId, attemptRootByJobId) {
+function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId) {
   const issuesBySignature = /* @__PURE__ */ new Map();
   for (const event of events) {
     const diagnostic = isRecord(event.diagnostic) ? event.diagnostic : void 0;
     if (!diagnostic) {
       continue;
     }
-    if (typeof event.jobId === "string" && latestStatusByJobId.get(event.jobId) === "completed") {
-      continue;
+    if (typeof event.jobId === "string") {
+      if (latestStatusByJobId.get(event.jobId) === "completed") {
+        continue;
+      }
+      if (isNonTerminalSoftStallEvent(latestEventByJobId.get(event.jobId))) {
+        continue;
+      }
     }
     const status = event.event === "opencode_job_stalled" || typeof diagnostic.stallReason === "string" ? "stalled" : void 0;
     if (status !== "stalled") {
@@ -58939,10 +58945,15 @@ function sampleSpecificityScore(sample) {
 function completedJobIds(latestStatusByJobId) {
   return [...latestStatusByJobId.entries()].filter(([, status]) => status === "completed").map(([jobId]) => jobId).sort();
 }
-function collectLatestStatusByJobId(events) {
+async function collectLatestStatusByJobId(events, stateDir) {
   const statuses = /* @__PURE__ */ new Map();
+  const eventJobIds = /* @__PURE__ */ new Set();
   for (const event of events) {
-    if (typeof event.jobId !== "string" || typeof event.status !== "string") {
+    if (typeof event.jobId !== "string") {
+      continue;
+    }
+    eventJobIds.add(event.jobId);
+    if (typeof event.status !== "string") {
       continue;
     }
     const timestamp = eventTime(event)?.toISOString() ?? "";
@@ -58951,7 +58962,35 @@ function collectLatestStatusByJobId(events) {
       statuses.set(event.jobId, { status: event.status, timestamp });
     }
   }
+  for (const jobId of eventJobIds) {
+    const meta3 = await readJobMeta(stateDir, jobId);
+    if (!meta3 || typeof meta3.status !== "string") {
+      continue;
+    }
+    const timestamp = typeof meta3.updatedAt === "string" ? meta3.updatedAt : "";
+    const current = statuses.get(jobId);
+    if (!current || meta3.status === "completed" || timestamp >= current.timestamp) {
+      statuses.set(jobId, { status: meta3.status, timestamp });
+    }
+  }
   return new Map([...statuses].map(([jobId, value]) => [jobId, value.status]));
+}
+function collectLatestEventByJobId(events) {
+  const latest = /* @__PURE__ */ new Map();
+  for (const event of events) {
+    if (typeof event.jobId !== "string" || typeof event.event !== "string") {
+      continue;
+    }
+    const timestamp = eventTime(event)?.toISOString() ?? "";
+    const current = latest.get(event.jobId);
+    if (!current || timestamp >= current.timestamp) {
+      latest.set(event.jobId, { event: event.event, timestamp });
+    }
+  }
+  return new Map([...latest].map(([jobId, value]) => [jobId, value.event]));
+}
+function isNonTerminalSoftStallEvent(event) {
+  return event === "opencode_job_soft_stall_deferred" || event === "opencode_job_soft_stall_rescue_submitted" || event === "opencode_job_soft_stall_rescue_pending";
 }
 function createIssueTitle(diagnostic) {
   const reason = diagnostic.stallReason ?? "unknown_stall";

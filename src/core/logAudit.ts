@@ -42,9 +42,10 @@ export async function auditRetinueLogs(options: AuditRetinueLogsOptions = {}): P
     maxLines: options.maxLines ?? DEFAULT_LOG_AUDIT_MAX_LINES,
     since: options.since
   });
-  const latestStatusByJobId = collectLatestStatusByJobId(events);
+  const latestStatusByJobId = await collectLatestStatusByJobId(events, stateDir);
+  const latestEventByJobId = collectLatestEventByJobId(events);
   const attemptRootByJobId = await collectAttemptRoots(events, stateDir);
-  const issues = summarizeIssues(events, latestStatusByJobId, attemptRootByJobId);
+  const issues = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId);
   return {
     ok: true,
     tracePath,
@@ -104,6 +105,7 @@ async function readTail(filePath: string, maxBytes: number): Promise<string> {
 function summarizeIssues(
   events: Record<string, unknown>[],
   latestStatusByJobId: Map<string, string>,
+  latestEventByJobId: Map<string, string>,
   attemptRootByJobId: Map<string, string>
 ): RetinueLogAuditIssue[] {
   const issuesBySignature = new Map<string, RetinueLogAuditIssue>();
@@ -112,8 +114,13 @@ function summarizeIssues(
     if (!diagnostic) {
       continue;
     }
-    if (typeof event.jobId === "string" && latestStatusByJobId.get(event.jobId) === "completed") {
-      continue;
+    if (typeof event.jobId === "string") {
+      if (latestStatusByJobId.get(event.jobId) === "completed") {
+        continue;
+      }
+      if (isNonTerminalSoftStallEvent(latestEventByJobId.get(event.jobId))) {
+        continue;
+      }
     }
     const status = event.event === "opencode_job_stalled" || typeof diagnostic.stallReason === "string" ? "stalled" : undefined;
     if (status !== "stalled") {
@@ -297,10 +304,15 @@ function completedJobIds(latestStatusByJobId: Map<string, string>): string[] {
     .sort();
 }
 
-function collectLatestStatusByJobId(events: Record<string, unknown>[]): Map<string, string> {
+async function collectLatestStatusByJobId(events: Record<string, unknown>[], stateDir: string): Promise<Map<string, string>> {
   const statuses = new Map<string, { status: string; timestamp: string }>();
+  const eventJobIds = new Set<string>();
   for (const event of events) {
-    if (typeof event.jobId !== "string" || typeof event.status !== "string") {
+    if (typeof event.jobId !== "string") {
+      continue;
+    }
+    eventJobIds.add(event.jobId);
+    if (typeof event.status !== "string") {
       continue;
     }
     const timestamp = eventTime(event)?.toISOString() ?? "";
@@ -309,7 +321,41 @@ function collectLatestStatusByJobId(events: Record<string, unknown>[]): Map<stri
       statuses.set(event.jobId, { status: event.status, timestamp });
     }
   }
+  for (const jobId of eventJobIds) {
+    const meta = await readJobMeta(stateDir, jobId);
+    if (!meta || typeof meta.status !== "string") {
+      continue;
+    }
+    const timestamp = typeof meta.updatedAt === "string" ? meta.updatedAt : "";
+    const current = statuses.get(jobId);
+    if (!current || meta.status === "completed" || timestamp >= current.timestamp) {
+      statuses.set(jobId, { status: meta.status, timestamp });
+    }
+  }
   return new Map([...statuses].map(([jobId, value]) => [jobId, value.status]));
+}
+
+function collectLatestEventByJobId(events: Record<string, unknown>[]): Map<string, string> {
+  const latest = new Map<string, { event: string; timestamp: string }>();
+  for (const event of events) {
+    if (typeof event.jobId !== "string" || typeof event.event !== "string") {
+      continue;
+    }
+    const timestamp = eventTime(event)?.toISOString() ?? "";
+    const current = latest.get(event.jobId);
+    if (!current || timestamp >= current.timestamp) {
+      latest.set(event.jobId, { event: event.event, timestamp });
+    }
+  }
+  return new Map([...latest].map(([jobId, value]) => [jobId, value.event]));
+}
+
+function isNonTerminalSoftStallEvent(event: string | undefined): boolean {
+  return (
+    event === "opencode_job_soft_stall_deferred" ||
+    event === "opencode_job_soft_stall_rescue_submitted" ||
+    event === "opencode_job_soft_stall_rescue_pending"
+  );
 }
 
 function createIssueTitle(diagnostic: Record<string, unknown>): string {
