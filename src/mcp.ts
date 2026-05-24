@@ -120,7 +120,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
               }
             : backend.kind === "kilo"
               ? {
-                  model: process.env.RETINUE_KILO_MODEL ?? "intentmux",
+                  model: process.env.RETINUE_KILO_MODEL,
                   agent,
                   readOnly: false
                 }
@@ -626,7 +626,7 @@ async function createKiloBackend(args: { kiloBaseUrl?: string; sharedRootSession
     target: async (cwd) => {
       const target = await ensureOpenCodeServer(resolution, { stateDir, cwd });
       return {
-        client: new OpenCodeClient(target.baseUrl, { timeoutMs: resolveHttpTimeoutMs(env), modelOverrideFormat: "model-id" }),
+        client: new OpenCodeClient(target.baseUrl, { timeoutMs: resolveHttpTimeoutMs(env) }),
         baseUrl: target.baseUrl
       };
     },

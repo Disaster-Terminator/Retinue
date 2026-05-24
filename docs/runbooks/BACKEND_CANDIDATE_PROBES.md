@@ -16,7 +16,7 @@ It checks `--version`, top-level help, run help, server/serve help, and session 
 
 ## Model-Backed Run
 
-Real runs are opt-in and default to `intentmux`:
+Real runs are opt-in. Kilo defaults to the OpenCode-compatible `litellm/intentmux` route; Crush defaults to `intentmux`:
 
 ```bash
 RETINUE_BACKEND_CANDIDATE_REAL_PROBE=1 \
@@ -33,7 +33,7 @@ pnpm run probe:real:backend-candidates -- --candidate crush --real-run --model i
 Kilo is invoked as:
 
 ```text
-kilo run --auto --format json --model intentmux --dir <cwd> <prompt>
+kilo run --auto --format json --model litellm/intentmux --dir <cwd> <prompt>
 ```
 
 Crush is invoked as:

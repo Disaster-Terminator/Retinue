@@ -34,7 +34,7 @@ describe("probe-backend-candidates", () => {
 
     const output = JSON.parse(result.stdout);
     expect(output.realRun).toBe(false);
-    expect(output.model).toBe("intentmux");
+    expect(output.model).toBe("litellm/intentmux");
     expect(output.candidates.kilo.available).toBe(true);
     expect(output.candidates.kilo.serverCommand).toBe("serve");
     expect(output.candidates.kilo.operations.runHelp.ok).toBe(true);
@@ -57,7 +57,7 @@ describe("probe-backend-candidates", () => {
     expect(parseStderr(result.stderr)?.error).toContain("RETINUE_BACKEND_CANDIDATE_REAL_PROBE=1");
   });
 
-  it("passes intentmux to Kilo real-run command when opted in", () => {
+  it("passes litellm/intentmux to Kilo real-run command when opted in", () => {
     const result = runProbe(["--candidate", "kilo", "--real-run", "--cwd", "/tmp/retinue-probe"], {
       ...fakeEnv("RETINUE_KILO"),
       RETINUE_BACKEND_CANDIDATE_REAL_PROBE: "1"
@@ -71,7 +71,7 @@ describe("probe-backend-candidates", () => {
       "--format",
       "json",
       "--model",
-      "intentmux",
+      "litellm/intentmux",
       "--dir",
       "/tmp/retinue-probe",
       "Reply exactly: RETINUE_BACKEND_CANDIDATE_OK"

@@ -1686,7 +1686,7 @@ describe("MCP tools", () => {
     }
   });
 
-  it("uses Kilo backend with intentmux default model for Retinue runs", async () => {
+  it("leaves the Kilo model unset by default so Kilo config owns routing", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-kilo-defaults-"));
     const fakeKilo = await startFakeOpenCodeServer();
     const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
@@ -1703,9 +1703,9 @@ describe("MCP tools", () => {
       );
       expect(run).toMatchObject({ backend: "kilo", status: "running" });
       expect(fakeKilo.promptRequests[0]).toMatchObject({
-        agent: "explore",
-        model: { modelID: "intentmux" }
+        agent: "explore"
       });
+      expect(fakeKilo.promptRequests[0].model).toBeUndefined();
     } finally {
       delete process.env.RETINUE_BACKEND;
       delete process.env.RETINUE_STATE_DIR;

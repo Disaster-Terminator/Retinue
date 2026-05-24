@@ -124,7 +124,7 @@ describe("package.json guardrails", () => {
       const command = scripts[scriptName];
       expect(command).toBeTypeOf("string");
       expect(command).toMatch(
-        /scripts\/(probe-real-(claude|opencode)|probe-backend-candidates|probe-opencode-native-spawn|probe-opencode-root-binding|probe-retinue-(opencode|claude)(-slots)?-mcp|probe-retinue-opencode-slots|probe-retinue-opencode-agent-ab)\.mjs/
+        /scripts\/(probe-real-(claude|opencode)|probe-backend-candidates|probe-opencode-native-spawn|probe-opencode-root-binding|probe-retinue-(opencode|claude|kilo)(-slots)?-mcp|probe-retinue-opencode-slots|probe-retinue-opencode-agent-ab)\.mjs/
       );
     }
 

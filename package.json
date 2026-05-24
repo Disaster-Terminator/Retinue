@@ -50,6 +50,7 @@
     "probe:real:opencode": "node scripts/probe-real-opencode.mjs",
     "probe:real:retinue-claude": "node scripts/probe-retinue-claude-mcp.mjs",
     "probe:real:retinue-opencode": "node scripts/probe-retinue-opencode-mcp.mjs",
+    "probe:real:retinue-kilo": "node scripts/probe-retinue-kilo-mcp.mjs",
     "probe:real:retinue-opencode-agent-ab": "node scripts/probe-retinue-opencode-agent-ab.mjs",
     "probe:real:opencode-native-spawn": "node scripts/probe-opencode-native-spawn.mjs",
     "probe:real:opencode-root-binding": "node scripts/probe-opencode-root-binding.mjs",

@@ -3,7 +3,6 @@
 import { execFile } from "node:child_process";
 
 const REAL_PROBE_ENV = "RETINUE_BACKEND_CANDIDATE_REAL_PROBE";
-const DEFAULT_MODEL = "intentmux";
 const DEFAULT_PROMPT = "Reply exactly: RETINUE_BACKEND_CANDIDATE_OK";
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -11,6 +10,7 @@ const CANDIDATES = {
   kilo: {
     envPrefix: "RETINUE_KILO",
     defaultCommand: "kilo",
+    defaultModel: "litellm/intentmux",
     serverCommand: "serve",
     surfaceCommands: [
       { name: "version", args: ["--version"] },
@@ -27,6 +27,7 @@ const CANDIDATES = {
   crush: {
     envPrefix: "RETINUE_CRUSH",
     defaultCommand: "crush",
+    defaultModel: "intentmux",
     serverCommand: "server",
     surfaceCommands: [
       { name: "version", args: ["--version"] },
@@ -52,7 +53,7 @@ async function main() {
     ok: true,
     manualOnly: true,
     realRun: options.realRun,
-    model: options.model,
+    model: options.model ?? (selected.length === 1 ? CANDIDATES[selected[0]].defaultModel : undefined),
     cwd: options.cwd,
     startedAt: new Date().toISOString(),
     candidates: {}
@@ -85,7 +86,7 @@ async function probeCandidate(name, candidate, options) {
   result.contractHints = summarizeContractHints(result.operations);
 
   if (options.realRun) {
-    const args = candidate.buildRunArgs(options);
+    const args = candidate.buildRunArgs({ ...options, model: options.model ?? candidate.defaultModel });
     result.operations.realRun = await execCandidate(command, prefixArgs, args, options.timeoutMs);
   }
 
@@ -131,7 +132,7 @@ function parseArgs(argv) {
     candidate: "all",
     realRun: false,
     cwd: process.cwd(),
-    model: process.env.RETINUE_BACKEND_CANDIDATE_MODEL || DEFAULT_MODEL,
+    model: process.env.RETINUE_BACKEND_CANDIDATE_MODEL,
     prompt: DEFAULT_PROMPT,
     timeoutMs: DEFAULT_TIMEOUT_MS
   };
