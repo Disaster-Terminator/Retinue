@@ -127,6 +127,31 @@ Expected result:
 - `result` is `RETINUE_REAL_OK`
 - `closeStatus` is `completed`
 
+## Agent SDK Feasibility Probe
+
+The current product backend still invokes the system `claude` CLI. Use this probe when evaluating the SDK-first Claude Code backend path. It calls `@anthropic-ai/claude-agent-sdk` directly and leaves Claude Code provider, model, account, profile, and quota behavior to the local Claude Code runtime.
+
+```bash
+pnpm run probe:real:claude-sdk
+pnpm run probe:real:claude-sdk -- --permission
+```
+
+Expected query result:
+
+- `ok` is `true`
+- `mode` is `query`
+- `result` is `RETINUE_CLAUDE_SDK_OK`
+- `sessionId` is present
+
+Expected permission result:
+
+- `ok` is `true`
+- `mode` is `permission`
+- `permissionRequests` contains at least one entry from `canUseTool`
+- the permission entry includes the Claude SDK tool name, tool input, `toolUseID`, and any SDK-provided prompt fields such as `displayName`, `description`, `decisionReason`, or `blockedPath`
+
+This probe is intentionally not a product MCP proof. It exists to validate the next Claude Code backend abstraction before replacing the legacy `claude -p --output-format json` wrapper.
+
 ## Custom Probe Inputs
 
 All modes support:
@@ -136,10 +161,11 @@ node scripts/probe-real-claude.mjs direct --cwd . --prompt "Reply exactly: RETIN
 node scripts/probe-real-claude.mjs daemon --host 127.0.0.1 --port 0 --state-dir /tmp/retinue-real-probe
 node scripts/probe-real-claude.mjs mcp-daemon --timeout-ms 120000
 node scripts/probe-retinue-claude-mcp.mjs --timeout-ms 120000
+node scripts/probe-claude-agent-sdk.mjs --cwd . --expect RETINUE_CLAUDE_SDK_OK
 ```
 
 Use `--state-dir` when you want probe artifacts in a known location. Without it, the script creates a temporary state directory and prints it.
 
 ## Boundary Statement
 
-The probes verify retinue's lifecycle boundary. Retinue invokes only the system `claude` command. Provider routing, model choice, quota, proxy behavior, and cc-switch behavior remain owned by the local Claude Code configuration. The probe runner does not install a service, does not auto-start a persistent daemon, and does not add permission-bypass flags.
+The legacy Retinue MCP and CLI probes verify retinue's lifecycle boundary by invoking the system `claude` command. The Agent SDK probe is a separate feasibility check for the next backend abstraction. Provider routing, model choice, quota, proxy behavior, and cc-switch behavior remain owned by the local Claude Code configuration. The probe runners do not install a service, do not auto-start a persistent daemon, and do not add permission-bypass flags.

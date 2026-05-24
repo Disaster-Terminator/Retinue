@@ -47,6 +47,7 @@
     "probe:real:daemon": "node scripts/probe-real-claude.mjs daemon",
     "probe:real:direct": "node scripts/probe-real-claude.mjs direct",
     "probe:real:mcp-daemon": "node scripts/probe-real-claude.mjs mcp-daemon",
+    "probe:real:claude-sdk": "node scripts/probe-claude-agent-sdk.mjs",
     "probe:real:opencode": "node scripts/probe-real-opencode.mjs",
     "probe:real:retinue-claude": "node scripts/probe-retinue-claude-mcp.mjs",
     "probe:real:retinue-opencode": "node scripts/probe-retinue-opencode-mcp.mjs",
@@ -84,9 +85,10 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.5",
-    "zod": "^3.25.0"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.150",
     "@types/node": "^22.15.0",
     "esbuild": "0.27.7",
     "tsx": "^4.19.0",
