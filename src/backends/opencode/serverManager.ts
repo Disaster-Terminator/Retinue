@@ -137,6 +137,19 @@ export function resolveOpenCodeServerFromEnv(env: NodeJS.ProcessEnv | Record<str
   });
 }
 
+export function resolveKiloServerFromEnv(env: NodeJS.ProcessEnv | Record<string, string | undefined>): OpenCodeServerResolution {
+  return resolveOpenCodeServer({
+    baseUrl: env.RETINUE_KILO_BASE_URL,
+    command: env.RETINUE_KILO_COMMAND ?? "kilo",
+    prefixArgs: parsePrefixArgs(env.RETINUE_KILO_PREFIX_ARGS),
+    autoServe: env.RETINUE_KILO_AUTO_SERVE === "1",
+    host: env.RETINUE_KILO_HOST,
+    port: parseOptionalPort(env.RETINUE_KILO_PORT),
+    fallbackPorts: parseOptionalPorts(env.RETINUE_KILO_FALLBACK_PORTS),
+    allowNonLoopbackHost: env.RETINUE_KILO_ALLOW_NON_LOOPBACK === "1"
+  });
+}
+
 export function assertOpenCodeHostAllowed(host: string, config: Pick<OpenCodeServerConfig, "allowNonLoopbackHost"> = {}): void {
   if (host === "127.0.0.1" || host === "localhost") {
     return;

@@ -1,7 +1,8 @@
-import type { CleanupOptions, CleanupResult, JobMeta, JobResult, JobStatusResult, RetinueOptions, WaitResult } from "../../core/types.js";
+import type { AgentBackendKind, CleanupOptions, CleanupResult, JobMeta, JobResult, JobStatusResult, RetinueOptions, WaitResult } from "../../core/types.js";
 import type { AgentBackend, AgentContinueOptions, AgentHandle, AgentPermissionListResult, AgentPermissionReply, AgentPermissionReplyResult, AgentRunOptions } from "../types.js";
 import { OpenCodeClient } from "./client.js";
 export interface OpenCodeBackendOptions {
+    kind?: Extract<AgentBackendKind, "opencode" | "kilo">;
     client?: OpenCodeClient;
     baseUrl?: string;
     target?: (cwd: string | undefined) => Promise<OpenCodeBackendTarget>;
@@ -22,7 +23,7 @@ interface SharedRootSession {
 }
 export type OpenCodeSharedRootSessionStore = Map<string, SharedRootSession>;
 export declare class OpenCodeBackend implements AgentBackend {
-    readonly kind: "opencode";
+    readonly kind: Extract<AgentBackendKind, "opencode" | "kilo">;
     private readonly client?;
     private readonly baseUrl?;
     private readonly resolveTarget;

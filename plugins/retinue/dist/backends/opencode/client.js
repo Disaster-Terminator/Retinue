@@ -16,9 +16,11 @@ export class OpenCodeClientError extends Error {
 export class OpenCodeClient {
     baseUrl;
     timeoutMs;
+    modelOverrideFormat;
     constructor(baseUrl, options = {}) {
         this.baseUrl = baseUrl.replace(/\/+$/, "");
         this.timeoutMs = options.timeoutMs ?? 30_000;
+        this.modelOverrideFormat = options.modelOverrideFormat ?? "provider-model";
     }
     health() {
         return this.request("GET", "/global/health");
@@ -40,7 +42,7 @@ export class OpenCodeClient {
             title: options.title,
             parentID: options.parentID,
             agent: options.agent,
-            model: formatModelOverride(options.model),
+            model: formatModelOverride(options.model, this.modelOverrideFormat),
             workspaceID: options.workspaceID,
             permission: options.permission,
             directory: options.cwd
@@ -57,7 +59,7 @@ export class OpenCodeClient {
     }
     promptAsync(sessionId, options) {
         return this.requestVoid("POST", `/session/${encodeURIComponent(sessionId)}/prompt_async`, {
-            model: formatModelOverride(options.model),
+            model: formatModelOverride(options.model, this.modelOverrideFormat),
             agent: options.agent,
             tools: options.tools,
             parts: options.parts ?? [{ type: "text", text: options.prompt ?? "" }]
@@ -138,9 +140,12 @@ function extractErrorMessage(value) {
     }
     return undefined;
 }
-function formatModelOverride(model) {
+function formatModelOverride(model, format = "provider-model") {
     if (model === undefined) {
         return undefined;
+    }
+    if (format === "model-id" && !model.includes("/")) {
+        return { modelID: model };
     }
     const separator = model.indexOf("/");
     if (separator <= 0 || separator === model.length - 1) {

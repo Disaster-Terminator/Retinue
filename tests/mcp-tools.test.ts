@@ -1669,6 +1669,36 @@ describe("MCP tools", () => {
     }
   });
 
+  it("uses Kilo backend with intentmux default model for Retinue runs", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-kilo-defaults-"));
+    const fakeKilo = await startFakeOpenCodeServer();
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      process.env.RETINUE_BACKEND = "kilo";
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_KILO_BASE_URL = fakeKilo.url;
+      process.env.RETINUE_KILO_AGENT = "explore";
+      const run = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue kilo defaults", task_name: "kilo-defaults" }
+        })
+      );
+      expect(run).toMatchObject({ backend: "kilo", status: "running" });
+      expect(fakeKilo.promptRequests[0]).toMatchObject({
+        agent: "explore",
+        model: { modelID: "intentmux" }
+      });
+    } finally {
+      delete process.env.RETINUE_BACKEND;
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_KILO_BASE_URL;
+      delete process.env.RETINUE_KILO_AGENT;
+      await Promise.allSettled([closeMcpClient(connection), fakeKilo.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("throws a controlled error for invalid daemon discovery URL configuration", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-bad-discovery-"));
     try {

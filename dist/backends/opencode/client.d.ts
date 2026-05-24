@@ -72,8 +72,10 @@ export declare class OpenCodeClientError extends Error {
 export declare class OpenCodeClient {
     private readonly baseUrl;
     private readonly timeoutMs;
+    private readonly modelOverrideFormat;
     constructor(baseUrl: string, options?: {
         timeoutMs?: number;
+        modelOverrideFormat?: "provider-model" | "model-id";
     });
     health(): Promise<unknown>;
     agents(): Promise<OpenCodeAgentInfo[]>;

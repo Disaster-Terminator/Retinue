@@ -21,7 +21,7 @@ export type AgentPermissionReply = PermissionReplyOption;
 export type AgentPermissionRequest = RetinuePermissionRequest;
 export interface AgentPermissionListResult {
     jobId: string;
-    backend: "opencode";
+    backend: "opencode" | "kilo";
     status: JobMeta["status"];
     permissions: AgentPermissionRequest[];
 }
@@ -38,7 +38,7 @@ export interface AgentPermissionBridge {
     }): Promise<AgentPermissionReplyResult>;
 }
 export interface AgentBackend {
-    readonly kind: "claude-code" | "opencode";
+    readonly kind: "claude-code" | "opencode" | "kilo";
     run(options: AgentRunOptions): Promise<AgentRunStart>;
     continueJob(options: AgentContinueOptions): Promise<AgentRunStart>;
     status(handle: AgentHandle): Promise<AgentBackendStatus>;

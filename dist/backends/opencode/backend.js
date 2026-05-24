@@ -132,7 +132,7 @@ const DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
 const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 1;
 const DIAGNOSTIC_VALUE_PREVIEW_BYTES = 1000;
 export class OpenCodeBackend {
-    kind = "opencode";
+    kind;
     client;
     baseUrl;
     resolveTarget;
@@ -142,6 +142,7 @@ export class OpenCodeBackend {
     onServerIdle;
     sharedRootSessions;
     constructor(options) {
+        this.kind = options.kind ?? "opencode";
         this.client = options.client;
         this.baseUrl = options.baseUrl?.replace(/\/+$/, "");
         this.resolveTarget =
@@ -200,7 +201,7 @@ export class OpenCodeBackend {
         const now = new Date().toISOString();
         const meta = {
             schemaVersion: 1,
-            backend: "opencode",
+            backend: this.kind,
             jobId,
             pid: -1,
             status: "running",
@@ -284,7 +285,7 @@ export class OpenCodeBackend {
         const now = new Date().toISOString();
         const meta = {
             schemaVersion: 1,
-            backend: "opencode",
+            backend: this.kind,
             jobId,
             pid: -1,
             status: "running",
@@ -337,7 +338,7 @@ export class OpenCodeBackend {
         const permissions = await this.pendingPermissionsForJob(this.clientForMeta(meta), meta);
         return {
             jobId: handle.jobId,
-            backend: "opencode",
+            backend: this.kind,
             status: meta.status,
             permissions: summarizePermissionRequests(permissions)
         };
@@ -361,7 +362,7 @@ export class OpenCodeBackend {
         const remaining = await this.pendingPermissionsForJob(client, activeMeta);
         const result = {
             jobId: handle.jobId,
-            backend: "opencode",
+            backend: this.kind,
             status: activeMeta.status,
             repliedRequestId: options.requestId,
             reply: options.reply,
@@ -560,7 +561,7 @@ export class OpenCodeBackend {
                     stderrTruncated: false,
                     sessionId: meta.externalSessionId,
                     parsedStdout: { result: cachedStdout },
-                    ...permissionAttentionFields(await this.inspectJob(meta)),
+                    ...permissionAttentionFields(await this.inspectJob(meta), this.kind),
                     error: cachedStderr || cachedStdout
                 }, meta);
             }
@@ -607,7 +608,7 @@ export class OpenCodeBackend {
                 stderrTruncated: false,
                 sessionId: meta.externalSessionId,
                 parsedStdout: { result: stdout },
-                ...permissionAttentionFields(diagnostic),
+                ...permissionAttentionFields(diagnostic, this.kind),
                 error: stderrText
             }, meta);
         }
@@ -744,7 +745,7 @@ export class OpenCodeBackend {
                             toStatus: "stalled",
                             diagnostic: expiredDiagnostic
                         });
-                        return { jobId: handle.jobId, status: "stalled", ...permissionAttentionFields(expiredDiagnostic) };
+                        return { jobId: handle.jobId, status: "stalled", ...permissionAttentionFields(expiredDiagnostic, this.kind) };
                     }
                     if (diagnostic.stallReason) {
                         if (this.isSoftStallRescuePending(meta, diagnostic)) {
@@ -779,7 +780,7 @@ export class OpenCodeBackend {
                         if (isHardStallDiagnostic(diagnostic)) {
                             await this.maybeScheduleServerIdleShutdown(stalled);
                         }
-                        return { jobId: handle.jobId, status: "stalled", ...permissionAttentionFields(diagnostic) };
+                        return { jobId: handle.jobId, status: "stalled", ...permissionAttentionFields(diagnostic, this.kind) };
                     }
                     await this.writeJobTrace("opencode_job_wait_timeout", meta, diagnostic);
                     await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_wait_timeout", diagnostic });
@@ -825,7 +826,7 @@ export class OpenCodeBackend {
                 continue;
             }
             const meta = await this.readMeta(entry.name);
-            if (isProblem(meta) || meta.backend !== "opencode" || !isCleanupSafeStatus(meta.status)) {
+            if (isProblem(meta) || meta.backend !== this.kind || !isCleanupSafeStatus(meta.status)) {
                 continue;
             }
             const updatedAt = Date.parse(meta.updatedAt);
@@ -1124,7 +1125,7 @@ export class OpenCodeBackend {
                 continue;
             }
             const meta = await this.readMeta(entry.name);
-            if (isProblem(meta) || meta.backend !== "opencode") {
+            if (isProblem(meta) || meta.backend !== this.kind) {
                 continue;
             }
             if (meta.status === "running" && meta.externalServerUrl === baseUrl) {
@@ -1136,7 +1137,7 @@ export class OpenCodeBackend {
     async writeJobTrace(event, meta, diagnostic, extra = {}) {
         await writeRetinueTrace(this.stateDir, {
             event,
-            backend: "opencode",
+            backend: this.kind,
             jobId: meta.jobId,
             status: meta.status,
             ...extra,
@@ -1838,14 +1839,14 @@ function formatExternalDirectoryPermissionTarget(request, patterns) {
     }
     return raw.slice(0, raw.indexOf("*")).replace(/[\\/]+$/, "");
 }
-function permissionAttentionFields(diagnostic) {
+function permissionAttentionFields(diagnostic, backend) {
     const permissions = diagnostic.pendingExternalDirectoryPermissions ?? [];
     if (diagnostic.stallReason !== "external_directory_permission_pending" || permissions.length === 0) {
         return {};
     }
     const attentionRequired = {
         kind: "permission",
-        backend: "opencode",
+        backend,
         reason: "external_directory_permission_pending",
         permissions,
         replyOptions: ["once", "always", "reject"]

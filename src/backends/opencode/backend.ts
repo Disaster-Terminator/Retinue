@@ -4,6 +4,7 @@ import { resolveHttpTimeoutMs } from "../../core/http.js";
 import { getJobPaths, getRetinueTracePath, resolveStateDir } from "../../core/paths.js";
 import { isCleanupSafeStatus } from "../../core/status.js";
 import type {
+  AgentBackendKind,
   CleanupOptions,
   CleanupResult,
   JobAttemptSummary,
@@ -36,6 +37,7 @@ import {
 import { scheduleManagedOpenCodeServerIdleShutdown } from "./serverManager.js";
 
 export interface OpenCodeBackendOptions {
+  kind?: Extract<AgentBackendKind, "opencode" | "kilo">;
   client?: OpenCodeClient;
   baseUrl?: string;
   target?: (cwd: string | undefined) => Promise<OpenCodeBackendTarget>;
@@ -320,7 +322,7 @@ type OpenCodeStallReason =
   | "tool_loop_no_completion";
 
 export class OpenCodeBackend implements AgentBackend {
-  readonly kind = "opencode" as const;
+  readonly kind: Extract<AgentBackendKind, "opencode" | "kilo">;
   private readonly client?: OpenCodeClient;
   private readonly baseUrl?: string;
   private readonly resolveTarget: (cwd: string | undefined) => Promise<OpenCodeBackendTarget>;
@@ -331,6 +333,7 @@ export class OpenCodeBackend implements AgentBackend {
   private readonly sharedRootSessions: OpenCodeSharedRootSessionStore;
 
   constructor(options: OpenCodeBackendOptions) {
+    this.kind = options.kind ?? "opencode";
     this.client = options.client;
     this.baseUrl = options.baseUrl?.replace(/\/+$/, "");
     this.resolveTarget =
@@ -393,7 +396,7 @@ export class OpenCodeBackend implements AgentBackend {
     const now = new Date().toISOString();
     const meta: JobMeta = {
       schemaVersion: 1,
-      backend: "opencode",
+      backend: this.kind,
       jobId,
       pid: -1,
       status: "running",
@@ -478,7 +481,7 @@ export class OpenCodeBackend implements AgentBackend {
     const now = new Date().toISOString();
     const meta: JobMeta = {
       schemaVersion: 1,
-      backend: "opencode",
+      backend: this.kind,
       jobId,
       pid: -1,
       status: "running",
@@ -533,7 +536,7 @@ export class OpenCodeBackend implements AgentBackend {
     const permissions = await this.pendingPermissionsForJob(this.clientForMeta(meta), meta);
     return {
       jobId: handle.jobId,
-      backend: "opencode",
+      backend: this.kind,
       status: meta.status,
       permissions: summarizePermissionRequests(permissions)
     };
@@ -561,7 +564,7 @@ export class OpenCodeBackend implements AgentBackend {
     const remaining = await this.pendingPermissionsForJob(client, activeMeta);
     const result: AgentPermissionReplyResult = {
       jobId: handle.jobId,
-      backend: "opencode",
+      backend: this.kind,
       status: activeMeta.status,
       repliedRequestId: options.requestId,
       reply: options.reply,
@@ -768,7 +771,7 @@ export class OpenCodeBackend implements AgentBackend {
           stderrTruncated: false,
           sessionId: meta.externalSessionId,
           parsedStdout: { result: cachedStdout },
-          ...permissionAttentionFields(await this.inspectJob(meta)),
+          ...permissionAttentionFields(await this.inspectJob(meta), this.kind),
           error: cachedStderr || cachedStdout
         }, meta);
       }
@@ -816,7 +819,7 @@ export class OpenCodeBackend implements AgentBackend {
         stderrTruncated: false,
         sessionId: meta.externalSessionId,
         parsedStdout: { result: stdout },
-        ...permissionAttentionFields(diagnostic),
+        ...permissionAttentionFields(diagnostic, this.kind),
         error: stderrText
       }, meta);
     }
@@ -956,7 +959,7 @@ export class OpenCodeBackend implements AgentBackend {
               toStatus: "stalled",
               diagnostic: expiredDiagnostic
             });
-            return { jobId: handle.jobId, status: "stalled", ...permissionAttentionFields(expiredDiagnostic) };
+            return { jobId: handle.jobId, status: "stalled", ...permissionAttentionFields(expiredDiagnostic, this.kind) };
           }
           if (diagnostic.stallReason) {
             if (this.isSoftStallRescuePending(meta, diagnostic)) {
@@ -991,7 +994,7 @@ export class OpenCodeBackend implements AgentBackend {
             if (isHardStallDiagnostic(diagnostic)) {
               await this.maybeScheduleServerIdleShutdown(stalled);
             }
-            return { jobId: handle.jobId, status: "stalled", ...permissionAttentionFields(diagnostic) };
+            return { jobId: handle.jobId, status: "stalled", ...permissionAttentionFields(diagnostic, this.kind) };
           }
           await this.writeJobTrace("opencode_job_wait_timeout", meta, diagnostic);
           await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_wait_timeout", diagnostic });
@@ -1043,7 +1046,7 @@ export class OpenCodeBackend implements AgentBackend {
         continue;
       }
       const meta = await this.readMeta(entry.name);
-      if (isProblem(meta) || meta.backend !== "opencode" || !isCleanupSafeStatus(meta.status)) {
+      if (isProblem(meta) || meta.backend !== this.kind || !isCleanupSafeStatus(meta.status)) {
         continue;
       }
       const updatedAt = Date.parse(meta.updatedAt);
@@ -1349,7 +1352,7 @@ export class OpenCodeBackend implements AgentBackend {
         continue;
       }
       const meta = await this.readMeta(entry.name);
-      if (isProblem(meta) || meta.backend !== "opencode") {
+      if (isProblem(meta) || meta.backend !== this.kind) {
         continue;
       }
       if (meta.status === "running" && meta.externalServerUrl === baseUrl) {
@@ -1362,7 +1365,7 @@ export class OpenCodeBackend implements AgentBackend {
   private async writeJobTrace(event: string, meta: JobMeta, diagnostic: OpenCodeJobDiagnostic, extra: Record<string, unknown> = {}): Promise<void> {
     await writeRetinueTrace(this.stateDir, {
       event,
-      backend: "opencode",
+      backend: this.kind,
       jobId: meta.jobId,
       status: meta.status,
       ...extra,
@@ -2171,7 +2174,8 @@ function formatExternalDirectoryPermissionTarget(request: OpenCodePermissionRequ
 }
 
 function permissionAttentionFields(
-  diagnostic: OpenCodeJobDiagnostic
+  diagnostic: OpenCodeJobDiagnostic,
+  backend: Extract<AgentBackendKind, "opencode" | "kilo">
 ): Pick<JobResult, "attentionRequired" | "permissionRequired" | "permissions"> {
   const permissions = diagnostic.pendingExternalDirectoryPermissions ?? [];
   if (diagnostic.stallReason !== "external_directory_permission_pending" || permissions.length === 0) {
@@ -2179,7 +2183,7 @@ function permissionAttentionFields(
   }
   const attentionRequired: RetinueAttentionRequired = {
     kind: "permission",
-    backend: "opencode",
+    backend,
     reason: "external_directory_permission_pending",
     permissions,
     replyOptions: ["once", "always", "reject"]

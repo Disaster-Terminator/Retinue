@@ -9,7 +9,7 @@ import { z } from "zod";
 import { OpenCodeBackend } from "./backends/opencode/backend.js";
 import type { OpenCodeSharedRootSessionStore } from "./backends/opencode/backend.js";
 import { OpenCodeClient } from "./backends/opencode/client.js";
-import { ensureOpenCodeServer, resolveOpenCodeServerFromEnv } from "./backends/opencode/serverManager.js";
+import { ensureOpenCodeServer, resolveKiloServerFromEnv, resolveOpenCodeServerFromEnv } from "./backends/opencode/serverManager.js";
 import { DaemonClient } from "./daemon/client.js";
 import { readDaemonDiscoverySync } from "./daemon/discovery.js";
 import { readTextTailIfExists } from "./core/fileTail.js";
@@ -106,7 +106,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
       const backend = await createRetinueBackend(retinue, openCodeSharedRootSessions);
       const { evicted, started } = await agentPool.withSpawnLock(async () => {
         const evicted = await agentPool.ensureSpawnSlot(retinue, process.env);
-        const agent = args.agent ?? (await resolveConfiguredOpenCodeAgent(process.env));
+        const agent = args.agent ?? (await resolveConfiguredAgentForBackend(backend.kind, process.env));
         const started = await backend.run({
           cwd: args.cwd ?? process.cwd(),
           prompt: args.message,
@@ -118,6 +118,12 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
                 agent,
                 readOnly: false
               }
+            : backend.kind === "kilo"
+              ? {
+                  model: process.env.RETINUE_KILO_MODEL ?? "intentmux",
+                  agent,
+                  readOnly: false
+                }
             : {})
         });
         agentPool.add({
@@ -597,9 +603,32 @@ async function createOpenCodeBackend(args: { opencodeBaseUrl?: string; sharedRoo
   const resolution = resolveOpenCodeServerFromEnv(env);
   const stateDir = resolveStateDir({ explicitStateDir: process.env.RETINUE_STATE_DIR, env: process.env });
   return new OpenCodeBackend({
+    kind: "opencode",
     target: async (cwd) => {
       const target = await ensureOpenCodeServer(resolution, { stateDir, cwd });
       return { client: new OpenCodeClient(target.baseUrl, { timeoutMs: resolveHttpTimeoutMs(env) }), baseUrl: target.baseUrl };
+    },
+    stateDir,
+    env: process.env,
+    sharedRootSessions: args.sharedRootSessions
+  });
+}
+
+async function createKiloBackend(args: { kiloBaseUrl?: string; sharedRootSessions?: OpenCodeSharedRootSessionStore }): Promise<OpenCodeBackend> {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    RETINUE_KILO_BASE_URL: args.kiloBaseUrl ?? process.env.RETINUE_KILO_BASE_URL
+  };
+  const resolution = resolveKiloServerFromEnv(env);
+  const stateDir = resolveStateDir({ explicitStateDir: process.env.RETINUE_STATE_DIR, env: process.env });
+  return new OpenCodeBackend({
+    kind: "kilo",
+    target: async (cwd) => {
+      const target = await ensureOpenCodeServer(resolution, { stateDir, cwd });
+      return {
+        client: new OpenCodeClient(target.baseUrl, { timeoutMs: resolveHttpTimeoutMs(env), modelOverrideFormat: "model-id" }),
+        baseUrl: target.baseUrl
+      };
     },
     stateDir,
     env: process.env,
@@ -613,6 +642,13 @@ async function withOpenCodeDefaults<T extends { model?: string; agent?: string }
     model: args.model ?? process.env.RETINUE_OPENCODE_MODEL,
     agent: args.agent ?? (await resolveConfiguredOpenCodeAgent(process.env))
   };
+}
+
+async function resolveConfiguredAgentForBackend(kind: AgentBackendKind, env: NodeJS.ProcessEnv): Promise<string | undefined> {
+  if (kind === "kilo") {
+    return env.RETINUE_KILO_AGENT ?? "explore";
+  }
+  return resolveConfiguredOpenCodeAgent(env);
 }
 
 type RetinueBackend = AgentBackend & {
@@ -1079,6 +1115,9 @@ async function createRetinueBackendByKind(
   if (kind === "opencode") {
     return createOpenCodeBackend({ sharedRootSessions });
   }
+  if (kind === "kilo") {
+    return createKiloBackend({ sharedRootSessions });
+  }
   if (kind === "claude-code") {
     return new RetinueAgentBackend(retinue);
   }
@@ -1089,6 +1128,9 @@ function readRetinueBackendKindFromEnv(): AgentBackendKind {
   const backend = (process.env.RETINUE_BACKEND ?? "opencode").trim().toLowerCase();
   if (backend === "opencode") {
     return "opencode";
+  }
+  if (backend === "kilo") {
+    return "kilo";
   }
   if (backend === "claude-code" || backend === "claude") {
     return "claude-code";
@@ -1103,7 +1145,7 @@ async function readRetinueJobBackendKind(jobId: string): Promise<AgentBackendKin
   });
   try {
     const meta = JSON.parse(await fs.readFile(getJobPaths(stateDir, jobId).meta, "utf8")) as Partial<JobMeta>;
-    return meta.backend === "opencode" || meta.backend === "claude-code" ? meta.backend : undefined;
+    return meta.backend === "opencode" || meta.backend === "kilo" || meta.backend === "claude-code" ? meta.backend : undefined;
   } catch {
     return undefined;
   }

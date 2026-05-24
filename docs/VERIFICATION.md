@@ -65,6 +65,7 @@ run the same deterministic checks.
 Use the runbooks only when validating real local agent runtimes:
 
 - [Production OpenCode E2E](runbooks/PRODUCTION_OPENCODE_E2E.md)
+- [Kilo Backend](backends/KILO.md)
 - [Real Claude Code Probes](runbooks/REAL_CLAUDE_PROBES.md)
 - [Real OpenCode Probes](runbooks/REAL_OPENCODE_PROBES.md)
 
@@ -111,6 +112,10 @@ Use the OpenCode agent A/B probe only when comparing runtime behavior across bui
 ```bash
 RETINUE_REAL_OPENCODE_AGENT_AB_PROBE=1 RETINUE_OPENCODE_AGENT_LIST=plan,explore pnpm run probe:real:retinue-opencode-agent-ab
 ```
+
+### Backend candidate probes
+
+Use `pnpm run probe:real:backend-candidates` to inspect Kilo CLI and Crush command surfaces before backend implementation. Model-backed candidate runs require `RETINUE_BACKEND_CANDIDATE_REAL_PROBE=1` and default to `intentmux`; see `docs/runbooks/BACKEND_CANDIDATE_PROBES.md`.
 
 The A/B probe is a compatibility diagnostic, not a substitute for `gate:dogfood`.
 

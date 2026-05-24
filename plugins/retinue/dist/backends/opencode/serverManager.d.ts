@@ -34,6 +34,7 @@ export interface OpenCodeSpawnCommand {
 }
 export declare function resolveOpenCodeServer(config: OpenCodeServerConfig): OpenCodeServerResolution;
 export declare function resolveOpenCodeServerFromEnv(env: NodeJS.ProcessEnv | Record<string, string | undefined>): OpenCodeServerResolution;
+export declare function resolveKiloServerFromEnv(env: NodeJS.ProcessEnv | Record<string, string | undefined>): OpenCodeServerResolution;
 export declare function assertOpenCodeHostAllowed(host: string, config?: Pick<OpenCodeServerConfig, "allowNonLoopbackHost">): void;
 export declare function buildServeArgs(options: {
     host: string;

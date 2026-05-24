@@ -21161,9 +21161,11 @@ var OpenCodeClientError = class extends Error {
 var OpenCodeClient = class {
   baseUrl;
   timeoutMs;
+  modelOverrideFormat;
   constructor(baseUrl, options = {}) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.timeoutMs = options.timeoutMs ?? 3e4;
+    this.modelOverrideFormat = options.modelOverrideFormat ?? "provider-model";
   }
   health() {
     return this.request("GET", "/global/health");
@@ -21185,7 +21187,7 @@ var OpenCodeClient = class {
       title: options.title,
       parentID: options.parentID,
       agent: options.agent,
-      model: formatModelOverride(options.model),
+      model: formatModelOverride(options.model, this.modelOverrideFormat),
       workspaceID: options.workspaceID,
       permission: options.permission,
       directory: options.cwd
@@ -21202,7 +21204,7 @@ var OpenCodeClient = class {
   }
   promptAsync(sessionId, options) {
     return this.requestVoid("POST", `/session/${encodeURIComponent(sessionId)}/prompt_async`, {
-      model: formatModelOverride(options.model),
+      model: formatModelOverride(options.model, this.modelOverrideFormat),
       agent: options.agent,
       tools: options.tools,
       parts: options.parts ?? [{ type: "text", text: options.prompt ?? "" }]
@@ -21281,9 +21283,12 @@ function extractErrorMessage(value) {
   }
   return void 0;
 }
-function formatModelOverride(model) {
+function formatModelOverride(model, format = "provider-model") {
   if (model === void 0) {
     return void 0;
+  }
+  if (format === "model-id" && !model.includes("/")) {
+    return { modelID: model };
   }
   const separator = model.indexOf("/");
   if (separator <= 0 || separator === model.length - 1) {
@@ -21407,6 +21412,18 @@ function resolveOpenCodeServerFromEnv(env) {
     port: parseOptionalPort(env.RETINUE_OPENCODE_PORT),
     fallbackPorts: parseOptionalPorts(env.RETINUE_OPENCODE_FALLBACK_PORTS),
     allowNonLoopbackHost: env.RETINUE_OPENCODE_ALLOW_NON_LOOPBACK === "1"
+  });
+}
+function resolveKiloServerFromEnv(env) {
+  return resolveOpenCodeServer({
+    baseUrl: env.RETINUE_KILO_BASE_URL,
+    command: env.RETINUE_KILO_COMMAND ?? "kilo",
+    prefixArgs: parsePrefixArgs(env.RETINUE_KILO_PREFIX_ARGS),
+    autoServe: env.RETINUE_KILO_AUTO_SERVE === "1",
+    host: env.RETINUE_KILO_HOST,
+    port: parseOptionalPort(env.RETINUE_KILO_PORT),
+    fallbackPorts: parseOptionalPorts(env.RETINUE_KILO_FALLBACK_PORTS),
+    allowNonLoopbackHost: env.RETINUE_KILO_ALLOW_NON_LOOPBACK === "1"
   });
 }
 function assertOpenCodeHostAllowed(host, config2 = {}) {
@@ -22172,7 +22189,7 @@ var DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
 var DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 1;
 var DIAGNOSTIC_VALUE_PREVIEW_BYTES = 1e3;
 var OpenCodeBackend = class {
-  kind = "opencode";
+  kind;
   client;
   baseUrl;
   resolveTarget;
@@ -22182,6 +22199,7 @@ var OpenCodeBackend = class {
   onServerIdle;
   sharedRootSessions;
   constructor(options) {
+    this.kind = options.kind ?? "opencode";
     this.client = options.client;
     this.baseUrl = options.baseUrl?.replace(/\/+$/, "");
     this.resolveTarget = options.target ?? (async () => {
@@ -22234,7 +22252,7 @@ var OpenCodeBackend = class {
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const meta = {
       schemaVersion: 1,
-      backend: "opencode",
+      backend: this.kind,
       jobId,
       pid: -1,
       status: "running",
@@ -22318,7 +22336,7 @@ var OpenCodeBackend = class {
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const meta = {
       schemaVersion: 1,
-      backend: "opencode",
+      backend: this.kind,
       jobId,
       pid: -1,
       status: "running",
@@ -22371,7 +22389,7 @@ var OpenCodeBackend = class {
     const permissions = await this.pendingPermissionsForJob(this.clientForMeta(meta), meta);
     return {
       jobId: handle.jobId,
-      backend: "opencode",
+      backend: this.kind,
       status: meta.status,
       permissions: summarizePermissionRequests(permissions)
     };
@@ -22395,7 +22413,7 @@ var OpenCodeBackend = class {
     const remaining = await this.pendingPermissionsForJob(client, activeMeta);
     const result = {
       jobId: handle.jobId,
-      backend: "opencode",
+      backend: this.kind,
       status: activeMeta.status,
       repliedRequestId: options.requestId,
       reply: options.reply,
@@ -22589,7 +22607,7 @@ var OpenCodeBackend = class {
           stderrTruncated: false,
           sessionId: meta.externalSessionId,
           parsedStdout: { result: cachedStdout },
-          ...permissionAttentionFields(await this.inspectJob(meta)),
+          ...permissionAttentionFields(await this.inspectJob(meta), this.kind),
           error: cachedStderr || cachedStdout
         }, meta);
       }
@@ -22637,7 +22655,7 @@ ${textWarning2}` : stderr;
         stderrTruncated: false,
         sessionId: meta.externalSessionId,
         parsedStdout: { result: stdout },
-        ...permissionAttentionFields(diagnostic),
+        ...permissionAttentionFields(diagnostic, this.kind),
         error: stderrText
       }, meta);
     }
@@ -22772,7 +22790,7 @@ ${textWarning2}` : stderr;
               toStatus: "stalled",
               diagnostic: expiredDiagnostic
             });
-            return { jobId: handle.jobId, status: "stalled", ...permissionAttentionFields(expiredDiagnostic) };
+            return { jobId: handle.jobId, status: "stalled", ...permissionAttentionFields(expiredDiagnostic, this.kind) };
           }
           if (diagnostic.stallReason) {
             if (this.isSoftStallRescuePending(meta, diagnostic)) {
@@ -22807,7 +22825,7 @@ ${textWarning2}` : stderr;
             if (isHardStallDiagnostic(diagnostic)) {
               await this.maybeScheduleServerIdleShutdown(stalled);
             }
-            return { jobId: handle.jobId, status: "stalled", ...permissionAttentionFields(diagnostic) };
+            return { jobId: handle.jobId, status: "stalled", ...permissionAttentionFields(diagnostic, this.kind) };
           }
           await this.writeJobTrace("opencode_job_wait_timeout", meta, diagnostic);
           await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_wait_timeout", diagnostic });
@@ -22850,7 +22868,7 @@ ${textWarning2}` : stderr;
         continue;
       }
       const meta = await this.readMeta(entry.name);
-      if (isProblem(meta) || meta.backend !== "opencode" || !isCleanupSafeStatus(meta.status)) {
+      if (isProblem(meta) || meta.backend !== this.kind || !isCleanupSafeStatus(meta.status)) {
         continue;
       }
       const updatedAt = Date.parse(meta.updatedAt);
@@ -23123,7 +23141,7 @@ ${textWarning2}` : stderr;
         continue;
       }
       const meta = await this.readMeta(entry.name);
-      if (isProblem(meta) || meta.backend !== "opencode") {
+      if (isProblem(meta) || meta.backend !== this.kind) {
         continue;
       }
       if (meta.status === "running" && meta.externalServerUrl === baseUrl) {
@@ -23135,7 +23153,7 @@ ${textWarning2}` : stderr;
   async writeJobTrace(event, meta, diagnostic, extra = {}) {
     await writeRetinueTrace2(this.stateDir, {
       event,
-      backend: "opencode",
+      backend: this.kind,
       jobId: meta.jobId,
       status: meta.status,
       ...extra,
@@ -23782,14 +23800,14 @@ function formatExternalDirectoryPermissionTarget(request, patterns) {
   }
   return raw.slice(0, raw.indexOf("*")).replace(/[\\/]+$/, "");
 }
-function permissionAttentionFields(diagnostic) {
+function permissionAttentionFields(diagnostic, backend) {
   const permissions = diagnostic.pendingExternalDirectoryPermissions ?? [];
   if (diagnostic.stallReason !== "external_directory_permission_pending" || permissions.length === 0) {
     return {};
   }
   const attentionRequired = {
     kind: "permission",
-    backend: "opencode",
+    backend,
     reason: "external_directory_permission_pending",
     permissions,
     replyOptions: ["once", "always", "reject"]
@@ -25086,7 +25104,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
       const backend = await createRetinueBackend(retinue, openCodeSharedRootSessions);
       const { evicted, started } = await agentPool.withSpawnLock(async () => {
         const evicted2 = await agentPool.ensureSpawnSlot(retinue, process.env);
-        const agent = args.agent ?? await resolveConfiguredOpenCodeAgent(process.env);
+        const agent = args.agent ?? await resolveConfiguredAgentForBackend(backend.kind, process.env);
         const started2 = await backend.run({
           cwd: args.cwd ?? process.cwd(),
           prompt: args.message,
@@ -25094,6 +25112,10 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
           title: args.title ?? taskName,
           ...backend.kind === "opencode" ? {
             model: process.env.RETINUE_OPENCODE_MODEL,
+            agent,
+            readOnly: false
+          } : backend.kind === "kilo" ? {
+            model: process.env.RETINUE_KILO_MODEL ?? "intentmux",
             agent,
             readOnly: false
           } : {}
@@ -25545,9 +25567,31 @@ async function createOpenCodeBackend(args) {
   const resolution = resolveOpenCodeServerFromEnv(env);
   const stateDir = resolveStateDir({ explicitStateDir: process.env.RETINUE_STATE_DIR, env: process.env });
   return new OpenCodeBackend({
+    kind: "opencode",
     target: async (cwd) => {
       const target = await ensureOpenCodeServer(resolution, { stateDir, cwd });
       return { client: new OpenCodeClient(target.baseUrl, { timeoutMs: resolveHttpTimeoutMs(env) }), baseUrl: target.baseUrl };
+    },
+    stateDir,
+    env: process.env,
+    sharedRootSessions: args.sharedRootSessions
+  });
+}
+async function createKiloBackend(args) {
+  const env = {
+    ...process.env,
+    RETINUE_KILO_BASE_URL: args.kiloBaseUrl ?? process.env.RETINUE_KILO_BASE_URL
+  };
+  const resolution = resolveKiloServerFromEnv(env);
+  const stateDir = resolveStateDir({ explicitStateDir: process.env.RETINUE_STATE_DIR, env: process.env });
+  return new OpenCodeBackend({
+    kind: "kilo",
+    target: async (cwd) => {
+      const target = await ensureOpenCodeServer(resolution, { stateDir, cwd });
+      return {
+        client: new OpenCodeClient(target.baseUrl, { timeoutMs: resolveHttpTimeoutMs(env), modelOverrideFormat: "model-id" }),
+        baseUrl: target.baseUrl
+      };
     },
     stateDir,
     env: process.env,
@@ -25560,6 +25604,12 @@ async function withOpenCodeDefaults(args) {
     model: args.model ?? process.env.RETINUE_OPENCODE_MODEL,
     agent: args.agent ?? await resolveConfiguredOpenCodeAgent(process.env)
   };
+}
+async function resolveConfiguredAgentForBackend(kind, env) {
+  if (kind === "kilo") {
+    return env.RETINUE_KILO_AGENT ?? "explore";
+  }
+  return resolveConfiguredOpenCodeAgent(env);
 }
 var RetinueAgentPool = class {
   entries = /* @__PURE__ */ new Map();
@@ -25946,6 +25996,9 @@ async function createRetinueBackendByKind(kind, retinue, sharedRootSessions) {
   if (kind === "opencode") {
     return createOpenCodeBackend({ sharedRootSessions });
   }
+  if (kind === "kilo") {
+    return createKiloBackend({ sharedRootSessions });
+  }
   if (kind === "claude-code") {
     return new RetinueAgentBackend(retinue);
   }
@@ -25955,6 +26008,9 @@ function readRetinueBackendKindFromEnv() {
   const backend = (process.env.RETINUE_BACKEND ?? "opencode").trim().toLowerCase();
   if (backend === "opencode") {
     return "opencode";
+  }
+  if (backend === "kilo") {
+    return "kilo";
   }
   if (backend === "claude-code" || backend === "claude") {
     return "claude-code";
@@ -25968,7 +26024,7 @@ async function readRetinueJobBackendKind(jobId) {
   });
   try {
     const meta = JSON.parse(await fs6.readFile(getJobPaths(stateDir, jobId).meta, "utf8"));
-    return meta.backend === "opencode" || meta.backend === "claude-code" ? meta.backend : void 0;
+    return meta.backend === "opencode" || meta.backend === "kilo" || meta.backend === "claude-code" ? meta.backend : void 0;
   } catch {
     return void 0;
   }
