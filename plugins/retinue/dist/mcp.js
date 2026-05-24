@@ -24363,7 +24363,8 @@ async function auditRetinueLogs(options = {}) {
     since: options.since
   });
   const latestStatusByJobId = collectLatestStatusByJobId(events);
-  const issues = summarizeIssues(events, latestStatusByJobId);
+  const attemptRootByJobId = await collectAttemptRoots(events, stateDir);
+  const issues = summarizeIssues(events, latestStatusByJobId, attemptRootByJobId);
   return {
     ok: true,
     tracePath,
@@ -24406,7 +24407,7 @@ async function readTail(filePath, maxBytes) {
     await handle.close();
   }
 }
-function summarizeIssues(events, latestStatusByJobId) {
+function summarizeIssues(events, latestStatusByJobId, attemptRootByJobId) {
   const issuesBySignature = /* @__PURE__ */ new Map();
   for (const event of events) {
     const diagnostic = isRecord(event.diagnostic) ? event.diagnostic : void 0;
@@ -24420,15 +24421,9 @@ function summarizeIssues(events, latestStatusByJobId) {
     if (status !== "stalled") {
       continue;
     }
-    const signature = [
-      diagnostic.stallReason ?? "unknown_stall",
-      diagnostic.softStallRescueSourceReason ?? "no_rescue_source",
-      diagnostic.recoveryStallReason ?? "no_recovery_stall",
-      diagnostic.lastAssistantProviderID ?? "unknown_provider",
-      diagnostic.lastAssistantModelID ?? "unknown_model",
-      diagnostic.lastAssistantAgent ?? "unknown_agent",
-      diagnostic.lastAssistantMode ?? "unknown_mode"
-    ].join("|");
+    const chainRootJobId = typeof event.jobId === "string" ? attemptRootByJobId.get(event.jobId) : void 0;
+    const chainSignature = chainRootJobId ? createChainSignature(chainRootJobId, diagnostic) : void 0;
+    const signature = chainSignature ?? createDiagnosticSignature(diagnostic);
     const current = issuesBySignature.get(signature) ?? {
       signature,
       title: createIssueTitle(diagnostic),
@@ -24446,9 +24441,10 @@ function summarizeIssues(events, latestStatusByJobId) {
     if (typeof event.jobId === "string" && !current.jobIds.includes(event.jobId)) {
       current.jobIds.push(event.jobId);
     }
-    current.sample ??= compact({
+    const nextSample = compact({
       jobId: event.jobId,
       event: event.event,
+      chainRootJobId,
       sessionId: diagnostic.sessionId,
       parentSessionId: diagnostic.parentSessionId,
       childSessionIds: diagnostic.childSessionIds,
@@ -24471,11 +24467,123 @@ function summarizeIssues(events, latestStatusByJobId) {
       pendingExternalDirectoryPermissionCount: diagnostic.pendingExternalDirectoryPermissionCount,
       readOnlyWriteIntent: diagnostic.readOnlyWriteIntent
     });
+    const selectedSample = chooseSample(current.sample, nextSample);
+    if (selectedSample === nextSample) {
+      current.title = createIssueTitle(diagnostic);
+      current.description = createIssueDescription(diagnostic);
+    }
+    current.sample = selectedSample;
     issuesBySignature.set(signature, current);
   }
   return [...issuesBySignature.values()].sort(
     (left, right) => right.count - left.count || String(right.lastSeen).localeCompare(String(left.lastSeen))
   );
+}
+async function collectAttemptRoots(events, stateDir) {
+  const attemptRootByJobId = /* @__PURE__ */ new Map();
+  const eventJobIds = /* @__PURE__ */ new Set();
+  for (const event of events) {
+    if (typeof event.jobId !== "string") {
+      continue;
+    }
+    eventJobIds.add(event.jobId);
+    const rootJobId = attemptRootByJobId.get(event.jobId) ?? event.jobId;
+    const participatesInChain = typeof event.selectedAttemptJobId === "string" || Array.isArray(event.attemptChain);
+    if (participatesInChain) {
+      attemptRootByJobId.set(event.jobId, rootJobId);
+    }
+    if (typeof event.selectedAttemptJobId === "string") {
+      attemptRootByJobId.set(event.selectedAttemptJobId, rootJobId);
+    }
+    if (Array.isArray(event.attemptChain)) {
+      for (const attempt of event.attemptChain) {
+        if (isRecord(attempt) && typeof attempt.jobId === "string") {
+          attemptRootByJobId.set(attempt.jobId, rootJobId);
+        }
+      }
+    }
+  }
+  for (const jobId of eventJobIds) {
+    const meta = await readJobMeta(stateDir, jobId);
+    if (!meta) {
+      continue;
+    }
+    const rootJobId = typeof meta.recoveredFromJobId === "string" ? attemptRootByJobId.get(meta.recoveredFromJobId) ?? meta.recoveredFromJobId : jobId;
+    if (typeof meta.recoveredFromJobId === "string") {
+      attemptRootByJobId.set(meta.recoveredFromJobId, rootJobId);
+      attemptRootByJobId.set(jobId, rootJobId);
+    }
+    if (typeof meta.selectedAttemptJobId === "string") {
+      attemptRootByJobId.set(jobId, rootJobId);
+      attemptRootByJobId.set(meta.selectedAttemptJobId, rootJobId);
+    }
+    if (Array.isArray(meta.attemptJobIds)) {
+      attemptRootByJobId.set(jobId, rootJobId);
+      for (const attemptJobId of meta.attemptJobIds) {
+        if (typeof attemptJobId === "string") {
+          attemptRootByJobId.set(attemptJobId, rootJobId);
+        }
+      }
+    }
+  }
+  return attemptRootByJobId;
+}
+async function readJobMeta(stateDir, jobId) {
+  try {
+    const text = await fs4.readFile(path3.join(stateDir, "jobs", jobId, "meta.json"), "utf8");
+    const parsed = JSON.parse(text);
+    return isRecord(parsed) ? parsed : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function createChainSignature(rootJobId, diagnostic) {
+  return [
+    "chain",
+    rootJobId,
+    diagnostic.lastAssistantProviderID ?? "unknown_provider",
+    diagnostic.lastAssistantModelID ?? "unknown_model",
+    diagnostic.lastAssistantAgent ?? "unknown_agent",
+    diagnostic.lastAssistantMode ?? "unknown_mode"
+  ].join("|");
+}
+function createDiagnosticSignature(diagnostic) {
+  return [
+    diagnostic.stallReason ?? "unknown_stall",
+    diagnostic.softStallRescueSourceReason ?? "no_rescue_source",
+    diagnostic.recoveryStallReason ?? "no_recovery_stall",
+    diagnostic.lastAssistantProviderID ?? "unknown_provider",
+    diagnostic.lastAssistantModelID ?? "unknown_model",
+    diagnostic.lastAssistantAgent ?? "unknown_agent",
+    diagnostic.lastAssistantMode ?? "unknown_mode"
+  ].join("|");
+}
+function chooseSample(current, next) {
+  if (!current) {
+    return next;
+  }
+  const currentScore = sampleSpecificityScore(current);
+  const nextScore = sampleSpecificityScore(next);
+  return nextScore >= currentScore ? next : current;
+}
+function sampleSpecificityScore(sample) {
+  let score = 0;
+  if (sample.recoveryStallReason) {
+    score += 4;
+  }
+  if (sample.stallReason === "read_tool_invalid_input") {
+    score += 3;
+  }
+  if (sample.selectedAttemptJobId) {
+    score += 2;
+  }
+  if (sample.attemptChainPresent === true) {
+    score += 2;
+  }
+  if (sample.malformedReadToolParts) {
+    score += 1;
+  }
+  return score;
 }
 function completedJobIds(latestStatusByJobId) {
   return [...latestStatusByJobId.entries()].filter(([, status]) => status === "completed").map(([jobId]) => jobId).sort();

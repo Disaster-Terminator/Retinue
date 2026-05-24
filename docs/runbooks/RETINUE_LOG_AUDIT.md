@@ -8,7 +8,7 @@ Use this when WSL or plugin-host logs contain many Retinue issues and a full sca
 pnpm run audit:logs -- --compact --since 2026-05-20T08:00:00.000Z --max-lines 120
 ```
 
-The script reads only the tail of `logs/retinue.jsonl`, filters by `--since`, deduplicates terminal stalled OpenCode diagnostics by stall reason/provider/model/agent/mode, and emits concise issue candidates. If a job has a later `completed` event in the scanned window, earlier transient stalled diagnostics for that job are ignored. Use `--compact` for agent-facing triage; omit it when you need the full JSON sample payload.
+The script reads only the tail of `logs/retinue.jsonl`, filters by `--since`, deduplicates terminal stalled OpenCode diagnostics, and emits concise issue candidates. If Retinue created a selected task-level attempt, the audit first links the root job and attempt jobs from the scanned trace plus available job `meta.json` files, then reports that recovery chain as one issue instead of splitting blank-provider, zero-progress, and malformed-read phases into separate candidates. If a job has a later `completed` event in the scanned window, earlier transient stalled diagnostics for that job are ignored. Use `--compact` for agent-facing triage; omit it when you need the full JSON sample payload.
 
 This is a developer/operations diagnostic surface, not part of the default Retinue product MCP tool set. Default MCP hosts expose only child-agent lifecycle and permission bridge tools. When an agent host is explicitly dogfooding or investigating Retinue itself, set `RETINUE_EXPOSE_DIAGNOSTIC_TOOLS=1` to expose `retinue_audit_logs`; otherwise use the CLI command above from the repository.
 
@@ -28,7 +28,7 @@ If a job briefly emits `opencode_job_stalled` and then later completes after Ret
 
 For direct-child OpenCode runs, `sample.sessionId` is the result child session and `sample.parentSessionId` is the unprompted relationship container. If the same job also shows a later `build`/`build` candidate, that is usually the no-tools soft-stall rescue prompt, not the original child runner.
 
-If `sample.stallReason` is `read_tool_invalid_input`, treat the run as provider/model malformed tool-call output rather than audit evidence. The sample includes `malformedReadToolParts` and `runningReadToolPartSummaries`; an input preview such as `{}` means OpenCode received a `read` tool call without a usable `filePath`.
+If `sample.stallReason` is `read_tool_invalid_input`, treat the run as provider/model malformed tool-call output rather than audit evidence. The sample includes `chainRootJobId` when it belongs to a recovery chain, plus `malformedReadToolParts` and `runningReadToolPartSummaries`; an input preview such as `{}` means OpenCode received a `read` tool call without a usable `filePath`.
 
 If `sample.recoveryStallReason` is set, the sampled failure happened after Retinue had already submitted a no-tools recovery prompt for `sample.softStallRescueSourceReason`. For example, `softStallRescueSourceReason=provider_blank_assistant` with `recoveryStallReason=read_tool_invalid_input` means the original problem was blank provider output, and the recovery attempt itself emitted a malformed `read` call. Do not merge that evidence with first-pass malformed read failures.
 

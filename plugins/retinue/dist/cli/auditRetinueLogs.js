@@ -111,11 +111,13 @@ function renderCompactIssue(issue, index) {
 }
 function providerModel(issue) {
     const parts = issue.signature.split("|");
-    return `${parts[3] ?? "unknown_provider"}/${parts[4] ?? "unknown_model"}`;
+    const offset = parts[0] === "chain" ? 2 : 3;
+    return `${parts[offset] ?? "unknown_provider"}/${parts[offset + 1] ?? "unknown_model"}`;
 }
 function agentMode(issue) {
     const parts = issue.signature.split("|");
-    return `${parts[5] ?? "unknown_agent"}/${parts[6] ?? "unknown_mode"}`;
+    const offset = parts[0] === "chain" ? 4 : 5;
+    return `${parts[offset] ?? "unknown_agent"}/${parts[offset + 1] ?? "unknown_mode"}`;
 }
 function stringField(value) {
     return typeof value === "string" && value.length > 0 ? value : undefined;

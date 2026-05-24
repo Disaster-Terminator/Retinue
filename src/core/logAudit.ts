@@ -43,7 +43,8 @@ export async function auditRetinueLogs(options: AuditRetinueLogsOptions = {}): P
     since: options.since
   });
   const latestStatusByJobId = collectLatestStatusByJobId(events);
-  const issues = summarizeIssues(events, latestStatusByJobId);
+  const attemptRootByJobId = await collectAttemptRoots(events, stateDir);
+  const issues = summarizeIssues(events, latestStatusByJobId, attemptRootByJobId);
   return {
     ok: true,
     tracePath,
@@ -100,7 +101,11 @@ async function readTail(filePath: string, maxBytes: number): Promise<string> {
   }
 }
 
-function summarizeIssues(events: Record<string, unknown>[], latestStatusByJobId: Map<string, string>): RetinueLogAuditIssue[] {
+function summarizeIssues(
+  events: Record<string, unknown>[],
+  latestStatusByJobId: Map<string, string>,
+  attemptRootByJobId: Map<string, string>
+): RetinueLogAuditIssue[] {
   const issuesBySignature = new Map<string, RetinueLogAuditIssue>();
   for (const event of events) {
     const diagnostic = isRecord(event.diagnostic) ? event.diagnostic : undefined;
@@ -114,15 +119,9 @@ function summarizeIssues(events: Record<string, unknown>[], latestStatusByJobId:
     if (status !== "stalled") {
       continue;
     }
-    const signature = [
-      diagnostic.stallReason ?? "unknown_stall",
-      diagnostic.softStallRescueSourceReason ?? "no_rescue_source",
-      diagnostic.recoveryStallReason ?? "no_recovery_stall",
-      diagnostic.lastAssistantProviderID ?? "unknown_provider",
-      diagnostic.lastAssistantModelID ?? "unknown_model",
-      diagnostic.lastAssistantAgent ?? "unknown_agent",
-      diagnostic.lastAssistantMode ?? "unknown_mode"
-    ].join("|");
+    const chainRootJobId = typeof event.jobId === "string" ? attemptRootByJobId.get(event.jobId) : undefined;
+    const chainSignature = chainRootJobId ? createChainSignature(chainRootJobId, diagnostic) : undefined;
+    const signature = chainSignature ?? createDiagnosticSignature(diagnostic);
     const current = issuesBySignature.get(signature) ?? {
       signature,
       title: createIssueTitle(diagnostic),
@@ -140,9 +139,10 @@ function summarizeIssues(events: Record<string, unknown>[], latestStatusByJobId:
     if (typeof event.jobId === "string" && !current.jobIds.includes(event.jobId)) {
       current.jobIds.push(event.jobId);
     }
-    current.sample ??= compact({
+    const nextSample = compact({
       jobId: event.jobId,
       event: event.event,
+      chainRootJobId,
       sessionId: diagnostic.sessionId,
       parentSessionId: diagnostic.parentSessionId,
       childSessionIds: diagnostic.childSessionIds,
@@ -165,11 +165,129 @@ function summarizeIssues(events: Record<string, unknown>[], latestStatusByJobId:
       pendingExternalDirectoryPermissionCount: diagnostic.pendingExternalDirectoryPermissionCount,
       readOnlyWriteIntent: diagnostic.readOnlyWriteIntent
     });
+    const selectedSample = chooseSample(current.sample, nextSample);
+    if (selectedSample === nextSample) {
+      current.title = createIssueTitle(diagnostic);
+      current.description = createIssueDescription(diagnostic);
+    }
+    current.sample = selectedSample;
     issuesBySignature.set(signature, current);
   }
   return [...issuesBySignature.values()].sort(
     (left, right) => right.count - left.count || String(right.lastSeen).localeCompare(String(left.lastSeen))
   );
+}
+
+async function collectAttemptRoots(events: Record<string, unknown>[], stateDir: string): Promise<Map<string, string>> {
+  const attemptRootByJobId = new Map<string, string>();
+  const eventJobIds = new Set<string>();
+  for (const event of events) {
+    if (typeof event.jobId !== "string") {
+      continue;
+    }
+    eventJobIds.add(event.jobId);
+    const rootJobId = attemptRootByJobId.get(event.jobId) ?? event.jobId;
+    const participatesInChain = typeof event.selectedAttemptJobId === "string" || Array.isArray(event.attemptChain);
+    if (participatesInChain) {
+      attemptRootByJobId.set(event.jobId, rootJobId);
+    }
+    if (typeof event.selectedAttemptJobId === "string") {
+      attemptRootByJobId.set(event.selectedAttemptJobId, rootJobId);
+    }
+    if (Array.isArray(event.attemptChain)) {
+      for (const attempt of event.attemptChain) {
+        if (isRecord(attempt) && typeof attempt.jobId === "string") {
+          attemptRootByJobId.set(attempt.jobId, rootJobId);
+        }
+      }
+    }
+  }
+  for (const jobId of eventJobIds) {
+    const meta = await readJobMeta(stateDir, jobId);
+    if (!meta) {
+      continue;
+    }
+    const rootJobId = typeof meta.recoveredFromJobId === "string" ? (attemptRootByJobId.get(meta.recoveredFromJobId) ?? meta.recoveredFromJobId) : jobId;
+    if (typeof meta.recoveredFromJobId === "string") {
+      attemptRootByJobId.set(meta.recoveredFromJobId, rootJobId);
+      attemptRootByJobId.set(jobId, rootJobId);
+    }
+    if (typeof meta.selectedAttemptJobId === "string") {
+      attemptRootByJobId.set(jobId, rootJobId);
+      attemptRootByJobId.set(meta.selectedAttemptJobId, rootJobId);
+    }
+    if (Array.isArray(meta.attemptJobIds)) {
+      attemptRootByJobId.set(jobId, rootJobId);
+      for (const attemptJobId of meta.attemptJobIds) {
+        if (typeof attemptJobId === "string") {
+          attemptRootByJobId.set(attemptJobId, rootJobId);
+        }
+      }
+    }
+  }
+  return attemptRootByJobId;
+}
+
+async function readJobMeta(stateDir: string, jobId: string): Promise<Record<string, unknown> | undefined> {
+  try {
+    const text = await fs.readFile(path.join(stateDir, "jobs", jobId, "meta.json"), "utf8");
+    const parsed = JSON.parse(text) as unknown;
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function createChainSignature(rootJobId: string, diagnostic: Record<string, unknown>): string {
+  return [
+    "chain",
+    rootJobId,
+    diagnostic.lastAssistantProviderID ?? "unknown_provider",
+    diagnostic.lastAssistantModelID ?? "unknown_model",
+    diagnostic.lastAssistantAgent ?? "unknown_agent",
+    diagnostic.lastAssistantMode ?? "unknown_mode"
+  ].join("|");
+}
+
+function createDiagnosticSignature(diagnostic: Record<string, unknown>): string {
+  return [
+    diagnostic.stallReason ?? "unknown_stall",
+    diagnostic.softStallRescueSourceReason ?? "no_rescue_source",
+    diagnostic.recoveryStallReason ?? "no_recovery_stall",
+    diagnostic.lastAssistantProviderID ?? "unknown_provider",
+    diagnostic.lastAssistantModelID ?? "unknown_model",
+    diagnostic.lastAssistantAgent ?? "unknown_agent",
+    diagnostic.lastAssistantMode ?? "unknown_mode"
+  ].join("|");
+}
+
+function chooseSample(current: Record<string, unknown> | undefined, next: Record<string, unknown>): Record<string, unknown> {
+  if (!current) {
+    return next;
+  }
+  const currentScore = sampleSpecificityScore(current);
+  const nextScore = sampleSpecificityScore(next);
+  return nextScore >= currentScore ? next : current;
+}
+
+function sampleSpecificityScore(sample: Record<string, unknown>): number {
+  let score = 0;
+  if (sample.recoveryStallReason) {
+    score += 4;
+  }
+  if (sample.stallReason === "read_tool_invalid_input") {
+    score += 3;
+  }
+  if (sample.selectedAttemptJobId) {
+    score += 2;
+  }
+  if (sample.attemptChainPresent === true) {
+    score += 2;
+  }
+  if (sample.malformedReadToolParts) {
+    score += 1;
+  }
+  return score;
 }
 
 function completedJobIds(latestStatusByJobId: Map<string, string>): string[] {

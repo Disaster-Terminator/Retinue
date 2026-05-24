@@ -122,12 +122,14 @@ function renderCompactIssue(issue: RetinueLogAuditIssue, index: number): string 
 
 function providerModel(issue: RetinueLogAuditIssue): string {
   const parts = issue.signature.split("|");
-  return `${parts[3] ?? "unknown_provider"}/${parts[4] ?? "unknown_model"}`;
+  const offset = parts[0] === "chain" ? 2 : 3;
+  return `${parts[offset] ?? "unknown_provider"}/${parts[offset + 1] ?? "unknown_model"}`;
 }
 
 function agentMode(issue: RetinueLogAuditIssue): string {
   const parts = issue.signature.split("|");
-  return `${parts[5] ?? "unknown_agent"}/${parts[6] ?? "unknown_mode"}`;
+  const offset = parts[0] === "chain" ? 4 : 5;
+  return `${parts[offset] ?? "unknown_agent"}/${parts[offset + 1] ?? "unknown_mode"}`;
 }
 
 function stringField(value: unknown): string | undefined {

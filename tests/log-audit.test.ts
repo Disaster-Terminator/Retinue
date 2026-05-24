@@ -23,8 +23,6 @@ describe("Retinue log audit", () => {
             time: "2026-05-20T08:00:00.000Z",
             event: "opencode_job_stalled",
             jobId: "job_a",
-            selectedAttemptJobId: "job_attempt",
-            attemptChain: [{ jobId: "job_a" }, { jobId: "job_attempt" }],
             diagnostic: {
               sessionId: "ses_child",
               parentSessionId: "ses_parent",
@@ -107,7 +105,7 @@ describe("Retinue log audit", () => {
       expect(parsed.issueCount).toBe(1);
       expect(parsed.issues[0]).toMatchObject({
         count: 2,
-          jobIds: ["job_a", "job_b"],
+        jobIds: ["job_a", "job_b"],
         title: "Investigate Retinue recovery provider_blank_assistant after tool_loop_no_completion on litellm/semantic-router",
         description: expect.stringContaining("rescueSource=tool_loop_no_completion"),
         sample: {
@@ -118,8 +116,6 @@ describe("Retinue log audit", () => {
           stallReason: "provider_blank_assistant",
           softStallRescueSourceReason: "tool_loop_no_completion",
           recoveryStallReason: "provider_blank_assistant",
-          selectedAttemptJobId: "job_attempt",
-          attemptChainPresent: true,
           malformedReadToolParts: 1,
           runningReadToolPartSummaries: [
             {
@@ -140,11 +136,189 @@ describe("Retinue log audit", () => {
       expect(compact).toContain("recovery=provider_blank_assistant");
       expect(compact).toContain("provider=litellm/semantic-router");
       expect(compact).toContain("agent=explore/explore");
-      expect(compact).toContain("selectedAttempt=job_attempt");
-      expect(compact).toContain("attemptChain=true");
       expect(compact).toContain("malformedRead=1");
       expect(compact).toContain("title=Investigate Retinue recovery provider_blank_assistant after tool_loop_no_completion on litellm/semantic-router");
       expect(compact).not.toContain("runningReadToolPartSummaries");
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("groups stalled recovery chains by root job instead of splitting each stall reason", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-chain-"));
+    try {
+      const tracePath = path.join(tempDir, "retinue.jsonl");
+      fs.writeFileSync(
+        tracePath,
+        [
+          JSON.stringify({
+            time: "2026-05-24T08:31:42.000Z",
+            event: "opencode_job_stalled",
+            jobId: "job_root",
+            status: "stalled",
+            diagnostic: {
+              sessionId: "ses_root",
+              sessionDirectory: "/repo",
+              stallReason: "provider_blank_assistant",
+              stallSummary: "OpenCode provider/router produced blank assistant output for 48481ms.",
+              lastAssistantProviderID: "litellm",
+              lastAssistantModelID: "intentmux",
+              lastAssistantAgent: "explore",
+              lastAssistantMode: "explore",
+              noCompletedAssistantDurationMs: 48481,
+              blankAssistantRounds: 1
+            }
+          }),
+          JSON.stringify({
+            time: "2026-05-24T08:31:44.000Z",
+            event: "opencode_job_stalled",
+            jobId: "job_root",
+            status: "stalled",
+            selectedAttemptJobId: "job_attempt",
+            attemptChain: [{ jobId: "job_root" }, { jobId: "job_attempt" }],
+            diagnostic: {
+              sessionId: "ses_root",
+              sessionDirectory: "/repo",
+              stallReason: "read_tool_invalid_input",
+              stallSummary: "OpenCode provider/model emitted read tool call(s) with missing or invalid input for 50424ms. readToolCalls=call_bad:pending:input={}.",
+              softStallRescueSourceReason: "provider_blank_assistant",
+              softStallRescueSourceSummary: "OpenCode provider/router produced blank assistant output for 48496ms.",
+              recoveryStallReason: "read_tool_invalid_input",
+              recoveryStallSummary: "OpenCode provider/model emitted read tool call(s) with missing or invalid input for 50424ms.",
+              lastAssistantProviderID: "litellm",
+              lastAssistantModelID: "intentmux",
+              lastAssistantAgent: "explore",
+              lastAssistantMode: "explore",
+              noCompletedAssistantDurationMs: 50424,
+              malformedReadToolParts: 1,
+              runningReadToolPartSummaries: [
+                {
+                  tool: "read",
+                  callID: "call_bad",
+                  stateStatus: "pending",
+                  stateInput: { type: "object", preview: "{}" }
+                }
+              ]
+            }
+          }),
+          JSON.stringify({
+            time: "2026-05-24T08:32:29.000Z",
+            event: "opencode_job_stalled",
+            jobId: "job_attempt",
+            status: "stalled",
+            diagnostic: {
+              sessionId: "ses_attempt",
+              sessionDirectory: "/repo",
+              stallReason: "read_tool_invalid_input",
+              stallSummary: "OpenCode provider/model emitted read tool call(s) with missing or invalid input for 45250ms. readToolCalls=call_attempt:pending:input={}.",
+              lastAssistantProviderID: "litellm",
+              lastAssistantModelID: "intentmux",
+              lastAssistantAgent: "explore",
+              lastAssistantMode: "explore",
+              noCompletedAssistantDurationMs: 45250,
+              malformedReadToolParts: 1,
+              runningReadToolPartSummaries: [
+                {
+                  tool: "read",
+                  callID: "call_attempt",
+                  stateStatus: "pending",
+                  stateInput: { type: "object", preview: "{}" }
+                }
+              ]
+            }
+          })
+        ].join("\n")
+      );
+
+      const parsed = await auditRetinueLogs({ tracePath, since: new Date("2026-05-24T08:25:00.000Z") });
+
+      expect(parsed.issueCount).toBe(1);
+      expect(parsed.issues[0]).toMatchObject({
+        signature: "chain|job_root|litellm|intentmux|explore|explore",
+        count: 3,
+        jobIds: ["job_root", "job_attempt"],
+        title: "Investigate Retinue recovery read_tool_invalid_input after provider_blank_assistant on litellm/intentmux",
+        sample: {
+          jobId: "job_root",
+          chainRootJobId: "job_root",
+          stallReason: "read_tool_invalid_input",
+          softStallRescueSourceReason: "provider_blank_assistant",
+          recoveryStallReason: "read_tool_invalid_input",
+          selectedAttemptJobId: "job_attempt",
+          attemptChainPresent: true,
+          malformedReadToolParts: 1
+        }
+      });
+
+      const compact = renderCompactAuditResult(parsed);
+      expect(compact).toContain("Retinue log audit: issues=1 scanned=3 ignoredCompleted=0");
+      expect(compact).toContain("#1 count=3 jobs=job_root,job_attempt");
+      expect(compact).toContain("reason=read_tool_invalid_input source=provider_blank_assistant recovery=read_tool_invalid_input");
+      expect(compact).toContain("provider=litellm/intentmux");
+      expect(compact).toContain("selectedAttempt=job_attempt");
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses job metadata to link selected attempts when the trace window misses the linking event", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-meta-chain-"));
+    try {
+      const tracePath = path.join(tempDir, "logs", "retinue.jsonl");
+      fs.mkdirSync(path.dirname(tracePath), { recursive: true });
+      fs.mkdirSync(path.join(tempDir, "jobs", "job_root"), { recursive: true });
+      fs.mkdirSync(path.join(tempDir, "jobs", "job_attempt"), { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "jobs", "job_root", "meta.json"), JSON.stringify({ jobId: "job_root", selectedAttemptJobId: "job_attempt" }));
+      fs.writeFileSync(path.join(tempDir, "jobs", "job_attempt", "meta.json"), JSON.stringify({ jobId: "job_attempt", recoveredFromJobId: "job_root" }));
+      fs.writeFileSync(
+        tracePath,
+        [
+          JSON.stringify({
+            time: "2026-05-24T08:31:42.000Z",
+            event: "opencode_job_stalled",
+            jobId: "job_root",
+            status: "stalled",
+            diagnostic: {
+              stallReason: "provider_blank_assistant",
+              stallSummary: "OpenCode provider/router produced blank assistant output for 48481ms.",
+              lastAssistantProviderID: "litellm",
+              lastAssistantModelID: "intentmux",
+              lastAssistantAgent: "explore",
+              lastAssistantMode: "explore"
+            }
+          }),
+          JSON.stringify({
+            time: "2026-05-24T08:32:29.000Z",
+            event: "opencode_job_stalled",
+            jobId: "job_attempt",
+            status: "stalled",
+            diagnostic: {
+              stallReason: "read_tool_invalid_input",
+              stallSummary: "OpenCode provider/model emitted read tool call(s) with missing or invalid input for 45250ms.",
+              lastAssistantProviderID: "litellm",
+              lastAssistantModelID: "intentmux",
+              lastAssistantAgent: "explore",
+              lastAssistantMode: "explore",
+              malformedReadToolParts: 1
+            }
+          })
+        ].join("\n")
+      );
+
+      const parsed = await auditRetinueLogs({ stateDir: tempDir, tracePath, since: new Date("2026-05-24T08:25:00.000Z") });
+
+      expect(parsed.issueCount).toBe(1);
+      expect(parsed.issues[0]).toMatchObject({
+        signature: "chain|job_root|litellm|intentmux|explore|explore",
+        count: 2,
+        jobIds: ["job_root", "job_attempt"],
+        sample: {
+          jobId: "job_attempt",
+          chainRootJobId: "job_root",
+          stallReason: "read_tool_invalid_input",
+          malformedReadToolParts: 1
+        }
+      });
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
