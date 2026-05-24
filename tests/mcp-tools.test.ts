@@ -316,6 +316,10 @@ describe("MCP tools", () => {
       assertRequiredFields(tools.tools, "retinue_reply_permission", ["jobId", "requestId", "reply"]);
       assertOptionalField(tools.tools, "retinue_reply_permission", "message");
       assertAbsentFields(tools.tools, "retinue_reply_permission", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
+      expect(getToolDescription(tools.tools, "retinue_list_permissions")).toContain("backend permission requests");
+      expect(getToolDescription(tools.tools, "retinue_list_permissions")).not.toContain("OpenCode permission requests");
+      expect(getToolDescription(tools.tools, "retinue_reply_permission")).toContain("backend permission request");
+      expect(getToolDescription(tools.tools, "retinue_reply_permission")).not.toContain("OpenCode permission request");
     } finally {
       await closeMcpClient(connection);
     }
@@ -1129,6 +1133,26 @@ describe("MCP tools", () => {
     }
   });
 
+  it("reports unsupported permission bridge capability in backend-neutral terms", async () => {
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      process.env.RETINUE_BACKEND = "claude-code";
+
+      const result = (await connection.client.callTool({
+        name: "retinue_list_permissions",
+        arguments: { jobId: "job_without_permission_bridge" }
+      })) as { isError?: boolean; content?: Array<{ type: string; text?: string }> };
+
+      expect(result.isError).toBe(true);
+      const text = result.content?.find((item) => item.type === "text")?.text;
+      expect(text).toContain("Retinue backend claude-code does not expose permission requests");
+      expect(text).not.toContain("OpenCode permissions");
+    } finally {
+      delete process.env.RETINUE_BACKEND;
+      await closeMcpClient(connection);
+    }
+  });
+
   it("evicts the oldest running Retinue OpenCode agent when the session slot pool is full", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-slots-"));
     const fakeOpenCode = await startFakeOpenCodeServer();
@@ -1797,6 +1821,13 @@ function getToolSchema(
   expect(tool, `Tool ${toolName} should be registered`).toBeTruthy();
   expect(tool?.inputSchema, `Tool ${toolName} should expose an input schema`).toBeTruthy();
   return tool!.inputSchema!;
+}
+
+function getToolDescription(tools: Array<{ name: string; description?: string }>, toolName: string): string {
+  const tool = tools.find((entry) => entry.name === toolName);
+  expect(tool, `Tool ${toolName} should be registered`).toBeTruthy();
+  expect(tool?.description, `Tool ${toolName} should expose a description`).toBeTruthy();
+  return tool!.description!;
 }
 
 async function freePort(): Promise<number> {

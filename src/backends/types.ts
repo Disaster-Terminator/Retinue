@@ -36,6 +36,14 @@ export interface AgentPermissionReplyResult extends AgentPermissionListResult {
   reply: AgentPermissionReply;
 }
 
+export interface AgentPermissionBridge {
+  listPermissions(handle: AgentHandle): Promise<AgentPermissionListResult>;
+  replyPermission(
+    handle: AgentHandle,
+    options: { requestId: string; reply: AgentPermissionReply; message?: string }
+  ): Promise<AgentPermissionReplyResult>;
+}
+
 export interface AgentBackend {
   readonly kind: "claude-code" | "opencode";
   run(options: AgentRunOptions): Promise<AgentRunStart>;
@@ -43,4 +51,10 @@ export interface AgentBackend {
   status(handle: AgentHandle): Promise<AgentBackendStatus>;
   result(handle: AgentHandle): Promise<AgentBackendResult>;
   abort(handle: AgentHandle): Promise<void>;
+}
+
+export type AgentBackendWithPermissions = AgentBackend & AgentPermissionBridge;
+
+export function hasPermissionBridge(backend: AgentBackend): backend is AgentBackendWithPermissions {
+  return "listPermissions" in backend && "replyPermission" in backend;
 }

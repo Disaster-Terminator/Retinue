@@ -25022,6 +25022,11 @@ function waitWithTimeout(promise, timeoutMs) {
   return Promise.race([promise, sleep3(timeoutMs)]);
 }
 
+// src/backends/types.ts
+function hasPermissionBridge(backend) {
+  return "listPermissions" in backend && "replyPermission" in backend;
+}
+
 // src/mcp.ts
 var CLAUDE_TOOL_NAMES = [
   "claude_run",
@@ -25241,7 +25246,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
     "retinue_list_permissions",
     {
       title: "List Retinue Permissions",
-      description: "List pending OpenCode permission requests for one Retinue child job, or all known jobs when jobId is omitted.",
+      description: "List pending backend permission requests for one Retinue child job, or all known jobs when jobId is omitted.",
       inputSchema: {
         jobId: external_exports.string().optional()
       }
@@ -25252,7 +25257,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
         const results = [];
         for (const agent of agents) {
           const backend2 = await createRetinueBackendForJob(retinue, agent.jobId, openCodeSharedRootSessions);
-          if (!isPermissionBridgeBackend(backend2)) {
+          if (!hasPermissionBridge(backend2)) {
             continue;
           }
           const list = await backend2.listPermissions({ jobId: agent.jobId });
@@ -25279,8 +25284,8 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
         });
       }
       const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions);
-      if (!isPermissionBridgeBackend(backend)) {
-        throw new Error(`Retinue backend ${backend.kind} does not expose OpenCode permissions`);
+      if (!hasPermissionBridge(backend)) {
+        throw new Error(`Retinue backend ${backend.kind} does not expose permission requests`);
       }
       return jsonToolResult(await backend.listPermissions({ jobId }));
     }
@@ -25289,7 +25294,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
     "retinue_reply_permission",
     {
       title: "Reply To Retinue Permission",
-      description: "Reply to a pending OpenCode permission request for a Retinue child job.",
+      description: "Reply to a pending backend permission request for a Retinue child job.",
       inputSchema: {
         jobId: external_exports.string(),
         requestId: external_exports.string(),
@@ -25299,8 +25304,8 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
     },
     async ({ jobId, requestId, reply, message }) => {
       const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions);
-      if (!isPermissionBridgeBackend(backend)) {
-        throw new Error(`Retinue backend ${backend.kind} does not expose OpenCode permissions`);
+      if (!hasPermissionBridge(backend)) {
+        throw new Error(`Retinue backend ${backend.kind} does not expose permission requests`);
       }
       return jsonToolResult(await backend.replyPermission({ jobId }, { requestId, reply, message }));
     }
@@ -25555,9 +25560,6 @@ async function withOpenCodeDefaults(args) {
     model: args.model ?? process.env.RETINUE_OPENCODE_MODEL,
     agent: args.agent ?? await resolveConfiguredOpenCodeAgent(process.env)
   };
-}
-function isPermissionBridgeBackend(backend) {
-  return "listPermissions" in backend && "replyPermission" in backend;
 }
 var RetinueAgentPool = class {
   entries = /* @__PURE__ */ new Map();

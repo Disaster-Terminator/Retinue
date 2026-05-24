@@ -18,6 +18,7 @@ import { auditRetinueLogs } from "./core/logAudit.js";
 import { getJobPaths, getRetinueTracePath, resolveStateDir } from "./core/paths.js";
 import { ClaudeRetinue } from "./core/retinue.js";
 import { isActivePoolStatus } from "./core/status.js";
+import { hasPermissionBridge } from "./backends/types.js";
 import type {
   AgentBackendKind,
   JobMeta,
@@ -32,9 +33,6 @@ import type {
   AgentBackend,
   AgentContinueOptions,
   AgentHandle,
-  AgentPermissionListResult,
-  AgentPermissionReply,
-  AgentPermissionReplyResult,
   AgentRunOptions
 } from "./backends/types.js";
 
@@ -275,7 +273,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
     "retinue_list_permissions",
     {
       title: "List Retinue Permissions",
-      description: "List pending OpenCode permission requests for one Retinue child job, or all known jobs when jobId is omitted.",
+      description: "List pending backend permission requests for one Retinue child job, or all known jobs when jobId is omitted.",
       inputSchema: {
         jobId: z.string().optional()
       }
@@ -286,7 +284,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
         const results = [];
         for (const agent of agents) {
           const backend = await createRetinueBackendForJob(retinue, agent.jobId, openCodeSharedRootSessions);
-          if (!isPermissionBridgeBackend(backend)) {
+          if (!hasPermissionBridge(backend)) {
             continue;
           }
           const list = await backend.listPermissions({ jobId: agent.jobId });
@@ -313,8 +311,8 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
         });
       }
       const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions);
-      if (!isPermissionBridgeBackend(backend)) {
-        throw new Error(`Retinue backend ${backend.kind} does not expose OpenCode permissions`);
+      if (!hasPermissionBridge(backend)) {
+        throw new Error(`Retinue backend ${backend.kind} does not expose permission requests`);
       }
       return jsonToolResult(await backend.listPermissions({ jobId }));
     }
@@ -324,7 +322,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
     "retinue_reply_permission",
     {
       title: "Reply To Retinue Permission",
-      description: "Reply to a pending OpenCode permission request for a Retinue child job.",
+      description: "Reply to a pending backend permission request for a Retinue child job.",
       inputSchema: {
         jobId: z.string(),
         requestId: z.string(),
@@ -334,8 +332,8 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
     },
     async ({ jobId, requestId, reply, message }) => {
       const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions);
-      if (!isPermissionBridgeBackend(backend)) {
-        throw new Error(`Retinue backend ${backend.kind} does not expose OpenCode permissions`);
+      if (!hasPermissionBridge(backend)) {
+        throw new Error(`Retinue backend ${backend.kind} does not expose permission requests`);
       }
       return jsonToolResult(await backend.replyPermission({ jobId }, { requestId, reply, message }));
     }
@@ -620,18 +618,6 @@ async function withOpenCodeDefaults<T extends { model?: string; agent?: string }
 type RetinueBackend = AgentBackend & {
   wait(handle: AgentHandle, timeoutMs?: number): Promise<WaitResult>;
 };
-
-type RetinuePermissionBridgeBackend = RetinueBackend & {
-  listPermissions(handle: AgentHandle): Promise<AgentPermissionListResult>;
-  replyPermission(
-    handle: AgentHandle,
-    options: { requestId: string; reply: AgentPermissionReply; message?: string }
-  ): Promise<AgentPermissionReplyResult>;
-};
-
-function isPermissionBridgeBackend(backend: RetinueBackend): backend is RetinuePermissionBridgeBackend {
-  return "listPermissions" in backend && "replyPermission" in backend;
-}
 
 interface RetinueAgentPoolEntry {
   jobId: string;
