@@ -125,3 +125,11 @@ RETINUE_REAL_KILO_PROBE=1 pnpm run probe:real:retinue-kilo
 ```
 
 Evidence: `backend=kilo`, `mode=auto-serve`, `status=completed`, `result=RETINUE_KILO_REAL_OK`, and `closeStatus=completed`.
+
+The real permission bridge also completed through Kilo:
+
+```bash
+RETINUE_REAL_KILO_PROBE=1 pnpm run probe:real:retinue-kilo -- --permission
+```
+
+Evidence: an external `/tmp/.../marker.txt` read produced `permission.permission=external_directory`, `permission.reply=once`, `remainingPermissionCount=0`, `status=completed`, `result=RETINUE_KILO_PERMISSION_OK`, and `closeStatus=completed`.
