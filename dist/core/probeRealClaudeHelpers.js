@@ -28,6 +28,9 @@ export function parseProbeArgs(argv) {
         const flag = argv[index];
         const value = argv[index + 1];
         switch (flag) {
+            case "--":
+                index += 1;
+                break;
             case "--cwd":
                 options.cwd = requiredFlagValue(flag, value);
                 index += 2;

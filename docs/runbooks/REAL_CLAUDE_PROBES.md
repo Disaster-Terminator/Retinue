@@ -114,7 +114,9 @@ Expected result:
 
 ## Retinue MCP Real Probe
 
-This calls the product-facing MCP tools directly in memory: `retinue_spawn_agent`, `retinue_wait_agent`, and `retinue_close_agent`. The script sets `RETINUE_BACKEND=claude-code` for the probe process and leaves provider, model, proxy, permission, plugin, and profile behavior to the installed Claude Code runtime.
+This calls the product-facing MCP tools directly in memory: `retinue_spawn_agent`, `retinue_wait_agent`, and `retinue_close_agent`. The script sets `RETINUE_BACKEND=claude-code` for the probe process and leaves provider, model, proxy, permission, plugin, and profile behavior to the installed Claude Code runtime. When no legacy CLI override is configured, the MCP product path uses the Claude Agent SDK adapter. Set `RETINUE_CLAUDE_RUNTIME=cli`, `RETINUE_CLAUDE_USE_SDK=0`, `RETINUE_CLAUDE_COMMAND`, or `RETINUE_CLAUDE_PREFIX_ARGS` only when intentionally exercising the legacy CLI wrapper.
+
+Retinue does not set a Claude SDK model by default and does not replace the SDK subprocess environment. If the local Claude Code default model is wrong, the real probe should fail with the model error from Claude Code; fix the Claude Code profile/runtime configuration rather than adding a Retinue default. `RETINUE_CLAUDE_MODEL` is reserved for explicit deployment override cases where the operator intentionally wants Retinue to pass a model argument to the SDK.
 
 ```bash
 pnpm run probe:real:retinue-claude
@@ -129,7 +131,7 @@ Expected result:
 
 ## Agent SDK Feasibility Probe
 
-The current product backend still invokes the system `claude` CLI. Use this probe when evaluating the SDK-first Claude Code backend path. It calls `@anthropic-ai/claude-agent-sdk` directly and leaves Claude Code provider, model, account, profile, and quota behavior to the local Claude Code runtime.
+Use this lower-level probe when evaluating Claude Agent SDK behavior outside the Retinue MCP product path. It calls `@anthropic-ai/claude-agent-sdk` directly and leaves Claude Code provider, model, account, profile, and quota behavior to the local Claude Code runtime.
 
 ```bash
 pnpm run probe:real:claude-sdk
@@ -150,7 +152,7 @@ Expected permission result:
 - `permissionRequests` contains at least one entry from `canUseTool`
 - the permission entry includes the Claude SDK tool name, tool input, `toolUseID`, and any SDK-provided prompt fields such as `displayName`, `description`, `decisionReason`, or `blockedPath`
 
-This probe is intentionally not a product MCP proof. It exists to validate the next Claude Code backend abstraction before replacing the legacy `claude -p --output-format json` wrapper.
+This probe is intentionally not a product MCP proof. It exists to validate the underlying Claude Agent SDK behavior separately from Retinue's `claude-code` backend adapter.
 
 ## Custom Probe Inputs
 
@@ -168,4 +170,4 @@ Use `--state-dir` when you want probe artifacts in a known location. Without it,
 
 ## Boundary Statement
 
-The legacy Retinue MCP and CLI probes verify retinue's lifecycle boundary by invoking the system `claude` command. The Agent SDK probe is a separate feasibility check for the next backend abstraction. Provider routing, model choice, quota, proxy behavior, and cc-switch behavior remain owned by the local Claude Code configuration. The probe runners do not install a service, do not auto-start a persistent daemon, and do not add permission-bypass flags.
+The Retinue MCP product probe verifies the `claude-code` backend through the Claude Agent SDK adapter unless a legacy CLI override is configured. The direct CLI and daemon probes remain compatibility checks for the legacy wrapper. Provider routing, model choice, quota, proxy behavior, and cc-switch behavior remain owned by the local Claude Code configuration. Retinue should only pass a model when an explicit deployment override such as `RETINUE_CLAUDE_MODEL` is set. The probe runners do not install a service, do not auto-start a persistent daemon, and do not add permission-bypass flags.

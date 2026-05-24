@@ -21,6 +21,13 @@ describe("real Claude probe helpers", () => {
     });
   });
 
+  it("ignores pnpm argument separators", () => {
+    expect(parseProbeArgs(["direct", "--", "--expect", "RETINUE_REAL_OK"])).toMatchObject({
+      mode: "direct",
+      expected: "RETINUE_REAL_OK"
+    });
+  });
+
   it("rejects unknown probe modes", () => {
     expect(() => parseProbeArgs(["unknown"])).toThrow("Unknown probe mode: unknown");
   });

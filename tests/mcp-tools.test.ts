@@ -18,6 +18,7 @@ import {
   createMcpRetinueFromEnv,
   resolveMcpWaitTimeoutMs
 } from "../src/mcp.js";
+import type { CreateMcpServerOptions } from "../src/mcp.js";
 import { ClaudeRetinue } from "../src/core/retinue.js";
 import { startFakeOpenCodeServer } from "./fixtures/fake-opencode-server.js";
 
@@ -1170,6 +1171,136 @@ describe("MCP tools", () => {
     }
   });
 
+  it("surfaces Claude SDK permissions through Retinue MCP without selecting a model by default", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-claude-sdk-permission-"));
+    const previousBackend = process.env.RETINUE_BACKEND;
+    const previousStateDir = process.env.RETINUE_STATE_DIR;
+    const previousRuntime = process.env.RETINUE_CLAUDE_RUNTIME;
+    const previousModel = process.env.RETINUE_CLAUDE_MODEL;
+    const previousCommand = process.env.RETINUE_CLAUDE_COMMAND;
+    const previousPrefixArgs = process.env.RETINUE_CLAUDE_PREFIX_ARGS;
+    const seenModels: unknown[] = [];
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }), {
+      exposeBackendTools: true,
+      preferClaudeSdk: true,
+      claudeSdkQuery: async function* ({ options }) {
+        seenModels.push(options?.model);
+        expect(Object.prototype.hasOwnProperty.call(options ?? {}, "env")).toBe(false);
+        expect(Object.prototype.hasOwnProperty.call(options ?? {}, "model")).toBe(false);
+        const permission = await options?.canUseTool?.(
+          "Read",
+          { file_path: "/etc/hostname" },
+          {
+            signal: new AbortController().signal,
+            toolUseID: "tool-read-1",
+            displayName: "Read",
+            description: "/etc/hostname",
+            decisionReason: "Path is outside allowed working directories",
+            suggestions: []
+          }
+        );
+        yield {
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          result: `permission:${permission?.behavior}`,
+          session_id: "sdk-mcp-session"
+        };
+      }
+    });
+    try {
+      process.env.RETINUE_BACKEND = "claude-code";
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_CLAUDE_RUNTIME = "sdk";
+      delete process.env.RETINUE_CLAUDE_MODEL;
+      delete process.env.RETINUE_CLAUDE_COMMAND;
+      delete process.env.RETINUE_CLAUDE_PREFIX_ARGS;
+
+      const spawn = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "read /etc/hostname", task_name: "claude-sdk-permission" }
+        })
+      );
+      expect(spawn).toMatchObject({
+        backend: "claude-code",
+        status: "running",
+        task_name: "claude-sdk-permission"
+      });
+
+      const wait = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_wait_agent",
+          arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
+        })
+      );
+      expect(wait).toMatchObject({
+        jobId: spawn.jobId,
+        status: "running",
+        backend: "claude-code",
+        permissionRequired: true,
+        permissions: [
+          expect.objectContaining({
+            id: "tool-read-1",
+            permission: "Read",
+            patterns: ["/etc/hostname"],
+            approval: expect.objectContaining({
+              kind: "claude_code_permission",
+              title: "Read",
+              recommendedReply: "once"
+            })
+          })
+        ],
+        attentionRequired: expect.objectContaining({
+          kind: "permission",
+          backend: "claude-code",
+          reason: "claude_code_permission_pending"
+        })
+      });
+
+      const reply = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_reply_permission",
+          arguments: { jobId: spawn.jobId, requestId: "tool-read-1", reply: "once" }
+        })
+      );
+      expect(reply).toMatchObject({
+        jobId: spawn.jobId,
+        backend: "claude-code",
+        repliedRequestId: "tool-read-1",
+        reply: "once",
+        permissions: []
+      });
+
+      const completed = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_wait_agent",
+          arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
+        })
+      );
+      expect(completed).toMatchObject({
+        jobId: spawn.jobId,
+        status: "completed",
+        result: {
+          parsedStdout: {
+            result: "permission:allow",
+            session_id: "sdk-mcp-session"
+          }
+        }
+      });
+      expect(seenModels).toEqual([undefined]);
+    } finally {
+      restoreEnv("RETINUE_BACKEND", previousBackend);
+      restoreEnv("RETINUE_STATE_DIR", previousStateDir);
+      restoreEnv("RETINUE_CLAUDE_RUNTIME", previousRuntime);
+      restoreEnv("RETINUE_CLAUDE_MODEL", previousModel);
+      restoreEnv("RETINUE_CLAUDE_COMMAND", previousCommand);
+      restoreEnv("RETINUE_CLAUDE_PREFIX_ARGS", previousPrefixArgs);
+      await closeMcpClient(connection);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("evicts the oldest running Retinue OpenCode agent when the session slot pool is full", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-slots-"));
     const fakeOpenCode = await startFakeOpenCodeServer();
@@ -1774,7 +1905,7 @@ async function connectMcpClient(daemonUrl: string) {
 
 async function connectMcpClientWithRetinue(
   retinue: ClaudeRetinue,
-  options: boolean | { exposeBackendTools?: boolean; exposeDiagnosticTools?: boolean } = true
+  options: boolean | CreateMcpServerOptions = true
 ) {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "retinue-test-client", version: "0.1.0" });

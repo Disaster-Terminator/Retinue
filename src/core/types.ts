@@ -51,7 +51,7 @@ export interface RetinuePermissionDecisionOption {
 }
 
 export interface RetinuePermissionApprovalRequest {
-  kind: "opencode_permission";
+  kind: "opencode_permission" | "claude_code_permission";
   title: string;
   lines: string[];
   guidance: string[];

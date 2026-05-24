@@ -35,10 +35,11 @@ The local daemon mode uses the same lifecycle API through loopback RPC. In that 
 
 Backends must be thin adapters over mature local agent runtimes:
 
-- `claude-code`: calls the system `claude` executable and preserves the fake-Claude deterministic test model.
+- `claude-code`: uses the Claude Agent SDK for the product MCP path and keeps the legacy `claude -p --output-format json` wrapper as a compatibility fallback for fake-Claude tests and explicit CLI deployments.
 - `opencode`: attaches to a loopback OpenCode server and uses OpenCode's API surface. CLI-based probing is acceptable for compatibility checks, but provider/model behavior remains OpenCode-owned.
 
 Retinue should not parse interactive TUI output or reimplement upstream provider/model selection. For OpenCode, provider login, `/connect`, model selection, agent configuration, and endpoint routing remain OpenCode-owned.
+For Claude Code, the SDK adapter must leave the model unset unless an operator sets an explicit Retinue deployment override. The normal path is to let the local Claude Code profile/default model decide routing.
 
 ## Non-Goals
 

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { ClaudeCodeSdkBackend } from "./backends/claude/sdkBackend.js";
 import { OpenCodeBackend } from "./backends/opencode/backend.js";
 import { OpenCodeClient } from "./backends/opencode/client.js";
 import { ensureOpenCodeServer, resolveKiloServerFromEnv, resolveOpenCodeServerFromEnv } from "./backends/opencode/serverManager.js";
@@ -49,6 +50,8 @@ const DEFAULT_MCP_WAIT_MAX_MS = 180_000;
 export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
     const agentPool = new RetinueAgentPool();
     const openCodeSharedRootSessions = new Map();
+    const claudeSdkJobs = new Map();
+    const preferClaudeSdk = options.preferClaudeSdk ?? arguments.length === 0;
     const server = new McpServer({
         name: "retinue",
         version: "0.1.0"
@@ -69,9 +72,9 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
         }
     }, async (args) => {
         const taskName = normalizeTaskName(args);
-        const backend = await createRetinueBackend(retinue, openCodeSharedRootSessions);
+        const backend = await createRetinueBackend(retinue, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
         const { evicted, started } = await agentPool.withSpawnLock(async () => {
-            const evicted = await agentPool.ensureSpawnSlot(retinue, process.env);
+            const evicted = await agentPool.ensureSpawnSlot(retinue, process.env, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
             const agent = args.agent ?? (await resolveConfiguredAgentForBackend(backend.kind, process.env));
             const started = await backend.run({
                 cwd: args.cwd ?? process.cwd(),
@@ -129,7 +132,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             timeoutMs: z.number().int().nonnegative().optional()
         }
     }, async ({ jobId, timeoutMs }) => {
-        const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions);
+        const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
         const effectiveTimeoutMs = resolveMcpWaitTimeoutMs(timeoutMs, process.env);
         const waited = await backend.wait({ jobId }, effectiveTimeoutMs);
         const responseJobId = waited.jobId;
@@ -174,7 +177,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
                 stdoutTailTruncated: stdoutTail.truncated,
                 stderrTailTruncated: stderrTail.truncated,
                 diagnostic,
-                ...attentionFields(diagnostic),
+                ...attentionFields(diagnostic, waited),
                 tracePath: getRetinueTracePath(stateDir),
                 requestedTimeoutMs: timeoutMs,
                 effectiveTimeoutMs
@@ -202,7 +205,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             jobId: z.string()
         }
     }, async ({ jobId }) => {
-        const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions);
+        const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
         const status = await backend.status({ jobId });
         if (isJobMeta(status) && status.status === "running") {
             await backend.abort({ jobId });
@@ -218,7 +221,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
         inputSchema: {}
     }, async () => jsonToolResult({
         maxAgents: await resolveMaxConcurrentAgents(process.env),
-        agents: await agentPool.list(retinue)
+        agents: await agentPool.list(retinue, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery)
     }));
     server.registerTool("retinue_list_permissions", {
         title: "List Retinue Permissions",
@@ -228,10 +231,10 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
         }
     }, async ({ jobId }) => {
         if (jobId === undefined) {
-            const agents = await agentPool.listKnown(retinue);
+            const agents = await agentPool.listKnown(retinue, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
             const results = [];
             for (const agent of agents) {
-                const backend = await createRetinueBackendForJob(retinue, agent.jobId, openCodeSharedRootSessions);
+                const backend = await createRetinueBackendForJob(retinue, agent.jobId, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
                 if (!hasPermissionBridge(backend)) {
                     continue;
                 }
@@ -256,7 +259,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
                 })))
             });
         }
-        const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions);
+        const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
         if (!hasPermissionBridge(backend)) {
             throw new Error(`Retinue backend ${backend.kind} does not expose permission requests`);
         }
@@ -272,7 +275,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             message: z.string().optional()
         }
     }, async ({ jobId, requestId, reply, message }) => {
-        const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions);
+        const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
         if (!hasPermissionBridge(backend)) {
             throw new Error(`Retinue backend ${backend.kind} does not expose permission requests`);
         }
@@ -507,11 +510,11 @@ class RetinueAgentPool {
             release();
         }
     }
-    async ensureSpawnSlot(retinue, env) {
+    async ensureSpawnSlot(retinue, env, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery) {
         const maxAgents = await resolveMaxConcurrentAgents(env);
         const activeEntries = [];
         for (const entry of [...this.entries.values()]) {
-            const backend = await createRetinueBackendByKind(entry.backend, retinue);
+            const backend = await createRetinueBackendByKind(entry.backend, retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery);
             const status = await backend.status({ jobId: entry.jobId });
             if (!isJobMeta(status) || !isActivePoolStatus(status.status)) {
                 this.entries.delete(entry.jobId);
@@ -527,7 +530,7 @@ class RetinueAgentPool {
         if (!evicted) {
             return undefined;
         }
-        const backend = await createRetinueBackendByKind(evicted.backend, retinue);
+        const backend = await createRetinueBackendByKind(evicted.backend, retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery);
         await backend.abort({ jobId: evicted.jobId });
         this.entries.delete(evicted.jobId);
         await writeMcpTrace(env, {
@@ -553,10 +556,10 @@ class RetinueAgentPool {
     remove(jobId) {
         this.entries.delete(jobId);
     }
-    async list(retinue) {
+    async list(retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery) {
         const agents = [];
         for (const entry of [...this.entries.values()].sort((left, right) => left.createdAt - right.createdAt)) {
-            const backend = await createRetinueBackendByKind(entry.backend, retinue);
+            const backend = await createRetinueBackendByKind(entry.backend, retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery);
             const status = await backend.status({ jobId: entry.jobId });
             if (!isJobMeta(status)) {
                 this.entries.delete(entry.jobId);
@@ -576,10 +579,10 @@ class RetinueAgentPool {
         }
         return agents;
     }
-    async listKnown(retinue) {
+    async listKnown(retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery) {
         const agents = [];
         for (const entry of [...this.entries.values()].sort((left, right) => left.createdAt - right.createdAt)) {
-            const backend = await createRetinueBackendByKind(entry.backend, retinue);
+            const backend = await createRetinueBackendByKind(entry.backend, retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery);
             const status = await backend.status({ jobId: entry.jobId });
             if (!isJobMeta(status)) {
                 this.entries.delete(entry.jobId);
@@ -871,17 +874,17 @@ function arrayValue(value) {
 function stringArrayValue(value) {
     return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined;
 }
-async function createRetinueBackend(retinue, sharedRootSessions) {
-    return createRetinueBackendByKind(readRetinueBackendKindFromEnv(), retinue, sharedRootSessions);
+async function createRetinueBackend(retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery) {
+    return createRetinueBackendByKind(readRetinueBackendKindFromEnv(), retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery);
 }
-async function createRetinueBackendForJob(retinue, jobId, sharedRootSessions) {
+async function createRetinueBackendForJob(retinue, jobId, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery) {
     const recordedKind = await readRetinueJobBackendKind(jobId);
     if (recordedKind) {
-        return createRetinueBackendByKind(recordedKind, retinue, sharedRootSessions);
+        return createRetinueBackendByKind(recordedKind, retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery);
     }
-    return createRetinueBackend(retinue, sharedRootSessions);
+    return createRetinueBackend(retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery);
 }
-async function createRetinueBackendByKind(kind, retinue, sharedRootSessions) {
+async function createRetinueBackendByKind(kind, retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk = false, claudeSdkQuery) {
     if (kind === "opencode") {
         return createOpenCodeBackend({ sharedRootSessions });
     }
@@ -889,6 +892,15 @@ async function createRetinueBackendByKind(kind, retinue, sharedRootSessions) {
         return createKiloBackend({ sharedRootSessions });
     }
     if (kind === "claude-code") {
+        if (shouldUseClaudeSdk(process.env, preferClaudeSdk)) {
+            return new ClaudeCodeSdkBackend({
+                stateDir: process.env.RETINUE_STATE_DIR,
+                env: process.env,
+                defaultRuntimeTimeoutMs: parseOptionalNumber(process.env.RETINUE_DEFAULT_RUNTIME_TIMEOUT_MS),
+                jobs: claudeSdkJobs,
+                query: claudeSdkQuery
+            });
+        }
         return new RetinueAgentBackend(retinue);
     }
     throw new Error(`Unsupported Retinue backend: ${kind}`);
@@ -905,6 +917,25 @@ function readRetinueBackendKindFromEnv() {
         return "claude-code";
     }
     throw new Error(`Unsupported RETINUE_BACKEND: ${backend}`);
+}
+function shouldUseClaudeSdk(env, preferClaudeSdk) {
+    const runtime = env.RETINUE_CLAUDE_RUNTIME?.trim().toLowerCase();
+    if (runtime === "sdk") {
+        return true;
+    }
+    if (runtime === "cli") {
+        return false;
+    }
+    if (env.RETINUE_CLAUDE_USE_SDK === "1") {
+        return true;
+    }
+    if (env.RETINUE_CLAUDE_USE_SDK === "0") {
+        return false;
+    }
+    if (env.RETINUE_CLAUDE_COMMAND || env.RETINUE_CLAUDE_PREFIX_ARGS) {
+        return false;
+    }
+    return preferClaudeSdk;
 }
 async function readRetinueJobBackendKind(jobId) {
     const stateDir = resolveStateDir({

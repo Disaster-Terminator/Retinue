@@ -21,7 +21,7 @@ export type AgentPermissionReply = PermissionReplyOption;
 export type AgentPermissionRequest = RetinuePermissionRequest;
 export interface AgentPermissionListResult {
     jobId: string;
-    backend: "opencode" | "kilo";
+    backend: "claude-code" | "opencode" | "kilo";
     status: JobMeta["status"];
     permissions: AgentPermissionRequest[];
 }

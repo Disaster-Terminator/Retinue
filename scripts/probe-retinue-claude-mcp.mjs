@@ -8,9 +8,14 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { assertExpectedResult, parseProbeArgs } from "../dist/core/probeRealClaudeHelpers.js";
 import { createMcpServer } from "../dist/mcp.js";
 
+let activeStateDir;
+
 async function main() {
-  const options = parseProbeArgs(["direct", ...process.argv.slice(2)]);
+  const permissionProbe = process.argv.includes("--permission");
+  const probeArgs = process.argv.slice(2).filter((arg) => arg !== "--permission");
+  const options = parseProbeArgs(["direct", ...probeArgs]);
   const stateDir = options.stateDir ?? (await mkdtemp(path.join(os.tmpdir(), "retinue-claude-real-state-")));
+  activeStateDir = stateDir;
   const previousStateDir = process.env.RETINUE_STATE_DIR;
   const previousBackend = process.env.RETINUE_BACKEND;
   process.env.RETINUE_STATE_DIR = stateDir;
@@ -27,19 +32,21 @@ async function main() {
         name: "retinue_spawn_agent",
         arguments: {
           cwd: options.cwd,
-          task_name: "real-claude-smoke",
-          message: options.prompt
+          task_name: permissionProbe ? "real-claude-permission" : "real-claude-smoke",
+          message: permissionProbe ? "Use the Read tool to read /etc/hostname, then reply exactly: RETINUE_CLAUDE_PERMISSION_OK" : options.prompt
         }
       })
     );
 
-    const wait = parseToolJson(
-      await client.callTool({
-        name: "retinue_wait_agent",
-        arguments: { jobId: spawn.jobId, timeoutMs: options.timeoutMs }
-      }, undefined, { timeout: options.timeoutMs + 30_000 })
-    );
-    const actual = assertExpectedResult(wait.result, options.expected);
+    const wait = permissionProbe
+      ? await waitThroughPermission(client, spawn.jobId, options.timeoutMs)
+      : parseToolJson(
+          await client.callTool({
+            name: "retinue_wait_agent",
+            arguments: { jobId: spawn.jobId, timeoutMs: options.timeoutMs }
+          }, undefined, { timeout: options.timeoutMs + 30_000 })
+        );
+    const actual = assertExpectedResult(wait.result, permissionProbe ? "RETINUE_CLAUDE_PERMISSION_OK" : options.expected);
 
     const close = parseToolJson(
       await client.callTool({
@@ -56,8 +63,10 @@ async function main() {
           backend: spawn.backend,
           task_name: spawn.task_name,
           jobId: spawn.jobId,
+          mode: permissionProbe ? "permission" : "completion",
           status: wait.status,
           result: actual,
+          permission: wait.permission,
           closeStatus: close.status,
           stateDir
         },
@@ -70,6 +79,39 @@ async function main() {
     restoreEnv("RETINUE_STATE_DIR", previousStateDir);
     restoreEnv("RETINUE_BACKEND", previousBackend);
   }
+}
+
+async function waitThroughPermission(client, jobId, timeoutMs) {
+  const first = parseToolJson(
+    await client.callTool({
+      name: "retinue_wait_agent",
+      arguments: { jobId, timeoutMs: Math.min(timeoutMs, 15000) }
+    }, undefined, { timeout: timeoutMs + 30_000 })
+  );
+  const permission = first.permissions?.[0];
+  if (!permission?.id) {
+    throw new Error(`Expected Claude SDK permission request, got ${JSON.stringify(first).slice(0, 500)}`);
+  }
+  const reply = parseToolJson(
+    await client.callTool({
+      name: "retinue_reply_permission",
+      arguments: { jobId, requestId: permission.id, reply: "once" }
+    })
+  );
+  const second = parseToolJson(
+    await client.callTool({
+      name: "retinue_wait_agent",
+      arguments: { jobId, timeoutMs }
+    }, undefined, { timeout: timeoutMs + 30_000 })
+  );
+  return {
+    ...second,
+    permission: {
+      requestId: permission.id,
+      permission: permission.permission,
+      reply: reply.reply
+    }
+  };
 }
 
 function parseToolJson(result) {
@@ -89,6 +131,6 @@ function restoreEnv(name, value) {
 }
 
 main().catch((error) => {
-  process.stderr.write(`${JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) })}\n`);
+  process.stderr.write(`${JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error), stateDir: activeStateDir })}\n`);
   process.exitCode = 1;
 });
