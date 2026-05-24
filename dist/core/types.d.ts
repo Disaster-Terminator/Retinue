@@ -48,6 +48,15 @@ export interface RetinuePermissionApprovalRequest {
     title: string;
     lines: string[];
     guidance: string[];
+    recommendedReply?: PermissionReplyOption;
+    recommendedMessage?: string;
+    scope?: {
+        permission: string;
+        target?: string;
+        cwd?: string;
+        sessionDirectory?: string;
+        relation?: "inside_workspace" | "outside_workspace" | "unknown";
+    };
     options: RetinuePermissionDecisionOption[];
 }
 export interface RetinuePermissionRequest {

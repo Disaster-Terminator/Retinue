@@ -1009,7 +1009,19 @@ describe("MCP tools", () => {
             approval: expect.objectContaining({
               kind: "opencode_permission",
               title: "Access external directory /home/raystorm/projects/opencode",
-              lines: ["Pattern: /home/raystorm/projects/opencode/*"],
+              lines: expect.arrayContaining([
+                "Target: /home/raystorm/projects/opencode",
+                "Pattern: /home/raystorm/projects/opencode/*",
+                `Delegated workspace: ${tempDir}`,
+                "Scope: outside delegated workspace"
+              ]),
+              recommendedReply: "reject",
+              recommendedMessage: expect.stringContaining("outside the delegated workspace"),
+              scope: expect.objectContaining({
+                target: "/home/raystorm/projects/opencode",
+                cwd: tempDir,
+                relation: "outside_workspace"
+              }),
               options: [
                 expect.objectContaining({ reply: "once", label: "Allow once" }),
                 expect.objectContaining({ reply: "always", label: "Allow always", requiresConfirmation: true }),
@@ -1029,12 +1041,14 @@ describe("MCP tools", () => {
               permission: "external_directory",
               patterns: ["/home/raystorm/projects/opencode/*"],
               toolCallID: "call_read",
-              approval: expect.objectContaining({
-                title: "Access external directory /home/raystorm/projects/opencode",
-                guidance: expect.arrayContaining([
-                  "Prefer reply=once when the requested scope is needed for the current task.",
-                  "Use reply=reject when the path or tool is outside the delegated task scope."
-                ])
+            approval: expect.objectContaining({
+              title: "Access external directory /home/raystorm/projects/opencode",
+              recommendedReply: "reject",
+              recommendedMessage: expect.stringContaining(`under ${tempDir}`),
+              guidance: expect.arrayContaining([
+                "Prefer reply=once when the requested scope is needed for the current task.",
+                "Use reply=reject when the path or tool is outside the delegated task scope."
+              ])
               })
             })
           ]
@@ -1063,6 +1077,9 @@ describe("MCP tools", () => {
             toolCallID: "call_read",
             approval: expect.objectContaining({
               title: "Access external directory /home/raystorm/projects/opencode",
+              scope: expect.objectContaining({
+                relation: "outside_workspace"
+              }),
               options: [
                 expect.objectContaining({ reply: "once", effect: "Resume this blocked OpenCode tool call only." }),
                 expect.objectContaining({ reply: "always", requiresConfirmation: true }),

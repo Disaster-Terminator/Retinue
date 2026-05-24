@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { resolveHttpTimeoutMs } from "../../core/http.js";
 import { getJobPaths, getRetinueTracePath, resolveStateDir } from "../../core/paths.js";
@@ -340,7 +341,7 @@ export class OpenCodeBackend {
             jobId: handle.jobId,
             backend: this.kind,
             status: meta.status,
-            permissions: summarizePermissionRequests(permissions)
+            permissions: summarizePermissionRequests(permissions, permissionApprovalContext(meta))
         };
     }
     async replyPermission(handle, options) {
@@ -366,7 +367,7 @@ export class OpenCodeBackend {
             status: activeMeta.status,
             repliedRequestId: options.requestId,
             reply: options.reply,
-            permissions: summarizePermissionRequests(remaining)
+            permissions: summarizePermissionRequests(remaining, permissionApprovalContext(activeMeta))
         };
         await this.writeJobTrace("opencode_permission_replied", activeMeta, {
             baseUrl: activeMeta.externalServerUrl ?? this.baseUrl ?? "",
@@ -1485,7 +1486,7 @@ function computeStallDiagnostic(jobMessages, meta, env, pendingPermissions = [])
     const runningReadToolParts = runningReadToolPartSummaries.length;
     const malformedReadToolParts = runningReadToolPartSummaries.filter(isMalformedReadToolInput).length;
     const runningReadToolCallIds = runningReadToolPartSummaries.flatMap((part) => (part.callID ? [part.callID] : []));
-    const pendingPermissionSummaries = summarizePermissionRequests(pendingPermissions);
+    const pendingPermissionSummaries = summarizePermissionRequests(pendingPermissions, permissionApprovalContext(meta));
     const pendingExternalDirectoryPermissionSummaries = pendingPermissionSummaries.filter((permission) => permission.permission === "external_directory");
     const lastAssistant = [...activeMessages].reverse().find((message) => message.info?.role === "assistant");
     const incompleteAssistantRound = isIncompleteAssistantMessage(lastAssistant);
@@ -1764,7 +1765,7 @@ function formatReadToolStallDetails(diagnostic) {
     }
     return "";
 }
-function summarizePermissionRequests(requests) {
+function summarizePermissionRequests(requests, context = {}) {
     return requests.map((request) => ({
         id: request.id,
         sessionID: request.sessionID,
@@ -1773,19 +1774,28 @@ function summarizePermissionRequests(requests) {
         always: Array.isArray(request.always) ? request.always.map(String) : undefined,
         toolCallID: typeof request.tool?.callID === "string" ? request.tool.callID : undefined,
         metadata: diagnosticValuePreview(request.metadata),
-        approval: buildPermissionApprovalRequest(request)
+        approval: buildPermissionApprovalRequest(request, context)
     }));
 }
-function buildPermissionApprovalRequest(request) {
+function buildPermissionApprovalRequest(request, context = {}) {
     const patterns = Array.isArray(request.patterns) ? request.patterns.map(String) : [];
     const always = Array.isArray(request.always) ? request.always.map(String) : [];
+    const external = request.permission === "external_directory" ? describeExternalDirectoryPermission(request, patterns, context) : undefined;
     const title = request.permission === "external_directory"
-        ? `Access external directory ${formatExternalDirectoryPermissionTarget(request, patterns)}`
+        ? `Access external directory ${external?.target ?? "(unknown)"}`
         : request.permission === "doom_loop"
             ? "Continue after repeated failures"
             : `Call OpenCode tool ${request.permission}`;
     const lines = request.permission === "external_directory"
-        ? patterns.map((pattern) => `Pattern: ${pattern}`)
+        ? [
+            ...(external?.target ? [`Target: ${external.target}`] : []),
+            ...patterns.map((pattern) => `Pattern: ${pattern}`),
+            ...(context.cwd ? [`Delegated workspace: ${context.cwd}`] : []),
+            ...(external?.sessionDirectory && external.sessionDirectory !== context.cwd
+                ? [`OpenCode session directory: ${external.sessionDirectory}`]
+                : []),
+            ...(external?.relation ? [`Scope: ${formatPermissionScopeRelation(external.relation)}`] : [])
+        ]
         : request.permission === "doom_loop"
             ? ["This keeps the OpenCode child session running despite repeated failures."]
             : [`Tool: ${request.permission}`, ...patterns.map((pattern) => `Pattern: ${pattern}`)];
@@ -1804,6 +1814,21 @@ function buildPermissionApprovalRequest(request) {
             "Use reply=always only when the listed patterns are expected to repeat and remain trusted.",
             "Use reply=reject when the path or tool is outside the delegated task scope."
         ],
+        recommendedReply: external?.recommendedReply,
+        recommendedMessage: external?.recommendedMessage,
+        scope: external
+            ? {
+                permission: request.permission,
+                target: external.target,
+                cwd: context.cwd,
+                sessionDirectory: external.sessionDirectory,
+                relation: external.relation
+            }
+            : {
+                permission: request.permission,
+                cwd: context.cwd,
+                sessionDirectory: context.sessionDirectory
+            },
         options: [
             {
                 reply: "once",
@@ -1824,7 +1849,7 @@ function buildPermissionApprovalRequest(request) {
         ]
     };
 }
-function formatExternalDirectoryPermissionTarget(request, patterns) {
+function externalDirectoryPermissionTarget(request, patterns) {
     const metadata = request.metadata && typeof request.metadata === "object" && !Array.isArray(request.metadata) ? request.metadata : {};
     const raw = typeof metadata.parentDir === "string"
         ? metadata.parentDir
@@ -1832,12 +1857,51 @@ function formatExternalDirectoryPermissionTarget(request, patterns) {
             ? metadata.filepath
             : (patterns[0] ?? "");
     if (!raw) {
-        return "(unknown)";
+        return undefined;
     }
     if (!raw.includes("*")) {
         return raw;
     }
     return raw.slice(0, raw.indexOf("*")).replace(/[\\/]+$/, "");
+}
+function describeExternalDirectoryPermission(request, patterns, context) {
+    const target = externalDirectoryPermissionTarget(request, patterns);
+    const sessionDirectory = context.sessionDirectory ?? context.cwd;
+    const workspace = context.cwd ?? sessionDirectory;
+    const relation = classifyExternalDirectoryRelation(target, workspace);
+    const recommendedMessage = relation === "outside_workspace" && target && workspace
+        ? `The requested path ${target} is outside the delegated workspace ${workspace}. Do not request external directory access. Retry using cwd-relative paths under ${workspace}.`
+        : undefined;
+    return {
+        target,
+        workspace,
+        sessionDirectory,
+        relation,
+        recommendedReply: recommendedMessage ? "reject" : undefined,
+        recommendedMessage
+    };
+}
+function classifyExternalDirectoryRelation(target, sessionDirectory) {
+    if (!target || !sessionDirectory || !path.isAbsolute(target) || !path.isAbsolute(sessionDirectory)) {
+        return "unknown";
+    }
+    const relative = path.relative(path.resolve(sessionDirectory), path.resolve(target));
+    return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative)) ? "inside_workspace" : "outside_workspace";
+}
+function formatPermissionScopeRelation(relation) {
+    if (relation === "inside_workspace") {
+        return "inside delegated workspace";
+    }
+    if (relation === "outside_workspace") {
+        return "outside delegated workspace";
+    }
+    return "unknown";
+}
+function permissionApprovalContext(meta) {
+    return {
+        cwd: meta.cwd,
+        sessionDirectory: meta.externalSessionDirectory ?? meta.cwd
+    };
 }
 function permissionAttentionFields(diagnostic, backend) {
     const permissions = diagnostic.pendingExternalDirectoryPermissions ?? [];

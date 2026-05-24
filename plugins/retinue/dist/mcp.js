@@ -3225,8 +3225,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path5) {
-      let input = path5;
+    function removeDotSegments(path6) {
+      let input = path6;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3469,8 +3469,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path5, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path5 && path5 !== "/" ? path5 : void 0;
+        const [path6, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path6 && path6 !== "/" ? path6 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -6845,7 +6845,7 @@ var require_dist = __commonJS({
 
 // src/mcp.ts
 import fs6 from "node:fs/promises";
-import path4 from "node:path";
+import path5 from "node:path";
 import { fileURLToPath } from "node:url";
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/external.js
@@ -7326,8 +7326,8 @@ function getErrorMap() {
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path5, errorMaps, issueData } = params;
-  const fullPath = [...path5, ...issueData.path || []];
+  const { data, path: path6, errorMaps, issueData } = params;
+  const fullPath = [...path6, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7443,11 +7443,11 @@ var errorUtil;
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path5, key) {
+  constructor(parent, value, path6, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path5;
+    this._path = path6;
     this._key = key;
   }
   get path() {
@@ -11084,10 +11084,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path5) {
-  if (!path5)
+function getElementAtPath(obj, path6) {
+  if (!path6)
     return obj;
-  return path5.reduce((acc, key) => acc?.[key], obj);
+  return path6.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -11407,11 +11407,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path5, issues) {
+function prefixIssues(path6, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path5);
+    iss.path.unshift(path6);
     return iss;
   });
 }
@@ -21062,6 +21062,7 @@ var StdioServerTransport = class {
 
 // src/backends/opencode/backend.ts
 import fs2 from "node:fs/promises";
+import path3 from "node:path";
 import { createHash as createHash2, randomUUID as randomUUID2 } from "node:crypto";
 
 // src/core/http.ts
@@ -21145,11 +21146,11 @@ function isActivePoolStatus(status) {
 
 // src/backends/opencode/client.ts
 var OpenCodeClientError = class extends Error {
-  constructor(message, code, status, path5, details) {
+  constructor(message, code, status, path6, details) {
     super(message);
     this.code = code;
     this.status = status;
-    this.path = path5;
+    this.path = path6;
     this.details = details;
     this.name = "OpenCodeClientError";
   }
@@ -21216,41 +21217,41 @@ var OpenCodeClient = class {
   abort(sessionId) {
     return this.request("POST", `/session/${encodeURIComponent(sessionId)}/abort`, {});
   }
-  async request(method, path5, body) {
-    const response = await this.fetch(method, path5, body);
+  async request(method, path6, body) {
+    const response = await this.fetch(method, path6, body);
     const text = await response.text();
     if (!response.ok) {
       const parsed2 = parseJson(text);
       const details = parsed2.ok ? parsed2.value : text;
       const message = parsed2.ok ? extractErrorMessage(parsed2.value) : void 0;
-      throw new OpenCodeClientError(message ?? `OpenCode request failed with HTTP ${response.status}`, "http_error", response.status, path5, details);
+      throw new OpenCodeClientError(message ?? `OpenCode request failed with HTTP ${response.status}`, "http_error", response.status, path6, details);
     }
     const parsed = parseJson(text);
     if (!parsed.ok) {
-      throw new OpenCodeClientError("OpenCode response was not valid JSON", "invalid_json", response.status, path5, text);
+      throw new OpenCodeClientError("OpenCode response was not valid JSON", "invalid_json", response.status, path6, text);
     }
     return parsed.value;
   }
-  async requestVoid(method, path5, body) {
-    const response = await this.fetch(method, path5, body);
+  async requestVoid(method, path6, body) {
+    const response = await this.fetch(method, path6, body);
     if (!response.ok) {
       const text = await response.text();
       const parsed = parseJson(text);
       const details = parsed.ok ? parsed.value : text;
       const message = parsed.ok ? extractErrorMessage(parsed.value) : void 0;
-      throw new OpenCodeClientError(message ?? `OpenCode request failed with HTTP ${response.status}`, "http_error", response.status, path5, details);
+      throw new OpenCodeClientError(message ?? `OpenCode request failed with HTTP ${response.status}`, "http_error", response.status, path6, details);
     }
   }
-  async fetch(method, path5, body) {
+  async fetch(method, path6, body) {
     let response;
     try {
-      response = await fetchWithTimeout(`${this.baseUrl}${path5}`, {
+      response = await fetchWithTimeout(`${this.baseUrl}${path6}`, {
         method,
         headers: method === "POST" ? { "content-type": "application/json" } : void 0,
         body: method === "POST" ? JSON.stringify(body ?? {}) : void 0
       }, this.timeoutMs);
     } catch (error2) {
-      throw new OpenCodeClientError(error2 instanceof Error ? error2.message : String(error2), "transport_error", 0, path5);
+      throw new OpenCodeClientError(error2 instanceof Error ? error2.message : String(error2), "transport_error", 0, path6);
     }
     return response;
   }
@@ -22391,7 +22392,7 @@ var OpenCodeBackend = class {
       jobId: handle.jobId,
       backend: this.kind,
       status: meta.status,
-      permissions: summarizePermissionRequests(permissions)
+      permissions: summarizePermissionRequests(permissions, permissionApprovalContext(meta))
     };
   }
   async replyPermission(handle, options) {
@@ -22417,7 +22418,7 @@ var OpenCodeBackend = class {
       status: activeMeta.status,
       repliedRequestId: options.requestId,
       reply: options.reply,
-      permissions: summarizePermissionRequests(remaining)
+      permissions: summarizePermissionRequests(remaining, permissionApprovalContext(activeMeta))
     };
     await this.writeJobTrace("opencode_permission_replied", activeMeta, {
       baseUrl: activeMeta.externalServerUrl ?? this.baseUrl ?? "",
@@ -23493,7 +23494,7 @@ function computeStallDiagnostic(jobMessages, meta, env, pendingPermissions = [])
   const runningReadToolParts = runningReadToolPartSummaries.length;
   const malformedReadToolParts = runningReadToolPartSummaries.filter(isMalformedReadToolInput).length;
   const runningReadToolCallIds = runningReadToolPartSummaries.flatMap((part) => part.callID ? [part.callID] : []);
-  const pendingPermissionSummaries = summarizePermissionRequests(pendingPermissions);
+  const pendingPermissionSummaries = summarizePermissionRequests(pendingPermissions, permissionApprovalContext(meta));
   const pendingExternalDirectoryPermissionSummaries = pendingPermissionSummaries.filter(
     (permission) => permission.permission === "external_directory"
   );
@@ -23741,7 +23742,7 @@ function formatReadToolStallDetails(diagnostic) {
   }
   return "";
 }
-function summarizePermissionRequests(requests) {
+function summarizePermissionRequests(requests, context = {}) {
   return requests.map((request) => ({
     id: request.id,
     sessionID: request.sessionID,
@@ -23750,14 +23751,21 @@ function summarizePermissionRequests(requests) {
     always: Array.isArray(request.always) ? request.always.map(String) : void 0,
     toolCallID: typeof request.tool?.callID === "string" ? request.tool.callID : void 0,
     metadata: diagnosticValuePreview(request.metadata),
-    approval: buildPermissionApprovalRequest(request)
+    approval: buildPermissionApprovalRequest(request, context)
   }));
 }
-function buildPermissionApprovalRequest(request) {
+function buildPermissionApprovalRequest(request, context = {}) {
   const patterns = Array.isArray(request.patterns) ? request.patterns.map(String) : [];
   const always = Array.isArray(request.always) ? request.always.map(String) : [];
-  const title = request.permission === "external_directory" ? `Access external directory ${formatExternalDirectoryPermissionTarget(request, patterns)}` : request.permission === "doom_loop" ? "Continue after repeated failures" : `Call OpenCode tool ${request.permission}`;
-  const lines = request.permission === "external_directory" ? patterns.map((pattern) => `Pattern: ${pattern}`) : request.permission === "doom_loop" ? ["This keeps the OpenCode child session running despite repeated failures."] : [`Tool: ${request.permission}`, ...patterns.map((pattern) => `Pattern: ${pattern}`)];
+  const external = request.permission === "external_directory" ? describeExternalDirectoryPermission(request, patterns, context) : void 0;
+  const title = request.permission === "external_directory" ? `Access external directory ${external?.target ?? "(unknown)"}` : request.permission === "doom_loop" ? "Continue after repeated failures" : `Call OpenCode tool ${request.permission}`;
+  const lines = request.permission === "external_directory" ? [
+    ...external?.target ? [`Target: ${external.target}`] : [],
+    ...patterns.map((pattern) => `Pattern: ${pattern}`),
+    ...context.cwd ? [`Delegated workspace: ${context.cwd}`] : [],
+    ...external?.sessionDirectory && external.sessionDirectory !== context.cwd ? [`OpenCode session directory: ${external.sessionDirectory}`] : [],
+    ...external?.relation ? [`Scope: ${formatPermissionScopeRelation(external.relation)}`] : []
+  ] : request.permission === "doom_loop" ? ["This keeps the OpenCode child session running despite repeated failures."] : [`Tool: ${request.permission}`, ...patterns.map((pattern) => `Pattern: ${pattern}`)];
   const alwaysEffect = always.length === 1 && always[0] === "*" ? `Allow ${request.permission} until OpenCode is restarted.` : always.length > 0 ? `Allow matching patterns until OpenCode is restarted: ${always.join(", ")}` : "Allow matching requests until OpenCode is restarted.";
   return {
     kind: "opencode_permission",
@@ -23769,6 +23777,19 @@ function buildPermissionApprovalRequest(request) {
       "Use reply=always only when the listed patterns are expected to repeat and remain trusted.",
       "Use reply=reject when the path or tool is outside the delegated task scope."
     ],
+    recommendedReply: external?.recommendedReply,
+    recommendedMessage: external?.recommendedMessage,
+    scope: external ? {
+      permission: request.permission,
+      target: external.target,
+      cwd: context.cwd,
+      sessionDirectory: external.sessionDirectory,
+      relation: external.relation
+    } : {
+      permission: request.permission,
+      cwd: context.cwd,
+      sessionDirectory: context.sessionDirectory
+    },
     options: [
       {
         reply: "once",
@@ -23789,16 +23810,53 @@ function buildPermissionApprovalRequest(request) {
     ]
   };
 }
-function formatExternalDirectoryPermissionTarget(request, patterns) {
+function externalDirectoryPermissionTarget(request, patterns) {
   const metadata = request.metadata && typeof request.metadata === "object" && !Array.isArray(request.metadata) ? request.metadata : {};
   const raw = typeof metadata.parentDir === "string" ? metadata.parentDir : typeof metadata.filepath === "string" ? metadata.filepath : patterns[0] ?? "";
   if (!raw) {
-    return "(unknown)";
+    return void 0;
   }
   if (!raw.includes("*")) {
     return raw;
   }
   return raw.slice(0, raw.indexOf("*")).replace(/[\\/]+$/, "");
+}
+function describeExternalDirectoryPermission(request, patterns, context) {
+  const target = externalDirectoryPermissionTarget(request, patterns);
+  const sessionDirectory = context.sessionDirectory ?? context.cwd;
+  const workspace = context.cwd ?? sessionDirectory;
+  const relation = classifyExternalDirectoryRelation(target, workspace);
+  const recommendedMessage = relation === "outside_workspace" && target && workspace ? `The requested path ${target} is outside the delegated workspace ${workspace}. Do not request external directory access. Retry using cwd-relative paths under ${workspace}.` : void 0;
+  return {
+    target,
+    workspace,
+    sessionDirectory,
+    relation,
+    recommendedReply: recommendedMessage ? "reject" : void 0,
+    recommendedMessage
+  };
+}
+function classifyExternalDirectoryRelation(target, sessionDirectory) {
+  if (!target || !sessionDirectory || !path3.isAbsolute(target) || !path3.isAbsolute(sessionDirectory)) {
+    return "unknown";
+  }
+  const relative = path3.relative(path3.resolve(sessionDirectory), path3.resolve(target));
+  return relative === "" || !relative.startsWith("..") && !path3.isAbsolute(relative) ? "inside_workspace" : "outside_workspace";
+}
+function formatPermissionScopeRelation(relation) {
+  if (relation === "inside_workspace") {
+    return "inside delegated workspace";
+  }
+  if (relation === "outside_workspace") {
+    return "outside delegated workspace";
+  }
+  return "unknown";
+}
+function permissionApprovalContext(meta) {
+  return {
+    cwd: meta.cwd,
+    sessionDirectory: meta.externalSessionDirectory ?? meta.cwd
+  };
 }
 function permissionAttentionFields(diagnostic, backend) {
   const permissions = diagnostic.pendingExternalDirectoryPermissions ?? [];
@@ -24147,17 +24205,17 @@ var DaemonClient = class {
   cleanup(options = {}) {
     return this.post("/v1/jobs/cleanup", options);
   }
-  async post(path5, body) {
+  async post(path6, body) {
     let response;
     try {
-      response = await fetchWithTimeout(`${this.baseUrl}${path5}`, {
+      response = await fetchWithTimeout(`${this.baseUrl}${path6}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body)
       }, this.timeoutMs);
     } catch (error2) {
       const transport = classifyTransportError(error2);
-      throw new DaemonClientError(transport.message, { code: transport.code, status: 0, path: path5 });
+      throw new DaemonClientError(transport.message, { code: transport.code, status: 0, path: path6 });
     }
     const text = await response.text();
     const parsed = parseJson3(text);
@@ -24167,7 +24225,7 @@ var DaemonClient = class {
       throw new DaemonClientError(message, {
         code: error2?.code,
         status: response.status,
-        path: path5,
+        path: path6,
         details: parsed.ok ? parsed.value : text
       });
     }
@@ -24175,7 +24233,7 @@ var DaemonClient = class {
       throw new DaemonClientError("Daemon response was not valid JSON", {
         code: "invalid_json",
         status: response.status,
-        path: path5,
+        path: path6,
         details: text
       });
     }
@@ -24351,12 +24409,12 @@ function isMissingFile(error2) {
 // src/core/logAudit.ts
 import fs4 from "node:fs/promises";
 import os2 from "node:os";
-import path3 from "node:path";
+import path4 from "node:path";
 var DEFAULT_LOG_AUDIT_MAX_BYTES = 1024 * 1024;
 var DEFAULT_LOG_AUDIT_MAX_LINES = 500;
 async function auditRetinueLogs(options = {}) {
-  const stateDir = options.stateDir ?? path3.join(os2.homedir(), ".local/state/retinue");
-  const tracePath = options.tracePath ?? path3.join(stateDir, "logs", "retinue.jsonl");
+  const stateDir = options.stateDir ?? path4.join(os2.homedir(), ".local/state/retinue");
+  const tracePath = options.tracePath ?? path4.join(stateDir, "logs", "retinue.jsonl");
   const events = await readRecentJsonl(tracePath, {
     maxBytes: options.maxBytes ?? DEFAULT_LOG_AUDIT_MAX_BYTES,
     maxLines: options.maxLines ?? DEFAULT_LOG_AUDIT_MAX_LINES,
@@ -24530,7 +24588,7 @@ async function collectAttemptRoots(events, stateDir) {
 }
 async function readJobMeta(stateDir, jobId) {
   try {
-    const text = await fs4.readFile(path3.join(stateDir, "jobs", jobId, "meta.json"), "utf8");
+    const text = await fs4.readFile(path4.join(stateDir, "jobs", jobId, "meta.json"), "utf8");
     const parsed = JSON.parse(text);
     return isRecord(parsed) ? parsed : void 0;
   } catch {
@@ -25888,7 +25946,7 @@ function isMissingFile3(error2) {
 async function writeMcpTrace(env, value) {
   const stateDir = resolveStateDir({ explicitStateDir: env.RETINUE_STATE_DIR, env });
   const tracePath = getRetinueTracePath(stateDir);
-  await fs6.mkdir(path4.dirname(tracePath), { recursive: true });
+  await fs6.mkdir(path5.dirname(tracePath), { recursive: true });
   await fs6.appendFile(tracePath, `${JSON.stringify({ timestamp: (/* @__PURE__ */ new Date()).toISOString(), ...value })}
 `, "utf8");
 }

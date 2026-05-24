@@ -1225,7 +1225,19 @@ describe("OpenCodeBackend", () => {
           approval: expect.objectContaining({
             kind: "opencode_permission",
             title: "Access external directory /home/raystorm/projects/opencode-runner/src",
-            lines: ["Pattern: /home/raystorm/projects/opencode-runner/src/index.ts"],
+            lines: expect.arrayContaining([
+              "Target: /home/raystorm/projects/opencode-runner/src",
+              "Pattern: /home/raystorm/projects/opencode-runner/src/index.ts",
+              `Delegated workspace: ${tempDir}`,
+              "Scope: outside delegated workspace"
+            ]),
+            recommendedReply: "reject",
+            recommendedMessage: expect.stringContaining("outside the delegated workspace"),
+            scope: expect.objectContaining({
+              target: "/home/raystorm/projects/opencode-runner/src",
+              cwd: tempDir,
+              relation: "outside_workspace"
+            }),
             options: [
               expect.objectContaining({ reply: "once", label: "Allow once" }),
               expect.objectContaining({ reply: "always", label: "Allow always", requiresConfirmation: true }),
@@ -1291,7 +1303,9 @@ describe("OpenCodeBackend", () => {
           permission: "external_directory",
           patterns: ["/home/raystorm/projects/opencode-runner/src/index.ts"],
           approval: expect.objectContaining({
-            title: "Access external directory /home/raystorm/projects/opencode-runner/src"
+            title: "Access external directory /home/raystorm/projects/opencode-runner/src",
+            recommendedReply: "reject",
+            recommendedMessage: expect.stringContaining(`under ${tempDir}`)
           })
         })
       ]
