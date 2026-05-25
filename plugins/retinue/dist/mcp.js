@@ -57300,7 +57300,13 @@ ${textWarning2}` : stderr;
       const client2 = this.clientForMeta(meta3);
       const session = await client2.getSession(meta3.externalSessionId);
       let status = meta3.status;
-      if (await this.hasReadOnlyWriteIntent(client2, meta3.externalSessionId, meta3)) {
+      if (meta3.status === "killed") {
+        if (session.state === "completed" || await this.hasNewCompletedAssistantMessage(client2, meta3.externalSessionId, meta3)) {
+          status = "completed";
+        } else {
+          return meta3;
+        }
+      } else if (await this.hasReadOnlyWriteIntent(client2, meta3.externalSessionId, meta3)) {
         status = "stalled";
       } else if (session.state === "completed") {
         status = "completed";
@@ -57879,6 +57885,7 @@ function computeStallDiagnostic(jobMessages, meta3, env, pendingPermissions = []
   const emptyAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isEmptyStopAssistantMessage(message)).length;
   const blankAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isBlankAssistantPlaceholder(message)).length;
   const zeroProgressAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isZeroProgressAssistantPlaceholder(message)).length;
+  const assistantMessageCount = activeMessages.filter((message) => message.info?.role === "assistant").length;
   const runningReadToolPartSummaries = collectRunningReadToolPartSummaries(activeMessages);
   const runningReadToolParts = runningReadToolPartSummaries.length;
   const malformedReadToolParts = runningReadToolPartSummaries.filter(isMalformedReadToolInput).length;
@@ -57889,7 +57896,7 @@ function computeStallDiagnostic(jobMessages, meta3, env, pendingPermissions = []
   );
   const lastAssistant = [...activeMessages].reverse().find((message) => message.info?.role === "assistant");
   const incompleteAssistantRound = isIncompleteAssistantMessage(lastAssistant);
-  if (toolCallAssistantRounds < roundThreshold && failedToolCallAssistantRounds === 0 && emptyAssistantRounds < emptyAssistantThreshold && blankAssistantRounds === 0 && zeroProgressAssistantRounds === 0 && runningReadToolParts === 0 && pendingExternalDirectoryPermissionSummaries.length === 0 && !incompleteAssistantRound) {
+  if (toolCallAssistantRounds < roundThreshold && failedToolCallAssistantRounds === 0 && emptyAssistantRounds < emptyAssistantThreshold && blankAssistantRounds === 0 && zeroProgressAssistantRounds === 0 && assistantMessageCount > 0 && runningReadToolParts === 0 && pendingExternalDirectoryPermissionSummaries.length === 0 && !incompleteAssistantRound) {
     return void 0;
   }
   const startedAt = Date.parse(meta3.createdAt);
@@ -57897,12 +57904,13 @@ function computeStallDiagnostic(jobMessages, meta3, env, pendingPermissions = []
   const emptyAssistantStalled = emptyAssistantRounds >= emptyAssistantThreshold;
   const blankAssistantStalled = blankAssistantRounds > 0 && durationMs >= blankAssistantThresholdMs;
   const zeroProgressAssistantStalled = zeroProgressAssistantRounds > 0 && durationMs >= zeroProgressAssistantThresholdMs;
+  const noAssistantOutputStalled = meta3.recoveredFromJobId === void 0 && meta3.externalRescuePromptSubmittedAt === void 0 && assistantMessageCount === 0 && durationMs >= zeroProgressAssistantThresholdMs;
   const readToolStalled = runningReadToolParts > 0 && durationMs >= readToolThresholdMs;
   const readToolInvalidInputStalled = malformedReadToolParts > 0 && durationMs >= readToolThresholdMs;
   const externalDirectoryPermissionStalled = pendingExternalDirectoryPermissionSummaries.length > 0;
   const completedToolLoopStalled = (toolCallAssistantRounds >= roundThreshold || failedToolCallAssistantRounds > 0) && runningReadToolParts === 0 && !incompleteAssistantRound && durationMs >= completedToolLoopThresholdMs;
   const incompleteAssistantStalled = incompleteAssistantRound && durationMs >= incompleteThresholdMs;
-  if (!emptyAssistantStalled && !blankAssistantStalled && !zeroProgressAssistantStalled && !readToolStalled && !externalDirectoryPermissionStalled && !completedToolLoopStalled && !incompleteAssistantStalled && durationMs < thresholdMs) {
+  if (!emptyAssistantStalled && !blankAssistantStalled && !zeroProgressAssistantStalled && !noAssistantOutputStalled && !readToolStalled && !externalDirectoryPermissionStalled && !completedToolLoopStalled && !incompleteAssistantStalled && durationMs < thresholdMs) {
     return void 0;
   }
   const diagnostic = {
@@ -57932,7 +57940,7 @@ function computeStallDiagnostic(jobMessages, meta3, env, pendingPermissions = []
     stallReason: selectStallReason({
       emptyAssistantStalled,
       blankAssistantStalled,
-      zeroProgressAssistantStalled,
+      zeroProgressAssistantStalled: zeroProgressAssistantStalled || noAssistantOutputStalled,
       readToolInvalidInputStalled,
       externalDirectoryPermissionStalled,
       readToolStalled,

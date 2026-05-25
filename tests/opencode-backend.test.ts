@@ -1116,6 +1116,43 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"zeroProgressAssistantStallThresholdMs":45000');
   });
 
+  it("marks jobs with no assistant output as zero-progress after the bounded no-progress window", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "provider never starts answering" });
+    const paths = getJobPaths(tempDir, started.jobId);
+    const meta = JSON.parse(await fs.readFile(paths.meta, "utf8")) as typeof started;
+    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 60_000).toISOString() })}\n`, "utf8");
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"stallReason":"provider_zero_progress"');
+    expect(trace).toContain('"jobCompletedAssistantCount":0');
+  });
+
+  it("keeps killed jobs terminal even if the OpenCode session still looks running", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "closed locally" });
+    const paths = getJobPaths(tempDir, started.jobId);
+    await fs.writeFile(paths.meta, `${JSON.stringify({ ...started, status: "killed", updatedAt: new Date().toISOString() })}\n`, "utf8");
+
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "killed" });
+  });
+
   it("marks stuck read tool calls as stalled without shortening generic long-tool windows", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),

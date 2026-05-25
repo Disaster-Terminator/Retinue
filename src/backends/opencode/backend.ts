@@ -1126,7 +1126,13 @@ export class OpenCodeBackend implements AgentBackend {
       const client = this.clientForMeta(meta);
       const session = await client.getSession(meta.externalSessionId);
       let status = meta.status;
-      if (await this.hasReadOnlyWriteIntent(client, meta.externalSessionId, meta)) {
+      if (meta.status === "killed") {
+        if (session.state === "completed" || (await this.hasNewCompletedAssistantMessage(client, meta.externalSessionId, meta))) {
+          status = "completed";
+        } else {
+          return meta;
+        }
+      } else if (await this.hasReadOnlyWriteIntent(client, meta.externalSessionId, meta)) {
         status = "stalled";
       } else if (session.state === "completed") {
         status = "completed";
@@ -1800,6 +1806,7 @@ function computeStallDiagnostic(
   const emptyAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isEmptyStopAssistantMessage(message)).length;
   const blankAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isBlankAssistantPlaceholder(message)).length;
   const zeroProgressAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isZeroProgressAssistantPlaceholder(message)).length;
+  const assistantMessageCount = activeMessages.filter((message) => message.info?.role === "assistant").length;
   const runningReadToolPartSummaries = collectRunningReadToolPartSummaries(activeMessages);
   const runningReadToolParts = runningReadToolPartSummaries.length;
   const malformedReadToolParts = runningReadToolPartSummaries.filter(isMalformedReadToolInput).length;
@@ -1816,6 +1823,7 @@ function computeStallDiagnostic(
     emptyAssistantRounds < emptyAssistantThreshold &&
     blankAssistantRounds === 0 &&
     zeroProgressAssistantRounds === 0 &&
+    assistantMessageCount > 0 &&
     runningReadToolParts === 0 &&
     pendingExternalDirectoryPermissionSummaries.length === 0 &&
     !incompleteAssistantRound
@@ -1827,6 +1835,11 @@ function computeStallDiagnostic(
   const emptyAssistantStalled = emptyAssistantRounds >= emptyAssistantThreshold;
   const blankAssistantStalled = blankAssistantRounds > 0 && durationMs >= blankAssistantThresholdMs;
   const zeroProgressAssistantStalled = zeroProgressAssistantRounds > 0 && durationMs >= zeroProgressAssistantThresholdMs;
+  const noAssistantOutputStalled =
+    meta.recoveredFromJobId === undefined &&
+    meta.externalRescuePromptSubmittedAt === undefined &&
+    assistantMessageCount === 0 &&
+    durationMs >= zeroProgressAssistantThresholdMs;
   const readToolStalled = runningReadToolParts > 0 && durationMs >= readToolThresholdMs;
   const readToolInvalidInputStalled = malformedReadToolParts > 0 && durationMs >= readToolThresholdMs;
   const externalDirectoryPermissionStalled = pendingExternalDirectoryPermissionSummaries.length > 0;
@@ -1840,6 +1853,7 @@ function computeStallDiagnostic(
     !emptyAssistantStalled &&
     !blankAssistantStalled &&
     !zeroProgressAssistantStalled &&
+    !noAssistantOutputStalled &&
     !readToolStalled &&
     !externalDirectoryPermissionStalled &&
     !completedToolLoopStalled &&
@@ -1875,7 +1889,7 @@ function computeStallDiagnostic(
     stallReason: selectStallReason({
       emptyAssistantStalled,
       blankAssistantStalled,
-      zeroProgressAssistantStalled,
+      zeroProgressAssistantStalled: zeroProgressAssistantStalled || noAssistantOutputStalled,
       readToolInvalidInputStalled,
       externalDirectoryPermissionStalled,
       readToolStalled,
