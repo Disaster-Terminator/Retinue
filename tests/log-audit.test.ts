@@ -261,6 +261,71 @@ describe("Retinue log audit", () => {
     }
   });
 
+  it("ignores stalled selected attempts when the root job later completes", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-chain-completed-"));
+    try {
+      const tracePath = path.join(tempDir, "retinue.jsonl");
+      fs.mkdirSync(path.join(tempDir, "jobs", "job_root"), { recursive: true });
+      fs.mkdirSync(path.join(tempDir, "jobs", "job_attempt"), { recursive: true });
+      fs.writeFileSync(path.join(tempDir, "jobs", "job_root", "meta.json"), JSON.stringify({ jobId: "job_root", selectedAttemptJobId: "job_attempt" }));
+      fs.writeFileSync(path.join(tempDir, "jobs", "job_attempt", "meta.json"), JSON.stringify({ jobId: "job_attempt", recoveredFromJobId: "job_root" }));
+      fs.writeFileSync(
+        tracePath,
+        [
+          JSON.stringify({
+            time: "2026-05-24T08:31:44.000Z",
+            event: "opencode_job_stalled",
+            jobId: "job_root",
+            status: "stalled",
+            diagnostic: {
+              stallReason: "provider_zero_progress",
+              stallSummary: "OpenCode provider/router produced zero-progress assistant output for 45000ms.",
+              lastAssistantProviderID: "litellm",
+              lastAssistantModelID: "intentmux",
+              lastAssistantAgent: "explore",
+              lastAssistantMode: "explore"
+            }
+          }),
+          JSON.stringify({
+            time: "2026-05-24T08:32:29.000Z",
+            event: "opencode_job_result_read",
+            jobId: "job_attempt",
+            status: "stalled",
+            diagnostic: {
+              stallReason: "read_tool_invalid_input",
+              stallSummary: "OpenCode provider/model emitted read tool call(s) with missing or invalid input for 45250ms.",
+              lastAssistantProviderID: "litellm",
+              lastAssistantModelID: "intentmux",
+              lastAssistantAgent: "explore",
+              lastAssistantMode: "explore",
+              malformedReadToolParts: 1
+            }
+          }),
+          JSON.stringify({
+            time: "2026-05-24T08:32:45.000Z",
+            event: "opencode_job_status_changed",
+            jobId: "job_root",
+            status: "completed",
+            diagnostic: {
+              lastAssistantProviderID: "litellm",
+              lastAssistantModelID: "intentmux",
+              lastAssistantAgent: "build",
+              lastAssistantMode: "build",
+              selectedAssistantTextBytes: 8270
+            }
+          })
+        ].join("\n")
+      );
+
+      const parsed = await auditRetinueLogs({ stateDir: tempDir, tracePath, since: new Date("2026-05-24T08:25:00.000Z") });
+
+      expect(parsed.issueCount).toBe(0);
+      expect(parsed.ignoredCompletedJobIds).toEqual(["job_root"]);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("uses job metadata to link selected attempts when the trace window misses the linking event", async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-meta-chain-"));
     try {

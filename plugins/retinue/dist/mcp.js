@@ -56889,6 +56889,9 @@ var OpenCodeBackend = class {
     return started;
   }
   async selectedAttemptFor(meta3) {
+    if (meta3.status === "completed") {
+      return void 0;
+    }
     if (!meta3.selectedAttemptJobId) {
       return void 0;
     }
@@ -58782,6 +58785,9 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
       continue;
     }
     const chainRootJobId = typeof event.jobId === "string" ? attemptRootByJobId.get(event.jobId) : void 0;
+    if (chainRootJobId && latestStatusByJobId.get(chainRootJobId) === "completed") {
+      continue;
+    }
     const chainSignature = chainRootJobId ? createChainSignature(chainRootJobId, diagnostic) : void 0;
     const signature = chainSignature ?? createDiagnosticSignature(diagnostic);
     const current = issuesBySignature.get(signature) ?? {

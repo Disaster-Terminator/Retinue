@@ -487,6 +487,9 @@ export class OpenCodeBackend {
         return started;
     }
     async selectedAttemptFor(meta) {
+        if (meta.status === "completed") {
+            return undefined;
+        }
         if (!meta.selectedAttemptJobId) {
             return undefined;
         }

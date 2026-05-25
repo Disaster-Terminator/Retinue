@@ -994,6 +994,49 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"recoveryReason":"rescue_provider_zero_progress"');
   });
 
+  it("prefers late root completion over a selected task-level attempt", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "audit eventually completes on root", agent: "explore" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source");
+    server!.appendZeroProgressReasoningAssistant(started.externalSessionId!);
+    await expect(backend.wait({ jobId: started.jobId }, 100)).resolves.toMatchObject({ status: "running" });
+    await waitForPromptCount(2);
+
+    const selected = await backend.wait({ jobId: started.jobId }, 200);
+
+    expect(selected).toMatchObject({
+      requestedJobId: started.jobId,
+      selectedAttemptJobId: expect.stringMatching(/^job_/)
+    });
+    expect(selected.jobId).not.toBe(started.jobId);
+
+    server!.completeSessionWithFinalText(started.externalSessionId!, "late root review");
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({
+      jobId: started.jobId,
+      status: "completed"
+    });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      jobId: started.jobId,
+      status: "completed",
+      selectedAttemptJobId: selected.selectedAttemptJobId,
+      parsedStdout: { result: "late root review" },
+      attemptChain: [
+        expect.objectContaining({ jobId: started.jobId, attempt: 0, status: "completed" }),
+        expect.objectContaining({ jobId: selected.selectedAttemptJobId, attempt: 1, selected: true })
+      ]
+    });
+  });
+
   it("does not keep deferring an expired zero-progress rescue", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),

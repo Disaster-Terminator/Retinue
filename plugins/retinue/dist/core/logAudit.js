@@ -84,6 +84,9 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
             continue;
         }
         const chainRootJobId = typeof event.jobId === "string" ? attemptRootByJobId.get(event.jobId) : undefined;
+        if (chainRootJobId && latestStatusByJobId.get(chainRootJobId) === "completed") {
+            continue;
+        }
         const chainSignature = chainRootJobId ? createChainSignature(chainRootJobId, diagnostic) : undefined;
         const signature = chainSignature ?? createDiagnosticSignature(diagnostic);
         const current = issuesBySignature.get(signature) ?? {

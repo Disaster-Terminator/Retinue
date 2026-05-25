@@ -698,6 +698,9 @@ export class OpenCodeBackend implements AgentBackend {
   }
 
   private async selectedAttemptFor(meta: JobMeta): Promise<JobMeta | undefined> {
+    if (meta.status === "completed") {
+      return undefined;
+    }
     if (!meta.selectedAttemptJobId) {
       return undefined;
     }
