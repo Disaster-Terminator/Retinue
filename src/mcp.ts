@@ -72,6 +72,7 @@ export const RETINUE_DIAGNOSTIC_TOOL_NAMES = ["retinue_audit_logs"] as const;
 const DEFAULT_MCP_WAIT_MAX_MS = 180_000;
 const DEFAULT_RESOURCE_BUDGET_LOCK_TIMEOUT_MS = 10_000;
 const DEFAULT_RESOURCE_BUDGET_LOCK_STALE_MS = 5_000;
+const DEFAULT_GLOBAL_AGENT_BUDGET = 5;
 
 export interface CreateMcpServerOptions {
   exposeBackendTools?: boolean;
@@ -1010,7 +1011,7 @@ async function resolveGlobalAgentBudget(env: NodeJS.ProcessEnv): Promise<number>
   if (configured !== undefined) {
     return Math.max(1, Math.floor(configured));
   }
-  return resolveMaxConcurrentAgents(env);
+  return Math.max(DEFAULT_GLOBAL_AGENT_BUDGET, await resolveMaxConcurrentAgents(env));
 }
 
 async function resolveConfiguredOpenCodeAgent(env: NodeJS.ProcessEnv): Promise<string | undefined> {
