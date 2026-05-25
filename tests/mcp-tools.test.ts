@@ -1061,6 +1061,10 @@ describe("MCP tools", () => {
           pendingExternalDirectoryPermissionCount: 1
         }
       });
+      expect(wait.result.stderr).toBeUndefined();
+      expect(wait.result.stderrOmitted).toBe(true);
+      expect(wait.result.stderrTail).toContain("external_directory permission");
+      expect(wait.result.stderrPath).toEqual(expect.stringContaining(spawn.jobId));
 
       const list = parseToolJson(
         await connection.client.callTool({

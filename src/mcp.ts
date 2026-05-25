@@ -23,6 +23,7 @@ import { isActivePoolStatus } from "./core/status.js";
 import { hasPermissionBridge } from "./backends/types.js";
 import type {
   AgentBackendKind,
+  JobResult,
   JobMeta,
   JobProblemStatus,
   JobStatusResult,
@@ -327,6 +328,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
       const paths = getJobPaths(stateDir, responseJobId);
       const result = await backend.result({ jobId: responseJobId });
       const diagnostic = await readLatestJobDiagnostic(paths.stderr);
+      const attention = attentionFields(diagnostic, result);
       return jsonToolResult({
         task_name: isJobMeta(status) ? status.name : undefined,
         jobId: responseJobId,
@@ -334,9 +336,9 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
         selectedAttemptJobId: result.selectedAttemptJobId ?? waited.selectedAttemptJobId,
         attemptChain: result.attemptChain ?? waited.attemptChain,
         status: responseStatus,
-        result,
+        ...attention,
+        result: compactAttentionResultForMcp(result, attention),
         diagnostic,
-        ...attentionFields(diagnostic, result)
       });
     }
   );
@@ -1577,6 +1579,34 @@ function permissionRequestsFromDiagnostic(value: unknown): RetinuePermissionRequ
     return [];
   }
   return value.filter(isPermissionRequest);
+}
+
+function compactAttentionResultForMcp(
+  result: JobResult,
+  attention: { attentionRequired?: RetinueAttentionRequired; permissionRequired?: boolean }
+): JobResult & { stderrTail?: string; stderrTailBytes?: number; stderrOmitted?: boolean } {
+  if (!attention.attentionRequired && !attention.permissionRequired) {
+    return result;
+  }
+  if (typeof result.stderr !== "string" || result.stderr.length === 0) {
+    return result;
+  }
+  const { stderr, ...compactResult } = result;
+  const stderrTail = tailString(stderr, 4096);
+  return {
+    ...compactResult,
+    stderrTail,
+    stderrTailBytes: Buffer.byteLength(stderrTail, "utf8"),
+    stderrOmitted: true
+  };
+}
+
+function tailString(value: string, maxBytes: number): string {
+  const buffer = Buffer.from(value, "utf8");
+  if (buffer.length <= maxBytes) {
+    return value;
+  }
+  return buffer.subarray(buffer.length - maxBytes).toString("utf8").replace(/^\uFFFD+/, "");
 }
 
 function isPermissionRequest(value: unknown): value is RetinuePermissionRequest {

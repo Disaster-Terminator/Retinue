@@ -25,6 +25,10 @@ export interface RetinueLogAuditIssue {
   sample?: Record<string, unknown>;
 }
 
+export interface RetinueLogAuditAttention extends RetinueLogAuditIssue {
+  kind: "permission";
+}
+
 export interface RetinueLogAuditResult {
   ok: true;
   tracePath: string;
@@ -33,6 +37,8 @@ export interface RetinueLogAuditResult {
   ignoredCompletedJobIds: string[];
   issueCount: number;
   issues: RetinueLogAuditIssue[];
+  attentionCount: number;
+  attentions: RetinueLogAuditAttention[];
 }
 
 export async function auditRetinueLogs(options: AuditRetinueLogsOptions = {}): Promise<RetinueLogAuditResult> {
@@ -46,7 +52,7 @@ export async function auditRetinueLogs(options: AuditRetinueLogsOptions = {}): P
   const latestStatusByJobId = await collectLatestStatusByJobId(events, stateDir, options.reconcileStatus);
   const latestEventByJobId = collectLatestEventByJobId(events);
   const attemptRootByJobId = await collectAttemptRoots(events, stateDir);
-  const issues = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId);
+  const { issues, attentions } = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId);
   return {
     ok: true,
     tracePath,
@@ -54,7 +60,9 @@ export async function auditRetinueLogs(options: AuditRetinueLogsOptions = {}): P
     scannedEvents: events.length,
     ignoredCompletedJobIds: completedJobIds(latestStatusByJobId),
     issueCount: issues.length,
-    issues
+    issues,
+    attentionCount: attentions.length,
+    attentions
   };
 }
 
@@ -108,8 +116,9 @@ function summarizeIssues(
   latestStatusByJobId: Map<string, string>,
   latestEventByJobId: Map<string, string>,
   attemptRootByJobId: Map<string, string>
-): RetinueLogAuditIssue[] {
+): { issues: RetinueLogAuditIssue[]; attentions: RetinueLogAuditAttention[] } {
   const issuesBySignature = new Map<string, RetinueLogAuditIssue>();
+  const attentionsBySignature = new Map<string, RetinueLogAuditAttention>();
   for (const event of events) {
     const diagnostic = isRecord(event.diagnostic) ? event.diagnostic : undefined;
     if (!diagnostic) {
@@ -133,9 +142,12 @@ function summarizeIssues(
     }
     const chainSignature = chainRootJobId ? createChainSignature(chainRootJobId, diagnostic) : undefined;
     const signature = chainSignature ?? createDiagnosticSignature(diagnostic);
-    const current = issuesBySignature.get(signature) ?? {
+    const attention = isAttentionDiagnostic(diagnostic);
+    const summaries = attention ? attentionsBySignature : issuesBySignature;
+    const current = summaries.get(signature) ?? {
       signature,
-      title: createIssueTitle(diagnostic),
+      ...(attention ? { kind: "permission" as const } : {}),
+      title: attention ? createAttentionTitle(diagnostic) : createIssueTitle(diagnostic),
       description: createIssueDescription(diagnostic),
       count: 0,
       firstSeen: undefined,
@@ -178,14 +190,27 @@ function summarizeIssues(
     });
     const selectedSample = chooseSample(current.sample, nextSample);
     if (selectedSample === nextSample) {
-      current.title = createIssueTitle(diagnostic);
+      current.title = attention ? createAttentionTitle(diagnostic) : createIssueTitle(diagnostic);
       current.description = createIssueDescription(diagnostic);
     }
     current.sample = selectedSample;
-    issuesBySignature.set(signature, current);
+    summaries.set(signature, current);
   }
-  return [...issuesBySignature.values()].sort(
-    (left, right) => right.count - left.count || String(right.lastSeen).localeCompare(String(left.lastSeen))
+  return {
+    issues: sortSummaries([...issuesBySignature.values()]),
+    attentions: sortSummaries([...attentionsBySignature.values()])
+  };
+}
+
+function sortSummaries<T extends RetinueLogAuditIssue>(summaries: T[]): T[] {
+  return summaries.sort((left, right) => right.count - left.count || String(right.lastSeen).localeCompare(String(left.lastSeen)));
+}
+
+function isAttentionDiagnostic(diagnostic: Record<string, unknown>): boolean {
+  return (
+    diagnostic.stallReason === "external_directory_permission_pending" &&
+    typeof diagnostic.pendingPermissionCount === "number" &&
+    diagnostic.pendingPermissionCount > 0
   );
 }
 
@@ -380,6 +405,12 @@ function createIssueTitle(diagnostic: Record<string, unknown>): string {
     return `Investigate Retinue recovery ${String(diagnostic.recoveryStallReason)} after ${String(source)} on ${String(provider)}/${String(model)}`;
   }
   return `Investigate Retinue ${String(reason)} on ${String(provider)}/${String(model)}`;
+}
+
+function createAttentionTitle(diagnostic: Record<string, unknown>): string {
+  const provider = diagnostic.lastAssistantProviderID ?? "unknown_provider";
+  const model = diagnostic.lastAssistantModelID ?? "unknown_model";
+  return `Resolve Retinue external_directory permission on ${String(provider)}/${String(model)}`;
 }
 
 function createIssueDescription(diagnostic: Record<string, unknown>): string {

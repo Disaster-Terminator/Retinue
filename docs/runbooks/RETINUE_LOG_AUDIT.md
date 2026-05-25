@@ -14,7 +14,7 @@ If the compact audit is not enough, narrow raw-log inspection by `jobId`, attemp
 pnpm run audit:logs -- --compact --since 2026-05-20T08:00:00.000Z --max-lines 120
 ```
 
-The script reads only the tail of `logs/retinue.jsonl`, filters by `--since`, deduplicates terminal stalled OpenCode diagnostics, and emits concise issue candidates. If Retinue created a selected task-level attempt, the audit first links the root job and attempt jobs from the scanned trace plus available job `meta.json` files, then reports that recovery chain as one issue instead of splitting blank-provider, zero-progress, and malformed-read phases into separate candidates. If a job has a later `completed` event in the scanned window, earlier transient stalled diagnostics for that job are ignored. Use `--compact` for agent-facing triage; omit it when you need the full JSON sample payload.
+The script reads only the tail of `logs/retinue.jsonl`, filters by `--since`, deduplicates terminal stalled OpenCode diagnostics, and emits concise issue candidates. If Retinue created a selected task-level attempt, the audit first links the root job and attempt jobs from the scanned trace plus available job `meta.json` files, then reports that recovery chain as one issue instead of splitting blank-provider, zero-progress, and malformed-read phases into separate candidates. If a job has a later `completed` event in the scanned window, earlier transient stalled diagnostics for that job are ignored. OpenCode `external_directory` permission waits are reported as `attention` items rather than backend issues, because the next step is a supervising-agent permission decision through `retinue_reply_permission`. Use `--compact` for agent-facing triage; omit it when you need the full JSON sample payload.
 
 This is a developer/operations diagnostic surface, not part of the default Retinue product MCP tool set. Default MCP hosts expose only child-agent lifecycle and permission bridge tools. When an agent host is explicitly dogfooding or investigating Retinue itself, set `RETINUE_EXPOSE_DIAGNOSTIC_TOOLS=1` to expose `retinue_audit_logs`; otherwise use the CLI command above from the repository.
 
@@ -24,11 +24,13 @@ Useful options:
 - `--trace <file>`: explicit trace JSONL path.
 - `--since <iso>`: ignore older events from previous baselines.
 - `--max-lines <n>` and `--max-bytes <n>`: bound input size.
-- `--compact` or `-c`: print short text with issue counts, job IDs, stall/recovery reason, provider/model, agent/mode, cwd, selected attempt markers, and one-line diagnosis.
+- `--compact` or `-c`: print short text with issue and attention counts, job IDs, stall/recovery reason, provider/model, agent/mode, cwd, selected attempt markers, and one-line diagnosis.
 
 ## Interpretation
 
 Each issue candidate includes a signature, affected job IDs, first/last seen timestamps, and one compact sample with session IDs, cwd, stall reason, recovery source/recovery stall reason, tool-call rounds, blank/zero-progress rounds, and read-only write intent status.
+
+Attention candidates use the `#A<n>` compact prefix. For `external_directory_permission_pending`, inspect the permission request with `retinue_wait_agent` or `retinue_list_permissions`, decide from the included `approval` object, then call `retinue_reply_permission` with `once`, `always`, or `reject`. Do not treat a permission wait as failed child-agent evidence unless the supervising agent cannot make a permission decision.
 
 If a job briefly emits `opencode_job_stalled` and then later completes after Retinue's recovery prompt, treat the final completed result as the useful evidence. The audit output intentionally reports only jobs whose latest scanned status is still stalled.
 

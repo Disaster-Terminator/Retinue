@@ -58746,7 +58746,7 @@ async function auditRetinueLogs(options = {}) {
   const latestStatusByJobId = await collectLatestStatusByJobId(events, stateDir, options.reconcileStatus);
   const latestEventByJobId = collectLatestEventByJobId(events);
   const attemptRootByJobId = await collectAttemptRoots(events, stateDir);
-  const issues = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId);
+  const { issues, attentions } = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId);
   return {
     ok: true,
     tracePath,
@@ -58754,7 +58754,9 @@ async function auditRetinueLogs(options = {}) {
     scannedEvents: events.length,
     ignoredCompletedJobIds: completedJobIds(latestStatusByJobId),
     issueCount: issues.length,
-    issues
+    issues,
+    attentionCount: attentions.length,
+    attentions
   };
 }
 async function readRecentJsonl(filePath, options) {
@@ -58791,6 +58793,7 @@ async function readTail(filePath, maxBytes) {
 }
 function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId) {
   const issuesBySignature = /* @__PURE__ */ new Map();
+  const attentionsBySignature = /* @__PURE__ */ new Map();
   for (const event of events) {
     const diagnostic = isRecord(event.diagnostic) ? event.diagnostic : void 0;
     if (!diagnostic) {
@@ -58814,9 +58817,12 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
     }
     const chainSignature = chainRootJobId ? createChainSignature(chainRootJobId, diagnostic) : void 0;
     const signature = chainSignature ?? createDiagnosticSignature(diagnostic);
-    const current = issuesBySignature.get(signature) ?? {
+    const attention = isAttentionDiagnostic(diagnostic);
+    const summaries = attention ? attentionsBySignature : issuesBySignature;
+    const current = summaries.get(signature) ?? {
       signature,
-      title: createIssueTitle(diagnostic),
+      ...attention ? { kind: "permission" } : {},
+      title: attention ? createAttentionTitle(diagnostic) : createIssueTitle(diagnostic),
       description: createIssueDescription(diagnostic),
       count: 0,
       firstSeen: void 0,
@@ -58859,15 +58865,22 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
     });
     const selectedSample = chooseSample(current.sample, nextSample);
     if (selectedSample === nextSample) {
-      current.title = createIssueTitle(diagnostic);
+      current.title = attention ? createAttentionTitle(diagnostic) : createIssueTitle(diagnostic);
       current.description = createIssueDescription(diagnostic);
     }
     current.sample = selectedSample;
-    issuesBySignature.set(signature, current);
+    summaries.set(signature, current);
   }
-  return [...issuesBySignature.values()].sort(
-    (left, right) => right.count - left.count || String(right.lastSeen).localeCompare(String(left.lastSeen))
-  );
+  return {
+    issues: sortSummaries([...issuesBySignature.values()]),
+    attentions: sortSummaries([...attentionsBySignature.values()])
+  };
+}
+function sortSummaries(summaries) {
+  return summaries.sort((left, right) => right.count - left.count || String(right.lastSeen).localeCompare(String(left.lastSeen)));
+}
+function isAttentionDiagnostic(diagnostic) {
+  return diagnostic.stallReason === "external_directory_permission_pending" && typeof diagnostic.pendingPermissionCount === "number" && diagnostic.pendingPermissionCount > 0;
 }
 async function collectAttemptRoots(events, stateDir) {
   const attemptRootByJobId = /* @__PURE__ */ new Map();
@@ -59039,6 +59052,11 @@ function createIssueTitle(diagnostic) {
     return `Investigate Retinue recovery ${String(diagnostic.recoveryStallReason)} after ${String(source)} on ${String(provider)}/${String(model)}`;
   }
   return `Investigate Retinue ${String(reason)} on ${String(provider)}/${String(model)}`;
+}
+function createAttentionTitle(diagnostic) {
+  const provider = diagnostic.lastAssistantProviderID ?? "unknown_provider";
+  const model = diagnostic.lastAssistantModelID ?? "unknown_model";
+  return `Resolve Retinue external_directory permission on ${String(provider)}/${String(model)}`;
 }
 function createIssueDescription(diagnostic) {
   const parts = [
@@ -59846,6 +59864,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
       const paths = getJobPaths(stateDir, responseJobId);
       const result = await backend.result({ jobId: responseJobId });
       const diagnostic = await readLatestJobDiagnostic(paths.stderr);
+      const attention = attentionFields(diagnostic, result);
       return jsonToolResult({
         task_name: isJobMeta(status) ? status.name : void 0,
         jobId: responseJobId,
@@ -59853,9 +59872,9 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
         selectedAttemptJobId: result.selectedAttemptJobId ?? waited.selectedAttemptJobId,
         attemptChain: result.attemptChain ?? waited.attemptChain,
         status: responseStatus,
-        result,
-        diagnostic,
-        ...attentionFields(diagnostic, result)
+        ...attention,
+        result: compactAttentionResultForMcp(result, attention),
+        diagnostic
       });
     }
   );
@@ -60899,6 +60918,29 @@ function permissionRequestsFromDiagnostic(value) {
     return [];
   }
   return value.filter(isPermissionRequest);
+}
+function compactAttentionResultForMcp(result, attention) {
+  if (!attention.attentionRequired && !attention.permissionRequired) {
+    return result;
+  }
+  if (typeof result.stderr !== "string" || result.stderr.length === 0) {
+    return result;
+  }
+  const { stderr, ...compactResult } = result;
+  const stderrTail = tailString(stderr, 4096);
+  return {
+    ...compactResult,
+    stderrTail,
+    stderrTailBytes: Buffer.byteLength(stderrTail, "utf8"),
+    stderrOmitted: true
+  };
+}
+function tailString(value, maxBytes) {
+  const buffer = Buffer.from(value, "utf8");
+  if (buffer.length <= maxBytes) {
+    return value;
+  }
+  return buffer.subarray(buffer.length - maxBytes).toString("utf8").replace(/^\uFFFD+/, "");
 }
 function isPermissionRequest(value) {
   return isRecord2(value) && typeof value.id === "string" && typeof value.permission === "string" && Array.isArray(value.patterns) && value.patterns.every((pattern) => typeof pattern === "string");

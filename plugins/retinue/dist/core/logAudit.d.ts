@@ -18,6 +18,9 @@ export interface RetinueLogAuditIssue {
     jobIds: string[];
     sample?: Record<string, unknown>;
 }
+export interface RetinueLogAuditAttention extends RetinueLogAuditIssue {
+    kind: "permission";
+}
 export interface RetinueLogAuditResult {
     ok: true;
     tracePath: string;
@@ -26,5 +29,7 @@ export interface RetinueLogAuditResult {
     ignoredCompletedJobIds: string[];
     issueCount: number;
     issues: RetinueLogAuditIssue[];
+    attentionCount: number;
+    attentions: RetinueLogAuditAttention[];
 }
 export declare function auditRetinueLogs(options?: AuditRetinueLogsOptions): Promise<RetinueLogAuditResult>;

@@ -103,6 +103,7 @@ describe("Retinue log audit", () => {
       expect(parsed.scannedEvents).toBe(4);
       expect(parsed.ignoredCompletedJobIds).toEqual(["job_c"]);
       expect(parsed.issueCount).toBe(1);
+      expect(parsed.attentionCount).toBe(0);
       expect(parsed.issues[0]).toMatchObject({
         count: 2,
         jobIds: ["job_a", "job_b"],
@@ -129,7 +130,7 @@ describe("Retinue log audit", () => {
       });
 
       const compact = renderCompactAuditResult(parsed);
-      expect(compact).toContain("Retinue log audit: issues=1 scanned=4 ignoredCompleted=1");
+      expect(compact).toContain("Retinue log audit: issues=1 attention=0 scanned=4 ignoredCompleted=1");
       expect(compact).toContain("#1 count=2 jobs=job_a,job_b");
       expect(compact).toContain("reason=provider_blank_assistant");
       expect(compact).toContain("source=tool_loop_no_completion");
@@ -139,6 +140,64 @@ describe("Retinue log audit", () => {
       expect(compact).toContain("malformedRead=1");
       expect(compact).toContain("title=Investigate Retinue recovery provider_blank_assistant after tool_loop_no_completion on litellm/semantic-router");
       expect(compact).not.toContain("runningReadToolPartSummaries");
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("separates OpenCode external-directory permission waits from backend issues", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-attention-"));
+    try {
+      const tracePath = path.join(tempDir, "retinue.jsonl");
+      fs.writeFileSync(
+        tracePath,
+        [
+          JSON.stringify({
+            time: "2026-05-25T11:52:06.000Z",
+            event: "opencode_job_stalled",
+            jobId: "job_permission",
+            status: "stalled",
+            diagnostic: {
+              sessionId: "ses_child",
+              sessionDirectory: "/home/raystorm/projects/Vela",
+              stallReason: "external_directory_permission_pending",
+              stallSummary: "OpenCode is waiting for external_directory permission.",
+              pendingPermissionCount: 2,
+              pendingExternalDirectoryPermissionCount: 2,
+              lastAssistantProviderID: "litellm",
+              lastAssistantModelID: "doubao-seed-2.0-lite",
+              lastAssistantAgent: "explore",
+              lastAssistantMode: "explore",
+              noCompletedAssistantDurationMs: 104010
+            }
+          })
+        ].join("\n")
+      );
+
+      const parsed = await auditRetinueLogs({ tracePath, since: new Date("2026-05-25T11:00:00.000Z") });
+
+      expect(parsed.issueCount).toBe(0);
+      expect(parsed.issues).toEqual([]);
+      expect(parsed.attentionCount).toBe(1);
+      expect(parsed.attentions[0]).toMatchObject({
+        kind: "permission",
+        count: 1,
+        jobIds: ["job_permission"],
+        title: "Resolve Retinue external_directory permission on litellm/doubao-seed-2.0-lite",
+        sample: {
+          jobId: "job_permission",
+          stallReason: "external_directory_permission_pending",
+          pendingPermissionCount: 2,
+          pendingExternalDirectoryPermissionCount: 2
+        }
+      });
+
+      const compact = renderCompactAuditResult(parsed);
+      expect(compact).toContain("Retinue log audit: issues=0 attention=1 scanned=1 ignoredCompleted=0");
+      expect(compact).toContain("#A1 count=1 jobs=job_permission");
+      expect(compact).toContain("reason=external_directory_permission_pending");
+      expect(compact).toContain("permissions=2");
+      expect(compact).toContain("title=Resolve Retinue external_directory permission on litellm/doubao-seed-2.0-lite");
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
@@ -251,7 +310,7 @@ describe("Retinue log audit", () => {
       });
 
       const compact = renderCompactAuditResult(parsed);
-      expect(compact).toContain("Retinue log audit: issues=1 scanned=3 ignoredCompleted=0");
+      expect(compact).toContain("Retinue log audit: issues=1 attention=0 scanned=3 ignoredCompleted=0");
       expect(compact).toContain("#1 count=3 jobs=job_root,job_attempt");
       expect(compact).toContain("reason=read_tool_invalid_input source=provider_blank_assistant recovery=read_tool_invalid_input");
       expect(compact).toContain("provider=litellm/intentmux");

@@ -5,6 +5,7 @@ import {
   DEFAULT_LOG_AUDIT_MAX_LINES,
   auditRetinueLogs,
   type AuditRetinueLogsOptions,
+  type RetinueLogAuditAttention,
   type RetinueLogAuditIssue,
   type RetinueLogAuditResult
 } from "../core/logAudit.js";
@@ -121,7 +122,7 @@ function createOpenCodeStatusReconciler(stateDir: string | undefined, env: NodeJ
 
 export function renderCompactAuditResult(result: RetinueLogAuditResult): string {
   const lines = [
-    `Retinue log audit: issues=${result.issueCount} scanned=${result.scannedEvents} ignoredCompleted=${result.ignoredCompletedJobIds.length}`,
+    `Retinue log audit: issues=${result.issueCount} attention=${result.attentionCount} scanned=${result.scannedEvents} ignoredCompleted=${result.ignoredCompletedJobIds.length}`,
     `trace=${result.tracePath}`
   ];
   if (result.since) {
@@ -130,10 +131,17 @@ export function renderCompactAuditResult(result: RetinueLogAuditResult): string 
   for (const [index, issue] of result.issues.entries()) {
     lines.push(renderCompactIssue(issue, index + 1));
   }
+  for (const [index, attention] of result.attentions.entries()) {
+    lines.push(renderCompactAttention(attention, index + 1));
+  }
   return `${lines.join("\n")}\n`;
 }
 
-function renderCompactIssue(issue: RetinueLogAuditIssue, index: number): string {
+function renderCompactAttention(attention: RetinueLogAuditAttention, index: number): string {
+  return renderCompactIssue(attention, index, "A");
+}
+
+function renderCompactIssue(issue: RetinueLogAuditIssue, index: number, prefix = ""): string {
   const sample = issue.sample ?? {};
   const summary = [
     `reason=${stringField(sample.stallReason)}`,
@@ -152,7 +160,7 @@ function renderCompactIssue(issue: RetinueLogAuditIssue, index: number): string 
     .filter((part): part is string => Boolean(part))
     .join(" ");
   return [
-    `#${index} count=${issue.count} jobs=${issue.jobIds.join(",") || "none"}`,
+    `#${prefix}${index} count=${issue.count} jobs=${issue.jobIds.join(",") || "none"}`,
     `  ${summary}`,
     `  title=${issue.title}`,
     `  diagnosis=${issue.description || "No diagnosis available."}`

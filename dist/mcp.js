@@ -281,6 +281,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
         const paths = getJobPaths(stateDir, responseJobId);
         const result = await backend.result({ jobId: responseJobId });
         const diagnostic = await readLatestJobDiagnostic(paths.stderr);
+        const attention = attentionFields(diagnostic, result);
         return jsonToolResult({
             task_name: isJobMeta(status) ? status.name : undefined,
             jobId: responseJobId,
@@ -288,9 +289,9 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             selectedAttemptJobId: result.selectedAttemptJobId ?? waited.selectedAttemptJobId,
             attemptChain: result.attemptChain ?? waited.attemptChain,
             status: responseStatus,
-            result,
+            ...attention,
+            result: compactAttentionResultForMcp(result, attention),
             diagnostic,
-            ...attentionFields(diagnostic, result)
         });
     });
     server.registerTool("retinue_close_agent", {
@@ -1243,6 +1244,29 @@ function permissionRequestsFromDiagnostic(value) {
         return [];
     }
     return value.filter(isPermissionRequest);
+}
+function compactAttentionResultForMcp(result, attention) {
+    if (!attention.attentionRequired && !attention.permissionRequired) {
+        return result;
+    }
+    if (typeof result.stderr !== "string" || result.stderr.length === 0) {
+        return result;
+    }
+    const { stderr, ...compactResult } = result;
+    const stderrTail = tailString(stderr, 4096);
+    return {
+        ...compactResult,
+        stderrTail,
+        stderrTailBytes: Buffer.byteLength(stderrTail, "utf8"),
+        stderrOmitted: true
+    };
+}
+function tailString(value, maxBytes) {
+    const buffer = Buffer.from(value, "utf8");
+    if (buffer.length <= maxBytes) {
+        return value;
+    }
+    return buffer.subarray(buffer.length - maxBytes).toString("utf8").replace(/^\uFFFD+/, "");
 }
 function isPermissionRequest(value) {
     return (isRecord(value) &&

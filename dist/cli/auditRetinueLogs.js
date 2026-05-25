@@ -111,7 +111,7 @@ function createOpenCodeStatusReconciler(stateDir, env) {
 }
 export function renderCompactAuditResult(result) {
     const lines = [
-        `Retinue log audit: issues=${result.issueCount} scanned=${result.scannedEvents} ignoredCompleted=${result.ignoredCompletedJobIds.length}`,
+        `Retinue log audit: issues=${result.issueCount} attention=${result.attentionCount} scanned=${result.scannedEvents} ignoredCompleted=${result.ignoredCompletedJobIds.length}`,
         `trace=${result.tracePath}`
     ];
     if (result.since) {
@@ -120,9 +120,15 @@ export function renderCompactAuditResult(result) {
     for (const [index, issue] of result.issues.entries()) {
         lines.push(renderCompactIssue(issue, index + 1));
     }
+    for (const [index, attention] of result.attentions.entries()) {
+        lines.push(renderCompactAttention(attention, index + 1));
+    }
     return `${lines.join("\n")}\n`;
 }
-function renderCompactIssue(issue, index) {
+function renderCompactAttention(attention, index) {
+    return renderCompactIssue(attention, index, "A");
+}
+function renderCompactIssue(issue, index, prefix = "") {
     const sample = issue.sample ?? {};
     const summary = [
         `reason=${stringField(sample.stallReason)}`,
@@ -141,7 +147,7 @@ function renderCompactIssue(issue, index) {
         .filter((part) => Boolean(part))
         .join(" ");
     return [
-        `#${index} count=${issue.count} jobs=${issue.jobIds.join(",") || "none"}`,
+        `#${prefix}${index} count=${issue.count} jobs=${issue.jobIds.join(",") || "none"}`,
         `  ${summary}`,
         `  title=${issue.title}`,
         `  diagnosis=${issue.description || "No diagnosis available."}`
