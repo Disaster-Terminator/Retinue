@@ -146,12 +146,33 @@ function renderCompactIssue(issue, index, prefix = "") {
     ]
         .filter((part) => Boolean(part))
         .join(" ");
+    const permissionLines = renderPermissionActions(sample.permissionActions);
     return [
         `#${prefix}${index} count=${issue.count} jobs=${issue.jobIds.join(",") || "none"}`,
         `  ${summary}`,
         `  title=${issue.title}`,
-        `  diagnosis=${issue.description || "No diagnosis available."}`
+        `  diagnosis=${issue.description || "No diagnosis available."}`,
+        ...permissionLines
     ].join("\n");
+}
+function renderPermissionActions(value) {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return value.filter(isRecord).map((permission, index) => {
+        const parts = [
+            `id=${stringField(permission.id) ?? "unknown"}`,
+            `permission=${stringField(permission.permission) ?? "unknown"}`,
+            stringField(permission.target) ? `target=${stringField(permission.target)}` : undefined,
+            Array.isArray(permission.patterns) ? `patterns=${permission.patterns.filter((pattern) => typeof pattern === "string").join(",")}` : undefined,
+            stringField(permission.toolCallID) ? `toolCall=${stringField(permission.toolCallID)}` : undefined,
+            stringField(permission.recommendedReply) ? `recommended=${stringField(permission.recommendedReply)}` : undefined,
+            stringField(permission.relation) ? `relation=${stringField(permission.relation)}` : undefined
+        ]
+            .filter((part) => Boolean(part))
+            .join(" ");
+        return `  permission[${index + 1}] ${parts}`;
+    });
 }
 function providerModel(issue) {
     const parts = issue.signature.split("|");
@@ -168,6 +189,9 @@ function stringField(value) {
 }
 function numericField(value) {
     return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+function isRecord(value) {
+    return typeof value === "object" && value !== null;
 }
 if (process.argv[1] && import.meta.url === new URL(process.argv[1], "file:").href) {
     main().catch((error) => {

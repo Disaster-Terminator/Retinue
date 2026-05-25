@@ -148,7 +148,7 @@ function summarizeIssues(
       signature,
       ...(attention ? { kind: "permission" as const } : {}),
       title: attention ? createAttentionTitle(diagnostic) : createIssueTitle(diagnostic),
-      description: createIssueDescription(diagnostic),
+      description: attention ? createAttentionDescription(diagnostic) : createIssueDescription(diagnostic),
       count: 0,
       firstSeen: undefined,
       lastSeen: undefined,
@@ -186,12 +186,13 @@ function summarizeIssues(
       runningReadToolPartSummaries: diagnostic.runningReadToolPartSummaries,
       pendingPermissionCount: diagnostic.pendingPermissionCount,
       pendingExternalDirectoryPermissionCount: diagnostic.pendingExternalDirectoryPermissionCount,
+      permissionActions: compactPermissionActions(diagnostic.pendingExternalDirectoryPermissions ?? diagnostic.pendingPermissions),
       readOnlyWriteIntent: diagnostic.readOnlyWriteIntent
     });
     const selectedSample = chooseSample(current.sample, nextSample);
     if (selectedSample === nextSample) {
       current.title = attention ? createAttentionTitle(diagnostic) : createIssueTitle(diagnostic);
-      current.description = createIssueDescription(diagnostic);
+      current.description = attention ? createAttentionDescription(diagnostic) : createIssueDescription(diagnostic);
     }
     current.sample = selectedSample;
     summaries.set(signature, current);
@@ -413,6 +414,21 @@ function createAttentionTitle(diagnostic: Record<string, unknown>): string {
   return `Resolve Retinue external_directory permission on ${String(provider)}/${String(model)}`;
 }
 
+function createAttentionDescription(diagnostic: Record<string, unknown>): string {
+  const parts = [
+    "OpenCode is waiting for a supervising-agent permission decision.",
+    typeof diagnostic.pendingPermissionCount === "number" ? `permissions=${diagnostic.pendingPermissionCount}` : undefined,
+    diagnostic.sessionDirectory ? `cwd=${String(diagnostic.sessionDirectory)}` : undefined,
+    diagnostic.lastAssistantAgent ? `agent=${String(diagnostic.lastAssistantAgent)}` : undefined,
+    diagnostic.lastAssistantMode ? `mode=${String(diagnostic.lastAssistantMode)}` : undefined,
+    typeof diagnostic.noCompletedAssistantDurationMs === "number" && Number.isFinite(diagnostic.noCompletedAssistantDurationMs)
+      ? `durationMs=${diagnostic.noCompletedAssistantDurationMs}`
+      : undefined,
+    "Use retinue_list_permissions or the wait response permissions, then retinue_reply_permission."
+  ].filter(Boolean);
+  return parts.join("; ");
+}
+
 function createIssueDescription(diagnostic: Record<string, unknown>): string {
   const parts = [
     diagnostic.stallSummary,
@@ -459,6 +475,27 @@ function later(left: string | undefined, right: string | undefined): string | un
 
 function compact(record: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== undefined));
+}
+
+function compactPermissionActions(value: unknown): Record<string, unknown>[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const actions = value.filter(isRecord).map((permission) => {
+    const approval = isRecord(permission.approval) ? permission.approval : undefined;
+    const scope = isRecord(approval?.scope) ? approval.scope : undefined;
+    return compact({
+      id: permission.id,
+      permission: permission.permission,
+      target: scope?.target,
+      patterns: permission.patterns,
+      toolCallID: permission.toolCallID,
+      recommendedReply: approval?.recommendedReply,
+      recommendedMessage: approval?.recommendedMessage,
+      relation: scope?.relation
+    });
+  });
+  return actions.length > 0 ? actions : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

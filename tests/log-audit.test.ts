@@ -164,6 +164,22 @@ describe("Retinue log audit", () => {
               stallSummary: "OpenCode is waiting for external_directory permission.",
               pendingPermissionCount: 2,
               pendingExternalDirectoryPermissionCount: 2,
+              pendingExternalDirectoryPermissions: [
+                {
+                  id: "per_1",
+                  permission: "external_directory",
+                  patterns: ["/home/raystorm/projects/opencode/*"],
+                  toolCallID: "call_read",
+                  approval: {
+                    recommendedReply: "reject",
+                    recommendedMessage: "The requested path is outside the delegated workspace.",
+                    scope: {
+                      target: "/home/raystorm/projects/opencode",
+                      relation: "outside_workspace"
+                    }
+                  }
+                }
+              ],
               lastAssistantProviderID: "litellm",
               lastAssistantModelID: "doubao-seed-2.0-lite",
               lastAssistantAgent: "explore",
@@ -188,7 +204,19 @@ describe("Retinue log audit", () => {
           jobId: "job_permission",
           stallReason: "external_directory_permission_pending",
           pendingPermissionCount: 2,
-          pendingExternalDirectoryPermissionCount: 2
+          pendingExternalDirectoryPermissionCount: 2,
+          permissionActions: [
+            {
+              id: "per_1",
+              permission: "external_directory",
+              target: "/home/raystorm/projects/opencode",
+              patterns: ["/home/raystorm/projects/opencode/*"],
+              toolCallID: "call_read",
+              recommendedReply: "reject",
+              recommendedMessage: "The requested path is outside the delegated workspace.",
+              relation: "outside_workspace"
+            }
+          ]
         }
       });
 
@@ -198,6 +226,10 @@ describe("Retinue log audit", () => {
       expect(compact).toContain("reason=external_directory_permission_pending");
       expect(compact).toContain("permissions=2");
       expect(compact).toContain("title=Resolve Retinue external_directory permission on litellm/doubao-seed-2.0-lite");
+      expect(compact).toContain(
+        "permission[1] id=per_1 permission=external_directory target=/home/raystorm/projects/opencode patterns=/home/raystorm/projects/opencode/* toolCall=call_read recommended=reject relation=outside_workspace"
+      );
+      expect(compact).not.toContain("pendingPermissions=per_1");
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }

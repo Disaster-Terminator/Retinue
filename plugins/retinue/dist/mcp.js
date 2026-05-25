@@ -58823,7 +58823,7 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
       signature,
       ...attention ? { kind: "permission" } : {},
       title: attention ? createAttentionTitle(diagnostic) : createIssueTitle(diagnostic),
-      description: createIssueDescription(diagnostic),
+      description: attention ? createAttentionDescription(diagnostic) : createIssueDescription(diagnostic),
       count: 0,
       firstSeen: void 0,
       lastSeen: void 0,
@@ -58861,12 +58861,13 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
       runningReadToolPartSummaries: diagnostic.runningReadToolPartSummaries,
       pendingPermissionCount: diagnostic.pendingPermissionCount,
       pendingExternalDirectoryPermissionCount: diagnostic.pendingExternalDirectoryPermissionCount,
+      permissionActions: compactPermissionActions(diagnostic.pendingExternalDirectoryPermissions ?? diagnostic.pendingPermissions),
       readOnlyWriteIntent: diagnostic.readOnlyWriteIntent
     });
     const selectedSample = chooseSample(current.sample, nextSample);
     if (selectedSample === nextSample) {
       current.title = attention ? createAttentionTitle(diagnostic) : createIssueTitle(diagnostic);
-      current.description = createIssueDescription(diagnostic);
+      current.description = attention ? createAttentionDescription(diagnostic) : createIssueDescription(diagnostic);
     }
     current.sample = selectedSample;
     summaries.set(signature, current);
@@ -59058,6 +59059,18 @@ function createAttentionTitle(diagnostic) {
   const model = diagnostic.lastAssistantModelID ?? "unknown_model";
   return `Resolve Retinue external_directory permission on ${String(provider)}/${String(model)}`;
 }
+function createAttentionDescription(diagnostic) {
+  const parts = [
+    "OpenCode is waiting for a supervising-agent permission decision.",
+    typeof diagnostic.pendingPermissionCount === "number" ? `permissions=${diagnostic.pendingPermissionCount}` : void 0,
+    diagnostic.sessionDirectory ? `cwd=${String(diagnostic.sessionDirectory)}` : void 0,
+    diagnostic.lastAssistantAgent ? `agent=${String(diagnostic.lastAssistantAgent)}` : void 0,
+    diagnostic.lastAssistantMode ? `mode=${String(diagnostic.lastAssistantMode)}` : void 0,
+    typeof diagnostic.noCompletedAssistantDurationMs === "number" && Number.isFinite(diagnostic.noCompletedAssistantDurationMs) ? `durationMs=${diagnostic.noCompletedAssistantDurationMs}` : void 0,
+    "Use retinue_list_permissions or the wait response permissions, then retinue_reply_permission."
+  ].filter(Boolean);
+  return parts.join("; ");
+}
 function createIssueDescription(diagnostic) {
   const parts = [
     diagnostic.stallSummary,
@@ -59098,6 +59111,26 @@ function later(left, right) {
 }
 function compact(record2) {
   return Object.fromEntries(Object.entries(record2).filter(([, value]) => value !== void 0));
+}
+function compactPermissionActions(value) {
+  if (!Array.isArray(value)) {
+    return void 0;
+  }
+  const actions = value.filter(isRecord).map((permission) => {
+    const approval = isRecord(permission.approval) ? permission.approval : void 0;
+    const scope = isRecord(approval?.scope) ? approval.scope : void 0;
+    return compact({
+      id: permission.id,
+      permission: permission.permission,
+      target: scope?.target,
+      patterns: permission.patterns,
+      toolCallID: permission.toolCallID,
+      recommendedReply: approval?.recommendedReply,
+      recommendedMessage: approval?.recommendedMessage,
+      relation: scope?.relation
+    });
+  });
+  return actions.length > 0 ? actions : void 0;
 }
 function isRecord(value) {
   return typeof value === "object" && value !== null;
@@ -59865,6 +59898,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
       const result = await backend.result({ jobId: responseJobId });
       const diagnostic = await readLatestJobDiagnostic(paths.stderr);
       const attention = attentionFields(diagnostic, result);
+      const responseDiagnostic = compactAttentionDiagnosticForMcp(diagnostic, attention);
       return jsonToolResult({
         task_name: isJobMeta(status) ? status.name : void 0,
         jobId: responseJobId,
@@ -59874,7 +59908,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
         status: responseStatus,
         ...attention,
         result: compactAttentionResultForMcp(result, attention),
-        diagnostic
+        diagnostic: responseDiagnostic
       });
     }
   );
@@ -60830,6 +60864,11 @@ function summarizeJobDiagnostic(value) {
   const readOnlyWriteIntent = diagnostic.readOnlyWriteIntent === true;
   const patchPartSummary = createPatchPartSummary(diagnostic, readOnlyWriteIntent);
   const patchPartsWithoutWriteIntent = patchPartSummary !== void 0;
+  const pendingExternalDirectoryPermissions = permissionRequestsFromDiagnostic(diagnostic.pendingExternalDirectoryPermissions);
+  const pendingPermissions = permissionRequestsFromDiagnostic(diagnostic.pendingPermissions);
+  const permissionActions = permissionActionSummaries(
+    pendingExternalDirectoryPermissions.length > 0 ? pendingExternalDirectoryPermissions : pendingPermissions
+  );
   return compactRecord({
     event,
     backend: "opencode",
@@ -60877,9 +60916,10 @@ function summarizeJobDiagnostic(value) {
     runningReadToolCallIds: stringArrayValue(diagnostic.runningReadToolCallIds),
     runningReadToolPartSummaries: arrayValue(diagnostic.runningReadToolPartSummaries),
     pendingPermissionCount: numberValue(diagnostic.pendingPermissionCount),
-    pendingPermissions: arrayValue(diagnostic.pendingPermissions),
+    pendingPermissions,
     pendingExternalDirectoryPermissionCount: numberValue(diagnostic.pendingExternalDirectoryPermissionCount),
-    pendingExternalDirectoryPermissions: arrayValue(diagnostic.pendingExternalDirectoryPermissions),
+    pendingExternalDirectoryPermissions,
+    permissionActions: permissionActions.length > 0 ? permissionActions : void 0,
     incompleteAssistantRound: booleanValue(diagnostic.incompleteAssistantRound),
     noCompletedAssistantDurationMs: numberValue(diagnostic.noCompletedAssistantDurationMs),
     stateStatus: stringValue(diagnostic.stateStatus),
@@ -60888,10 +60928,12 @@ function summarizeJobDiagnostic(value) {
 }
 function attentionFields(diagnostic, fallback) {
   if (fallback?.attentionRequired) {
+    const permissions2 = fallback.permissions ?? [];
     return {
       attentionRequired: fallback.attentionRequired,
       permissionRequired: fallback.permissionRequired,
-      permissions: fallback.permissions
+      permissions: permissions2,
+      permissionActions: permissionActionSummaries(permissions2)
     };
   }
   if (!diagnostic || diagnostic.stallReason !== "external_directory_permission_pending") {
@@ -60910,7 +60952,8 @@ function attentionFields(diagnostic, fallback) {
       replyOptions: ["once", "always", "reject"]
     },
     permissionRequired: true,
-    permissions
+    permissions,
+    permissionActions: permissionActionSummaries(permissions)
   };
 }
 function permissionRequestsFromDiagnostic(value) {
@@ -60934,6 +60977,29 @@ function compactAttentionResultForMcp(result, attention) {
     stderrTailBytes: Buffer.byteLength(stderrTail, "utf8"),
     stderrOmitted: true
   };
+}
+function compactAttentionDiagnosticForMcp(diagnostic, attention) {
+  if (!diagnostic || !attention.attentionRequired && !attention.permissionRequired) {
+    return diagnostic;
+  }
+  const { pendingPermissions, pendingExternalDirectoryPermissions, ...compactDiagnostic } = diagnostic;
+  return compactDiagnostic;
+}
+function permissionActionSummaries(permissions) {
+  return permissions.map((permission) => {
+    const approval = isRecord2(permission.approval) ? permission.approval : void 0;
+    const scope = isRecord2(approval?.scope) ? approval.scope : void 0;
+    return compactRecord({
+      id: permission.id,
+      permission: permission.permission,
+      target: stringValue(scope?.target),
+      patterns: permission.patterns,
+      toolCallID: stringValue(permission.toolCallID),
+      recommendedReply: stringValue(approval?.recommendedReply),
+      recommendedMessage: stringValue(approval?.recommendedMessage),
+      relation: stringValue(scope?.relation)
+    });
+  });
 }
 function tailString(value, maxBytes) {
   const buffer = Buffer.from(value, "utf8");

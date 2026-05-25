@@ -329,6 +329,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
       const result = await backend.result({ jobId: responseJobId });
       const diagnostic = await readLatestJobDiagnostic(paths.stderr);
       const attention = attentionFields(diagnostic, result);
+      const responseDiagnostic = compactAttentionDiagnosticForMcp(diagnostic, attention);
       return jsonToolResult({
         task_name: isJobMeta(status) ? status.name : undefined,
         jobId: responseJobId,
@@ -338,7 +339,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
         status: responseStatus,
         ...attention,
         result: compactAttentionResultForMcp(result, attention),
-        diagnostic,
+        diagnostic: responseDiagnostic,
       });
     }
   );
@@ -1482,6 +1483,11 @@ function summarizeJobDiagnostic(value: unknown): Record<string, unknown> | undef
   const readOnlyWriteIntent = diagnostic.readOnlyWriteIntent === true;
   const patchPartSummary = createPatchPartSummary(diagnostic, readOnlyWriteIntent);
   const patchPartsWithoutWriteIntent = patchPartSummary !== undefined;
+  const pendingExternalDirectoryPermissions = permissionRequestsFromDiagnostic(diagnostic.pendingExternalDirectoryPermissions);
+  const pendingPermissions = permissionRequestsFromDiagnostic(diagnostic.pendingPermissions);
+  const permissionActions = permissionActionSummaries(
+    pendingExternalDirectoryPermissions.length > 0 ? pendingExternalDirectoryPermissions : pendingPermissions
+  );
   return compactRecord({
     event,
     backend: "opencode",
@@ -1529,9 +1535,10 @@ function summarizeJobDiagnostic(value: unknown): Record<string, unknown> | undef
     runningReadToolCallIds: stringArrayValue(diagnostic.runningReadToolCallIds),
     runningReadToolPartSummaries: arrayValue(diagnostic.runningReadToolPartSummaries),
     pendingPermissionCount: numberValue(diagnostic.pendingPermissionCount),
-    pendingPermissions: arrayValue(diagnostic.pendingPermissions),
+    pendingPermissions,
     pendingExternalDirectoryPermissionCount: numberValue(diagnostic.pendingExternalDirectoryPermissionCount),
-    pendingExternalDirectoryPermissions: arrayValue(diagnostic.pendingExternalDirectoryPermissions),
+    pendingExternalDirectoryPermissions,
+    permissionActions: permissionActions.length > 0 ? permissionActions : undefined,
     incompleteAssistantRound: booleanValue(diagnostic.incompleteAssistantRound),
     noCompletedAssistantDurationMs: numberValue(diagnostic.noCompletedAssistantDurationMs),
     stateStatus: stringValue(diagnostic.stateStatus),
@@ -1546,12 +1553,15 @@ function attentionFields(
   attentionRequired?: RetinueAttentionRequired;
   permissionRequired?: boolean;
   permissions?: RetinuePermissionRequest[];
+  permissionActions?: PermissionActionSummary[];
 } {
   if (fallback?.attentionRequired) {
+    const permissions = fallback.permissions ?? [];
     return {
       attentionRequired: fallback.attentionRequired,
       permissionRequired: fallback.permissionRequired,
-      permissions: fallback.permissions
+      permissions,
+      permissionActions: permissionActionSummaries(permissions)
     };
   }
   if (!diagnostic || diagnostic.stallReason !== "external_directory_permission_pending") {
@@ -1570,7 +1580,8 @@ function attentionFields(
       replyOptions: ["once", "always", "reject"]
     },
     permissionRequired: true,
-    permissions
+    permissions,
+    permissionActions: permissionActionSummaries(permissions)
   };
 }
 
@@ -1599,6 +1610,45 @@ function compactAttentionResultForMcp(
     stderrTailBytes: Buffer.byteLength(stderrTail, "utf8"),
     stderrOmitted: true
   };
+}
+
+function compactAttentionDiagnosticForMcp(
+  diagnostic: Record<string, unknown> | undefined,
+  attention: { attentionRequired?: RetinueAttentionRequired; permissionRequired?: boolean }
+): Record<string, unknown> | undefined {
+  if (!diagnostic || (!attention.attentionRequired && !attention.permissionRequired)) {
+    return diagnostic;
+  }
+  const { pendingPermissions, pendingExternalDirectoryPermissions, ...compactDiagnostic } = diagnostic;
+  return compactDiagnostic;
+}
+
+interface PermissionActionSummary {
+  id: string;
+  permission: string;
+  target?: string;
+  patterns: string[];
+  toolCallID?: string;
+  recommendedReply?: string;
+  recommendedMessage?: string;
+  relation?: string;
+}
+
+function permissionActionSummaries(permissions: RetinuePermissionRequest[]): PermissionActionSummary[] {
+  return permissions.map((permission) => {
+    const approval = isRecord(permission.approval) ? permission.approval : undefined;
+    const scope = isRecord(approval?.scope) ? approval.scope : undefined;
+    return compactRecord({
+      id: permission.id,
+      permission: permission.permission,
+      target: stringValue(scope?.target),
+      patterns: permission.patterns,
+      toolCallID: stringValue(permission.toolCallID),
+      recommendedReply: stringValue(approval?.recommendedReply),
+      recommendedMessage: stringValue(approval?.recommendedMessage),
+      relation: stringValue(scope?.relation)
+    }) as unknown as PermissionActionSummary;
+  });
 }
 
 function tailString(value: string, maxBytes: number): string {

@@ -1033,6 +1033,18 @@ describe("MCP tools", () => {
             })
           })
         ],
+        permissionActions: [
+          {
+            id: "per_1",
+            permission: "external_directory",
+            target: "/home/raystorm/projects/opencode",
+            patterns: ["/home/raystorm/projects/opencode/*"],
+            toolCallID: "call_read",
+            recommendedReply: "reject",
+            recommendedMessage: expect.stringContaining("outside the delegated workspace"),
+            relation: "outside_workspace"
+          }
+        ],
         attentionRequired: {
           kind: "permission",
           backend: "opencode",
@@ -1061,6 +1073,15 @@ describe("MCP tools", () => {
           pendingExternalDirectoryPermissionCount: 1
         }
       });
+      expect(wait.diagnostic.pendingExternalDirectoryPermissions).toBeUndefined();
+      expect(wait.diagnostic.pendingPermissions).toBeUndefined();
+      expect(wait.diagnostic.permissionActions).toEqual([
+        expect.objectContaining({
+          id: "per_1",
+          recommendedReply: "reject",
+          target: "/home/raystorm/projects/opencode"
+        })
+      ]);
       expect(wait.result.stderr).toBeUndefined();
       expect(wait.result.stderrOmitted).toBe(true);
       expect(wait.result.stderrTail).toContain("external_directory permission");

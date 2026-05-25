@@ -30,7 +30,7 @@ Useful options:
 
 Each issue candidate includes a signature, affected job IDs, first/last seen timestamps, and one compact sample with session IDs, cwd, stall reason, recovery source/recovery stall reason, tool-call rounds, blank/zero-progress rounds, and read-only write intent status.
 
-Attention candidates use the `#A<n>` compact prefix. For `external_directory_permission_pending`, inspect the permission request with `retinue_wait_agent` or `retinue_list_permissions`, decide from the included `approval` object, then call `retinue_reply_permission` with `once`, `always`, or `reject`. Do not treat a permission wait as failed child-agent evidence unless the supervising agent cannot make a permission decision.
+Attention candidates use the `#A<n>` compact prefix. For `external_directory_permission_pending`, compact output includes `permission[n]` lines with request id, target, patterns, tool call id, recommended reply, and workspace relation. That should usually be enough to decide whether to call `retinue_reply_permission` with `once`, `always`, or `reject`; use `retinue_list_permissions` only when you need the full `approval` object. Do not treat a permission wait as failed child-agent evidence unless the supervising agent cannot make a permission decision.
 
 If a job briefly emits `opencode_job_stalled` and then later completes after Retinue's recovery prompt, treat the final completed result as the useful evidence. The audit output intentionally reports only jobs whose latest scanned status is still stalled.
 
