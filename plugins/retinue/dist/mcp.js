@@ -6844,6 +6844,7 @@ var require_dist = __commonJS({
 });
 
 // src/mcp.ts
+import { createHash as createHash5, randomUUID as randomUUID5 } from "node:crypto";
 import fs7 from "node:fs/promises";
 import path5 from "node:path";
 import { fileURLToPath } from "node:url";
@@ -55540,10 +55541,11 @@ var OpenCodeClient2 = class {
     try {
       const result = await promise2;
       if (result.error !== void 0) {
+        const status = result.response?.status ?? 0;
         throw new OpenCodeClientError(
-          extractErrorMessage2(result.error) ?? `OpenCode request failed with HTTP ${result.response.status}`,
-          "http_error",
-          result.response.status,
+          extractErrorMessage2(result.error) ?? (status > 0 ? `OpenCode request failed with HTTP ${status}` : "OpenCode request failed"),
+          status > 0 ? "http_error" : "transport_error",
+          status,
           path6,
           result.error
         );
@@ -59612,6 +59614,7 @@ var DEFAULT_MCP_WAIT_MAX_MS = 18e4;
 var DEFAULT_RESOURCE_BUDGET_LOCK_TIMEOUT_MS = 1e4;
 var DEFAULT_RESOURCE_BUDGET_LOCK_STALE_MS = 5e3;
 var DEFAULT_GLOBAL_AGENT_BUDGET = 5;
+var DEFAULT_MAX_QUEUED_AGENTS = 20;
 function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
   const agentPool = new RetinueAgentPool();
   const openCodeSharedRootSessions = /* @__PURE__ */ new Map();
@@ -59646,7 +59649,29 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
         env: process.env
       });
       const spawned = await agentPool.withSpawnLock(async () => {
-        const evicted2 = await agentPool.ensureSpawnSlot(retinue, process.env, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
+        await agentPool.drainQueue(retinue, process.env, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
+        const strategy = resolveOverflowStrategy(process.env);
+        if (strategy === "queue") {
+          const queued = await agentPool.queueIfNeeded({
+            backendKind: backend.kind,
+            cwd: args.cwd ?? process.cwd(),
+            env: process.env,
+            agent: args.agent ?? await resolveConfiguredAgentForBackend(backend.kind, process.env),
+            prompt: args.message,
+            stateDir,
+            taskName,
+            title: args.title ?? taskName,
+            retinue,
+            sharedRootSessions: openCodeSharedRootSessions,
+            claudeSdkJobs,
+            preferClaudeSdk,
+            claudeSdkQuery: options.claudeSdkQuery
+          });
+          if (queued) {
+            return queued;
+          }
+        }
+        const evicted2 = strategy === "evict" ? await agentPool.ensureSpawnSlot(retinue, process.env, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery) : void 0;
         return withGlobalAgentBudget(
           {
             stateDir,
@@ -59697,6 +59722,20 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
           tracePath: getRetinueTracePath(stateDir)
         });
       }
+      if ("queued" in spawned) {
+        const queued = spawned.queued;
+        return jsonToolResult({
+          task_name: taskName,
+          jobId: queued.jobId,
+          status: "queued",
+          backend: queued.backend,
+          cwd: queued.cwd,
+          jobDir: getJobPaths(stateDir, queued.jobId).dir,
+          queuePosition: queued.queuePosition,
+          maxQueuedAgents: queued.maxQueuedAgents,
+          tracePath: getRetinueTracePath(stateDir)
+        });
+      }
       const { evicted, started } = spawned;
       return jsonToolResult({
         task_name: taskName,
@@ -59730,15 +59769,34 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
     async ({ jobId, timeoutMs }) => {
       const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
       const effectiveTimeoutMs = resolveMcpWaitTimeoutMs(timeoutMs, process.env);
+      const stateDir = resolveStateDir({
+        explicitStateDir: process.env.RETINUE_STATE_DIR,
+        env: process.env
+      });
+      await agentPool.drainQueue(retinue, process.env, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
+      const queuedMeta = await readRetinueJobMeta(stateDir, jobId);
+      if (queuedMeta?.status === "queued") {
+        return jsonToolResult({
+          task_name: queuedMeta.name,
+          jobId,
+          status: "queued",
+          backend: queuedMeta.backend,
+          cwd: queuedMeta.cwd,
+          createdAt: queuedMeta.createdAt,
+          updatedAt: queuedMeta.updatedAt,
+          stateDir,
+          jobDir: getJobPaths(stateDir, jobId).dir,
+          queuePosition: await agentPool.queuePosition(jobId),
+          tracePath: getRetinueTracePath(stateDir),
+          requestedTimeoutMs: timeoutMs,
+          effectiveTimeoutMs
+        });
+      }
       const waited = await backend.wait({ jobId }, effectiveTimeoutMs);
       const responseJobId = waited.jobId;
       if (responseJobId !== jobId) {
         agentPool.replace(jobId, responseJobId);
       }
-      const stateDir = resolveStateDir({
-        explicitStateDir: process.env.RETINUE_STATE_DIR,
-        env: process.env
-      });
       const status = waited.status === "running" ? await readRetinueJobMeta(stateDir, responseJobId) : await backend.status({ jobId: responseJobId });
       const responseStatus = waited.status === "running" ? "running" : isJobMeta(status) ? status.status : waited.status;
       if (responseStatus === "running") {
@@ -59806,6 +59864,36 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
     },
     async ({ jobId }) => {
       const backend = await createRetinueBackendForJob(retinue, jobId, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
+      const stateDir = resolveStateDir({
+        explicitStateDir: process.env.RETINUE_STATE_DIR,
+        env: process.env
+      });
+      const meta3 = await readRetinueJobMeta(stateDir, jobId);
+      if (meta3?.status === "queued") {
+        const killed = { ...meta3, status: "killed", updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
+        await writeJobMeta(stateDir, killed);
+        agentPool.remove(jobId);
+        await writeMcpTrace(process.env, { event: "retinue_queued_agent_cancelled", jobId, taskName: meta3.name, backend: meta3.backend });
+        return jsonToolResult({ jobId, status: "killed" });
+      }
+      if (meta3?.selectedAttemptJobId) {
+        const selectedBackend = await createRetinueBackendForJob(
+          retinue,
+          meta3.selectedAttemptJobId,
+          openCodeSharedRootSessions,
+          claudeSdkJobs,
+          preferClaudeSdk,
+          options.claudeSdkQuery
+        );
+        const selectedStatus = await selectedBackend.status({ jobId: meta3.selectedAttemptJobId });
+        if (isJobMeta(selectedStatus) && selectedStatus.status === "running") {
+          await selectedBackend.abort({ jobId: meta3.selectedAttemptJobId });
+          agentPool.remove(meta3.selectedAttemptJobId);
+          await writeJobMeta(stateDir, { ...meta3, status: "killed", updatedAt: (/* @__PURE__ */ new Date()).toISOString() });
+          agentPool.remove(jobId);
+          return jsonToolResult({ jobId, status: "killed", selectedAttemptJobId: meta3.selectedAttemptJobId });
+        }
+      }
       const status = await backend.status({ jobId });
       if (isJobMeta(status) && status.status === "running") {
         await backend.abort({ jobId });
@@ -59823,10 +59911,13 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
       description: "List live Retinue child agents tracked by this MCP server session.",
       inputSchema: {}
     },
-    async () => jsonToolResult({
-      maxAgents: await resolveMaxConcurrentAgents(process.env),
-      agents: await agentPool.list(retinue, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery)
-    })
+    async () => {
+      await agentPool.drainQueue(retinue, process.env, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
+      return jsonToolResult({
+        maxAgents: await resolveMaxConcurrentAgents(process.env),
+        agents: await agentPool.list(retinue, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery)
+      });
+    }
   );
   server.registerTool(
     "retinue_list_permissions",
@@ -60191,18 +60282,186 @@ var RetinueAgentPool = class {
       release();
     }
   }
-  async ensureSpawnSlot(retinue, env, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery) {
+  async queueIfNeeded(options) {
+    const [activeEntries, hasGlobalSlot] = await Promise.all([
+      this.activeEntries(
+        options.retinue,
+        options.sharedRootSessions,
+        options.claudeSdkJobs,
+        options.preferClaudeSdk,
+        options.claudeSdkQuery
+      ),
+      hasGlobalAgentBudgetSlot({
+        stateDir: options.stateDir,
+        env: options.env,
+        retinue: options.retinue,
+        sharedRootSessions: options.sharedRootSessions,
+        claudeSdkJobs: options.claudeSdkJobs,
+        preferClaudeSdk: options.preferClaudeSdk,
+        claudeSdkQuery: options.claudeSdkQuery
+      })
+    ]);
+    const hasSessionSlot = activeEntries.length < await resolveMaxConcurrentAgents(options.env);
+    if (hasSessionSlot && hasGlobalSlot) {
+      return void 0;
+    }
+    const queuedEntries = await this.queuedEntries();
+    const maxQueuedAgents = resolveMaxQueuedAgents(options.env);
+    if (queuedEntries.length >= maxQueuedAgents) {
+      const activeJobIds = activeEntries.map((entry) => entry.jobId);
+      await writeMcpTrace(options.env, {
+        event: "retinue_agent_queue_exhausted",
+        taskName: options.taskName,
+        backend: options.backendKind,
+        maxQueuedAgents,
+        activeAgents: activeEntries.length,
+        activeJobIds
+      });
+      return {
+        resourceExhausted: {
+          globalAgentBudget: await resolveGlobalAgentBudget(options.env),
+          activeAgents: activeEntries.length,
+          activeJobIds
+        }
+      };
+    }
+    const meta3 = await createQueuedJobMeta(options);
+    this.add({
+      jobId: meta3.jobId,
+      backend: options.backendKind,
+      taskName: options.taskName,
+      createdAt: Date.parse(meta3.createdAt)
+    });
+    await writeMcpTrace(options.env, {
+      event: "retinue_agent_queued",
+      jobId: meta3.jobId,
+      taskName: options.taskName,
+      backend: options.backendKind,
+      queuePosition: queuedEntries.length + 1,
+      maxQueuedAgents,
+      hasSessionSlot,
+      hasGlobalSlot
+    });
+    return {
+      queued: {
+        jobId: meta3.jobId,
+        backend: options.backendKind,
+        cwd: options.cwd,
+        queuePosition: queuedEntries.length + 1,
+        maxQueuedAgents
+      }
+    };
+  }
+  async drainQueue(retinue, env, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery) {
+    const stateDir = resolveStateDir({ explicitStateDir: env.RETINUE_STATE_DIR, env });
+    for (; ; ) {
+      const queued = (await this.queuedEntries())[0];
+      if (!queued) {
+        return;
+      }
+      if (!await this.hasSessionSpawnSlot(retinue, env, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery)) {
+        return;
+      }
+      const meta3 = await readRetinueJobMeta(stateDir, queued.jobId);
+      if (!meta3 || meta3.status !== "queued" || !meta3.backend) {
+        this.entries.delete(queued.jobId);
+        continue;
+      }
+      const started = await withGlobalAgentBudget(
+        { stateDir, env, retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery },
+        async () => {
+          const backend = await createRetinueBackendByKind(meta3.backend, retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery);
+          return backend.run({
+            cwd: meta3.cwd,
+            prompt: meta3.prompt ?? "",
+            name: meta3.name,
+            title: meta3.title ?? meta3.name,
+            ...meta3.backend === "opencode" ? { model: env.RETINUE_OPENCODE_MODEL, agent: meta3.agent, readOnly: false } : meta3.backend === "kilo" ? { model: env.RETINUE_KILO_MODEL, agent: meta3.agent, readOnly: false } : {}
+          });
+        }
+      );
+      if ("resourceExhausted" in started) {
+        return;
+      }
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      await writeJobMeta(stateDir, {
+        ...meta3,
+        status: "running",
+        selectedAttemptJobId: started.jobId,
+        attemptJobIds: [...meta3.attemptJobIds ?? [], started.jobId],
+        updatedAt: now
+      });
+      this.entries.delete(queued.jobId);
+      this.add({
+        jobId: started.jobId,
+        backend: started.backend ?? meta3.backend,
+        taskName: meta3.name,
+        createdAt: Date.parse(started.createdAt ?? now)
+      });
+      await writeMcpTrace(env, {
+        event: "retinue_queued_agent_promoted",
+        jobId: meta3.jobId,
+        startedJobId: started.jobId,
+        taskName: meta3.name,
+        backend: started.backend ?? meta3.backend
+      });
+    }
+  }
+  async queuePosition(jobId) {
+    const index = (await this.queuedEntries()).findIndex((entry) => entry.jobId === jobId);
+    return index >= 0 ? index + 1 : void 0;
+  }
+  async hasSessionSpawnSlot(retinue, env, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery) {
     const maxAgents = await resolveMaxConcurrentAgents(env);
+    const activeEntries = await this.activeEntries(retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery);
+    return activeEntries.length < maxAgents;
+  }
+  async activeEntries(retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery) {
     const activeEntries = [];
     for (const entry of [...this.entries.values()]) {
-      const backend2 = await createRetinueBackendByKind(entry.backend, retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery);
-      const status = await backend2.status({ jobId: entry.jobId });
-      if (!isJobMeta(status) || !isActivePoolStatus(status.status)) {
+      const status = await this.statusForEntry(entry, retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery);
+      if (!status || status.status === "queued") {
+        continue;
+      }
+      if (!isActivePoolStatus(status.status)) {
         this.entries.delete(entry.jobId);
         continue;
       }
       activeEntries.push(entry);
     }
+    return activeEntries;
+  }
+  async queuedEntries() {
+    const stateDir = resolveStateDir({ explicitStateDir: process.env.RETINUE_STATE_DIR, env: process.env });
+    const queued = [];
+    for (const entry of [...this.entries.values()].sort((left, right) => left.createdAt - right.createdAt)) {
+      const meta3 = await readRetinueJobMeta(stateDir, entry.jobId);
+      if (meta3?.status === "queued") {
+        queued.push(entry);
+        continue;
+      }
+      if (meta3) {
+        continue;
+      }
+      if (!meta3) {
+        this.entries.delete(entry.jobId);
+      }
+    }
+    return queued;
+  }
+  async statusForEntry(entry, retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery) {
+    const stateDir = resolveStateDir({ explicitStateDir: process.env.RETINUE_STATE_DIR, env: process.env });
+    const meta3 = await readRetinueJobMeta(stateDir, entry.jobId);
+    if (meta3?.status === "queued") {
+      return meta3;
+    }
+    const backend = await createRetinueBackendByKind(entry.backend, retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery);
+    const status = await backend.status({ jobId: entry.jobId });
+    return isJobMeta(status) ? status : void 0;
+  }
+  async ensureSpawnSlot(retinue, env, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery) {
+    const maxAgents = await resolveMaxConcurrentAgents(env);
+    const activeEntries = await this.activeEntries(retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery);
     if (activeEntries.length < maxAgents) {
       return void 0;
     }
@@ -60239,42 +60498,46 @@ var RetinueAgentPool = class {
   }
   async list(retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery) {
     const agents = [];
+    const queued = await this.queuedEntries();
     for (const entry of [...this.entries.values()].sort((left, right) => left.createdAt - right.createdAt)) {
-      const backend = await createRetinueBackendByKind(entry.backend, retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery);
-      const status = await backend.status({ jobId: entry.jobId });
-      if (!isJobMeta(status)) {
+      const status = await this.statusForEntry(entry, retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery);
+      if (!status) {
         this.entries.delete(entry.jobId);
         continue;
       }
-      if (!isActivePoolStatus(status.status)) {
+      if (status.status !== "queued" && !isActivePoolStatus(status.status)) {
         this.entries.delete(entry.jobId);
         continue;
       }
+      const queueIndex = queued.findIndex((queuedEntry) => queuedEntry.jobId === entry.jobId);
       agents.push({
         jobId: entry.jobId,
         task_name: entry.taskName,
         backend: entry.backend,
         status: status.status,
-        createdAt: new Date(entry.createdAt).toISOString()
+        createdAt: new Date(entry.createdAt).toISOString(),
+        queuePosition: queueIndex >= 0 ? queueIndex + 1 : void 0
       });
     }
     return agents;
   }
   async listKnown(retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery) {
     const agents = [];
+    const queued = await this.queuedEntries();
     for (const entry of [...this.entries.values()].sort((left, right) => left.createdAt - right.createdAt)) {
-      const backend = await createRetinueBackendByKind(entry.backend, retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery);
-      const status = await backend.status({ jobId: entry.jobId });
-      if (!isJobMeta(status)) {
+      const status = await this.statusForEntry(entry, retinue, sharedRootSessions, claudeSdkJobs, preferClaudeSdk, claudeSdkQuery);
+      if (!status) {
         this.entries.delete(entry.jobId);
         continue;
       }
+      const queueIndex = queued.findIndex((queuedEntry) => queuedEntry.jobId === entry.jobId);
       agents.push({
         jobId: entry.jobId,
         task_name: entry.taskName,
         backend: entry.backend,
         status: status.status,
-        createdAt: new Date(entry.createdAt).toISOString()
+        createdAt: new Date(entry.createdAt).toISOString(),
+        queuePosition: queueIndex >= 0 ? queueIndex + 1 : void 0
       });
     }
     return agents;
@@ -60303,6 +60566,13 @@ async function withGlobalAgentBudget(options, operation) {
     return operation();
   });
 }
+async function hasGlobalAgentBudgetSlot(options) {
+  return withGlobalAgentBudgetLock(options.stateDir, options.env, async () => {
+    const globalAgentBudget = await resolveGlobalAgentBudget(options.env);
+    const activeAgents = await listGlobalRunningAgents(options);
+    return activeAgents.length < globalAgentBudget;
+  });
+}
 async function listGlobalRunningAgents(options) {
   const jobsDir = path5.join(options.stateDir, "jobs");
   const entries = await readDirIfExists5(jobsDir);
@@ -60313,6 +60583,9 @@ async function listGlobalRunningAgents(options) {
     }
     const meta3 = await readRetinueJobMeta(options.stateDir, entry.name);
     if (!meta3?.backend || !isActivePoolStatus(meta3.status)) {
+      continue;
+    }
+    if (meta3.selectedAttemptJobId) {
       continue;
     }
     try {
@@ -60425,6 +60698,18 @@ async function resolveGlobalAgentBudget(env) {
     return Math.max(1, Math.floor(configured));
   }
   return Math.max(DEFAULT_GLOBAL_AGENT_BUDGET, await resolveMaxConcurrentAgents(env));
+}
+function resolveMaxQueuedAgents(env) {
+  const configured = parseOptionalNumber(env.RETINUE_MAX_QUEUED_AGENTS);
+  const maxQueuedAgents = configured ?? DEFAULT_MAX_QUEUED_AGENTS;
+  if (!Number.isFinite(maxQueuedAgents)) {
+    return DEFAULT_MAX_QUEUED_AGENTS;
+  }
+  return Math.max(0, Math.floor(maxQueuedAgents));
+}
+function resolveOverflowStrategy(env) {
+  const value = env.RETINUE_OVERFLOW_STRATEGY?.trim().toLowerCase();
+  return value === "evict" ? "evict" : "queue";
 }
 async function resolveConfiguredOpenCodeAgent(env) {
   const envAgent = env.RETINUE_OPENCODE_AGENT?.trim();
@@ -60765,6 +61050,47 @@ async function readRetinueJobMeta(stateDir, jobId) {
   } catch {
     return void 0;
   }
+}
+async function createQueuedJobMeta(options) {
+  const jobId = `job_${randomUUID5()}`;
+  const paths = getJobPaths(options.stateDir, jobId);
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  await fs7.mkdir(paths.dir, { recursive: true });
+  await fs7.writeFile(paths.prompt, options.prompt, "utf8");
+  const meta3 = {
+    schemaVersion: 1,
+    backend: options.backendKind,
+    jobId,
+    pid: process.pid,
+    status: "queued",
+    cwd: options.cwd,
+    prompt: options.prompt,
+    promptPath: paths.prompt,
+    promptPreview: createPromptPreview4(options.prompt),
+    promptSha256: sha2564(options.prompt),
+    name: options.taskName,
+    agent: options.agent,
+    readOnly: false,
+    title: options.title,
+    args: [],
+    createdAt: now,
+    updatedAt: now
+  };
+  await writeJobMeta(options.stateDir, meta3);
+  return meta3;
+}
+async function writeJobMeta(stateDir, meta3) {
+  const metaPath = getJobPaths(stateDir, meta3.jobId).meta;
+  const tempPath = `${metaPath}.${process.pid}.${Date.now()}.${randomUUID5()}.tmp`;
+  await fs7.mkdir(path5.dirname(metaPath), { recursive: true });
+  await fs7.writeFile(tempPath, JSON.stringify(meta3, null, 2), "utf8");
+  await fs7.rename(tempPath, metaPath);
+}
+function sha2564(value) {
+  return createHash5("sha256").update(value).digest("hex");
+}
+function createPromptPreview4(prompt) {
+  return prompt.replace(/\s+/g, " ").trim().slice(0, 120);
 }
 var RetinueAgentBackend = class {
   constructor(retinue) {

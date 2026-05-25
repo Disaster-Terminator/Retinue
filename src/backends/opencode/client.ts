@@ -36,7 +36,7 @@ type SdkRequestResult<T> =
       data: undefined;
       error: unknown;
       request: Request;
-      response: Response;
+      response?: Response;
     };
 
 export class OpenCodeClient {
@@ -189,10 +189,11 @@ export class OpenCodeClient {
     try {
       const result = await promise;
       if (result.error !== undefined) {
+        const status = result.response?.status ?? 0;
         throw new OpenCodeClientError(
-          extractErrorMessage(result.error) ?? `OpenCode request failed with HTTP ${result.response.status}`,
-          "http_error",
-          result.response.status,
+          extractErrorMessage(result.error) ?? (status > 0 ? `OpenCode request failed with HTTP ${status}` : "OpenCode request failed"),
+          status > 0 ? "http_error" : "transport_error",
+          status,
           path,
           result.error
         );

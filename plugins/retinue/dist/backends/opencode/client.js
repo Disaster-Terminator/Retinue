@@ -108,7 +108,8 @@ export class OpenCodeClient {
         try {
             const result = await promise;
             if (result.error !== undefined) {
-                throw new OpenCodeClientError(extractErrorMessage(result.error) ?? `OpenCode request failed with HTTP ${result.response.status}`, "http_error", result.response.status, path, result.error);
+                const status = result.response?.status ?? 0;
+                throw new OpenCodeClientError(extractErrorMessage(result.error) ?? (status > 0 ? `OpenCode request failed with HTTP ${status}` : "OpenCode request failed"), status > 0 ? "http_error" : "transport_error", status, path, result.error);
             }
             return result.data;
         }

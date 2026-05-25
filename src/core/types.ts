@@ -3,7 +3,7 @@ export type AgentBackendKind = "claude-code" | "opencode" | "kilo";
 
 export type JobTerminalStatus = "completed" | "failed" | "killed" | "timed_out";
 export type JobProblemStatus = "not_found" | "corrupted" | "backend_unreachable";
-export type JobStatus = "running" | "stalled" | "orphaned" | "abandoned" | JobProblemStatus | JobTerminalStatus;
+export type JobStatus = "queued" | "running" | "stalled" | "orphaned" | "abandoned" | JobProblemStatus | JobTerminalStatus;
 
 export interface RunOptions {
   cwd: string;

@@ -121,8 +121,8 @@ Use Retinue to spawn an OpenCode explore subagent. Ask it to reply exactly: RETI
 - OpenCode 使用当前 profile，并按 OpenCode agent/profile 语义决定工具和权限。Retinue 只为直接 child session 派生 TaskTool-compatible session permission，例如按 OpenCode 语义补 `todowrite`/`task` deny。
 - `retinue_spawn_agent` 只接受任务、工作目录、任务名和 OpenCode `agent` 选择。不要传 backend、profile、model、OpenCode server、`access_mode` 或 `bash_policy`。
 - `retinue_wait_agent` 会把单次 MCP wait 限制在宿主安全窗口内，默认最大 180 秒。这个窗口覆盖 OpenCode 默认 45 秒 soft-stall 检测和一次 final-answer rescue；长任务仍可重复调用 wait 轮询，也可用 `RETINUE_MCP_WAIT_MAX_MS` 调整上限。
-- 每个 Retinue MCP server 会话默认最多保留 3 个 active 子代理。超过上限的 active spawn 会关闭最旧的 running 子代理并返回 `evictedJobId`。
-- 同一 `RETINUE_STATE_DIR` 下还会执行机器级 active-agent 预算，避免多个 Codex/Hermes MCP server 把本地槽位相乘。`RETINUE_MAX_CONCURRENT_AGENTS` 只限制单个 MCP server 会话，包默认值为 `3`；`RETINUE_GLOBAL_AGENT_BUDGET` 限制共享 state dir 下的总 active 子代理数，未设置时默认是 `max(5, RETINUE_MAX_CONCURRENT_AGENTS)`。超预算时新的 spawn 返回 `resource_exhausted`，不会继续创建后端子代理。
+- 每个 Retinue MCP server 会话默认最多保留 3 个 active 子代理。默认 overflow 策略是 `RETINUE_OVERFLOW_STRATEGY=queue`：超过 session 或机器级 active 槽位时，`retinue_spawn_agent` 会快速返回 `status: "queued"` 的 job handle，后续 `wait/list/close/spawn` 会在空槽出现时 opportunistic promote。需要旧低延迟行为时可显式设置 `RETINUE_OVERFLOW_STRATEGY=evict`，只驱逐同一 MCP session 内最旧的 running 子代理并返回 `evictedJobId`。
+- 同一 `RETINUE_STATE_DIR` 下还会执行机器级 active-agent 预算，避免多个 Codex/Hermes MCP server 把本地槽位相乘。`RETINUE_MAX_CONCURRENT_AGENTS` 只限制单个 MCP server 会话，包默认值为 `3`；`RETINUE_GLOBAL_AGENT_BUDGET` 限制共享 state dir 下的总 active 子代理数，未设置时默认是 `max(5, RETINUE_MAX_CONCURRENT_AGENTS)`。队列长度由 `RETINUE_MAX_QUEUED_AGENTS` 限制，默认 `20`；队列满时新的 spawn 返回 `resource_exhausted`，不会继续创建后端子代理。
 - `retinue.config.json` 是安装缓存内的包默认值，插件更新或缓存同步可能覆盖它；持久调整请写环境变量，例如 Codex `[env]` 或 Hermes MCP `env` 中的 `RETINUE_MAX_CONCURRENT_AGENTS` 和 `RETINUE_GLOBAL_AGENT_BUDGET`。
 
 当 `retinue_wait_agent` 返回 `status: "running"` 时，子代理仍在运行。继续用同一个 `jobId` 再次调用 `retinue_wait_agent`；只有任务进入 `failed`、`killed`、`stalled` 或其他终态时，才需要按终态处理或重新启动。
