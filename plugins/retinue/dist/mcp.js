@@ -51095,7 +51095,7 @@ async function fetchWithTimeout(url2, init = {}, timeoutMs = DEFAULT_HTTP_TIMEOU
 // node_modules/.pnpm/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/v2/gen/core/serverSentEvents.gen.js
 var createSseClient = ({ onRequest, onSseError, onSseEvent, responseTransformer, responseValidator, sseDefaultRetryDelay, sseMaxRetryAttempts, sseMaxRetryDelay, sseSleepFn, url: url2, ...options }) => {
   let lastEventId;
-  const sleep5 = sseSleepFn ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const sleep6 = sseSleepFn ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   const createStream = async function* () {
     let retryDelay = sseDefaultRetryDelay ?? 3e3;
     let attempt = 0;
@@ -51203,7 +51203,7 @@ var createSseClient = ({ onRequest, onSseError, onSseEvent, responseTransformer,
           break;
         }
         const backoff = Math.min(retryDelay * 2 ** (attempt - 1), sseMaxRetryDelay ?? 3e4);
-        await sleep5(backoff);
+        await sleep6(backoff);
       }
     }
   };
@@ -59581,6 +59581,8 @@ var RETINUE_TOOL_NAMES = [
 ];
 var RETINUE_DIAGNOSTIC_TOOL_NAMES = ["retinue_audit_logs"];
 var DEFAULT_MCP_WAIT_MAX_MS = 18e4;
+var DEFAULT_RESOURCE_BUDGET_LOCK_TIMEOUT_MS = 1e4;
+var DEFAULT_RESOURCE_BUDGET_LOCK_STALE_MS = 5e3;
 function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
   const agentPool = new RetinueAgentPool();
   const openCodeSharedRootSessions = /* @__PURE__ */ new Map();
@@ -59610,45 +59612,70 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
     async (args) => {
       const taskName = normalizeTaskName(args);
       const backend = await createRetinueBackend(retinue, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
-      const { evicted, started } = await agentPool.withSpawnLock(async () => {
-        const evicted2 = await agentPool.ensureSpawnSlot(retinue, process.env, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
-        const agent = args.agent ?? await resolveConfiguredAgentForBackend(backend.kind, process.env);
-        const started2 = await backend.run({
-          cwd: args.cwd ?? process.cwd(),
-          prompt: args.message,
-          name: taskName,
-          title: args.title ?? taskName,
-          ...backend.kind === "opencode" ? {
-            model: process.env.RETINUE_OPENCODE_MODEL,
-            agent,
-            readOnly: false
-          } : backend.kind === "kilo" ? {
-            model: process.env.RETINUE_KILO_MODEL,
-            agent,
-            readOnly: false
-          } : {}
-        });
-        agentPool.add({
-          jobId: started2.jobId,
-          backend: started2.backend ?? backend.kind,
-          taskName,
-          createdAt: Date.now()
-        });
-        return { evicted: evicted2, started: started2 };
+      const stateDir = resolveStateDir({
+        explicitStateDir: process.env.RETINUE_STATE_DIR,
+        env: process.env
       });
+      const spawned = await agentPool.withSpawnLock(async () => {
+        const evicted2 = await agentPool.ensureSpawnSlot(retinue, process.env, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
+        return withGlobalAgentBudget(
+          {
+            stateDir,
+            env: process.env,
+            retinue,
+            sharedRootSessions: openCodeSharedRootSessions,
+            claudeSdkJobs,
+            preferClaudeSdk,
+            claudeSdkQuery: options.claudeSdkQuery
+          },
+          async () => {
+            const agent = args.agent ?? await resolveConfiguredAgentForBackend(backend.kind, process.env);
+            const started2 = await backend.run({
+              cwd: args.cwd ?? process.cwd(),
+              prompt: args.message,
+              name: taskName,
+              title: args.title ?? taskName,
+              ...backend.kind === "opencode" ? {
+                model: process.env.RETINUE_OPENCODE_MODEL,
+                agent,
+                readOnly: false
+              } : backend.kind === "kilo" ? {
+                model: process.env.RETINUE_KILO_MODEL,
+                agent,
+                readOnly: false
+              } : {}
+            });
+            agentPool.add({
+              jobId: started2.jobId,
+              backend: started2.backend ?? backend.kind,
+              taskName,
+              createdAt: Date.now()
+            });
+            return { evicted: evicted2, started: started2 };
+          }
+        );
+      });
+      if ("resourceExhausted" in spawned) {
+        return jsonToolResult({
+          task_name: taskName,
+          status: "resource_exhausted",
+          backend: backend.kind,
+          cwd: args.cwd ?? process.cwd(),
+          message: `Retinue global active-agent budget exhausted: ${spawned.resourceExhausted.activeAgents}/${spawned.resourceExhausted.globalAgentBudget}`,
+          globalAgentBudget: spawned.resourceExhausted.globalAgentBudget,
+          activeGlobalAgents: spawned.resourceExhausted.activeAgents,
+          activeJobIds: spawned.resourceExhausted.activeJobIds,
+          tracePath: getRetinueTracePath(stateDir)
+        });
+      }
+      const { evicted, started } = spawned;
       return jsonToolResult({
         task_name: taskName,
         jobId: started.jobId,
         status: started.status,
         backend: started.backend,
         cwd: started.cwd,
-        jobDir: getJobPaths(
-          resolveStateDir({
-            explicitStateDir: process.env.RETINUE_STATE_DIR,
-            env: process.env
-          }),
-          started.jobId
-        ).dir,
+        jobDir: getJobPaths(stateDir, started.jobId).dir,
         sessionId: started.sessionId,
         externalSessionId: started.externalSessionId,
         externalRunnerMode: started.externalRunnerMode,
@@ -60224,6 +60251,137 @@ var RetinueAgentPool = class {
     return agents;
   }
 };
+async function withGlobalAgentBudget(options, operation) {
+  return withGlobalAgentBudgetLock(options.stateDir, options.env, async () => {
+    const globalAgentBudget = await resolveGlobalAgentBudget(options.env);
+    const activeAgents = await listGlobalRunningAgents(options);
+    if (activeAgents.length >= globalAgentBudget) {
+      const activeJobIds = activeAgents.map((agent) => agent.jobId);
+      await writeMcpTrace(options.env, {
+        event: "retinue_global_agent_budget_exhausted",
+        globalAgentBudget,
+        activeGlobalAgents: activeAgents.length,
+        activeJobIds
+      });
+      return {
+        resourceExhausted: {
+          globalAgentBudget,
+          activeAgents: activeAgents.length,
+          activeJobIds
+        }
+      };
+    }
+    return operation();
+  });
+}
+async function listGlobalRunningAgents(options) {
+  const jobsDir = path5.join(options.stateDir, "jobs");
+  const entries = await readDirIfExists5(jobsDir);
+  const active = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const meta3 = await readRetinueJobMeta(options.stateDir, entry.name);
+    if (!meta3?.backend || !isActivePoolStatus(meta3.status)) {
+      continue;
+    }
+    try {
+      const backend = await createRetinueBackendByKind(
+        meta3.backend,
+        options.retinue,
+        options.sharedRootSessions,
+        options.claudeSdkJobs,
+        options.preferClaudeSdk,
+        options.claudeSdkQuery
+      );
+      const status = await backend.status({ jobId: meta3.jobId });
+      if (isJobMeta(status) && status.status === "running") {
+        active.push(status);
+      }
+    } catch (error51) {
+      await writeMcpTrace(options.env, {
+        event: "retinue_global_agent_budget_status_failed",
+        jobId: meta3.jobId,
+        backend: meta3.backend,
+        error: error51 instanceof Error ? error51.message : String(error51)
+      });
+    }
+  }
+  return active.sort((left, right) => Date.parse(left.createdAt ?? "") - Date.parse(right.createdAt ?? ""));
+}
+async function withGlobalAgentBudgetLock(stateDir, env, operation) {
+  const timeoutMs = parseOptionalNumber(env.RETINUE_GLOBAL_AGENT_BUDGET_LOCK_TIMEOUT_MS) ?? DEFAULT_RESOURCE_BUDGET_LOCK_TIMEOUT_MS;
+  const lockPath = path5.join(stateDir, "retinue-global-agent-budget.lock");
+  const deadline = Date.now() + timeoutMs;
+  await fs7.mkdir(path5.dirname(lockPath), { recursive: true });
+  for (; ; ) {
+    try {
+      const handle = await fs7.open(lockPath, "wx");
+      await handle.writeFile(`${JSON.stringify({ pid: process.pid, createdAt: (/* @__PURE__ */ new Date()).toISOString() })}
+`, "utf8");
+      await handle.close();
+      try {
+        return await operation();
+      } finally {
+        await fs7.rm(lockPath, { force: true });
+      }
+    } catch (error51) {
+      if (!isFileExistsError2(error51)) {
+        throw error51;
+      }
+      await removeStaleGlobalAgentBudgetLock(lockPath);
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting for Retinue global agent budget lock at ${lockPath}`);
+      }
+      await sleep5(100);
+    }
+  }
+}
+async function removeStaleGlobalAgentBudgetLock(lockPath) {
+  try {
+    const parsed = JSON.parse(await fs7.readFile(lockPath, "utf8"));
+    if (typeof parsed.pid === "number" && Number.isInteger(parsed.pid) && !isPidAlive4(parsed.pid)) {
+      await fs7.rm(lockPath, { force: true });
+      return;
+    }
+  } catch {
+  }
+  try {
+    const stat = await fs7.stat(lockPath);
+    if (Date.now() - stat.mtimeMs > DEFAULT_RESOURCE_BUDGET_LOCK_STALE_MS) {
+      await fs7.rm(lockPath, { force: true });
+    }
+  } catch {
+  }
+}
+function isFileExistsError2(error51) {
+  return typeof error51 === "object" && error51 !== null && "code" in error51 && error51.code === "EEXIST";
+}
+function isPidAlive4(pid) {
+  if (pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function readDirIfExists5(dirPath) {
+  try {
+    return await fs7.readdir(dirPath, { withFileTypes: true });
+  } catch (error51) {
+    if (isMissingFile4(error51)) {
+      return [];
+    }
+    throw error51;
+  }
+}
+function sleep5(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 async function resolveMaxConcurrentAgents(env) {
   const configured = parseOptionalNumber(env.RETINUE_MAX_CONCURRENT_AGENTS) ?? await readConfiguredMaxConcurrentAgents(env);
   const maxAgents = configured ?? 3;
@@ -60231,6 +60389,13 @@ async function resolveMaxConcurrentAgents(env) {
     return 3;
   }
   return Math.max(1, Math.floor(maxAgents));
+}
+async function resolveGlobalAgentBudget(env) {
+  const configured = parseOptionalNumber(env.RETINUE_GLOBAL_AGENT_BUDGET);
+  if (configured !== void 0) {
+    return Math.max(1, Math.floor(configured));
+  }
+  return resolveMaxConcurrentAgents(env);
 }
 async function resolveConfiguredOpenCodeAgent(env) {
   const envAgent = env.RETINUE_OPENCODE_AGENT?.trim();

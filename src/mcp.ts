@@ -70,6 +70,8 @@ export const RETINUE_TOOL_NAMES = [
 export const RETINUE_DIAGNOSTIC_TOOL_NAMES = ["retinue_audit_logs"] as const;
 
 const DEFAULT_MCP_WAIT_MAX_MS = 180_000;
+const DEFAULT_RESOURCE_BUDGET_LOCK_TIMEOUT_MS = 10_000;
+const DEFAULT_RESOURCE_BUDGET_LOCK_STALE_MS = 5_000;
 
 export interface CreateMcpServerOptions {
   exposeBackendTools?: boolean;
@@ -109,49 +111,74 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
     async (args) => {
       const taskName = normalizeTaskName(args);
       const backend = await createRetinueBackend(retinue, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
-      const { evicted, started } = await agentPool.withSpawnLock(async () => {
-        const evicted = await agentPool.ensureSpawnSlot(retinue, process.env, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
-        const agent = args.agent ?? (await resolveConfiguredAgentForBackend(backend.kind, process.env));
-        const started = await backend.run({
-          cwd: args.cwd ?? process.cwd(),
-          prompt: args.message,
-          name: taskName,
-          title: args.title ?? taskName,
-          ...(backend.kind === "opencode"
-            ? {
-                model: process.env.RETINUE_OPENCODE_MODEL,
-                agent,
-                readOnly: false
-              }
-            : backend.kind === "kilo"
-              ? {
-                  model: process.env.RETINUE_KILO_MODEL,
-                  agent,
-                  readOnly: false
-                }
-            : {})
-        });
-        agentPool.add({
-          jobId: started.jobId,
-          backend: started.backend ?? backend.kind,
-          taskName,
-          createdAt: Date.now()
-        });
-        return { evicted, started };
+      const stateDir = resolveStateDir({
+        explicitStateDir: process.env.RETINUE_STATE_DIR,
+        env: process.env
       });
+      const spawned = await agentPool.withSpawnLock(async () => {
+        const evicted = await agentPool.ensureSpawnSlot(retinue, process.env, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
+        return withGlobalAgentBudget(
+          {
+            stateDir,
+            env: process.env,
+            retinue,
+            sharedRootSessions: openCodeSharedRootSessions,
+            claudeSdkJobs,
+            preferClaudeSdk,
+            claudeSdkQuery: options.claudeSdkQuery
+          },
+          async () => {
+            const agent = args.agent ?? (await resolveConfiguredAgentForBackend(backend.kind, process.env));
+            const started = await backend.run({
+              cwd: args.cwd ?? process.cwd(),
+              prompt: args.message,
+              name: taskName,
+              title: args.title ?? taskName,
+              ...(backend.kind === "opencode"
+                ? {
+                    model: process.env.RETINUE_OPENCODE_MODEL,
+                    agent,
+                    readOnly: false
+                  }
+                : backend.kind === "kilo"
+                  ? {
+                      model: process.env.RETINUE_KILO_MODEL,
+                      agent,
+                      readOnly: false
+                    }
+                : {})
+            });
+            agentPool.add({
+              jobId: started.jobId,
+              backend: started.backend ?? backend.kind,
+              taskName,
+              createdAt: Date.now()
+            });
+            return { evicted, started };
+          }
+        );
+      });
+      if ("resourceExhausted" in spawned) {
+        return jsonToolResult({
+          task_name: taskName,
+          status: "resource_exhausted",
+          backend: backend.kind,
+          cwd: args.cwd ?? process.cwd(),
+          message: `Retinue global active-agent budget exhausted: ${spawned.resourceExhausted.activeAgents}/${spawned.resourceExhausted.globalAgentBudget}`,
+          globalAgentBudget: spawned.resourceExhausted.globalAgentBudget,
+          activeGlobalAgents: spawned.resourceExhausted.activeAgents,
+          activeJobIds: spawned.resourceExhausted.activeJobIds,
+          tracePath: getRetinueTracePath(stateDir)
+        });
+      }
+      const { evicted, started } = spawned;
       return jsonToolResult({
         task_name: taskName,
         jobId: started.jobId,
         status: started.status,
         backend: started.backend,
         cwd: started.cwd,
-        jobDir: getJobPaths(
-          resolveStateDir({
-            explicitStateDir: process.env.RETINUE_STATE_DIR,
-            env: process.env
-          }),
-          started.jobId
-        ).dir,
+        jobDir: getJobPaths(stateDir, started.jobId).dir,
         sessionId: started.sessionId,
         externalSessionId: started.externalSessionId,
         externalRunnerMode: started.externalRunnerMode,
@@ -811,6 +838,164 @@ class RetinueAgentPool {
   }
 }
 
+interface GlobalAgentBudgetOptions {
+  stateDir: string;
+  env: NodeJS.ProcessEnv;
+  retinue: RetinueApi;
+  sharedRootSessions: OpenCodeSharedRootSessionStore;
+  claudeSdkJobs: ClaudeCodeSdkJobStore;
+  preferClaudeSdk: boolean;
+  claudeSdkQuery?: ClaudeSdkQueryFn;
+}
+
+interface GlobalAgentBudgetExhausted {
+  resourceExhausted: {
+    globalAgentBudget: number;
+    activeAgents: number;
+    activeJobIds: string[];
+  };
+}
+
+async function withGlobalAgentBudget<T>(options: GlobalAgentBudgetOptions, operation: () => Promise<T>): Promise<T | GlobalAgentBudgetExhausted> {
+  return withGlobalAgentBudgetLock(options.stateDir, options.env, async () => {
+    const globalAgentBudget = await resolveGlobalAgentBudget(options.env);
+    const activeAgents = await listGlobalRunningAgents(options);
+    if (activeAgents.length >= globalAgentBudget) {
+      const activeJobIds = activeAgents.map((agent) => agent.jobId);
+      await writeMcpTrace(options.env, {
+        event: "retinue_global_agent_budget_exhausted",
+        globalAgentBudget,
+        activeGlobalAgents: activeAgents.length,
+        activeJobIds
+      });
+      return {
+        resourceExhausted: {
+          globalAgentBudget,
+          activeAgents: activeAgents.length,
+          activeJobIds
+        }
+      };
+    }
+    return operation();
+  });
+}
+
+async function listGlobalRunningAgents(options: GlobalAgentBudgetOptions): Promise<JobMeta[]> {
+  const jobsDir = path.join(options.stateDir, "jobs");
+  const entries = await readDirIfExists(jobsDir);
+  const active: JobMeta[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const meta = await readRetinueJobMeta(options.stateDir, entry.name);
+    if (!meta?.backend || !isActivePoolStatus(meta.status)) {
+      continue;
+    }
+    try {
+      const backend = await createRetinueBackendByKind(
+        meta.backend,
+        options.retinue,
+        options.sharedRootSessions,
+        options.claudeSdkJobs,
+        options.preferClaudeSdk,
+        options.claudeSdkQuery
+      );
+      const status = await backend.status({ jobId: meta.jobId });
+      if (isJobMeta(status) && status.status === "running") {
+        active.push(status as JobMeta);
+      }
+    } catch (error) {
+      await writeMcpTrace(options.env, {
+        event: "retinue_global_agent_budget_status_failed",
+        jobId: meta.jobId,
+        backend: meta.backend,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+  return active.sort((left, right) => Date.parse(left.createdAt ?? "") - Date.parse(right.createdAt ?? ""));
+}
+
+async function withGlobalAgentBudgetLock<T>(stateDir: string, env: NodeJS.ProcessEnv, operation: () => Promise<T>): Promise<T> {
+  const timeoutMs = parseOptionalNumber(env.RETINUE_GLOBAL_AGENT_BUDGET_LOCK_TIMEOUT_MS) ?? DEFAULT_RESOURCE_BUDGET_LOCK_TIMEOUT_MS;
+  const lockPath = path.join(stateDir, "retinue-global-agent-budget.lock");
+  const deadline = Date.now() + timeoutMs;
+  await fs.mkdir(path.dirname(lockPath), { recursive: true });
+  for (;;) {
+    try {
+      const handle = await fs.open(lockPath, "wx");
+      await handle.writeFile(`${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`, "utf8");
+      await handle.close();
+      try {
+        return await operation();
+      } finally {
+        await fs.rm(lockPath, { force: true });
+      }
+    } catch (error) {
+      if (!isFileExistsError(error)) {
+        throw error;
+      }
+      await removeStaleGlobalAgentBudgetLock(lockPath);
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting for Retinue global agent budget lock at ${lockPath}`);
+      }
+      await sleep(100);
+    }
+  }
+}
+
+async function removeStaleGlobalAgentBudgetLock(lockPath: string): Promise<void> {
+  try {
+    const parsed = JSON.parse(await fs.readFile(lockPath, "utf8")) as { pid?: unknown };
+    if (typeof parsed.pid === "number" && Number.isInteger(parsed.pid) && !isPidAlive(parsed.pid)) {
+      await fs.rm(lockPath, { force: true });
+      return;
+    }
+  } catch {
+    // Fall back to mtime-based stale lock cleanup below.
+  }
+  try {
+    const stat = await fs.stat(lockPath);
+    if (Date.now() - stat.mtimeMs > DEFAULT_RESOURCE_BUDGET_LOCK_STALE_MS) {
+      await fs.rm(lockPath, { force: true });
+    }
+  } catch {
+    // Best-effort cleanup only.
+  }
+}
+
+function isFileExistsError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST";
+}
+
+function isPidAlive(pid: number): boolean {
+  if (pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readDirIfExists(dirPath: string) {
+  try {
+    return await fs.readdir(dirPath, { withFileTypes: true });
+  } catch (error) {
+    if (isMissingFile(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function resolveMaxConcurrentAgents(env: NodeJS.ProcessEnv): Promise<number> {
   const configured = parseOptionalNumber(env.RETINUE_MAX_CONCURRENT_AGENTS) ?? (await readConfiguredMaxConcurrentAgents(env));
   const maxAgents = configured ?? 3;
@@ -818,6 +1003,14 @@ async function resolveMaxConcurrentAgents(env: NodeJS.ProcessEnv): Promise<numbe
     return 3;
   }
   return Math.max(1, Math.floor(maxAgents));
+}
+
+async function resolveGlobalAgentBudget(env: NodeJS.ProcessEnv): Promise<number> {
+  const configured = parseOptionalNumber(env.RETINUE_GLOBAL_AGENT_BUDGET);
+  if (configured !== undefined) {
+    return Math.max(1, Math.floor(configured));
+  }
+  return resolveMaxConcurrentAgents(env);
 }
 
 async function resolveConfiguredOpenCodeAgent(env: NodeJS.ProcessEnv): Promise<string | undefined> {

@@ -1389,6 +1389,71 @@ describe("MCP tools", () => {
     }
   });
 
+  it("enforces a global Retinue agent budget across MCP server sessions", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-global-budget-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    fakeOpenCode.setAutoAssistantResponses(false);
+    const firstConnection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    const secondConnection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.RETINUE_MAX_CONCURRENT_AGENTS = "5";
+      process.env.RETINUE_GLOBAL_AGENT_BUDGET = "3";
+
+      const first = parseToolJson(
+        await firstConnection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue global budget one", task_name: "global-budget-1" }
+        })
+      );
+      const second = parseToolJson(
+        await firstConnection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue global budget two", task_name: "global-budget-2" }
+        })
+      );
+      const third = parseToolJson(
+        await secondConnection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue global budget three", task_name: "global-budget-3" }
+        })
+      );
+      const rejected = parseToolJson(
+        await secondConnection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue global budget four", task_name: "global-budget-4" }
+        })
+      );
+
+      expect([first.status, second.status, third.status]).toEqual(["running", "running", "running"]);
+      expect(rejected).toMatchObject({
+        task_name: "global-budget-4",
+        status: "resource_exhausted",
+        globalAgentBudget: 3,
+        activeGlobalAgents: 3
+      });
+      expect(rejected.jobId).toBeUndefined();
+      expect(rejected.activeJobIds).toEqual([first.jobId, second.jobId, third.jobId]);
+
+      const firstList = parseToolJson(await firstConnection.client.callTool({ name: "retinue_list_agents", arguments: {} }));
+      const secondList = parseToolJson(await secondConnection.client.callTool({ name: "retinue_list_agents", arguments: {} }));
+      expect(firstList.agents).toHaveLength(2);
+      expect(secondList.agents).toHaveLength(1);
+
+      const trace = await fs.readFile(path.join(tempDir, "logs", "retinue.jsonl"), "utf8");
+      expect(trace).toContain('"event":"retinue_global_agent_budget_exhausted"');
+      expect(trace).toContain('"globalAgentBudget":3');
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      delete process.env.RETINUE_MAX_CONCURRENT_AGENTS;
+      delete process.env.RETINUE_GLOBAL_AGENT_BUDGET;
+      await Promise.allSettled([closeMcpClient(firstConnection), closeMcpClient(secondConnection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("lists active Retinue agents in the current MCP session pool", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-list-"));
     const fakeOpenCode = await startFakeOpenCodeServer();

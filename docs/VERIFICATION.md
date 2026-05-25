@@ -18,6 +18,8 @@ pnpm run gate:local
 ```
 
 Default tests are deterministic. They do not require real Claude Code or a live OpenCode server.
+The default Vitest scripts cap worker counts conservatively so local gates do not multiply into a
+machine-level process storm when several Codex/Retinue/Hermes threads are active at the same time.
 `gate:local` intentionally does not run `check:generated`; generated artifact drift is checked
 after commits and in release gates so development runs do not fail just because fresh build output
 has not been staged yet.

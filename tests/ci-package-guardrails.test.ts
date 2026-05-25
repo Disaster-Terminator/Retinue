@@ -94,8 +94,14 @@ describe("package.json guardrails", () => {
     expect(scripts["verify:package"]).toBeTypeOf("string");
     expect(scripts["smoke:package"]).toBe("node scripts/smoke-package-artifacts.mjs");
     expect(scripts.test).toBe("pnpm run test:all");
-    expect(scripts["test:all"]).toBe("vitest run");
-    expect(scripts["test:core"]).toBe("vitest run tests/core");
+    expect(scripts["test:all"]).toBe("vitest run --maxWorkers=2");
+    expect(scripts["test:core"]).toBe("vitest run --maxWorkers=2 tests/core");
+    expect(scripts["test:daemon"]).toContain("--maxWorkers=1");
+    expect(scripts["test:opencode"]).toContain("--maxWorkers=1");
+    expect(scripts["test:mcp"]).toContain("--maxWorkers=1");
+    expect(scripts["test:package"]).toContain("--maxWorkers=1");
+    expect(scripts["test:probes"]).toContain("--maxWorkers=1");
+    expect(scripts["test:cli"]).toBe("vitest run --maxWorkers=1 tests/cli.test.ts");
     expect(scripts["test:daemon"]).toContain("tests/daemon-client.test.ts");
     expect(scripts["test:opencode"]).toContain("tests/opencode-backend.test.ts");
     expect(scripts["test:mcp"]).toContain("tests/mcp-tools.test.ts");
@@ -104,7 +110,6 @@ describe("package.json guardrails", () => {
     expect(scripts["test:probes"]).toContain("tests/probe-backend-candidates.test.ts");
     expect(scripts["test:probes"]).toContain("tests/probe-opencode-root-binding.test.ts");
     expect(scripts["test:probes"]).toContain("tests/probe-real-opencode.test.ts");
-    expect(scripts["test:cli"]).toBe("vitest run tests/cli.test.ts");
     expect(scripts["gate:commit"]).toBe("pnpm run typecheck && pnpm run test:core");
     expect(scripts["gate:fast"]).toBe("pnpm run gate:commit && pnpm run test:mcp && pnpm run test:package");
     expect(scripts["gate:local"]).toBe("pnpm run typecheck && pnpm run test:all && pnpm run smoke:package && pnpm run verify:package");
