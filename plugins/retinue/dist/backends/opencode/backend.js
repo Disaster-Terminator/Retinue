@@ -535,6 +535,29 @@ export class OpenCodeBackend {
             attemptChain: chain
         };
     }
+    async createTaskAttemptExhaustedMessage(meta, diagnostic) {
+        if (meta.status !== "stalled") {
+            return undefined;
+        }
+        const root = await this.findAttemptRoot(meta);
+        if (root.status === "completed" || root.selectedAttemptJobId !== meta.jobId) {
+            return undefined;
+        }
+        const chain = await this.buildAttemptChain(meta);
+        if (chain.length <= 1) {
+            return undefined;
+        }
+        const rootAttempt = chain[0];
+        const provider = [diagnostic.lastAssistantProviderID, diagnostic.lastAssistantModelID].filter(Boolean).join("/");
+        const reasonDetails = [
+            meta.originalStallReason ? `rootStall=${meta.originalStallReason}` : "",
+            meta.recoveryStallReason ? `recoveryStall=${meta.recoveryStallReason}` : ""
+        ]
+            .filter(Boolean)
+            .join(" ");
+        const providerDetails = provider ? ` provider=${provider}.` : "";
+        return `Retinue task-level attempt budget exhausted: root job ${rootAttempt.jobId} selected attempt ${meta.jobId} but the selected attempt also stalled (${diagnostic.stallReason ?? "unknown"}).${reasonDetails ? ` ${reasonDetails}.` : ""}${providerDetails} No usable child-agent conclusion is available; treat the original and retry outputs as non-evidence.`;
+    }
     async result(handle) {
         const meta = await this.status(handle);
         if (isProblem(meta)) {
@@ -575,7 +598,8 @@ export class OpenCodeBackend {
         const jobMessages = selectMessagesForMeta(messages, meta);
         const diagnostic = await this.inspectJob(meta);
         if (meta.status === "stalled") {
-            const stderr = createStallMessage(diagnostic);
+            const attemptExhaustedMessage = await this.createTaskAttemptExhaustedMessage(meta, diagnostic);
+            const stderr = [createStallMessage(diagnostic), attemptExhaustedMessage].filter(Boolean).join("\n");
             const advisoryText = selectReadOnlyWriteIntentAdvisoryText(jobMessages, meta, diagnostic);
             if (advisoryText) {
                 diagnostic.readOnlyAdvisoryText = true;

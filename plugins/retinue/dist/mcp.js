@@ -56937,6 +56937,27 @@ var OpenCodeBackend = class {
       attemptChain: chain
     };
   }
+  async createTaskAttemptExhaustedMessage(meta3, diagnostic) {
+    if (meta3.status !== "stalled") {
+      return void 0;
+    }
+    const root = await this.findAttemptRoot(meta3);
+    if (root.status === "completed" || root.selectedAttemptJobId !== meta3.jobId) {
+      return void 0;
+    }
+    const chain = await this.buildAttemptChain(meta3);
+    if (chain.length <= 1) {
+      return void 0;
+    }
+    const rootAttempt = chain[0];
+    const provider = [diagnostic.lastAssistantProviderID, diagnostic.lastAssistantModelID].filter(Boolean).join("/");
+    const reasonDetails = [
+      meta3.originalStallReason ? `rootStall=${meta3.originalStallReason}` : "",
+      meta3.recoveryStallReason ? `recoveryStall=${meta3.recoveryStallReason}` : ""
+    ].filter(Boolean).join(" ");
+    const providerDetails = provider ? ` provider=${provider}.` : "";
+    return `Retinue task-level attempt budget exhausted: root job ${rootAttempt.jobId} selected attempt ${meta3.jobId} but the selected attempt also stalled (${diagnostic.stallReason ?? "unknown"}).${reasonDetails ? ` ${reasonDetails}.` : ""}${providerDetails} No usable child-agent conclusion is available; treat the original and retry outputs as non-evidence.`;
+  }
   async result(handle) {
     const meta3 = await this.status(handle);
     if (isProblem2(meta3)) {
@@ -56977,7 +56998,8 @@ var OpenCodeBackend = class {
     const jobMessages = selectMessagesForMeta(messages, meta3);
     const diagnostic = await this.inspectJob(meta3);
     if (meta3.status === "stalled") {
-      const stderr = createStallMessage(diagnostic);
+      const attemptExhaustedMessage = await this.createTaskAttemptExhaustedMessage(meta3, diagnostic);
+      const stderr = [createStallMessage(diagnostic), attemptExhaustedMessage].filter(Boolean).join("\n");
       const advisoryText = selectReadOnlyWriteIntentAdvisoryText(jobMessages, meta3, diagnostic);
       if (advisoryText) {
         diagnostic.readOnlyAdvisoryText = true;

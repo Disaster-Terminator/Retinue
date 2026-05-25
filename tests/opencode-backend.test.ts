@@ -1486,6 +1486,48 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"event":"opencode_task_level_attempt_started"');
   });
 
+  it("reports no usable conclusion when a malformed read retry is exhausted", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "risk review repeatedly emits empty read input", agent: "explore" });
+    server!.appendMalformedReadToolAssistant(started.externalSessionId!);
+
+    const firstWait = await backend.wait({ jobId: started.jobId }, 1000);
+
+    expect(firstWait).toMatchObject({
+      requestedJobId: started.jobId,
+      selectedAttemptJobId: expect.stringMatching(/^job_/),
+      status: "running"
+    });
+    const attempt = JSON.parse(await fs.readFile(getJobPaths(tempDir, firstWait.jobId).meta, "utf8")) as JobMeta;
+    server!.appendMalformedReadToolAssistant(attempt.externalSessionId!);
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({
+      jobId: firstWait.jobId,
+      requestedJobId: started.jobId,
+      status: "stalled"
+    });
+    const result = await backend.result({ jobId: started.jobId });
+    expect(result).toMatchObject({
+      jobId: firstWait.jobId,
+      status: "stalled"
+    });
+    expect(result.stdout).toContain("missing or invalid input");
+    expect(result.stdout).toContain("Retinue task-level attempt budget exhausted");
+    expect(result.stdout).toContain("No usable child-agent conclusion is available");
+    expect(result.stdout).toContain(`root job ${started.jobId}`);
+    expect(result.stdout).toContain(`selected attempt ${firstWait.jobId}`);
+    expect(result.stdout).toContain("rootStall=read_tool_invalid_input");
+    expect(result.stdout).toContain("recoveryStall=read_tool_invalid_input");
+  });
+
   it("preserves the source stall reason when a soft-stall rescue stalls in a read tool", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
