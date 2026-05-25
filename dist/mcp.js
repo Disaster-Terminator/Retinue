@@ -15,6 +15,7 @@ import { readDaemonDiscoverySync } from "./daemon/discovery.js";
 import { readTextTailIfExists } from "./core/fileTail.js";
 import { resolveHttpTimeoutMs } from "./core/http.js";
 import { auditRetinueLogs } from "./core/logAudit.js";
+import { renderCompactAuditResult } from "./core/logAuditCompact.js";
 import { getJobPaths, getRetinueTracePath, resolveStateDir } from "./core/paths.js";
 import { ClaudeRetinue } from "./core/retinue.js";
 import { isActivePoolStatus } from "./core/status.js";
@@ -418,14 +419,15 @@ function registerDiagnosticTools(server) {
             maxLines: z.number().int().positive().optional(),
             maxBytes: z.number().int().positive().optional(),
             stateDir: z.string().optional(),
-            tracePath: z.string().optional()
+            tracePath: z.string().optional(),
+            compact: z.boolean().optional()
         }
-    }, async ({ since, maxLines, maxBytes, stateDir, tracePath }) => {
+    }, async ({ since, maxLines, maxBytes, stateDir, tracePath, compact }) => {
         const parsedSince = since ? new Date(since) : undefined;
         if (parsedSince && Number.isNaN(parsedSince.getTime())) {
             throw new Error("since must be an ISO timestamp");
         }
-        return jsonToolResult(await auditRetinueLogs({
+        const audit = await auditRetinueLogs({
             stateDir: stateDir ??
                 resolveStateDir({
                     explicitStateDir: process.env.RETINUE_STATE_DIR,
@@ -435,7 +437,20 @@ function registerDiagnosticTools(server) {
             since: parsedSince,
             maxLines,
             maxBytes
-        }));
+        });
+        if (compact === false) {
+            return jsonToolResult(audit);
+        }
+        return jsonToolResult({
+            format: "compact",
+            issueCount: audit.issueCount,
+            attentionCount: audit.attentionCount,
+            scannedEvents: audit.scannedEvents,
+            ignoredCompletedJobIds: audit.ignoredCompletedJobIds,
+            tracePath: audit.tracePath,
+            since: audit.since,
+            text: renderCompactAuditResult(audit)
+        });
     });
 }
 function registerBackendTools(server, retinue) {

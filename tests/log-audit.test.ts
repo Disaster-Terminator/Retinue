@@ -2,10 +2,50 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { renderCompactAuditResult } from "../src/cli/auditRetinueLogs.js";
+import { main, renderCompactAuditResult } from "../src/cli/auditRetinueLogs.js";
 import { auditRetinueLogs } from "../src/core/logAudit.js";
 
 describe("Retinue log audit", () => {
+  it("prints compact audit output by default and full JSON only when requested", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-cli-default-"));
+    try {
+      const tracePath = path.join(tempDir, "retinue.jsonl");
+      fs.writeFileSync(
+        tracePath,
+        JSON.stringify({
+          time: "2026-05-25T12:30:00.000Z",
+          event: "opencode_job_stalled",
+          jobId: "job_default_compact",
+          status: "stalled",
+          diagnostic: {
+            stallReason: "provider_zero_progress",
+            stallSummary: "OpenCode provider/router made no progress.",
+            lastAssistantProviderID: "litellm",
+            lastAssistantModelID: "intentmux",
+            lastAssistantAgent: "explore",
+            lastAssistantMode: "explore"
+          }
+        })
+      );
+
+      const compact = await captureStdout(() =>
+        main(["--trace", tracePath, "--since", "2026-05-25T12:00:00.000Z"], { ...process.env, RETINUE_STATE_DIR: tempDir })
+      );
+      expect(compact).toContain("Retinue log audit: issues=1 attention=0 scanned=1 ignoredCompleted=0");
+      expect(compact).toContain("#1 count=1 jobs=job_default_compact");
+      expect(() => JSON.parse(compact)).toThrow();
+
+      const json = await captureStdout(() =>
+        main(["--trace", tracePath, "--since", "2026-05-25T12:00:00.000Z", "--json"], { ...process.env, RETINUE_STATE_DIR: tempDir })
+      );
+      const parsed = JSON.parse(json);
+      expect(parsed.issueCount).toBe(1);
+      expect(parsed.issues[0].jobIds).toEqual(["job_default_compact"]);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("summarizes recent stalled diagnostics into deduplicated issue candidates", async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-"));
     try {
@@ -643,3 +683,18 @@ describe("Retinue log audit", () => {
     }
   });
 });
+
+async function captureStdout(run: () => Promise<void>): Promise<string> {
+  const writes: string[] = [];
+  const originalWrite = process.stdout.write;
+  process.stdout.write = ((chunk: string | Uint8Array) => {
+    writes.push(String(chunk));
+    return true;
+  }) as typeof process.stdout.write;
+  try {
+    await run();
+  } finally {
+    process.stdout.write = originalWrite;
+  }
+  return writes.join("");
+}

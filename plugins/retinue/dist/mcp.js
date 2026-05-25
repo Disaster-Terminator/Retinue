@@ -59136,6 +59136,89 @@ function isRecord(value) {
   return typeof value === "object" && value !== null;
 }
 
+// src/core/logAuditCompact.ts
+function renderCompactAuditResult(result) {
+  const lines = [
+    `Retinue log audit: issues=${result.issueCount} attention=${result.attentionCount} scanned=${result.scannedEvents} ignoredCompleted=${result.ignoredCompletedJobIds.length}`,
+    `trace=${result.tracePath}`
+  ];
+  if (result.since) {
+    lines.push(`since=${result.since}`);
+  }
+  for (const [index, issue2] of result.issues.entries()) {
+    lines.push(renderCompactIssue(issue2, index + 1));
+  }
+  for (const [index, attention] of result.attentions.entries()) {
+    lines.push(renderCompactAttention(attention, index + 1));
+  }
+  return `${lines.join("\n")}
+`;
+}
+function renderCompactAttention(attention, index) {
+  return renderCompactIssue(attention, index, "A");
+}
+function renderCompactIssue(issue2, index, prefix = "") {
+  const sample = issue2.sample ?? {};
+  const summary = [
+    `reason=${stringField(sample.stallReason)}`,
+    stringField(sample.softStallRescueSourceReason) ? `source=${stringField(sample.softStallRescueSourceReason)}` : void 0,
+    stringField(sample.recoveryStallReason) ? `recovery=${stringField(sample.recoveryStallReason)}` : void 0,
+    `provider=${providerModel(issue2)}`,
+    stringField(sample.sessionDirectory) ? `cwd=${stringField(sample.sessionDirectory)}` : void 0,
+    `agent=${agentMode(issue2)}`,
+    numericField(sample.noCompletedAssistantDurationMs) ? `durationMs=${numericField(sample.noCompletedAssistantDurationMs)}` : void 0,
+    stringField(sample.selectedAttemptJobId) ? `selectedAttempt=${stringField(sample.selectedAttemptJobId)}` : void 0,
+    sample.attemptChainPresent === true ? "attemptChain=true" : void 0,
+    numericField(sample.malformedReadToolParts) ? `malformedRead=${numericField(sample.malformedReadToolParts)}` : void 0,
+    numericField(sample.pendingPermissionCount) ? `permissions=${numericField(sample.pendingPermissionCount)}` : void 0,
+    sample.readOnlyWriteIntent === true ? "readOnlyWriteIntent=true" : void 0
+  ].filter((part) => Boolean(part)).join(" ");
+  const permissionLines = renderPermissionActions(sample.permissionActions);
+  return [
+    `#${prefix}${index} count=${issue2.count} jobs=${issue2.jobIds.join(",") || "none"}`,
+    `  ${summary}`,
+    `  title=${issue2.title}`,
+    `  diagnosis=${issue2.description || "No diagnosis available."}`,
+    ...permissionLines
+  ].join("\n");
+}
+function renderPermissionActions(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isRecord2).map((permission, index) => {
+    const parts = [
+      `id=${stringField(permission.id) ?? "unknown"}`,
+      `permission=${stringField(permission.permission) ?? "unknown"}`,
+      stringField(permission.target) ? `target=${stringField(permission.target)}` : void 0,
+      Array.isArray(permission.patterns) ? `patterns=${permission.patterns.filter((pattern) => typeof pattern === "string").join(",")}` : void 0,
+      stringField(permission.toolCallID) ? `toolCall=${stringField(permission.toolCallID)}` : void 0,
+      stringField(permission.recommendedReply) ? `recommended=${stringField(permission.recommendedReply)}` : void 0,
+      stringField(permission.relation) ? `relation=${stringField(permission.relation)}` : void 0
+    ].filter((part) => Boolean(part)).join(" ");
+    return `  permission[${index + 1}] ${parts}`;
+  });
+}
+function providerModel(issue2) {
+  const parts = issue2.signature.split("|");
+  const offset = parts[0] === "chain" ? 2 : 3;
+  return `${parts[offset] ?? "unknown_provider"}/${parts[offset + 1] ?? "unknown_model"}`;
+}
+function agentMode(issue2) {
+  const parts = issue2.signature.split("|");
+  const offset = parts[0] === "chain" ? 4 : 5;
+  return `${parts[offset] ?? "unknown_agent"}/${parts[offset + 1] ?? "unknown_mode"}`;
+}
+function stringField(value) {
+  return typeof value === "string" && value.length > 0 ? value : void 0;
+}
+function numericField(value) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : void 0;
+}
+function isRecord2(value) {
+  return typeof value === "object" && value !== null;
+}
+
 // src/core/retinue.ts
 import { spawn as spawn2 } from "node:child_process";
 import { createWriteStream as createWriteStream2 } from "node:fs";
@@ -60062,26 +60145,38 @@ function registerDiagnosticTools(server) {
         maxLines: external_exports.number().int().positive().optional(),
         maxBytes: external_exports.number().int().positive().optional(),
         stateDir: external_exports.string().optional(),
-        tracePath: external_exports.string().optional()
+        tracePath: external_exports.string().optional(),
+        compact: external_exports.boolean().optional()
       }
     },
-    async ({ since, maxLines, maxBytes, stateDir, tracePath }) => {
+    async ({ since, maxLines, maxBytes, stateDir, tracePath, compact: compact2 }) => {
       const parsedSince = since ? new Date(since) : void 0;
       if (parsedSince && Number.isNaN(parsedSince.getTime())) {
         throw new Error("since must be an ISO timestamp");
       }
-      return jsonToolResult(
-        await auditRetinueLogs({
-          stateDir: stateDir ?? resolveStateDir({
-            explicitStateDir: process.env.RETINUE_STATE_DIR,
-            env: process.env
-          }),
-          tracePath,
-          since: parsedSince,
-          maxLines,
-          maxBytes
-        })
-      );
+      const audit = await auditRetinueLogs({
+        stateDir: stateDir ?? resolveStateDir({
+          explicitStateDir: process.env.RETINUE_STATE_DIR,
+          env: process.env
+        }),
+        tracePath,
+        since: parsedSince,
+        maxLines,
+        maxBytes
+      });
+      if (compact2 === false) {
+        return jsonToolResult(audit);
+      }
+      return jsonToolResult({
+        format: "compact",
+        issueCount: audit.issueCount,
+        attentionCount: audit.attentionCount,
+        scannedEvents: audit.scannedEvents,
+        ignoredCompletedJobIds: audit.ignoredCompletedJobIds,
+        tracePath: audit.tracePath,
+        since: audit.since,
+        text: renderCompactAuditResult(audit)
+      });
     }
   );
 }
@@ -60853,10 +60948,10 @@ async function readLatestJobDiagnostic(filePath) {
   return void 0;
 }
 function summarizeJobDiagnostic(value) {
-  if (!isRecord2(value)) {
+  if (!isRecord3(value)) {
     return void 0;
   }
-  const diagnostic = isRecord2(value.diagnostic) ? value.diagnostic : void 0;
+  const diagnostic = isRecord3(value.diagnostic) ? value.diagnostic : void 0;
   if (!diagnostic) {
     return void 0;
   }
@@ -60987,8 +61082,8 @@ function compactAttentionDiagnosticForMcp(diagnostic, attention) {
 }
 function permissionActionSummaries(permissions) {
   return permissions.map((permission) => {
-    const approval = isRecord2(permission.approval) ? permission.approval : void 0;
-    const scope = isRecord2(approval?.scope) ? approval.scope : void 0;
+    const approval = isRecord3(permission.approval) ? permission.approval : void 0;
+    const scope = isRecord3(approval?.scope) ? approval.scope : void 0;
     return compactRecord({
       id: permission.id,
       permission: permission.permission,
@@ -61009,7 +61104,7 @@ function tailString(value, maxBytes) {
   return buffer.subarray(buffer.length - maxBytes).toString("utf8").replace(/^\uFFFD+/, "");
 }
 function isPermissionRequest(value) {
-  return isRecord2(value) && typeof value.id === "string" && typeof value.permission === "string" && Array.isArray(value.patterns) && value.patterns.every((pattern) => typeof pattern === "string");
+  return isRecord3(value) && typeof value.id === "string" && typeof value.permission === "string" && Array.isArray(value.patterns) && value.patterns.every((pattern) => typeof pattern === "string");
 }
 function resolveDiagnosticStatus(event, diagnostic) {
   if (event === "opencode_job_soft_stall_deferred") {
@@ -61068,7 +61163,7 @@ function createPatchPartSummary(diagnostic, readOnlyWriteIntent) {
 function compactRecord(record2) {
   return Object.fromEntries(Object.entries(record2).filter(([, value]) => value !== void 0));
 }
-function isRecord2(value) {
+function isRecord3(value) {
   return typeof value === "object" && value !== null;
 }
 function stringValue(value) {

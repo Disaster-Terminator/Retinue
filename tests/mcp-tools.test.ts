@@ -338,6 +338,7 @@ describe("MCP tools", () => {
       assertOptionalField(tools.tools, "retinue_audit_logs", "maxBytes");
       assertOptionalField(tools.tools, "retinue_audit_logs", "stateDir");
       assertOptionalField(tools.tools, "retinue_audit_logs", "tracePath");
+      assertOptionalField(tools.tools, "retinue_audit_logs", "compact");
       assertAbsentFields(tools.tools, "retinue_audit_logs", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
     } finally {
       await closeMcpClient(connection);
@@ -395,10 +396,25 @@ describe("MCP tools", () => {
       exposeDiagnosticTools: true
     });
     try {
-      const audit = parseToolJson(
+      const compactAudit = parseToolJson(
         await connection.client.callTool({
           name: "retinue_audit_logs",
           arguments: { tracePath, since: "2026-05-22T08:00:00.000Z" }
+        })
+      );
+      expect(compactAudit).toMatchObject({
+        format: "compact",
+        issueCount: 1,
+        ignoredCompletedJobIds: ["job_completed_later"]
+      });
+      expect(compactAudit.text).toContain("Retinue log audit: issues=1 attention=0 scanned=2 ignoredCompleted=1");
+      expect(compactAudit.text).toContain("#1 count=1 jobs=job_malformed");
+      expect(compactAudit.issues).toBeUndefined();
+
+      const audit = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_audit_logs",
+          arguments: { tracePath, since: "2026-05-22T08:00:00.000Z", compact: false }
         })
       );
       expect(audit.issueCount).toBe(1);
