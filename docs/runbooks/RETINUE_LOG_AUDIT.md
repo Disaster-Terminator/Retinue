@@ -1,6 +1,12 @@
 # Retinue Log Audit
 
-Use this when WSL or plugin-host logs contain many Retinue issues and a full scan would repeat old failures or overload context.
+Use this when Retinue runtime logs contain many issue reports and a full scan would repeat old failures or overload context.
+
+## Agent Triage Default
+
+When investigating a reported Retinue runtime issue, start with this bounded audit before reading raw `retinue.jsonl` output. Prefer a recent `--since` window plus `--compact` output so stale stalled traces, completed recovery chains, and repeated provider failures are deduplicated before they enter the working context.
+
+If the compact audit is not enough, narrow raw-log inspection by `jobId`, attempt chain, and a small time window. Do not begin with an unbounded `tail`, broad `rg`, or full trace dump.
 
 ## Command
 
