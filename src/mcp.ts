@@ -188,15 +188,23 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
         );
       });
       if ("resourceExhausted" in spawned) {
+        const exhausted = spawned.resourceExhausted;
+        const isQueueFull = exhausted.reason === "queue_full";
         return jsonToolResult({
           task_name: taskName,
           status: "resource_exhausted",
+          reason: exhausted.reason,
           backend: backend.kind,
           cwd: args.cwd ?? process.cwd(),
-          message: `Retinue global active-agent budget exhausted: ${spawned.resourceExhausted.activeAgents}/${spawned.resourceExhausted.globalAgentBudget}`,
-          globalAgentBudget: spawned.resourceExhausted.globalAgentBudget,
-          activeGlobalAgents: spawned.resourceExhausted.activeAgents,
-          activeJobIds: spawned.resourceExhausted.activeJobIds,
+          message: isQueueFull
+            ? `Retinue queued-agent budget exhausted: ${exhausted.queuedAgents}/${exhausted.maxQueuedAgents}`
+            : `Retinue global active-agent budget exhausted: ${exhausted.activeAgents}/${exhausted.globalAgentBudget}`,
+          ...(exhausted.globalAgentBudget !== undefined ? { globalAgentBudget: exhausted.globalAgentBudget } : {}),
+          ...(exhausted.activeAgents !== undefined ? { activeGlobalAgents: exhausted.activeAgents } : {}),
+          ...(exhausted.activeSessionAgents !== undefined ? { activeSessionAgents: exhausted.activeSessionAgents } : {}),
+          ...(exhausted.activeJobIds !== undefined ? { activeJobIds: exhausted.activeJobIds } : {}),
+          ...(exhausted.maxQueuedAgents !== undefined ? { maxQueuedAgents: exhausted.maxQueuedAgents } : {}),
+          ...(exhausted.queuedAgents !== undefined ? { queuedAgents: exhausted.queuedAgents } : {}),
           tracePath: getRetinueTracePath(stateDir)
         });
       }
@@ -874,8 +882,10 @@ class RetinueAgentPool {
       });
       return {
         resourceExhausted: {
-          globalAgentBudget: await resolveGlobalAgentBudget(options.env),
-          activeAgents: activeEntries.length,
+          reason: "queue_full",
+          maxQueuedAgents,
+          queuedAgents: queuedEntries.length,
+          activeSessionAgents: activeEntries.length,
           activeJobIds
         }
       };
@@ -1176,9 +1186,13 @@ interface GlobalAgentBudgetOptions {
 
 interface GlobalAgentBudgetExhausted {
   resourceExhausted: {
-    globalAgentBudget: number;
-    activeAgents: number;
-    activeJobIds: string[];
+    reason: "global_agent_budget_exhausted" | "queue_full";
+    globalAgentBudget?: number;
+    activeAgents?: number;
+    activeSessionAgents?: number;
+    activeJobIds?: string[];
+    maxQueuedAgents?: number;
+    queuedAgents?: number;
   };
 }
 
@@ -1196,6 +1210,7 @@ async function withGlobalAgentBudget<T>(options: GlobalAgentBudgetOptions, opera
       });
       return {
         resourceExhausted: {
+          reason: "global_agent_budget_exhausted",
           globalAgentBudget,
           activeAgents: activeAgents.length,
           activeJobIds

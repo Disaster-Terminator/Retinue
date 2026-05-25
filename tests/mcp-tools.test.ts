@@ -1513,6 +1513,135 @@ describe("MCP tools", () => {
     }
   });
 
+  it("keeps queued Retinue agents queued until both session and global slots are available", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-queue-both-limits-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    fakeOpenCode.setAutoAssistantResponses(false);
+    const firstConnection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    const secondConnection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.RETINUE_MAX_CONCURRENT_AGENTS = "1";
+      process.env.RETINUE_GLOBAL_AGENT_BUDGET = "3";
+
+      const first = parseToolJson(
+        await firstConnection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue both limits one", task_name: "both-limits-1" }
+        })
+      );
+      const queued = parseToolJson(
+        await firstConnection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue both limits queued", task_name: "both-limits-queued" }
+        })
+      );
+
+      process.env.RETINUE_MAX_CONCURRENT_AGENTS = "3";
+      const second = parseToolJson(
+        await secondConnection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue both limits two", task_name: "both-limits-2" }
+        })
+      );
+      const third = parseToolJson(
+        await secondConnection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue both limits three", task_name: "both-limits-3" }
+        })
+      );
+
+      expect([first.status, second.status, third.status]).toEqual(["running", "running", "running"]);
+      expect(queued).toMatchObject({ status: "queued", queuePosition: 1 });
+
+      await firstConnection.client.callTool({ name: "retinue_close_agent", arguments: { jobId: first.jobId } });
+      const fourth = parseToolJson(
+        await secondConnection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue both limits four", task_name: "both-limits-4" }
+        })
+      );
+      expect(fourth).toMatchObject({ status: "running" });
+
+      const stillQueued = parseToolJson(
+        await firstConnection.client.callTool({ name: "retinue_wait_agent", arguments: { jobId: queued.jobId, timeoutMs: 0 } })
+      );
+      expect(stillQueued).toMatchObject({ jobId: queued.jobId, status: "queued", queuePosition: 1 });
+
+      await secondConnection.client.callTool({ name: "retinue_close_agent", arguments: { jobId: second.jobId } });
+      const promoted = parseToolJson(
+        await firstConnection.client.callTool({ name: "retinue_wait_agent", arguments: { jobId: queued.jobId, timeoutMs: 0 } })
+      );
+      expect(promoted).toMatchObject({
+        requestedJobId: queued.jobId,
+        selectedAttemptJobId: expect.any(String),
+        status: "running"
+      });
+      expect(promoted.jobId).not.toBe(queued.jobId);
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      delete process.env.RETINUE_MAX_CONCURRENT_AGENTS;
+      delete process.env.RETINUE_GLOBAL_AGENT_BUDGET;
+      await Promise.allSettled([closeMcpClient(firstConnection), closeMcpClient(secondConnection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports queue exhaustion separately from global budget exhaustion", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-queue-exhausted-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    fakeOpenCode.setAutoAssistantResponses(false);
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.RETINUE_MAX_CONCURRENT_AGENTS = "1";
+      process.env.RETINUE_GLOBAL_AGENT_BUDGET = "5";
+      process.env.RETINUE_MAX_QUEUED_AGENTS = "1";
+
+      const first = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue queue exhausted one", task_name: "queue-exhausted-1" }
+        })
+      );
+      const queued = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue queue exhausted two", task_name: "queue-exhausted-2" }
+        })
+      );
+      const exhausted = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue queue exhausted three", task_name: "queue-exhausted-3" }
+        })
+      );
+
+      expect(first).toMatchObject({ status: "running" });
+      expect(queued).toMatchObject({ status: "queued", queuePosition: 1, maxQueuedAgents: 1 });
+      expect(exhausted).toMatchObject({
+        status: "resource_exhausted",
+        reason: "queue_full",
+        message: "Retinue queued-agent budget exhausted: 1/1",
+        maxQueuedAgents: 1,
+        queuedAgents: 1,
+        activeSessionAgents: 1
+      });
+      expect(exhausted).not.toHaveProperty("activeGlobalAgents");
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      delete process.env.RETINUE_MAX_CONCURRENT_AGENTS;
+      delete process.env.RETINUE_GLOBAL_AGENT_BUDGET;
+      delete process.env.RETINUE_MAX_QUEUED_AGENTS;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("defaults to three session slots and five global slots", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-default-global-budget-"));
     const fakeOpenCode = await startFakeOpenCodeServer();
