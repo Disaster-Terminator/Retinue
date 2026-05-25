@@ -120,6 +120,7 @@ Retinue does not set a Claude SDK model by default and does not replace the SDK 
 
 ```bash
 pnpm run probe:real:retinue-claude
+pnpm run probe:real:retinue-claude -- --permission
 ```
 
 Expected result:
@@ -128,6 +129,14 @@ Expected result:
 - `backend` is `claude-code`
 - `result` is `RETINUE_REAL_OK`
 - `closeStatus` is `completed`
+
+Expected permission result:
+
+- `ok: true`
+- `mode` is `permission`
+- `permission.reply` is `once`
+- `status` and `closeStatus` are `completed`
+- `result` contains the final Claude text; exact text is evidence only and is not the permission bridge assertion
 
 ## Agent SDK Feasibility Probe
 

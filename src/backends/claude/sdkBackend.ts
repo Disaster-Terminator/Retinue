@@ -95,6 +95,7 @@ interface TrackedSdkJob {
 interface PendingPermission {
   request: RetinuePermissionRequest;
   resolve: (result: ClaudeSdkPermissionResult) => void;
+  input: Record<string, unknown>;
   suggestions?: PermissionUpdate[];
   toolUseID: string;
 }
@@ -415,6 +416,7 @@ export class ClaudeCodeSdkBackend implements AgentBackend {
       tracked.pending.set(hook.toolUseID, {
         request: permissionRequestFromHook(toolName, input, hook),
         resolve,
+        input,
         suggestions: hook.suggestions,
         toolUseID: hook.toolUseID
       });
@@ -515,12 +517,14 @@ function permissionReplyToSdkResult(reply: PermissionReplyOption, pending: Pendi
       decisionClassification: "user_reject"
     };
   }
-  return {
+  const result: ClaudeSdkPermissionResult & { updatedInput: Record<string, unknown> } = {
     behavior: "allow",
+    updatedInput: pending.input,
     toolUseID: pending.toolUseID,
     updatedPermissions: reply === "always" ? pending.suggestions : undefined,
     decisionClassification: reply === "always" ? "user_permanent" : "user_temporary"
   };
+  return result;
 }
 
 function permissionWaitResult(jobId: string, backend: "claude-code", permissions: RetinuePermissionRequest[]): WaitResult {

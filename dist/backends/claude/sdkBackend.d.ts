@@ -57,6 +57,7 @@ interface TrackedSdkJob {
 interface PendingPermission {
     request: RetinuePermissionRequest;
     resolve: (result: ClaudeSdkPermissionResult) => void;
+    input: Record<string, unknown>;
     suggestions?: PermissionUpdate[];
     toolUseID: string;
 }

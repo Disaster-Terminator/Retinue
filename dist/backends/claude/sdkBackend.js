@@ -284,6 +284,7 @@ export class ClaudeCodeSdkBackend {
             tracked.pending.set(hook.toolUseID, {
                 request: permissionRequestFromHook(toolName, input, hook),
                 resolve,
+                input,
                 suggestions: hook.suggestions,
                 toolUseID: hook.toolUseID
             });
@@ -374,12 +375,14 @@ function permissionReplyToSdkResult(reply, pending, message) {
             decisionClassification: "user_reject"
         };
     }
-    return {
+    const result = {
         behavior: "allow",
+        updatedInput: pending.input,
         toolUseID: pending.toolUseID,
         updatedPermissions: reply === "always" ? pending.suggestions : undefined,
         decisionClassification: reply === "always" ? "user_permanent" : "user_temporary"
     };
+    return result;
 }
 function permissionWaitResult(jobId, backend, permissions) {
     return {

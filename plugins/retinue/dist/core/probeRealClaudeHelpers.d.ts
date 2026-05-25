@@ -11,3 +11,4 @@ export interface RealClaudeProbeOptions {
 export declare function parseProbeArgs(argv: string[]): RealClaudeProbeOptions;
 export declare function readJsonOutput(stdout: string): Record<string, unknown>;
 export declare function assertExpectedResult(result: any, expected: string): string;
+export declare function assertCompletedResult(result: any): string;

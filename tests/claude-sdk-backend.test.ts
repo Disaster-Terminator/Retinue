@@ -115,6 +115,7 @@ describe("ClaudeCodeSdkBackend", () => {
               suggestions: []
             }
           );
+          expect((permission as typeof permission & { updatedInput?: unknown })?.updatedInput).toEqual({ file_path: "/etc/hostname" });
           yield {
             type: "result",
             subtype: "success",

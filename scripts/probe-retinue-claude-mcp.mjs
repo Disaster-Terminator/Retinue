@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { assertExpectedResult, parseProbeArgs } from "../dist/core/probeRealClaudeHelpers.js";
+import { assertCompletedResult, assertExpectedResult, parseProbeArgs } from "../dist/core/probeRealClaudeHelpers.js";
 import { createMcpServer } from "../dist/mcp.js";
 
 let activeStateDir;
@@ -49,7 +49,7 @@ async function main() {
             arguments: { jobId: spawn.jobId, timeoutMs: options.timeoutMs }
           }, undefined, { timeout: options.timeoutMs + 30_000 })
         );
-    const actual = assertExpectedResult(wait.result, permissionProbe ? "RETINUE_CLAUDE_PERMISSION_OK" : options.expected);
+    const actual = permissionProbe ? assertCompletedResult(wait.result) : assertExpectedResult(wait.result, options.expected);
 
     close = parseToolJson(
       await client.callTool({
@@ -100,6 +100,7 @@ async function bestEffortClose(client, jobId) {
 }
 
 async function waitThroughPermission(client, jobId, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
   const first = parseToolJson(
     await client.callTool({
       name: "retinue_wait_agent",
@@ -116,12 +117,7 @@ async function waitThroughPermission(client, jobId, timeoutMs) {
       arguments: { jobId, requestId: permission.id, reply: "once" }
     })
   );
-  const second = parseToolJson(
-    await client.callTool({
-      name: "retinue_wait_agent",
-      arguments: { jobId, timeoutMs }
-    }, undefined, { timeout: timeoutMs + 30_000 })
-  );
+  const second = await waitUntilTerminal(client, jobId, Math.max(0, deadline - Date.now()));
   return {
     ...second,
     permission: {
@@ -130,6 +126,30 @@ async function waitThroughPermission(client, jobId, timeoutMs) {
       reply: reply.reply
     }
   };
+}
+
+async function waitUntilTerminal(client, jobId, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let last;
+  while (Date.now() <= deadline) {
+    const remaining = Math.max(0, deadline - Date.now());
+    const waitMs = Math.min(Math.max(remaining, 1), 15000);
+    last = parseToolJson(
+      await client.callTool({
+        name: "retinue_wait_agent",
+        arguments: { jobId, timeoutMs: waitMs }
+      }, undefined, { timeout: waitMs + 30_000 })
+    );
+    if (last.status !== "running") {
+      return last;
+    }
+    await sleep(Math.min(1000, Math.max(100, remaining)));
+  }
+  return last ?? { jobId, status: "running" };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function parseToolJson(result) {

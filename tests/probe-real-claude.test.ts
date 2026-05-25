@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertExpectedResult, parseProbeArgs, readJsonOutput } from "../src/core/probeRealClaudeHelpers.js";
+import { assertCompletedResult, assertExpectedResult, parseProbeArgs, readJsonOutput } from "../src/core/probeRealClaudeHelpers.js";
 
 describe("real Claude probe helpers", () => {
   it("parses mode and common probe flags", () => {
@@ -61,6 +61,24 @@ describe("real Claude probe helpers", () => {
         "RETINUE_REAL_OK"
       )
     ).toThrow("Expected Claude result");
+  });
+
+  it("validates completion without coupling permission probes to exact model text", () => {
+    expect(
+      assertCompletedResult({
+        status: "completed",
+        exitCode: 0,
+        parsedStdout: { result: "_OK" }
+      })
+    ).toBe("_OK");
+
+    expect(() =>
+      assertCompletedResult({
+        status: "running",
+        exitCode: 0,
+        parsedStdout: { result: "_OK" }
+      })
+    ).toThrow("Expected completed job");
   });
 
   it("accepts result objects that store exit code under exitStatus", () => {

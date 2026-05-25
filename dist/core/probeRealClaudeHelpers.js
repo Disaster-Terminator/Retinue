@@ -92,6 +92,13 @@ export function readJsonOutput(stdout) {
     throw new Error(`Command stdout did not contain a JSON object: ${stdout.slice(0, 500)}`);
 }
 export function assertExpectedResult(result, expected) {
+    const actual = assertCompletedResult(result);
+    if (actual !== expected) {
+        throw new Error(`Expected Claude result ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+    }
+    return actual;
+}
+export function assertCompletedResult(result) {
     if (result?.status !== "completed") {
         throw new Error(`Expected completed job, got ${String(result?.status)}`);
     }
@@ -100,8 +107,8 @@ export function assertExpectedResult(result, expected) {
         throw new Error(`Expected exitCode 0, got ${String(exitCode)}`);
     }
     const actual = result?.parsedStdout?.result;
-    if (actual !== expected) {
-        throw new Error(`Expected Claude result ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+    if (typeof actual !== "string") {
+        throw new Error(`Expected Claude result text, got ${String(actual)}`);
     }
     return actual;
 }
