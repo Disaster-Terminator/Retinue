@@ -23,6 +23,7 @@ import { ClaudeRetinue } from "../src/core/retinue.js";
 import { startFakeOpenCodeServer } from "./fixtures/fake-opencode-server.js";
 
 const fixturePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/fake-claude.mjs");
+const daemonToken = "mcp-daemon-test-token";
 
 describe("MCP tools", () => {
   it("keeps the default MCP wait ceiling long enough for OpenCode soft-stall rescue", () => {
@@ -138,7 +139,8 @@ describe("MCP tools", () => {
         stateDir: tempDir,
         claudeCommand: process.execPath,
         claudePrefixArgs: [fixturePath]
-      })
+      }),
+      { authToken: daemonToken }
     );
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const client = new Client({ name: "retinue-test-client", version: "0.1.0" });
@@ -148,7 +150,8 @@ describe("MCP tools", () => {
       const address = daemon.address() as AddressInfo;
       const mcpServer = createMcpServer(
         createMcpRetinueFromEnv({
-          RETINUE_DAEMON_URL: `http://127.0.0.1:${address.port}`
+          RETINUE_DAEMON_URL: `http://127.0.0.1:${address.port}`,
+          RETINUE_DAEMON_TOKEN: daemonToken
         }),
         { exposeBackendTools: true }
       );
@@ -191,7 +194,8 @@ describe("MCP tools", () => {
         claudeCommand: process.execPath,
         claudePrefixArgs: [fixturePath],
         env: { ...process.env, FAKE_CLAUDE_DELAY_MS: "300" }
-      })
+      }),
+      { authToken: daemonToken }
     );
     let first: Awaited<ReturnType<typeof connectMcpClient>> | undefined;
     let second: Awaited<ReturnType<typeof connectMcpClient>> | undefined;
@@ -2295,7 +2299,8 @@ async function connectMcpClient(daemonUrl: string) {
   const client = new Client({ name: "retinue-test-client", version: "0.1.0" });
   const mcpServer = createMcpServer(
     createMcpRetinueFromEnv({
-      RETINUE_DAEMON_URL: daemonUrl
+      RETINUE_DAEMON_URL: daemonUrl,
+      RETINUE_DAEMON_TOKEN: daemonToken
     }),
     { exposeBackendTools: true }
   );

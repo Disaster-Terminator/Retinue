@@ -2,7 +2,7 @@
 
 import { ClaudeRetinue } from "./core/retinue.js";
 import { DaemonClient } from "./daemon/client.js";
-import { readDaemonDiscovery } from "./daemon/discovery.js";
+import { type DaemonDiscovery, readDaemonDiscovery } from "./daemon/discovery.js";
 import { resolveHttpTimeoutMs } from "./core/http.js";
 import { resolveStateDir } from "./core/paths.js";
 import { OpenCodeBackend } from "./backends/opencode/backend.js";
@@ -196,7 +196,7 @@ function resolveOpenCodeAgent(flags: Record<string, string | undefined>): string
   return flags.agent ?? process.env.RETINUE_OPENCODE_AGENT;
 }
 
-async function daemonHealth(global: { daemonUrl?: string; discoverDaemon: boolean }): Promise<unknown> {
+async function daemonHealth(global: { daemonUrl?: string; daemonToken?: string; discoverDaemon: boolean }): Promise<unknown> {
   const source = global.daemonUrl ? "explicit_url" : global.discoverDaemon ? "discovery" : "none";
   if (source === "none") {
     return {
@@ -210,9 +210,12 @@ async function daemonHealth(global: { daemonUrl?: string; discoverDaemon: boolea
   }
 
   let daemonUrl = global.daemonUrl;
+  let daemonToken = global.daemonToken;
   if (!daemonUrl) {
     try {
-      daemonUrl = await discoverDaemonUrl();
+      const discovery = await discoverDaemon();
+      daemonUrl = discovery.url;
+      daemonToken = discovery.token;
     } catch (error) {
       return {
         ok: false,
@@ -225,13 +228,15 @@ async function daemonHealth(global: { daemonUrl?: string; discoverDaemon: boolea
     }
   }
 
-  return readDaemonHealth(daemonUrl, source);
+  return readDaemonHealth(daemonUrl, source, daemonToken);
 }
 
-async function readDaemonHealth(daemonUrl: string, source: "explicit_url" | "discovery"): Promise<unknown> {
+async function readDaemonHealth(daemonUrl: string, source: "explicit_url" | "discovery", daemonToken?: string): Promise<unknown> {
   const normalizedUrl = daemonUrl.replace(/\/+$/, "");
   try {
-    const response = await fetch(`${normalizedUrl}/health`);
+    const response = await fetch(`${normalizedUrl}/health`, {
+      headers: daemonToken ? { authorization: `Bearer ${daemonToken}` } : undefined
+    });
     const bodyText = await response.text();
     const { parsed, value } = parseJson(bodyText);
     if (!response.ok) {
@@ -302,14 +307,20 @@ function parseFlags(args: string[]): Record<string, string | undefined> {
   return flags;
 }
 
-function extractGlobalFlags(args: string[]): { args: string[]; daemonUrl?: string; discoverDaemon: boolean } {
+function extractGlobalFlags(args: string[]): { args: string[]; daemonUrl?: string; daemonToken?: string; discoverDaemon: boolean } {
   const remaining: string[] = [];
   let daemonUrl = process.env.RETINUE_DAEMON_URL;
+  let daemonToken = process.env.RETINUE_DAEMON_TOKEN;
   let discoverDaemon = process.env.RETINUE_DAEMON_DISCOVERY === "1";
 
   for (let index = 0; index < args.length; index += 1) {
     if (args[index] === "--daemon-url") {
       daemonUrl = args[index + 1];
+      index += 1;
+      continue;
+    }
+    if (args[index] === "--daemon-token") {
+      daemonToken = args[index + 1];
       index += 1;
       continue;
     }
@@ -320,13 +331,14 @@ function extractGlobalFlags(args: string[]): { args: string[]; daemonUrl?: strin
     remaining.push(args[index]);
   }
 
-  return { args: remaining, daemonUrl, discoverDaemon };
+  return { args: remaining, daemonUrl, daemonToken, discoverDaemon };
 }
 
-async function createRetinueFromEnv(global: { daemonUrl?: string; discoverDaemon: boolean }): Promise<RetinueApi> {
-  const daemonUrl = global.daemonUrl ?? (global.discoverDaemon ? await discoverDaemonUrl() : undefined);
+async function createRetinueFromEnv(global: { daemonUrl?: string; daemonToken?: string; discoverDaemon: boolean }): Promise<RetinueApi> {
+  const discovery = global.daemonUrl ? undefined : global.discoverDaemon ? await discoverDaemon() : undefined;
+  const daemonUrl = global.daemonUrl ?? discovery?.url;
   if (daemonUrl) {
-    return new DaemonClient(daemonUrl, { timeoutMs: resolveHttpTimeoutMs(process.env) });
+    return new DaemonClient(daemonUrl, { timeoutMs: resolveHttpTimeoutMs(process.env), token: global.daemonToken ?? discovery?.token });
   }
 
   return new ClaudeRetinue({
@@ -339,12 +351,12 @@ async function createRetinueFromEnv(global: { daemonUrl?: string; discoverDaemon
   });
 }
 
-async function discoverDaemonUrl(): Promise<string> {
+async function discoverDaemon(): Promise<DaemonDiscovery> {
   const stateDir = resolveStateDir({
     explicitStateDir: process.env.RETINUE_STATE_DIR,
     env: process.env
   });
-  return (await readDaemonDiscovery(stateDir)).url;
+  return readDaemonDiscovery(stateDir);
 }
 
 function parsePrefixArgs(value: string | undefined): string[] {

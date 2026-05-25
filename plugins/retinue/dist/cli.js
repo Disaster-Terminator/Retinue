@@ -183,9 +183,12 @@ async function daemonHealth(global) {
         };
     }
     let daemonUrl = global.daemonUrl;
+    let daemonToken = global.daemonToken;
     if (!daemonUrl) {
         try {
-            daemonUrl = await discoverDaemonUrl();
+            const discovery = await discoverDaemon();
+            daemonUrl = discovery.url;
+            daemonToken = discovery.token;
         }
         catch (error) {
             return {
@@ -198,12 +201,14 @@ async function daemonHealth(global) {
             };
         }
     }
-    return readDaemonHealth(daemonUrl, source);
+    return readDaemonHealth(daemonUrl, source, daemonToken);
 }
-async function readDaemonHealth(daemonUrl, source) {
+async function readDaemonHealth(daemonUrl, source, daemonToken) {
     const normalizedUrl = daemonUrl.replace(/\/+$/, "");
     try {
-        const response = await fetch(`${normalizedUrl}/health`);
+        const response = await fetch(`${normalizedUrl}/health`, {
+            headers: daemonToken ? { authorization: `Bearer ${daemonToken}` } : undefined
+        });
         const bodyText = await response.text();
         const { parsed, value } = parseJson(bodyText);
         if (!response.ok) {
@@ -276,10 +281,16 @@ function parseFlags(args) {
 function extractGlobalFlags(args) {
     const remaining = [];
     let daemonUrl = process.env.RETINUE_DAEMON_URL;
+    let daemonToken = process.env.RETINUE_DAEMON_TOKEN;
     let discoverDaemon = process.env.RETINUE_DAEMON_DISCOVERY === "1";
     for (let index = 0; index < args.length; index += 1) {
         if (args[index] === "--daemon-url") {
             daemonUrl = args[index + 1];
+            index += 1;
+            continue;
+        }
+        if (args[index] === "--daemon-token") {
+            daemonToken = args[index + 1];
             index += 1;
             continue;
         }
@@ -289,12 +300,13 @@ function extractGlobalFlags(args) {
         }
         remaining.push(args[index]);
     }
-    return { args: remaining, daemonUrl, discoverDaemon };
+    return { args: remaining, daemonUrl, daemonToken, discoverDaemon };
 }
 async function createRetinueFromEnv(global) {
-    const daemonUrl = global.daemonUrl ?? (global.discoverDaemon ? await discoverDaemonUrl() : undefined);
+    const discovery = global.daemonUrl ? undefined : global.discoverDaemon ? await discoverDaemon() : undefined;
+    const daemonUrl = global.daemonUrl ?? discovery?.url;
     if (daemonUrl) {
-        return new DaemonClient(daemonUrl, { timeoutMs: resolveHttpTimeoutMs(process.env) });
+        return new DaemonClient(daemonUrl, { timeoutMs: resolveHttpTimeoutMs(process.env), token: global.daemonToken ?? discovery?.token });
     }
     return new ClaudeRetinue({
         stateDir: process.env.RETINUE_STATE_DIR,
@@ -305,12 +317,12 @@ async function createRetinueFromEnv(global) {
         maxConcurrentJobs: parseOptionalNumber(process.env.RETINUE_MAX_CONCURRENT_JOBS)
     });
 }
-async function discoverDaemonUrl() {
+async function discoverDaemon() {
     const stateDir = resolveStateDir({
         explicitStateDir: process.env.RETINUE_STATE_DIR,
         env: process.env
     });
-    return (await readDaemonDiscovery(stateDir)).url;
+    return readDaemonDiscovery(stateDir);
 }
 function parsePrefixArgs(value) {
     if (!value) {

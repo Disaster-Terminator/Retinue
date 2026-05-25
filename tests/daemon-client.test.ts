@@ -28,6 +28,24 @@ describe("DaemonClient errors", () => {
     });
   });
 
+  it("sends the daemon bearer token when configured", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ jobId: "job_123", status: "completed" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new DaemonClient("http://daemon", { token: "secret-token" });
+    await client.status("job_123");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://daemon/v1/jobs/status",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: "Bearer secret-token"
+        })
+      })
+    );
+  });
+
+
   it("supports legacy string error bodies", async () => {
     vi.stubGlobal(
       "fetch",

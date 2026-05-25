@@ -7,7 +7,7 @@ export async function writeDaemonDiscovery(stateDir, value) {
     const filePath = getDaemonDiscoveryPath(stateDir);
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
-    await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+    await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
     await fs.rename(tempPath, filePath);
 }
 export async function readDaemonDiscovery(stateDir) {
@@ -43,8 +43,18 @@ function validateDiscovery(value) {
         url,
         pid: value.pid,
         startedAt: value.startedAt,
-        version: value.version
+        version: value.version,
+        token: validateDiscoveryToken(value.token)
     };
+}
+function validateDiscoveryToken(value) {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (typeof value !== "string" || !value.trim()) {
+        throw new Error("Invalid daemon discovery: invalid token");
+    }
+    return value;
 }
 function validateDiscoveryUrl(value) {
     if (typeof value !== "string" || !value.trim()) {

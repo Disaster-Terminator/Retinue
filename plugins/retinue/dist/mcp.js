@@ -50545,6 +50545,7 @@ function resolveStateDir(options = {}) {
   return path.join(homeDir, ".local", "state", "retinue");
 }
 function getJobPaths(stateDir, jobId) {
+  assertSafeJobId(jobId);
   const dir = path.join(stateDir, "jobs", jobId);
   return {
     dir,
@@ -50554,6 +50555,11 @@ function getJobPaths(stateDir, jobId) {
     exitStatus: path.join(dir, "exit-status.json"),
     prompt: path.join(dir, "prompt.md")
   };
+}
+function assertSafeJobId(jobId) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(jobId) || jobId.includes("..")) {
+    throw new Error(`Invalid Retinue jobId: ${jobId}`);
+  }
 }
 function getDaemonDiscoveryPath(stateDir) {
   return path.join(stateDir, "daemon.json");
@@ -58560,9 +58566,11 @@ var DaemonClientError = class extends Error {
 var DaemonClient = class {
   baseUrl;
   timeoutMs;
+  token;
   constructor(baseUrl, options = {}) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.timeoutMs = options.timeoutMs ?? resolveHttpTimeoutMs();
+    this.token = options.token;
   }
   run(options) {
     return this.post("/v1/jobs/run", options);
@@ -58593,7 +58601,10 @@ var DaemonClient = class {
     try {
       response = await fetchWithTimeout(`${this.baseUrl}${path6}`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          ...this.token ? { authorization: `Bearer ${this.token}` } : {}
+        },
         body: JSON.stringify(body)
       }, this.timeoutMs);
     } catch (error51) {
@@ -58687,8 +58698,18 @@ function validateDiscovery(value) {
     url: url2,
     pid: value.pid,
     startedAt: value.startedAt,
-    version: value.version
+    version: value.version,
+    token: validateDiscoveryToken(value.token)
   };
+}
+function validateDiscoveryToken(value) {
+  if (value === void 0) {
+    return void 0;
+  }
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error("Invalid daemon discovery: invalid token");
+  }
+  return value;
 }
 function validateDiscoveryUrl(value) {
   if (typeof value !== "string" || !value.trim()) {
@@ -61338,14 +61359,15 @@ function isJobMeta(value) {
 }
 function createMcpRetinueFromEnv(env = process.env) {
   if (env.RETINUE_DAEMON_URL) {
-    return new DaemonClient(env.RETINUE_DAEMON_URL, { timeoutMs: resolveHttpTimeoutMs(env) });
+    return new DaemonClient(env.RETINUE_DAEMON_URL, { timeoutMs: resolveHttpTimeoutMs(env), token: env.RETINUE_DAEMON_TOKEN });
   }
   if (env.RETINUE_DAEMON_DISCOVERY === "1") {
     const stateDir = resolveStateDir({
       explicitStateDir: env.RETINUE_STATE_DIR,
       env
     });
-    return new DaemonClient(readDaemonDiscoverySync(stateDir).url, { timeoutMs: resolveHttpTimeoutMs(env) });
+    const discovery = readDaemonDiscoverySync(stateDir);
+    return new DaemonClient(discovery.url, { timeoutMs: resolveHttpTimeoutMs(env), token: discovery.token });
   }
   return new ClaudeRetinue({
     stateDir: env.RETINUE_STATE_DIR,

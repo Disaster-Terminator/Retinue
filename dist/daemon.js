@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createDaemonServer } from "./daemon/server.js";
 import { writeDaemonDiscovery } from "./daemon/discovery.js";
@@ -12,7 +13,8 @@ async function main() {
         throw new Error(`Invalid --port: ${String(flags.port ?? process.env.RETINUE_DAEMON_PORT)}`);
     }
     const retinue = createRetinueFromEnv();
-    const server = createDaemonServer(retinue);
+    const authToken = randomBytes(32).toString("base64url");
+    const server = createDaemonServer(retinue, { authToken });
     await new Promise((resolve) => server.listen(port, host, resolve));
     const address = server.address();
     const actualPort = typeof address === "object" && address ? address.port : port;
@@ -28,7 +30,8 @@ async function main() {
         url: ready.url,
         pid: ready.pid,
         startedAt: ready.startedAt,
-        version: ready.version
+        version: ready.version,
+        token: authToken
     });
     process.stdout.write(`${JSON.stringify(ready)}\n`);
 }

@@ -34,10 +34,12 @@ export class DaemonClientError extends Error {
 export class DaemonClient implements RetinueApi {
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
+  private readonly token?: string;
 
-  constructor(baseUrl: string, options: { timeoutMs?: number } = {}) {
+  constructor(baseUrl: string, options: { timeoutMs?: number; token?: string } = {}) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.timeoutMs = options.timeoutMs ?? resolveHttpTimeoutMs();
+    this.token = options.token;
   }
 
   run(options: RunOptions): Promise<JobMeta> {
@@ -77,7 +79,10 @@ export class DaemonClient implements RetinueApi {
     try {
       response = await fetchWithTimeout(`${this.baseUrl}${path}`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          ...(this.token ? { authorization: `Bearer ${this.token}` } : {})
+        },
         body: JSON.stringify(body)
       }, this.timeoutMs);
     } catch (error) {

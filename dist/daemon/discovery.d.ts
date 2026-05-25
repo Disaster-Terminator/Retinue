@@ -3,6 +3,7 @@ export interface DaemonDiscovery {
     pid: number;
     startedAt: string;
     version: string;
+    token?: string;
 }
 export declare function writeDaemonDiscovery(stateDir: string, value: DaemonDiscovery): Promise<void>;
 export declare function readDaemonDiscovery(stateDir: string): Promise<DaemonDiscovery>;

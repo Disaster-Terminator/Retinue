@@ -7,6 +7,8 @@ import type { AddressInfo } from "node:net";
 import { createDaemonServer } from "../src/daemon/server.js";
 import { ClaudeRetinue } from "../src/core/retinue.js";
 
+const authToken = "daemon-rpc-test-token";
+
 describe("daemon RPC contract", () => {
   let tempDir: string;
   let server: http.Server | undefined;
@@ -14,7 +16,7 @@ describe("daemon RPC contract", () => {
 
   beforeEach(async () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-rpc-contract-test-"));
-    server = createDaemonServer(new ClaudeRetinue({ stateDir: tempDir }));
+    server = createDaemonServer(new ClaudeRetinue({ stateDir: tempDir }), { authToken });
     await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
     const address = server.address() as AddressInfo;
     baseUrl = `http://127.0.0.1:${address.port}`;
@@ -36,7 +38,7 @@ describe("daemon RPC contract", () => {
   });
 
   it("returns daemon health metadata", async () => {
-    const response = await fetch(`${baseUrl}/health`);
+    const response = await fetch(`${baseUrl}/health`, { headers: authHeaders() });
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
@@ -63,7 +65,7 @@ describe("daemon RPC contract", () => {
 
   it("returns a structured body_too_large error when JSON exceeds the configured limit", async () => {
     await closeServer(server!);
-    server = createDaemonServer(new ClaudeRetinue({ stateDir: tempDir }), { maxBodyBytes: 16 });
+    server = createDaemonServer(new ClaudeRetinue({ stateDir: tempDir }), { maxBodyBytes: 16, authToken });
     await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
     const address = server.address() as AddressInfo;
     baseUrl = `http://127.0.0.1:${address.port}`;
@@ -77,7 +79,7 @@ describe("daemon RPC contract", () => {
   async function postRaw(pathname: string, body: string): Promise<{ status: number; body: any }> {
     const response = await fetch(`${baseUrl}${pathname}`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...authHeaders() },
       body
     });
     return { status: response.status, body: await response.json() };
@@ -94,4 +96,8 @@ function closeServer(server: http.Server): Promise<void> {
       resolve();
     });
   });
+}
+
+function authHeaders() {
+  return { authorization: `Bearer ${authToken}` };
 }

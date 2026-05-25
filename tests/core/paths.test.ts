@@ -34,6 +34,12 @@ describe("state paths", () => {
     expect(paths.exitStatus).toBe(path.normalize("/tmp/retinue-state/jobs/job_123/exit-status.json"));
   });
 
+  it("rejects job ids that could escape the jobs directory", () => {
+    expect(() => getJobPaths("/tmp/retinue-state", "../outside")).toThrow(/invalid retinue jobid/i);
+    expect(() => getJobPaths("/tmp/retinue-state", "job/../outside")).toThrow(/invalid retinue jobid/i);
+    expect(() => getJobPaths("/tmp/retinue-state", "job\\outside")).toThrow(/invalid retinue jobid/i);
+  });
+
   it("builds a stable Retinue trace path", () => {
     expect(getRetinueTracePath("/tmp/retinue-state")).toBe(path.normalize("/tmp/retinue-state/logs/retinue.jsonl"));
   });

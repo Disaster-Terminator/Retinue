@@ -8,6 +8,7 @@ import type { AddressInfo } from "node:net";
 import { createDaemonServer } from "../src/daemon/server.js";
 import { ClaudeRetinue } from "../src/core/retinue.js";
 
+const authToken = "daemon-test-token";
 const fixturePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/fake-claude.mjs");
 
 describe("retinue daemon", () => {
@@ -66,7 +67,7 @@ describe("retinue daemon", () => {
       })
     );
 
-    const response = await fetch(`${daemon.url}/v1/jobs/missing`, { method: "POST" });
+    const response = await fetch(`${daemon.url}/v1/jobs/missing`, { method: "POST", headers: authHeaders() });
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toMatchObject({
       error: {
@@ -76,8 +77,29 @@ describe("retinue daemon", () => {
     });
   });
 
+  it("rejects requests without the daemon token", async () => {
+    const daemon = await startDaemon(
+      new ClaudeRetinue({
+        stateDir: tempDir,
+        claudeCommand: process.execPath,
+        claudePrefixArgs: [fixturePath]
+      })
+    );
+
+    const response = await fetch(`${daemon.url}/v1/jobs/run`, {
+      method: "POST",
+      headers: { "content-type": "text/plain", origin: "https://attacker.example" },
+      body: JSON.stringify({ cwd: tempDir, prompt: "blocked" })
+    });
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "unauthorized" }
+    });
+  });
+
   async function startDaemon(retinue: ClaudeRetinue): Promise<{ url: string }> {
-    server = createDaemonServer(retinue);
+    server = createDaemonServer(retinue, { authToken });
     await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
     const address = server.address() as AddressInfo;
     return { url: `http://127.0.0.1:${address.port}` };
@@ -85,7 +107,7 @@ describe("retinue daemon", () => {
 });
 
 async function getJson(url: string): Promise<any> {
-  const response = await fetch(url);
+  const response = await fetch(url, { headers: authHeaders() });
   expect(response.ok).toBe(true);
   return response.json();
 }
@@ -93,11 +115,15 @@ async function getJson(url: string): Promise<any> {
 async function postJson(url: string, body: unknown): Promise<any> {
   const response = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...authHeaders() },
     body: JSON.stringify(body)
   });
   expect(response.ok).toBe(true);
   return response.json();
+}
+
+function authHeaders() {
+  return { authorization: `Bearer ${authToken}` };
 }
 
 function closeServer(server: http.Server): Promise<void> {

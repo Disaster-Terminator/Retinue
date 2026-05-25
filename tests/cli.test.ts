@@ -16,6 +16,7 @@ const cliPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../s
 const fixturePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/fake-claude.mjs");
 const tsxCliPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../node_modules/tsx/dist/cli.mjs");
 const execFileAsync = promisify(execFile);
+const daemonToken = "cli-daemon-test-token";
 
 describe("CLI", () => {
   let tempDir: string;
@@ -57,6 +58,7 @@ describe("CLI", () => {
     const env = {
       ...process.env,
       RETINUE_DAEMON_URL: daemonUrl,
+      RETINUE_DAEMON_TOKEN: daemonToken,
       RETINUE_STATE_DIR: path.join(tempDir, "client-state"),
       RETINUE_CLAUDE_COMMAND: path.join(tempDir, "missing-local-claude")
     };
@@ -77,7 +79,7 @@ describe("CLI", () => {
     const env = cliEnv(tempDir);
 
     const result = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "daemon-health", "--daemon-url", daemonUrl], {
-      env
+      env: { ...env, RETINUE_DAEMON_TOKEN: daemonToken }
     });
     const parsed = JSON.parse(result.stdout);
     expect(parsed.ok).toBe(true);
@@ -92,7 +94,8 @@ describe("CLI", () => {
       url: daemonUrl,
       pid: process.pid,
       startedAt: "2026-05-04T00:00:00.000Z",
-      version: "0.1.0"
+      version: "0.1.0",
+      token: daemonToken
     });
     const env = cliEnv(tempDir);
 
@@ -227,7 +230,8 @@ describe("CLI", () => {
       url: daemonUrl,
       pid: process.pid,
       startedAt: "2026-05-04T00:00:00.000Z",
-      version: "0.1.0"
+      version: "0.1.0",
+      token: daemonToken
     });
     const env = {
       ...process.env,
@@ -336,7 +340,7 @@ describe("CLI", () => {
       claudeCommand: process.execPath,
       claudePrefixArgs: [fixturePath]
     });
-    server = createDaemonServer(retinue);
+    server = createDaemonServer(retinue, { authToken: daemonToken });
     await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
     const address = server.address() as AddressInfo;
     return `http://127.0.0.1:${address.port}`;

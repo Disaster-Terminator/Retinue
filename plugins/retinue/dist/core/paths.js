@@ -22,6 +22,7 @@ export function resolveStateDir(options = {}) {
     return path.join(homeDir, ".local", "state", "retinue");
 }
 export function getJobPaths(stateDir, jobId) {
+    assertSafeJobId(jobId);
     const dir = path.join(stateDir, "jobs", jobId);
     return {
         dir,
@@ -31,6 +32,11 @@ export function getJobPaths(stateDir, jobId) {
         exitStatus: path.join(dir, "exit-status.json"),
         prompt: path.join(dir, "prompt.md")
     };
+}
+export function assertSafeJobId(jobId) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(jobId) || jobId.includes("..")) {
+        throw new Error(`Invalid Retinue jobId: ${jobId}`);
+    }
 }
 export function getDaemonDiscoveryPath(stateDir) {
     return path.join(stateDir, "daemon.json");

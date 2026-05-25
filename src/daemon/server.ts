@@ -1,4 +1,5 @@
 import http from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import type { ClaudeRetinue } from "../core/retinue.js";
 import type {
   CleanupOptions,
@@ -11,10 +12,12 @@ import type {
 const version = "0.1.0";
 
 type RouteHandler = (body: unknown) => Promise<unknown>;
-type DaemonErrorCode = "not_found" | "bad_json" | "body_too_large" | "invalid_request" | "internal_error";
+type DaemonErrorCode = "not_found" | "bad_json" | "body_too_large" | "invalid_request" | "unauthorized" | "internal_error";
 
 export interface DaemonServerOptions {
   maxBodyBytes?: number;
+  authToken?: string;
+  allowUnauthenticated?: boolean;
 }
 
 class DaemonHttpError extends Error {
@@ -29,6 +32,9 @@ class DaemonHttpError extends Error {
 
 export function createDaemonServer(retinue: ClaudeRetinue, options: DaemonServerOptions = {}): http.Server {
   const maxBodyBytes = options.maxBodyBytes ?? 1024 * 1024;
+  if (!options.authToken && !options.allowUnauthenticated) {
+    throw new Error("Retinue daemon requires an auth token. Pass authToken or explicitly set allowUnauthenticated for tests.");
+  }
   const routes = new Map<string, RouteHandler>([
     ["POST /v1/jobs/run", (body) => retinue.run(body as RunOptions)],
     ["POST /v1/jobs/status", (body) => retinue.status(requiredJobId(body))],
@@ -53,6 +59,7 @@ export function createDaemonServer(retinue: ClaudeRetinue, options: DaemonServer
 
   return http.createServer(async (request, response) => {
     try {
+      authenticateRequest(request, options.authToken);
       if (request.method === "GET" && request.url === "/health") {
         writeJson(response, 200, {
           status: "ok",
@@ -76,6 +83,24 @@ export function createDaemonServer(retinue: ClaudeRetinue, options: DaemonServer
       writeError(response, normalizeDaemonError(error));
     }
   });
+}
+
+function authenticateRequest(request: http.IncomingMessage, authToken: string | undefined): void {
+  if (!authToken) {
+    return;
+  }
+  const authorization = request.headers.authorization;
+  const bearer = typeof authorization === "string" && authorization.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : undefined;
+  const headerToken = typeof request.headers["x-retinue-daemon-token"] === "string" ? request.headers["x-retinue-daemon-token"] : undefined;
+  if (!isSameSecret(bearer ?? headerToken ?? "", authToken)) {
+    throw new DaemonHttpError(401, "unauthorized", "Missing or invalid Retinue daemon token");
+  }
+}
+
+function isSameSecret(actual: string, expected: string): boolean {
+  const actualBytes = Buffer.from(actual);
+  const expectedBytes = Buffer.from(expected);
+  return actualBytes.length === expectedBytes.length && timingSafeEqual(actualBytes, expectedBytes);
 }
 
 function requiredJobId(body: unknown): string {

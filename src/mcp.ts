@@ -1965,14 +1965,15 @@ export function createMcpRetinueFromEnv(
   env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env
 ): RetinueApi {
   if (env.RETINUE_DAEMON_URL) {
-    return new DaemonClient(env.RETINUE_DAEMON_URL, { timeoutMs: resolveHttpTimeoutMs(env) });
+    return new DaemonClient(env.RETINUE_DAEMON_URL, { timeoutMs: resolveHttpTimeoutMs(env), token: env.RETINUE_DAEMON_TOKEN });
   }
   if (env.RETINUE_DAEMON_DISCOVERY === "1") {
     const stateDir = resolveStateDir({
       explicitStateDir: env.RETINUE_STATE_DIR,
       env
     });
-    return new DaemonClient(readDaemonDiscoverySync(stateDir).url, { timeoutMs: resolveHttpTimeoutMs(env) });
+    const discovery = readDaemonDiscoverySync(stateDir);
+    return new DaemonClient(discovery.url, { timeoutMs: resolveHttpTimeoutMs(env), token: discovery.token });
   }
 
   return new ClaudeRetinue({

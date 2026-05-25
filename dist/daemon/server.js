@@ -1,4 +1,5 @@
 import http from "node:http";
+import { timingSafeEqual } from "node:crypto";
 const version = "0.1.0";
 class DaemonHttpError extends Error {
     statusCode;
@@ -11,6 +12,9 @@ class DaemonHttpError extends Error {
 }
 export function createDaemonServer(retinue, options = {}) {
     const maxBodyBytes = options.maxBodyBytes ?? 1024 * 1024;
+    if (!options.authToken && !options.allowUnauthenticated) {
+        throw new Error("Retinue daemon requires an auth token. Pass authToken or explicitly set allowUnauthenticated for tests.");
+    }
     const routes = new Map([
         ["POST /v1/jobs/run", (body) => retinue.run(body)],
         ["POST /v1/jobs/status", (body) => retinue.status(requiredJobId(body))],
@@ -34,6 +38,7 @@ export function createDaemonServer(retinue, options = {}) {
     ]);
     return http.createServer(async (request, response) => {
         try {
+            authenticateRequest(request, options.authToken);
             if (request.method === "GET" && request.url === "/health") {
                 writeJson(response, 200, {
                     status: "ok",
@@ -56,6 +61,22 @@ export function createDaemonServer(retinue, options = {}) {
             writeError(response, normalizeDaemonError(error));
         }
     });
+}
+function authenticateRequest(request, authToken) {
+    if (!authToken) {
+        return;
+    }
+    const authorization = request.headers.authorization;
+    const bearer = typeof authorization === "string" && authorization.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : undefined;
+    const headerToken = typeof request.headers["x-retinue-daemon-token"] === "string" ? request.headers["x-retinue-daemon-token"] : undefined;
+    if (!isSameSecret(bearer ?? headerToken ?? "", authToken)) {
+        throw new DaemonHttpError(401, "unauthorized", "Missing or invalid Retinue daemon token");
+    }
+}
+function isSameSecret(actual, expected) {
+    const actualBytes = Buffer.from(actual);
+    const expectedBytes = Buffer.from(expected);
+    return actualBytes.length === expectedBytes.length && timingSafeEqual(actualBytes, expectedBytes);
 }
 function requiredJobId(body) {
     const input = requiredObject(body);

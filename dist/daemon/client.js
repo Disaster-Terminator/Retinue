@@ -16,9 +16,11 @@ export class DaemonClientError extends Error {
 export class DaemonClient {
     baseUrl;
     timeoutMs;
+    token;
     constructor(baseUrl, options = {}) {
         this.baseUrl = baseUrl.replace(/\/+$/, "");
         this.timeoutMs = options.timeoutMs ?? resolveHttpTimeoutMs();
+        this.token = options.token;
     }
     run(options) {
         return this.post("/v1/jobs/run", options);
@@ -49,7 +51,10 @@ export class DaemonClient {
         try {
             response = await fetchWithTimeout(`${this.baseUrl}${path}`, {
                 method: "POST",
-                headers: { "content-type": "application/json" },
+                headers: {
+                    "content-type": "application/json",
+                    ...(this.token ? { authorization: `Bearer ${this.token}` } : {})
+                },
                 body: JSON.stringify(body)
             }, this.timeoutMs);
         }

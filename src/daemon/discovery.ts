@@ -9,13 +9,14 @@ export interface DaemonDiscovery {
   pid: number;
   startedAt: string;
   version: string;
+  token?: string;
 }
 
 export async function writeDaemonDiscovery(stateDir: string, value: DaemonDiscovery): Promise<void> {
   const filePath = getDaemonDiscoveryPath(stateDir);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
-  await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tempPath, filePath);
 }
 
@@ -55,8 +56,19 @@ function validateDiscovery(value: Partial<DaemonDiscovery>): DaemonDiscovery {
     url,
     pid: value.pid,
     startedAt: value.startedAt,
-    version: value.version
+    version: value.version,
+    token: validateDiscoveryToken(value.token)
   };
+}
+
+function validateDiscoveryToken(value: unknown): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error("Invalid daemon discovery: invalid token");
+  }
+  return value;
 }
 
 function validateDiscoveryUrl(value: unknown): string {

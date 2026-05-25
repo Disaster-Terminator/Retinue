@@ -25,14 +25,31 @@ describe("daemon discovery", () => {
       url: "http://127.0.0.1:27777",
       pid: process.pid,
       startedAt: "2026-05-04T00:00:00.000Z",
-      version: "0.1.0"
+      version: "0.1.0",
+      token: "discovery-token"
     });
 
     await expect(readDaemonDiscovery(tempDir)).resolves.toMatchObject({
       url: "http://127.0.0.1:27777",
       pid: process.pid,
-      version: "0.1.0"
+      version: "0.1.0",
+      token: "discovery-token"
     });
+  });
+
+  it("writes daemon discovery with owner-only file permissions", async () => {
+    await writeDaemonDiscovery(tempDir, {
+      url: "http://127.0.0.1:27777",
+      pid: process.pid,
+      startedAt: "2026-05-04T00:00:00.000Z",
+      version: "0.1.0",
+      token: "discovery-token"
+    });
+
+    const stat = await fs.stat(getDaemonDiscoveryPath(tempDir));
+    if (process.platform !== "win32") {
+      expect(stat.mode & 0o777).toBe(0o600);
+    }
   });
 
   it("fails when discovery file is missing", async () => {
