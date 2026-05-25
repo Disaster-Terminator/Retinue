@@ -1,6 +1,6 @@
 {
   "name": "retinue",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Codex plugin for running local coding agents as controllable subagents.",
   "author": {
     "name": "Disaster-Terminator",
@@ -16,7 +16,7 @@
   "interface": {
     "displayName": "Retinue",
     "shortDescription": "Run OpenCode and Claude Code as Codex subagents.",
-    "longDescription": "Retinue exposes local MCP tools for spawning, waiting for, and closing controllable Codex subagents. The default 0.1.0 plugin route uses OpenCode on localhost with its explore agent; provider, model, login, and permission policy stay in the selected backend runtime.",
+    "longDescription": "Retinue exposes local MCP tools for spawning, waiting for, closing, and handling permissions for controllable Codex subagents. The default 0.2.0 plugin route uses OpenCode on localhost with its explore agent; provider, model, login, and permission policy stay in the selected backend runtime.",
     "developerName": "Disaster-Terminator",
     "category": "Coding",
     "capabilities": ["MCP", "Skills", "Local"],

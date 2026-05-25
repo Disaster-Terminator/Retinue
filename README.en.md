@@ -47,7 +47,7 @@ Retinue is a local subagent execution surface. It is not a model gateway or prov
 
 ## Quick Start
 
-Retinue 0.1.0 defaults to OpenCode and asks OpenCode to use its `explore` agent. Users do not need to clone, install dependencies, or compile Retinue. Retinue targets Windows, WSL/Linux, and macOS; this round's acceptance path uses WSL.
+Retinue 0.2.0 defaults to OpenCode and asks OpenCode to use its `explore` agent. Users do not need to clone, install dependencies, or compile Retinue. Retinue targets Windows, WSL/Linux, and macOS; this round's acceptance path uses WSL.
 
 Requirements:
 
@@ -59,7 +59,7 @@ Requirements:
 curl -fsSL https://opencode.ai/install | bash
 ```
 
-The official script installs OpenCode under `$HOME/.opencode/bin/opencode`. Retinue also checks common npm/pnpm/bun global install paths, but the 0.1.0 quickstart and smoke path assume the official script install.
+The official script installs OpenCode under `$HOME/.opencode/bin/opencode`. Retinue also checks common npm/pnpm/bun global install paths, but the 0.2.0 quickstart and smoke path assume the official script install.
 
 Add the Retinue plugin marketplace to Codex:
 
@@ -86,12 +86,12 @@ Note: Codex CLI 0.128 `codex plugin marketplace add/upgrade/remove` manages mark
 ## Platform Notes
 
 - Windows: requires local Node.js, Codex CLI, and OpenCode. Retinue first looks for the official script install at `%USERPROFILE%\.opencode\bin\opencode`, then falls back to common pnpm/npm/bun shims. The default plugin config manages the local OpenCode server lifecycle.
-- WSL / Linux: current 0.1.0 acceptance path. The default plugin config prefers `127.0.0.1:4096` and tries `4097` through `4127` when earlier ports are occupied by external services.
+- WSL / Linux: current 0.2.0 acceptance path. The default plugin config prefers `127.0.0.1:4096` and tries `4097` through `4127` when earlier ports are occupied by external services.
 - macOS: uses the same Node.js, Codex CLI, and OpenCode prerequisites; it is not the primary validation path for this round.
 
 ## Default Plugin Config
 
-The plugin MCP config lives at `plugins/retinue/.mcp.json`; package defaults live at `plugins/retinue/retinue.config.json`. The 0.1.0 MCP environment only starts the backend:
+The plugin MCP config lives at `plugins/retinue/.mcp.json`; package defaults live at `plugins/retinue/retinue.config.json`. The 0.2.0 MCP environment only starts the backend:
 
 ```json
 {
@@ -118,7 +118,7 @@ This means:
 - Retinue manages the OpenCode server lifecycle by default. It prefers `127.0.0.1:4096` and tries `4097` through `4127` when earlier ports are occupied by external services.
 - OpenCode uses the active local profile for provider, model, login, plugins, and skills.
 - Retinue calls the local OpenCode server through the official OpenCode SDK; the handwritten HTTP client remains only as a deployment diagnostic and compatibility fallback. This does not change OpenCode ownership of provider and model selection.
-- `explore` is the 0.1.0 default agent. Retinue no longer exposes a product-level `access_mode`, and it no longer overlays its own read-only prompt or tool policy on normal OpenCode children.
+- `explore` is the 0.2.0 default agent. Retinue no longer exposes a product-level `access_mode`, and it no longer overlays its own read-only prompt or tool policy on normal OpenCode children.
 - OpenCode uses the active profile and the selected OpenCode agent/profile semantics for tools and permissions. Retinue only derives TaskTool-compatible session permissions for direct child sessions, such as OpenCode-compatible `todowrite`/`task` deny rules.
 - `retinue_spawn_agent` accepts the task, working directory, task name, and optional OpenCode `agent` choice. Do not pass backend, profile, model, OpenCode server, `access_mode`, or `bash_policy` arguments.
 - `retinue_wait_agent` keeps each MCP wait call inside a host-safe window, 180 seconds by default. That window covers OpenCode's default 45-second soft-stall detection plus one final-answer rescue attempt. Long jobs can still be polled by calling wait again, and deployments can tune the cap with `RETINUE_MCP_WAIT_MAX_MS`.
@@ -147,7 +147,7 @@ Useful files:
 
 ## Claude Code Backend
 
-The Claude Code backend has fake E2E and best-effort real E2E coverage. It is not enabled by default in 0.1.0. To switch a deployment:
+The Claude Code backend has fake E2E and real SDK E2E coverage. It is not enabled by default in 0.2.0. To switch a deployment:
 
 ```bash
 RETINUE_BACKEND=claude-code
@@ -160,7 +160,7 @@ Claude Code still owns its model, endpoint, permission, and profile behavior.
 The npm package installs the Retinue runtime directly. Use it for custom MCP configuration or development setups:
 
 ```bash
-npm install -g @disaster-terminator/retinue@0.1.0
+npm install -g @disaster-terminator/retinue@0.2.0
 codex mcp add retinue \
   --env RETINUE_BACKEND=opencode \
   --env RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
@@ -178,7 +178,7 @@ Install the npm runtime and merge `integrations/hermes/mcp-retinue.yaml` into `~
 
 ## Verification
 
-Before the 0.1.0 release, Retinue passed:
+Before the 0.2.0 release, Retinue passed:
 
 - Retinue OpenCode fake E2E
 - Retinue OpenCode real E2E
@@ -206,9 +206,9 @@ pnpm run probe:hermes-retinue
 ## Developer Docs
 
 - [Source install and development](docs/development/SOURCE_INSTALL.md)
-- [0.1.0 Release Notes](docs/release/v0.1.0_RELEASE_NOTES.md)
-- [0.1.0 Release Notes zh-CN](docs/release/v0.1.0_RELEASE_NOTES.zh-CN.md)
-- [0.1.0 Release Readiness](docs/release/0.1.0_RELEASE_PLAN.md)
+- [0.2.0 Release Notes](docs/release/v0.2.0_RELEASE_NOTES.md)
+- [0.2.0 Release Notes zh-CN](docs/release/v0.2.0_RELEASE_NOTES.zh-CN.md)
+- [0.2.0 Release Readiness](docs/release/0.2.0_RELEASE_PLAN.md)
 - [Docs index](docs/README.md)
 - [Long-Term Vision](docs/LONG_TERM_VISION.md)
 - [Project Boundary](docs/architecture/PROJECT_BOUNDARY.md)

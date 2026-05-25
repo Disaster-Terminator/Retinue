@@ -1,7 +1,7 @@
 ---
 name: retinue
 description: Use Retinue MCP tools from Hermes Agent to spawn, wait for, and close local OpenCode subagents.
-version: 0.1.0
+version: 0.2.0
 author: Disaster Terminator
 license: Apache-2.0
 platforms: [linux, macos, windows]
@@ -30,7 +30,7 @@ Hermes registers Retinue MCP tools with the `mcp_retinue_` prefix:
 - `mcp_retinue_retinue_list_permissions`
 - `mcp_retinue_retinue_reply_permission`
 
-Retinue selects the backend from deployment configuration. The default Hermes integration uses OpenCode with the built-in `explore` subagent and Retinue-managed OpenCode server lifecycle. OpenCode keeps ownership of profile, provider, model, tools, and agent permissions; Retinue does not expose a product-level `access_mode` or overlay its own read-only prompt/tool policy on normal OpenCode children. A single spawn may pass `agent` to select an OpenCode agent for that child. Each Retinue MCP server session keeps up to 3 active child agents by default. A spawn beyond the limit closes the oldest active child and returns `evictedJobId`; deployments should tune `maxConcurrentAgents` in Retinue JSON config, with `RETINUE_MAX_CONCURRENT_AGENTS` reserved as an environment override. Do not pass backend, model, provider, profile, OpenCode server, `access_mode`, or `bash_policy` choices in tool arguments.
+Retinue selects the backend from deployment configuration. The default Hermes integration uses OpenCode with the built-in `explore` subagent and Retinue-managed OpenCode server lifecycle. OpenCode keeps ownership of profile, provider, model, tools, and agent permissions; Retinue does not expose a product-level `access_mode` or overlay its own read-only prompt/tool policy on normal OpenCode children. A single spawn may pass `agent` to select an OpenCode agent for that child. Each Retinue MCP server session keeps up to 3 active child agents by default. A spawn beyond the limit closes the oldest active child and returns `evictedJobId`; deployments should tune persistent concurrency with `RETINUE_MAX_CONCURRENT_AGENTS` in the MCP environment because packaged config files can be overwritten by plugin refreshes. Do not pass backend, model, provider, profile, OpenCode server, `access_mode`, or `bash_policy` choices in tool arguments.
 
 ## Procedure
 

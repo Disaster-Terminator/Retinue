@@ -6,7 +6,7 @@ For local production smoke testing, OpenCode is the preferred first backend. Ret
 
 ## Install Assumption
 
-The default 0.1.0 user path assumes the official OpenCode install script:
+The default v0.2.0 user path assumes the official OpenCode install script:
 
 ```bash
 curl -fsSL https://opencode.ai/install | bash
@@ -47,7 +47,7 @@ RETINUE_OPENCODE_MODEL=litellm/pro-router
 
 CLI/MCP request fields win over environment variables, and environment variables win over the packaged Retinue JSON defaults. If none is set, retinue does not send `model`; for plugin installs, the packaged fallback may provide an OpenCode `agent`.
 
-Retinue 0.1.0 plugin deployments ship `opencode.agent: "explore"` in `retinue.config.json` as an installation-cache fallback. Do not edit the cached file for persistent deployment state; plugin refreshes can overwrite it. Use `RETINUE_OPENCODE_AGENT` when a deployment needs a persistent default. Retinue follows the active OpenCode profile and selected OpenCode agent semantics. `retinue_spawn_agent` can override the OpenCode agent for one child with `agent`; it does not expose a separate Retinue access-mode layer.
+Retinue v0.2.0 plugin deployments ship `opencode.agent: "explore"` in `retinue.config.json` as an installation-cache fallback. Do not edit the cached file for persistent deployment state; plugin refreshes can overwrite it. Use `RETINUE_OPENCODE_AGENT` when a deployment needs a persistent default. Retinue follows the active OpenCode profile and selected OpenCode agent semantics. `retinue_spawn_agent` can override the OpenCode agent for one child with `agent`; it does not expose a separate Retinue access-mode layer.
 
 ## Profile
 

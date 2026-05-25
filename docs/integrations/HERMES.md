@@ -29,7 +29,7 @@ The Retinue backend remains deployment-selected. The default Hermes config uses 
 Install the Retinue runtime so Hermes can start the MCP server by command name:
 
 ```bash
-npm install -g @disaster-terminator/retinue@0.1.0
+npm install -g @disaster-terminator/retinue@0.2.0
 ```
 
 Then merge this into `~/.hermes/config.yaml`:

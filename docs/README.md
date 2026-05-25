@@ -5,10 +5,10 @@ directory stays readable.
 
 ## Current Product
 
-- [0.1.0 Release Readiness](release/0.1.0_RELEASE_PLAN.md) - release boundary, closed work, release gate, and deferred issues.
+- [0.2.0 Release Readiness](release/0.2.0_RELEASE_PLAN.md) - release boundary, closed work, release gate, and current evidence.
 - [0.1.0 Hardening Record](release/0.1.0_HARDENING_ISSUES.md) - closed smoke/E2E issues and current verification requirements.
-- [v0.1.0 Release Notes](release/v0.1.0_RELEASE_NOTES.md) - user-facing release summary.
-- [v0.1.0 Release Notes zh-CN](release/v0.1.0_RELEASE_NOTES.zh-CN.md) - Chinese reference.
+- [v0.2.0 Release Notes](release/v0.2.0_RELEASE_NOTES.md) - user-facing release summary.
+- [v0.2.0 Release Notes zh-CN](release/v0.2.0_RELEASE_NOTES.zh-CN.md) - Chinese reference.
 - [Long-Term Vision](LONG_TERM_VISION.md) - Codex-compatible spawn direction, backend policy, and phased roadmap.
 - [Project Boundary](architecture/PROJECT_BOUNDARY.md) - what Retinue is and is not.
 - [OpenCode Backend](backends/OPENCODE.md) - OpenCode adapter behavior and constraints.

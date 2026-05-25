@@ -12,6 +12,9 @@ const requiredDocs = [
   "docs/integrations/HERMES.md",
   "docs/release/0.1.0_HARDENING_ISSUES.md",
   "docs/release/0.1.0_RELEASE_PLAN.md",
+  "docs/release/0.2.0_RELEASE_PLAN.md",
+  "docs/release/v0.2.0_RELEASE_NOTES.md",
+  "docs/release/v0.2.0_RELEASE_NOTES.zh-CN.md",
   "docs/VERIFICATION.md",
   "docs/architecture/PROJECT_BOUNDARY.md"
 ];

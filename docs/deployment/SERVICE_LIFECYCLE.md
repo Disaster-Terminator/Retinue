@@ -54,7 +54,7 @@ Discovery metadata contains:
   "url": "http://127.0.0.1:27777",
   "pid": 12345,
   "startedAt": "2026-05-04T00:00:00.000Z",
-  "version": "0.1.0"
+  "version": "0.2.0"
 }
 ```
 

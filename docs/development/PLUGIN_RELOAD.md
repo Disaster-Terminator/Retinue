@@ -64,7 +64,7 @@ pnpm run dev:sync-plugin-cache:all -- --apply --json
 Use explicit filters when needed:
 
 ```bash
-pnpm run dev:sync-plugin-cache -- --marketplace retinue-local --version 0.1.0 --apply
+pnpm run dev:sync-plugin-cache -- --marketplace retinue-local --version 0.2.0 --apply
 ```
 
 ## Windows And WSL

@@ -11,7 +11,7 @@ The plugin identity is `retinue`. User-facing docs should call the product Retin
 
 ## User Install Path
 
-The primary 0.1.0 install path is the Codex plugin marketplace:
+The primary v0.2.0 install path is the Codex plugin marketplace:
 
 ```bash
 codex plugin marketplace add Disaster-Terminator/Retinue
@@ -67,7 +67,7 @@ The plugin MCP config starts the runtime shipped inside the plugin directory:
 }
 ```
 
-This is intentional for 0.1.0: marketplace installs copy the plugin directory into Codex's plugin cache, so the MCP runtime must be self-contained under that directory.
+This is intentional for plugin releases: marketplace installs copy the plugin directory into Codex's plugin cache, so the MCP runtime must be self-contained under that directory.
 The `mcpServers` wrapper is required for Codex plugin MCP discovery. The explicit `cwd: "."` is required so Codex starts `node ./mcp-bootstrap.mjs` from the installed plugin cache instead of from the current conversation working directory. The bootstrap resolves the real bundled `dist/mcp.js` from its own plugin directory, then moves the process cwd to Retinue state before starting stdio so Windows cache refresh and uninstall paths are less likely to be blocked by an MCP process holding the plugin cache directory as its cwd.
 
 The default plugin path manages the local OpenCode server lifecycle. It prefers `127.0.0.1:4096` and tries fallback ports `4097` through `4127` when earlier ports are occupied by external services. Set `RETINUE_OPENCODE_BASE_URL` only for deployments that intentionally attach to an externally managed OpenCode server.
@@ -100,7 +100,7 @@ retinued
 Use this path for custom MCP configuration:
 
 ```bash
-npm install -g @disaster-terminator/retinue@0.1.0
+npm install -g @disaster-terminator/retinue@0.2.0
 codex mcp add retinue \
   --env RETINUE_BACKEND=opencode \
   --env RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
