@@ -8,7 +8,14 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
-const EXPECTED_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"];
+const EXPECTED_TOOL_NAMES = [
+  "retinue_spawn_agent",
+  "retinue_wait_agent",
+  "retinue_close_agent",
+  "retinue_list_agents",
+  "retinue_list_permissions",
+  "retinue_reply_permission"
+];
 const execFileAsync = promisify(execFile);
 
 async function main() {
@@ -121,6 +128,10 @@ function assertToolNames(label, actual) {
   const missing = EXPECTED_TOOL_NAMES.filter((name) => !actual.includes(name));
   if (missing.length > 0) {
     throw new Error(`${label} missing Retinue MCP tools: ${missing.join(", ")}. Saw: ${actual.join(", ")}`);
+  }
+  const unexpected = actual.filter((name) => !EXPECTED_TOOL_NAMES.includes(name));
+  if (unexpected.length > 0) {
+    throw new Error(`${label} exposed unexpected MCP tools: ${unexpected.join(", ")}. Saw: ${actual.join(", ")}`);
   }
 }
 

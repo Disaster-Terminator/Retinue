@@ -46,7 +46,7 @@ Retinue 是本地子代理执行面，不是模型网关，也不是 provider ro
 
 ## 快速开始
 
-0.2.0 默认使用 OpenCode 后端，并让 OpenCode 使用 `explore` agent。用户不需要 clone、安装依赖或编译 Retinue。Retinue 面向 Windows、WSL/Linux 和 macOS；本轮验收路径使用 WSL。
+0.2.0 默认使用 OpenCode 后端，并让 OpenCode 使用 `explore` agent。用户不需要 clone、安装依赖或编译 Retinue。Retinue 面向 Windows、WSL/Linux 和 macOS；文档示例以 WSL/Linux 为主。
 
 前置条件：
 
@@ -85,8 +85,8 @@ Use Retinue to spawn an OpenCode explore subagent. Ask it to reply exactly: RETI
 ## 平台说明
 
 - Windows：需要本机 Node.js、Codex CLI 和 OpenCode 可用；Retinue 会优先查找官方脚本安装的 `%USERPROFILE%\.opencode\bin\opencode`，再回退到常见 pnpm/npm/bun shim。默认插件配置会管理本机 OpenCode server 生命周期。
-- WSL / Linux：本轮 0.2.0 验收路径。默认插件配置会优先使用 `127.0.0.1:4096`，并在端口被外部服务占用时尝试 `4097` 到 `4127`。
-- macOS：按同样的 Node.js、Codex CLI、OpenCode 前置条件运行；尚未作为本轮验收主路径。
+- WSL / Linux：默认插件配置会优先使用 `127.0.0.1:4096`，并在端口被外部服务占用时尝试 `4097` 到 `4127`。
+- macOS：按同样的 Node.js、Codex CLI、OpenCode 前置条件运行；支持仍在验证中。
 
 ## 默认插件配置
 
@@ -127,7 +127,7 @@ Use Retinue to spawn an OpenCode explore subagent. Ask it to reply exactly: RETI
 
 `running` 响应会包含 `stdoutTail`、`stderrTail`、`tracePath` 和 job artifact 路径。先看 tail 字段；复杂 OpenCode 任务可能会连续几分钟处在 tool-call 阶段，单次 wait 超时不等于子代理失败。
 
-OpenCode 空输出或未完成 assistant 循环超过诊断阈值后，Retinue 会把任务报告为 `stalled`。默认长兜底阈值是 10 分钟；blank provider placeholder、zero-progress assistant placeholder、未完成的最新 assistant round、pending/running `read` tool call，以及完成工具调用但没有最终文本的循环，默认窗口都是 45 秒。malformed read 或 finalization rescue 失败时，Retinue 可以启动一次新的 task-level attempt；原 job 仍是 `stalled` 非证据，wait 响应会带 `requestedJobId`、`selectedAttemptJobId` 和 `attemptChain`。部署可以用 `RETINUE_OPENCODE_TASK_ATTEMPT_MAX=0` 关闭 fresh attempt，用 `RETINUE_OPENCODE_STALL_MS`、`RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS`、`RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS`、`RETINUE_OPENCODE_STALL_READ_TOOL_MS`、`RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS`、`RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS`、`RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS` 和 `RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS` 调整诊断窗口。
+OpenCode 后端长时间没有产出可信最终文本时，Retinue 会把任务报告为 `stalled`，并在响应中提供诊断摘要。可恢复的后端失败可以启动一次新的 task-level attempt；原 job 仍是 `stalled` 非证据，wait 响应会带 `requestedJobId`、`selectedAttemptJobId` 和 `attemptChain`。部署可以用 `RETINUE_OPENCODE_TASK_ATTEMPT_MAX=0` 关闭 fresh attempt；诊断窗口的细粒度环境变量见开发者文档。
 
 `retinue_spawn_agent` 会同时返回请求的 `cwd` 和 OpenCode 实际 session 的 `externalSessionDirectory`。如果两者不一致，先关闭这个子代理，再用目标仓库的绝对路径重新 spawn；在此之前不要相信仓库相关结论。
 
@@ -146,7 +146,7 @@ Retinue 把本地诊断写入 `RETINUE_STATE_DIR`。未设置时默认位置：
 
 ## Claude Code 后端
 
-Claude Code 后端已经通过 fake E2E 和真实 SDK E2E。0.2.0 默认不启用它。需要切换时，修改部署配置：
+Claude Code 后端走 Claude Agent SDK 路径。0.2.0 默认不启用它。需要切换时，修改部署配置：
 
 ```bash
 RETINUE_BACKEND=claude-code
@@ -177,30 +177,7 @@ Hermes Agent 可以把 Retinue 当作 master-agent MCP 集成来用。Hermes 不
 
 ## 验证
 
-发布前已通过：
-
-- Retinue OpenCode fake E2E
-- Retinue OpenCode real E2E
-- Retinue Claude Code fake E2E
-- Retinue Claude Code real best-effort E2E
-- `pnpm test`
-- `pnpm run typecheck`
-- `pnpm run build`
-- `pnpm run verify:package`
-
-真实 OpenCode probe：
-
-```bash
-RETINUE_REAL_OPENCODE_PROBE=1 \
-RETINUE_BACKEND=opencode \
-pnpm run probe:real:retinue-opencode
-```
-
-Hermes MCP 形态 probe：
-
-```bash
-pnpm run probe:hermes-retinue
-```
+Retinue 的发布门控覆盖单元测试、集成测试、包形态校验和真实后端路径。维护者命令和原始验证记录保留在仓库 runbook 与发布会话日志中；面向用户的发布说明只记录产品边界和升级事项。
 
 ## 开发者文档
 

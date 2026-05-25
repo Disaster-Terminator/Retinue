@@ -47,7 +47,7 @@ Retinue is a local subagent execution surface. It is not a model gateway or prov
 
 ## Quick Start
 
-Retinue 0.2.0 defaults to OpenCode and asks OpenCode to use its `explore` agent. Users do not need to clone, install dependencies, or compile Retinue. Retinue targets Windows, WSL/Linux, and macOS; this round's acceptance path uses WSL.
+Retinue 0.2.0 defaults to OpenCode and asks OpenCode to use its `explore` agent. Users do not need to clone, install dependencies, or compile Retinue. Retinue targets Windows, WSL/Linux, and macOS; documentation examples focus on WSL/Linux.
 
 Requirements:
 
@@ -86,8 +86,8 @@ Note: Codex CLI 0.128 `codex plugin marketplace add/upgrade/remove` manages mark
 ## Platform Notes
 
 - Windows: requires local Node.js, Codex CLI, and OpenCode. Retinue first looks for the official script install at `%USERPROFILE%\.opencode\bin\opencode`, then falls back to common pnpm/npm/bun shims. The default plugin config manages the local OpenCode server lifecycle.
-- WSL / Linux: current 0.2.0 acceptance path. The default plugin config prefers `127.0.0.1:4096` and tries `4097` through `4127` when earlier ports are occupied by external services.
-- macOS: uses the same Node.js, Codex CLI, and OpenCode prerequisites; it is not the primary validation path for this round.
+- WSL / Linux: the default plugin config prefers `127.0.0.1:4096` and tries `4097` through `4127` when earlier ports are occupied by external services.
+- macOS: uses the same Node.js, Codex CLI, and OpenCode prerequisites; support is still being validated.
 
 ## Default Plugin Config
 
@@ -128,7 +128,7 @@ A long child-agent task is still running when `retinue_wait_agent` returns `stat
 
 When a wait returns `running`, the response includes `stdoutTail`, `stderrTail`, `tracePath`, and job artifact paths. Inspect the tail fields first. Complex OpenCode tasks can spend several minutes in tool-call rounds before producing final text, so a timeout from one wait call is not by itself a failed child.
 
-Retinue reports OpenCode empty-output or incomplete assistant loops as `stalled` only after diagnostic thresholds are crossed. The default long fallback threshold is 10 minutes, while blank provider placeholders, zero-progress assistant placeholders, incomplete latest assistant rounds, pending/running `read` tool calls, and completed tool-call loops with no final text use 45-second default windows. Malformed read output or failed finalization rescue can start one fresh task-level attempt; the original job remains `stalled` and non-evidence, and wait responses include `requestedJobId`, `selectedAttemptJobId`, and `attemptChain` when they re-key to the selected attempt. Deployments can set `RETINUE_OPENCODE_TASK_ATTEMPT_MAX=0` to disable fresh attempts, and can tune `RETINUE_OPENCODE_STALL_MS`, `RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS`, `RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS`, `RETINUE_OPENCODE_STALL_READ_TOOL_MS`, `RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS`, `RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS`, `RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS`, and `RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS`.
+When the OpenCode backend does not produce trusted final text for long enough, Retinue reports the task as `stalled` with a diagnostic summary. Recoverable backend failures can start one fresh task-level attempt; the original job remains `stalled` and non-evidence, and wait responses include `requestedJobId`, `selectedAttemptJobId`, and `attemptChain` when they re-key to the selected attempt. Deployments can set `RETINUE_OPENCODE_TASK_ATTEMPT_MAX=0` to disable fresh attempts; see developer documentation for fine-grained diagnostic window variables.
 
 `retinue_spawn_agent` returns both the requested `cwd` and OpenCode's `externalSessionDirectory`. If they differ, close the child and spawn again with the intended absolute directory before trusting repository-specific conclusions.
 
@@ -147,7 +147,7 @@ Useful files:
 
 ## Claude Code Backend
 
-The Claude Code backend has fake E2E and real SDK E2E coverage. It is not enabled by default in 0.2.0. To switch a deployment:
+The Claude Code backend uses the Claude Agent SDK path. It is not enabled by default in 0.2.0. To switch a deployment:
 
 ```bash
 RETINUE_BACKEND=claude-code
@@ -178,30 +178,7 @@ Install the npm runtime and merge `integrations/hermes/mcp-retinue.yaml` into `~
 
 ## Verification
 
-Before the 0.2.0 release, Retinue passed:
-
-- Retinue OpenCode fake E2E
-- Retinue OpenCode real E2E
-- Retinue Claude Code fake E2E
-- Retinue Claude Code best-effort real E2E
-- `pnpm test`
-- `pnpm run typecheck`
-- `pnpm run build`
-- `pnpm run verify:package`
-
-Real OpenCode probe:
-
-```bash
-RETINUE_REAL_OPENCODE_PROBE=1 \
-RETINUE_BACKEND=opencode \
-pnpm run probe:real:retinue-opencode
-```
-
-Hermes MCP shape probe:
-
-```bash
-pnpm run probe:hermes-retinue
-```
+Retinue's release gate covers unit tests, integration tests, package-shape checks, and real backend paths. Maintainer commands and raw validation records live in repository runbooks and release-session logs; user-facing release notes record only the product boundary and upgrade guidance.
 
 ## Developer Docs
 
