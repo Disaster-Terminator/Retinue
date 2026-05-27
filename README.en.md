@@ -32,7 +32,8 @@ Codex / MCP client
 | Wait or poll | Wait within a short timeout window without blocking the main agent's whole task |
 | Read results | Return bounded stdout/stderr, exit metadata, external session ids, and local artifact paths |
 | Continue sessions | Continue an existing Claude/OpenCode session when the backend supports it |
-| Run concurrent children | Keep a small per-MCP-session child-agent slot pool and evict the oldest active child when the pool is full |
+| Run concurrent children | Keep a small per-MCP-session child-agent slot pool, a shared machine-level budget, and a bounded queue for overflow |
+| Handle permissions | Surface backend permission requests as listable and replyable MCP workflow events |
 | Kill and clean up | Kill selected jobs and remove terminal job directories while preserving running or ambiguous jobs |
 
 ## Boundary
@@ -80,6 +81,7 @@ Expected result:
 - `retinue_wait_agent` returns a result containing `RETINUE_OK`.
 - `retinue_close_agent` returns a terminal status.
 - `retinue_list_agents` can list Retinue child agents that are still active in the current MCP session.
+- `retinue_list_permissions` and `retinue_reply_permission` can list and reply to backend permission events when a child asks for access.
 
 Note: Codex CLI 0.128 `codex plugin marketplace add/upgrade/remove` manages marketplaces only. Plugin installation happens in the Codex TUI `/plugins` screen. `codex plugin marketplace upgrade retinue-local` updates an existing marketplace; it is not an install command.
 
@@ -122,9 +124,9 @@ This means:
 - OpenCode uses the active profile and the selected OpenCode agent/profile semantics for tools and permissions. Retinue only derives TaskTool-compatible session permissions for direct child sessions, such as OpenCode-compatible `todowrite`/`task` deny rules.
 - `retinue_spawn_agent` accepts the task, working directory, task name, and optional OpenCode `agent` choice. Do not pass backend, profile, model, OpenCode server, `access_mode`, or `bash_policy` arguments.
 - `retinue_wait_agent` keeps each MCP wait call inside a host-safe window, 180 seconds by default. That window covers OpenCode's default 45-second soft-stall detection plus one final-answer rescue attempt. Long jobs can still be polled by calling wait again, and deployments can tune the cap with `RETINUE_MCP_WAIT_MAX_MS`.
-- Each Retinue MCP server session keeps up to 3 active child agents by default. An active spawn beyond the session limit closes the oldest still-running child and returns `evictedJobId`.
-- Retinue also enforces a machine-level active-agent budget across every MCP server that shares the same `RETINUE_STATE_DIR`, so multiple Codex/Hermes MCP servers cannot multiply local slots. `RETINUE_MAX_CONCURRENT_AGENTS` limits one MCP server session; `RETINUE_GLOBAL_AGENT_BUDGET` limits the total active children under the shared state dir and falls back to the session limit when unset. When the global budget is exhausted, a new spawn returns `resource_exhausted` and does not create another backend child.
-- `retinue.config.json` is a packaged default inside the plugin cache, and plugin updates or cache syncs can overwrite it; persistent deployments should set environment variables such as `RETINUE_MAX_CONCURRENT_AGENTS` and `RETINUE_GLOBAL_AGENT_BUDGET` in Codex `[env]` or the host MCP `env`.
+- Each Retinue MCP server session keeps up to 3 active child agents by default. The default overflow strategy is `RETINUE_OVERFLOW_STRATEGY=queue`: when session or machine-level active slots are full, `retinue_spawn_agent` returns a `status: "queued"` job handle and later `wait`, `list`, `close`, or `spawn` calls opportunistically promote queued jobs when slots open. Set `RETINUE_OVERFLOW_STRATEGY=evict` only when preserving the old same-session oldest-running eviction behavior.
+- Retinue also enforces a machine-level active-agent budget across every MCP server that shares the same `RETINUE_STATE_DIR`, so multiple Codex/Hermes MCP servers cannot multiply local slots. `RETINUE_MAX_CONCURRENT_AGENTS` limits one MCP server session and defaults to `3`; `RETINUE_GLOBAL_AGENT_BUDGET` limits the total active children under the shared state dir and defaults to `max(5, RETINUE_MAX_CONCURRENT_AGENTS)` when unset. `RETINUE_MAX_QUEUED_AGENTS` bounds queued jobs and defaults to `20`; queue exhaustion returns `resource_exhausted` with `reason: "queue_full"` and does not create another backend child.
+- `retinue.config.json` is a packaged default inside the plugin cache, and plugin updates or cache syncs can overwrite it; persistent deployments should set environment variables such as `RETINUE_MAX_CONCURRENT_AGENTS`, `RETINUE_GLOBAL_AGENT_BUDGET`, `RETINUE_OVERFLOW_STRATEGY`, and `RETINUE_MAX_QUEUED_AGENTS` in Codex `[env]` or the host MCP `env`.
 
 A long child-agent task is still running when `retinue_wait_agent` returns `status: "running"`. Call `retinue_wait_agent` again with the same `jobId`; do not respawn unless the job reaches `failed`, `killed`, `stalled`, or another terminal status.
 
@@ -146,6 +148,8 @@ Useful files:
 - `<stateDir>/logs/retinue.jsonl`: Retinue trace events, including OpenCode server lifecycle and wait diagnostics.
 - `<stateDir>/jobs/<jobId>/meta.json`: job metadata.
 - `<stateDir>/jobs/<jobId>/stdout.log` and `stderr.log`: terminal result and per-job diagnostics.
+
+The default product MCP surface does not expose backend-specific debug tools or log-audit diagnostics. Maintainers can explicitly set `RETINUE_EXPOSE_DIAGNOSTIC_TOOLS=1` to expose `retinue_audit_logs` while dogfooding or investigating Retinue itself, or set `RETINUE_EXPOSE_BACKEND_TOOLS=1` to expose backend adapter debug tools.
 
 ## Claude Code Backend
 

@@ -32,6 +32,8 @@ Codex / MCP client
 | 等待和轮询 | 用 `wait` 在短时间窗口内等待终态，不阻塞主 agent 的整段任务 |
 | 读取结果 | 用 `result` 获取 bounded stdout/stderr、exit metadata、外部 session id 和本地 artifact path |
 | 继续会话 | 后端支持时，用 `continue` 接回已有 Claude/OpenCode session 继续工作 |
+| 并发子代理 | 维护每个 MCP 会话的小型 active 槽位池、共享机器级预算和有界 overflow 队列 |
+| 处理权限 | 将后端权限请求上浮为可列出、可回复的 MCP workflow event |
 | 终止和清理 | 用 `kill` 终止指定 job，或用 `cleanup` 删除终态 job 目录，同时保留运行中或状态不确定的任务 |
 
 ## 边界
@@ -79,6 +81,7 @@ Use Retinue to spawn an OpenCode explore subagent. Ask it to reply exactly: RETI
 - `retinue_wait_agent` 返回包含 `RETINUE_OK` 的结果。
 - `retinue_close_agent` 返回 terminal 状态。
 - `retinue_list_agents` 可列出当前 MCP 会话内仍在运行的 Retinue 子代理。
+- `retinue_list_permissions` 和 `retinue_reply_permission` 可在子代理请求后端权限时列出并回复权限事件。
 
 说明：Codex CLI 0.128 的 `codex plugin marketplace add/upgrade/remove` 只管理插件市场；插件安装在 Codex TUI 的 `/plugins` 里完成。`codex plugin marketplace upgrade retinue-local` 只用于更新已有市场，不是安装命令。
 
@@ -145,6 +148,8 @@ Retinue 把本地诊断写入 `RETINUE_STATE_DIR`。未设置时默认位置：
 - `<stateDir>/logs/retinue.jsonl`：Retinue trace，包括 OpenCode server 生命周期和 wait 诊断。
 - `<stateDir>/jobs/<jobId>/meta.json`：job 元数据。
 - `<stateDir>/jobs/<jobId>/stdout.log` 和 `stderr.log`：终态结果和单 job 诊断。
+
+默认产品 MCP 工具面不暴露后端专用 debug 工具或日志审计工具。维护者需要 dogfood 或排查 Retinue 自身时，可以显式设置 `RETINUE_EXPOSE_DIAGNOSTIC_TOOLS=1` 暴露 `retinue_audit_logs`，或设置 `RETINUE_EXPOSE_BACKEND_TOOLS=1` 暴露后端 adapter 调试工具。
 
 ## Claude Code 后端
 

@@ -192,7 +192,10 @@ describe("Retinue Codex plugin guardrails", () => {
 
   it("documents Retinue child-agent slots and running-job diagnostics", () => {
     expect(readmeZh).toContain("`RETINUE_MAX_CONCURRENT_AGENTS`");
-    expect(readmeZh).toContain("`evictedJobId`");
+    expect(readmeZh).toContain("`RETINUE_OVERFLOW_STRATEGY=queue`");
+    expect(readmeZh).toContain('`status: "queued"`');
+    expect(readmeZh).toContain('reason: "queue_full"');
+    expect(readmeZh).toContain("`RETINUE_OVERFLOW_STRATEGY=evict`");
     expect(readmeZh).toContain("`stdoutTail`、`stderrTail`、`tracePath`");
     expect(readmeZh).toContain("单次 wait 超时不等于子代理失败");
     expect(readmeZh).toContain("默认最大 180 秒");
@@ -200,7 +203,10 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(readmeZh).not.toContain("默认 75 秒 soft-stall");
     expect(readmeZh).not.toContain("默认 2 分钟判定");
     expect(readmeEn).toContain("`RETINUE_MAX_CONCURRENT_AGENTS`");
-    expect(readmeEn).toContain("`evictedJobId`");
+    expect(readmeEn).toContain("`RETINUE_OVERFLOW_STRATEGY=queue`");
+    expect(readmeEn).toContain('`status: "queued"`');
+    expect(readmeEn).toContain('reason: "queue_full"');
+    expect(readmeEn).toContain("`RETINUE_OVERFLOW_STRATEGY=evict`");
     expect(readmeEn).toContain("`stdoutTail`, `stderrTail`, `tracePath`");
     expect(readmeEn).toContain("a timeout from one wait call is not by itself a failed child");
     expect(readmeEn).toContain("180 seconds by default");
