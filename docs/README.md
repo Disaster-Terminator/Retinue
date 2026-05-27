@@ -1,37 +1,51 @@
-# Retinue Docs
+# Retinue Documentation
 
-Start here. Current product guidance is separated from historical notes so the root `docs/`
-directory stays readable.
+Use this page by reader intent. The root [README](../README.md) is the short user entry point; this directory holds the deeper product, integration, and maintainer material.
 
-## Current Product
+## I Want To Try Retinue
 
-- [0.2.0 Release Readiness](release/0.2.0_RELEASE_PLAN.md) - release boundary, closed work, release gate, and current evidence.
-- [0.1.0 Hardening Record](release/0.1.0_HARDENING_ISSUES.md) - closed smoke/E2E issues and current verification requirements.
-- [v0.2.0 Release Notes](release/v0.2.0_RELEASE_NOTES.md) - user-facing release summary.
-- [v0.2.0 Release Notes zh-CN](release/v0.2.0_RELEASE_NOTES.zh-CN.md) - Chinese reference.
-- [Long-Term Vision](LONG_TERM_VISION.md) - Codex-compatible spawn direction, backend policy, and phased roadmap.
-- [Project Boundary](architecture/PROJECT_BOUNDARY.md) - what Retinue is and is not.
-- [OpenCode Backend](backends/OPENCODE.md) - OpenCode adapter behavior and constraints.
-- [Hermes Agent Integration](integrations/HERMES.md) - Hermes native MCP setup for calling Retinue/OpenCode.
+- [Quick start](get-started/quick-start.md) - first Retinue child-agent task.
+- [Install plugin](how-to/install-plugin.md) - Codex plugin marketplace, npm runtime path, and platform notes.
+- [v0.2.0 release notes](releases/v0.2.0.md) - what changed in the current release.
+- [v0.2.0 release notes zh-CN](releases/v0.2.0.zh-CN.md)
 
-## Deployment
+## I Am Configuring An Integration
 
-- [Plugin Deployment](deployment/PLUGIN_DEPLOYMENT.md) - Codex plugin packaging and install shape.
-- [Source Install And Development](development/SOURCE_INSTALL.md) - contributor setup and source-tree verification.
-- [Plugin Reload Workflow](development/PLUGIN_RELOAD.md) - fast WSL/Windows cache sync during plugin development.
-- [Service Lifecycle](deployment/SERVICE_LIFECYCLE.md) - optional daemon start, inspect, and stop workflow for custom deployments.
-- [Verification](VERIFICATION.md) - short test and packaging gates.
+- [Configuration reference](reference/configuration.md) - `RETINUE_*` defaults, precedence, and deployment knobs.
+- [MCP tools](reference/mcp-tools.md) - normal product tools, result states, and permission flow.
+- [OpenCode backend](reference/backends/opencode.md) - OpenCode server, profile, model, stall, and permission semantics.
+- [Claude Code backend](reference/backends/claude-code.md) - SDK-first path, legacy CLI compatibility, and Claude-specific environment variables.
+- [Kilo backend](reference/backends/kilo.md) - Kilo adapter status and probe shape.
+- [Hermes integration](how-to/integrate-hermes.md) - Hermes MCP setup.
+- [Run daemon](how-to/run-daemon.md) - local daemon lifecycle.
 
-## Real Runtime Runbooks
+## I Am Developing Retinue
 
-- [Production OpenCode E2E](runbooks/PRODUCTION_OPENCODE_E2E.md)
-- [Real Claude Code Probes](runbooks/REAL_CLAUDE_PROBES.md)
-- [Real OpenCode Probes](runbooks/REAL_OPENCODE_PROBES.md)
+- [Source install](how-to/source-install.md)
+- [Plugin cache reload](how-to/dev-reload-plugin.md)
+- [Verification](how-to/verify.md)
+- [Plugin deployment](how-to/install-plugin.md)
+- [Repository metadata](archive/REPOSITORY_METADATA.md)
 
-## Archive
+## I Am Debugging A Runtime Issue
 
-- [Verification History](archive/VERIFICATION_HISTORY.md)
-- [PR #58 Static Review](archive/PR58_STATIC_REVIEW.md)
-- [Repository Metadata Notes](archive/REPOSITORY_METADATA.md)
+- [Diagnostics reference](reference/diagnostics.md)
+- [Log audit runbook](runbooks/log-audit.md)
+- [Production OpenCode E2E](runbooks/production-opencode-e2e.md)
+- [Real OpenCode probes](runbooks/real-opencode-probes.md)
+- [Real Claude Code probes](runbooks/real-claude-probes.md)
+- [Backend candidate probes](runbooks/backend-candidate-probes.md)
 
-Historical implementation plans and specs are archived under `docs/archive/superpowers/`. Research notes remain under `docs/research/` when they document current design decisions.
+## I Want The Design Rationale
+
+- [Project boundary](explanation/project-boundary.md)
+- [Attempt recovery](explanation/attempt-recovery.md)
+- [Spawn semantics](explanation/spawn-semantics.md)
+- [Long-term vision](project/vision.md)
+
+## Maintainer And Archive
+
+- Release planning lives under [project/release-plans](project/release-plans/).
+- Historical hardening notes live under [project/hardening](project/hardening/).
+- Dated research and handoff artifacts live under [archive](archive/).
+- Historical implementation plans and specs remain under [archive/superpowers](archive/superpowers/).

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 
-const hermesDoc = readFileSync("docs/integrations/HERMES.md", "utf8");
+const hermesDoc = readFileSync("docs/how-to/integrate-hermes.md", "utf8");
 const hermesConfig = readFileSync("integrations/hermes/mcp-retinue.yaml", "utf8");
 const hermesSkill = readFileSync("integrations/hermes/skills/retinue/SKILL.md", "utf8");
 

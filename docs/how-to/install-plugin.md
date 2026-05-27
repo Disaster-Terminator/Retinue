@@ -128,7 +128,7 @@ mcp_servers:
     connect_timeout: 30
 ```
 
-See [Hermes Agent Integration](../integrations/HERMES.md) for the full Hermes master-agent setup and probe commands.
+See [Hermes integration](integrate-hermes.md) for the full Hermes master-agent setup and probe commands.
 
 ## Build Gate
 

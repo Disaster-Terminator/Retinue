@@ -962,7 +962,7 @@ describe("MCP tools", () => {
         status: "stalled",
         result: {
           status: "stalled",
-          stdout: expect.stringContaining("input={\"filePath\":\"docs/VERIFICATION.md\"}")
+          stdout: expect.stringContaining("input={\"filePath\":\"docs/how-to/verify.md\"}")
         },
         diagnostic: {
           event: "opencode_job_result_read",
@@ -974,14 +974,14 @@ describe("MCP tools", () => {
         }
       });
       expect(wait.diagnostic.message).toContain("readToolCalls=call_");
-      expect(wait.diagnostic.message).toContain('input={"filePath":"docs/VERIFICATION.md"}');
+      expect(wait.diagnostic.message).toContain('input={"filePath":"docs/how-to/verify.md"}');
       expect(wait.diagnostic.runningReadToolPartSummaries).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             tool: "read",
             stateStatus: "pending",
             callID: expect.stringMatching(/^call_/),
-            stateInput: { type: "object", preview: '{"filePath":"docs/VERIFICATION.md"}' }
+            stateInput: { type: "object", preview: '{"filePath":"docs/how-to/verify.md"}' }
           })
         ])
       );

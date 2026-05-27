@@ -1275,8 +1275,8 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"runningReadToolCallIds":["call_');
     expect(trace).toContain('"runningReadToolPartSummaries":[{"type":"tool","tool":"read","callID":"call_');
     expect(trace).toContain('"stateStatus":"pending"');
-    expect(trace).toContain('"stateInput":{"type":"object","preview":"{\\"filePath\\":\\"docs/VERIFICATION.md\\"}"}');
-    expect(trace).toContain('input={\\"filePath\\":\\"docs/VERIFICATION.md\\"}');
+    expect(trace).toContain('"stateInput":{"type":"object","preview":"{\\"filePath\\":\\"docs/how-to/verify.md\\"}"}');
+    expect(trace).toContain('input={\\"filePath\\":\\"docs/how-to/verify.md\\"}');
   });
 
   it("classifies OpenCode external-directory permission waits separately from read-tool stalls", async () => {

@@ -13,18 +13,22 @@ function validPackJson() {
         { path: "README.md" },
         { path: "README.en.md" },
         { path: "docs/README.md" },
-        { path: "docs/LONG_TERM_VISION.md" },
-        { path: "docs/backends/OPENCODE.md" },
-        { path: "docs/development/SOURCE_INSTALL.md" },
-        { path: "docs/deployment/PLUGIN_DEPLOYMENT.md" },
-        { path: "docs/integrations/HERMES.md" },
-        { path: "docs/release/0.1.0_HARDENING_ISSUES.md" },
-        { path: "docs/release/0.1.0_RELEASE_PLAN.md" },
-        { path: "docs/release/0.2.0_RELEASE_PLAN.md" },
-        { path: "docs/release/v0.2.0_RELEASE_NOTES.md" },
-        { path: "docs/release/v0.2.0_RELEASE_NOTES.zh-CN.md" },
-        { path: "docs/VERIFICATION.md" },
-        { path: "docs/architecture/PROJECT_BOUNDARY.md" },
+        { path: "docs/get-started/quick-start.md" },
+        { path: "docs/how-to/install-plugin.md" },
+        { path: "docs/how-to/source-install.md" },
+        { path: "docs/how-to/integrate-hermes.md" },
+        { path: "docs/how-to/verify.md" },
+        { path: "docs/reference/configuration.md" },
+        { path: "docs/reference/mcp-tools.md" },
+        { path: "docs/reference/diagnostics.md" },
+        { path: "docs/reference/backends/opencode.md" },
+        { path: "docs/reference/backends/claude-code.md" },
+        { path: "docs/reference/backends/kilo.md" },
+        { path: "docs/explanation/project-boundary.md" },
+        { path: "docs/explanation/spawn-semantics.md" },
+        { path: "docs/project/release-plans/0.2.0.md" },
+        { path: "docs/releases/v0.2.0.md" },
+        { path: "docs/releases/v0.2.0.zh-CN.md" },
         { path: ".agents/plugins/marketplace.json" },
         { path: "plugins/retinue/.codex-plugin/plugin.json" },
         { path: "plugins/retinue/.mcp.json" },
@@ -73,7 +77,7 @@ describe("verify-package script", () => {
   it("fails when runtime files are missing", () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "verify-package-missing-runtime-"));
     const packJsonPath = path.join(dir, "pack.json");
-    writeFileSync(packJsonPath, JSON.stringify([{ files: [{ path: "README.md" }, { path: "docs/backends/OPENCODE.md" }] }]));
+    writeFileSync(packJsonPath, JSON.stringify([{ files: [{ path: "README.md" }, { path: "docs/reference/backends/opencode.md" }] }]));
 
     const result = spawnSync(process.execPath, [scriptPath, packJsonPath], { cwd: dir, encoding: "utf8" });
     expect(result.status).toBe(1);

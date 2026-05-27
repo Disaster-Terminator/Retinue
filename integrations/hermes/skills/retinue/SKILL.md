@@ -13,11 +13,19 @@ metadata:
 
 # Retinue
 
-Retinue lets Hermes Agent delegate a bounded coding task to a local OpenCode child agent through MCP.
+Retinue lets Hermes Agent delegate bounded local coding tasks to a backend-selected child agent through MCP.
 
-## When to Use
+## When To Use
 
-Use this when Hermes Agent needs a separate local coding agent to inspect code, run a narrow task, or provide an independent review while Hermes remains the master agent.
+Use Retinue when Hermes needs a separate local agent to inspect code, run a narrow task, or provide independent review while Hermes remains the supervising agent.
+
+## Quick Procedure
+
+1. Spawn with `mcp_retinue_retinue_spawn_agent`.
+2. Wait with `mcp_retinue_retinue_wait_agent`.
+3. Close with `mcp_retinue_retinue_close_agent`.
+
+For repository work, pass an absolute `cwd`, a concrete `message`, and a useful `task_name`.
 
 ## Tool Surface
 
@@ -30,21 +38,35 @@ Hermes registers Retinue MCP tools with the `mcp_retinue_` prefix:
 - `mcp_retinue_retinue_list_permissions`
 - `mcp_retinue_retinue_reply_permission`
 
-Retinue selects the backend from deployment configuration. The default Hermes integration uses OpenCode with the built-in `explore` subagent and Retinue-managed OpenCode server lifecycle. OpenCode keeps ownership of profile, provider, model, tools, and agent permissions; Retinue does not expose a product-level `access_mode` or overlay its own read-only prompt/tool policy on normal OpenCode children. A single spawn may pass `agent` to select an OpenCode agent for that child. Each Retinue MCP server session keeps up to 3 active child agents by default. Overflow defaults to queueing: a spawn beyond the session or shared machine-level active budget returns a `status: "queued"` job handle, and later `wait`, `list`, `close`, or `spawn` calls promote queued jobs when slots open. Set `RETINUE_OVERFLOW_STRATEGY=evict` only when preserving the old same-session oldest-running eviction behavior. `RETINUE_MAX_QUEUED_AGENTS` defaults to 20; queue exhaustion returns `resource_exhausted` with `reason: "queue_full"`. Deployments should tune persistent concurrency with `RETINUE_MAX_CONCURRENT_AGENTS`, `RETINUE_GLOBAL_AGENT_BUDGET`, `RETINUE_OVERFLOW_STRATEGY`, and `RETINUE_MAX_QUEUED_AGENTS` in the MCP environment because packaged config files can be overwritten by plugin refreshes. Do not pass backend, model, provider, profile, OpenCode server, `access_mode`, or `bash_policy` choices in tool arguments.
+## Wait Handling
 
-## Procedure
+| Result | Action |
+| --- | --- |
+| `completed` | Use the output as evidence only when the task scope and returned session directory match. |
+| `running` | Inspect `diagnostic`, `stdoutTail`, and `stderrTail`; wait again with the same `jobId`. |
+| `queued` | Keep the handle; queued jobs promote when session and shared-machine slots open. |
+| `stalled` | Treat as non-evidence. Inspect `diagnostic.stallReason`, `diagnostic.stallSummary`, and artifact paths. |
+| Permission event | Use `mcp_retinue_retinue_list_permissions` if needed, reply with `mcp_retinue_retinue_reply_permission`, then wait again. |
 
-1. Spawn a child agent with `mcp_retinue_retinue_spawn_agent`.
-2. Include a concrete `message`, an explicit absolute `cwd` for repository/file work, and a useful `task_name`.
-3. Compare the returned `cwd` and `externalSessionDirectory`. Treat a mismatch as workspace drift and do not trust repository-specific conclusions until the job is closed and re-spawned with the correct directory.
-4. Wait with `mcp_retinue_retinue_wait_agent`.
-5. If wait returns `running`, first inspect the returned `diagnostic`, `stdoutTail`, and `stderrTail`; then use `stateDir`, `tracePath`, `jobDir`, `stdoutPath`, and `stderrPath` when deeper diagnosis is needed. Complex OpenCode jobs can still spend time in tool-call rounds, but Retinue bounds blank, zero-progress, incomplete, pending-read, and no-final-text loops so they become diagnostic `stalled` results instead of hanging indefinitely. Recoverable no-final-text stalls are deferred while the current wait call still has time, and Retinue submits one no-tools final-answer recovery prompt through OpenCode's `build` agent so a late final answer can still become `completed`. If malformed read output or a failed finalization rescue makes the original execution chain non-evidence, Retinue may start a fresh task-level attempt; the wait response can re-key from `requestedJobId` to the selected attempt `jobId` and include `selectedAttemptJobId` plus `attemptChain`. Treat the original stalled job as non-evidence even if a later attempt succeeds. Read-only patch/write intent is recovered once by asking OpenCode for a no-tools prose-only answer and trusting only messages after that recovery point; if recovery emits another patch/write intent, the job remains `stalled`. Provider errors still return `stalled` immediately. If wait returns `attentionRequired.kind: "permission"` or `permissionRequired: true`, treat it as an action-required workflow event, use `mcp_retinue_retinue_list_permissions` when request ids are needed, inspect each permission's `approval` title/lines/guidance/options, reply with `mcp_retinue_retinue_reply_permission` using `once`, `always`, or `reject`, then wait again. Prefer `once` for scoped task-required access, reserve `always` for trusted repeated patterns, and reject out-of-scope paths/tools. If wait returns `stalled` without `attentionRequired`, inspect `diagnostic.stallReason` and `diagnostic.stallSummary` when present, treat the child as non-evidence, and close it after preserving the returned paths for diagnosis.
-6. Close the job with `mcp_retinue_retinue_close_agent` when the result is terminal or the child should be stopped.
+Prefer `once` for scoped task-required permission replies. Reserve `always` for trusted repeated patterns. Reject out-of-scope paths and tools.
 
-For read-only review tasks, require the child to state its working directory and use absolute paths for file-existence claims. Treat "file not found" or "missing documentation" conclusions as candidates until independently checked.
+## Hazards
 
-Retinue log-audit diagnostics are hidden from the default product MCP tool surface. Developers can explicitly enable `RETINUE_EXPOSE_DIAGNOSTIC_TOOLS=1` to expose `mcp_retinue_retinue_audit_logs` while dogfooding or investigating Retinue itself; normal child-agent delegation should use the default tools above.
+- Do not pass backend, model, provider, profile, OpenCode server, `access_mode`, or `bash_policy` in tool arguments.
+- Do not treat `running` as done.
+- Do not treat `stalled` as review evidence.
+- Do not trust repository conclusions when `cwd` and `externalSessionDirectory` disagree.
+- Do not use hidden diagnostic or backend tools for normal delegation.
 
-## Verification
+## Configuration Boundary
 
-Ask the child to reply with a deterministic marker, then confirm `retinue_wait_agent` returns a completed result containing that marker.
+Retinue selects the backend from deployment configuration. The default Hermes integration uses OpenCode with Retinue-managed local server lifecycle. OpenCode, Claude Code, and Kilo keep ownership of profile, provider, model, tools, and permissions where supported by the selected runtime.
+
+Persistent deployment changes belong in the Hermes MCP environment as `RETINUE_*` variables. Packaged config files are fallback defaults and may be overwritten by plugin refreshes.
+
+Reference docs:
+
+- `docs/reference/mcp-tools.md`
+- `docs/reference/configuration.md`
+- `docs/reference/diagnostics.md`
+- `docs/how-to/integrate-hermes.md`

@@ -1,6 +1,6 @@
 # Retinue Plugin
 
-This Codex plugin exposes Retinue as an agent-facing product surface:
+This Codex plugin exposes the Retinue MCP tools and Codex skill:
 
 - skill instructions under `skills/`
 - MCP server configuration in `.mcp.json`
@@ -21,7 +21,7 @@ pnpm run build
 pnpm run verify:package
 ```
 
-For production OpenCode E2E, see `../../docs/runbooks/PRODUCTION_OPENCODE_E2E.md`.
+For production OpenCode E2E, see `../../docs/runbooks/production-opencode-e2e.md`.
 
 Codex-facing product delegation should use:
 
@@ -32,12 +32,11 @@ Codex-facing product delegation should use:
 - `retinue_list_permissions`
 - `retinue_reply_permission`
 
-The default deployment uses OpenCode `explore` and lets Retinue manage the local OpenCode server lifecycle. Each Retinue MCP server session keeps a small active child-agent pool; the default limit is 3 active children. Overflow defaults to queueing: a spawn beyond the session or shared machine-level active budget returns a `status: "queued"` job handle, and later `wait`, `list`, `close`, or `spawn` calls promote queued jobs when slots open. Set `RETINUE_OVERFLOW_STRATEGY=evict` only when preserving the old same-session oldest-running eviction behavior. `RETINUE_MAX_QUEUED_AGENTS` defaults to 20; queue exhaustion returns `resource_exhausted` with `reason: "queue_full"`.
+The default deployment uses OpenCode `explore` and lets Retinue manage the local OpenCode server lifecycle. Keep behavior details in the shared docs instead of duplicating them here:
 
-When `retinue_wait_agent` returns `running`, inspect the returned stdout/stderr tails and trace path before closing the child. Complex OpenCode jobs can still spend time in tool-call rounds, but Retinue bounds blank, zero-progress, incomplete, pending-read, and no-final-text loops so they become diagnostic `stalled` results instead of hanging indefinitely. Recoverable no-final-text stalls are deferred within the active wait timeout, and Retinue submits one no-tools final-answer recovery prompt through OpenCode's `build` agent so late final answers can still complete. Malformed read output or a failed finalization rescue can start one fresh task-level attempt; the original stalled job remains non-evidence, and the wait response includes `requestedJobId`, `selectedAttemptJobId`, and `attemptChain` when it re-keys to the new attempt. Provider errors and read-only patch/write intent still return `stalled` immediately.
-
-When OpenCode reports a pending permission request, `retinue_wait_agent` returns `attentionRequired.kind: "permission"` plus compatibility fields `permissionRequired: true` and `permissions`. Use `retinue_list_permissions` and `retinue_reply_permission` as the agent-facing bridge to OpenCode's native permission API. Retinue surfaces request ids and an `approval` object with a title, display lines, guidance, and OpenCode's `once`, `always`, or `reject` reply options; it does not invent a separate permission policy or auto-approve external paths.
-
-Backend-specific `opencode_*` and `claude_*` tools are hidden by default. Set `RETINUE_EXPOSE_BACKEND_TOOLS=1` only for adapter debugging and runbook probes; product delegation should stay on the `retinue_*` tools above.
-
-Retinue log-audit diagnostics are also hidden by default. Set `RETINUE_EXPOSE_DIAGNOSTIC_TOOLS=1` only while dogfooding or investigating Retinue itself; normal plugin users should not see log-audit tools in the product MCP surface.
+- Tool contract: `../../docs/reference/mcp-tools.md`
+- Configuration: `../../docs/reference/configuration.md`
+- Diagnostics: `../../docs/reference/diagnostics.md`
+- OpenCode backend: `../../docs/reference/backends/opencode.md`
+- Claude Code backend: `../../docs/reference/backends/claude-code.md`
+- Kilo backend: `../../docs/reference/backends/kilo.md`

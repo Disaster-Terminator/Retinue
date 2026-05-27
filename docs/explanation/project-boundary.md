@@ -2,7 +2,7 @@
 
 ## Product Boundary
 
-Retinue is a local subagent execution surface for Codex-like clients. It runs external coding agents such as Claude Code and OpenCode, returns job handles, and preserves enough local state for later status, wait, result, continue, termination, and cleanup operations.
+Retinue is a local subagent execution surface for Codex-like clients. It runs external coding agents such as OpenCode, Claude Code, and Kilo, returns job handles, and preserves enough local state for later status, wait, result, continue, termination, and cleanup operations.
 
 Retinue is not a native Codex `spawn_agent` replacement. Codex native spawn creates child threads inside the Codex runtime tree, while Retinue bridges to external local agent runtimes and exposes their lifecycle as jobs.
 
@@ -39,7 +39,7 @@ Backends must be thin adapters over mature local agent runtimes:
 - `opencode`: attaches to a loopback OpenCode server through the official OpenCode SDK, with the old handwritten HTTP client retained only as an explicit deployment/test fallback. CLI-based probing is acceptable for compatibility checks, but provider/model behavior remains OpenCode-owned.
 
 Retinue should not parse interactive TUI output or reimplement upstream provider/model selection. For OpenCode, provider login, `/connect`, model selection, agent configuration, and endpoint routing remain OpenCode-owned.
-For both Claude Code and OpenCode, SDK adapters must leave the model unset unless an operator sets an explicit Retinue deployment override. The normal path is to let the local runtime profile/default model decide routing.
+For OpenCode, Claude Code, and Kilo, adapters must leave the model unset unless an operator sets an explicit Retinue deployment override. The normal path is to let the local runtime profile/default model decide routing.
 
 ## Non-Goals
 

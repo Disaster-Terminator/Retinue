@@ -36,6 +36,10 @@ function resolvePluginMcpServer(pluginRoot: string, server: RetinueMcpServerConf
 const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
 const readmeZh = readFileSync("README.md", "utf8");
 const readmeEn = readFileSync("README.en.md", "utf8");
+const docsIndex = readFileSync("docs/README.md", "utf8");
+const configurationReference = readFileSync("docs/reference/configuration.md", "utf8");
+const mcpToolsReference = readFileSync("docs/reference/mcp-tools.md", "utf8");
+const diagnosticsReference = readFileSync("docs/reference/diagnostics.md", "utf8");
 const realOpenCodeMcpProbe = readFileSync("scripts/probe-retinue-opencode-mcp.mjs", "utf8");
 const opencodeBackendSource = readFileSync("src/backends/opencode/backend.ts", "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
@@ -164,55 +168,47 @@ describe("Retinue Codex plugin guardrails", () => {
     const quickStartEn = readmeEn.match(/## Quick Start[\s\S]*?Expected result:/)?.[0] ?? "";
 
     expect(quickStartZh).toContain("`/plugins`");
-    expect(quickStartZh).toContain("右方向键");
     expect(quickStartZh).toContain("`Install plugin`");
     expect(quickStartZh).not.toContain("codex plugin marketplace upgrade retinue-local");
     expect(quickStartEn).toContain("`/plugins`");
-    expect(quickStartEn).toContain("Right Arrow");
     expect(quickStartEn).toContain("`Install plugin`");
     expect(quickStartEn).not.toContain("codex plugin marketplace upgrade retinue-local");
   });
 
-  it("documents the default OpenCode lifecycle and fallback-port behavior", () => {
-    expect(readmeZh).toContain("%USERPROFILE%\\.opencode\\bin\\opencode");
-    expect(readmeZh).toContain("默认插件配置会管理本机 OpenCode server 生命周期");
-    expect(readmeZh).toContain("`4097` 到 `4127`");
-    expect(readmeZh).toContain('"agent": "explore"');
-    expect(readmeZh).toContain("OpenCode `explore`");
-    expect(readmeZh).not.toContain('"RETINUE_OPENCODE_AGENT": "plan"');
-    expect(readmeEn).toContain("%USERPROFILE%\\.opencode\\bin\\opencode");
-    expect(readmeEn).toContain("The default plugin config manages the local OpenCode server lifecycle");
-    expect(readmeEn).toContain("`4097` through `4127`");
-    expect(readmeEn).toContain('"agent": "explore"');
-    expect(readmeEn).toContain("OpenCode `explore`");
-    expect(readmeEn).not.toContain('"RETINUE_OPENCODE_AGENT": "plan"');
-    expect(readmeZh).not.toContain("端口被外部服务占用时尝试 `4097`。");
-    expect(readmeEn).not.toContain("tries `4097` when that port is occupied");
+  it("keeps the README as a user entry and moves deep configuration to reference docs", () => {
+    expect(readmeZh).toContain("OpenCode");
+    expect(readmeZh).toContain("`explore`");
+    expect(readmeZh).toContain("docs/reference/configuration.md");
+    expect(readmeZh).not.toContain("RETINUE_OPENCODE_FALLBACK_PORTS");
+    expect(readmeZh).not.toContain("RETINUE_OPENCODE_TASK_ATTEMPT_MAX");
+    expect(readmeEn).toContain("OpenCode");
+    expect(readmeEn).toContain("`explore`");
+    expect(readmeEn).toContain("docs/reference/configuration.md");
+    expect(readmeEn).not.toContain("RETINUE_OPENCODE_FALLBACK_PORTS");
+    expect(readmeEn).not.toContain("RETINUE_OPENCODE_TASK_ATTEMPT_MAX");
+    expect(configurationReference).toContain("RETINUE_OPENCODE_FALLBACK_PORTS");
+    expect(configurationReference).toContain("RETINUE_OPENCODE_TASK_ATTEMPT_MAX");
   });
 
-  it("documents Retinue child-agent slots and running-job diagnostics", () => {
-    expect(readmeZh).toContain("`RETINUE_MAX_CONCURRENT_AGENTS`");
-    expect(readmeZh).toContain("`RETINUE_OVERFLOW_STRATEGY=queue`");
-    expect(readmeZh).toContain('`status: "queued"`');
-    expect(readmeZh).toContain('reason: "queue_full"');
-    expect(readmeZh).toContain("`RETINUE_OVERFLOW_STRATEGY=evict`");
-    expect(readmeZh).toContain("`stdoutTail`、`stderrTail`、`tracePath`");
-    expect(readmeZh).toContain("单次 wait 超时不等于子代理失败");
-    expect(readmeZh).toContain("默认最大 180 秒");
-    expect(readmeZh).toContain("默认 45 秒 soft-stall");
-    expect(readmeZh).not.toContain("默认 75 秒 soft-stall");
-    expect(readmeZh).not.toContain("默认 2 分钟判定");
-    expect(readmeEn).toContain("`RETINUE_MAX_CONCURRENT_AGENTS`");
-    expect(readmeEn).toContain("`RETINUE_OVERFLOW_STRATEGY=queue`");
-    expect(readmeEn).toContain('`status: "queued"`');
-    expect(readmeEn).toContain('reason: "queue_full"');
-    expect(readmeEn).toContain("`RETINUE_OVERFLOW_STRATEGY=evict`");
-    expect(readmeEn).toContain("`stdoutTail`, `stderrTail`, `tracePath`");
-    expect(readmeEn).toContain("a timeout from one wait call is not by itself a failed child");
-    expect(readmeEn).toContain("180 seconds by default");
-    expect(readmeEn).toContain("default 45-second soft-stall");
-    expect(readmeEn).not.toContain("default 75-second soft-stall");
-    expect(readmeEn).not.toContain("2-minute default");
+  it("documents Retinue child-agent slots and diagnostics in canonical references", () => {
+    expect(configurationReference).toContain("RETINUE_MAX_CONCURRENT_AGENTS");
+    expect(configurationReference).toContain("RETINUE_OVERFLOW_STRATEGY");
+    expect(configurationReference).toContain("RETINUE_MAX_QUEUED_AGENTS");
+    expect(mcpToolsReference).toContain('`queued`');
+    expect(mcpToolsReference).toContain('`stalled`');
+    expect(mcpToolsReference).toContain("permission");
+    expect(diagnosticsReference).toContain("read_tool_invalid_input");
+    expect(diagnosticsReference).toContain("provider_zero_progress");
+    expect(diagnosticsReference).not.toContain("default 75-second soft-stall");
+  });
+
+  it("routes documentation by reader intent", () => {
+    expect(docsIndex).toContain("I Want To Try Retinue");
+    expect(docsIndex).toContain("I Am Configuring An Integration");
+    expect(docsIndex).toContain("I Am Developing Retinue");
+    expect(docsIndex).toContain("I Am Debugging A Runtime Issue");
+    expect(docsIndex).toContain("project/release-plans");
+    expect(docsIndex).not.toContain("docs/release/0.2.0_RELEASE_PLAN.md");
   });
 
   it("keeps OpenCode no-progress stall detection inside one MCP wait call", () => {
@@ -254,6 +250,7 @@ describe("Retinue Codex plugin guardrails", () => {
       name?: string;
       version?: string;
       license?: string;
+      keywords?: string[];
       skills?: string;
       mcpServers?: string;
       interface?: { displayName?: string; longDescription?: string; defaultPrompt?: string[] };
@@ -263,10 +260,12 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(manifest.name).toBe("retinue");
     expect(manifest.version).toBe(packageJson.version);
     expect(manifest.license).toBe(pkg.license);
+    expect(manifest.keywords).toContain("kilo");
     expect(manifest.skills).toBe("./skills/");
     expect(manifest.mcpServers).toBe("./.mcp.json");
     expect(manifest.interface?.displayName).toBe("Retinue");
     expect(manifest.interface?.longDescription).toContain("explore agent");
+    expect(manifest.interface?.longDescription).toContain("Kilo");
     expect(manifest.interface?.longDescription).not.toContain("plan agent");
     expect(manifest.interface?.defaultPrompt?.join("\n")).toContain("OpenCode explore subagent");
   });

@@ -477,7 +477,7 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
               text: "read placeholder",
               tool: "read",
               callID: `call_${nextMessage}`,
-              state: { status: "pending", input: { filePath: "docs/VERIFICATION.md" } }
+              state: { status: "pending", input: { filePath: "docs/how-to/verify.md" } }
             }
           ]
         });

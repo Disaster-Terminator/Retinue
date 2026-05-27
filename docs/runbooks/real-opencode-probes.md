@@ -88,4 +88,4 @@ node scripts/probe-real-opencode.mjs --base-url http://localhost:4096
 - No provider/model routing changes are introduced by this probe.
 - No permission-bypass behavior is introduced by this probe.
 
-For the production-style CLI/MCP lifecycle flow, including optional `RETINUE_OPENCODE_MODEL=litellm/pro-router`, see [Production OpenCode E2E](PRODUCTION_OPENCODE_E2E.md).
+For the production-style CLI/MCP lifecycle flow, including optional `RETINUE_OPENCODE_MODEL=litellm/pro-router`, see [Production OpenCode E2E](production-opencode-e2e.md).

@@ -1,7 +1,7 @@
 # Verification
 
-This is the short verification entry point. Historical milestone notes live in
-[archive/VERIFICATION_HISTORY.md](archive/VERIFICATION_HISTORY.md).
+This is the maintainer verification entry point. Historical milestone notes live in
+[../archive/VERIFICATION_HISTORY.md](../archive/VERIFICATION_HISTORY.md).
 
 ## Default Gates
 
@@ -66,10 +66,10 @@ run the same deterministic checks.
 
 Use the runbooks only when validating real local agent runtimes:
 
-- [Production OpenCode E2E](runbooks/PRODUCTION_OPENCODE_E2E.md)
-- [Kilo Backend](backends/KILO.md)
-- [Real Claude Code Probes](runbooks/REAL_CLAUDE_PROBES.md)
-- [Real OpenCode Probes](runbooks/REAL_OPENCODE_PROBES.md)
+- [Production OpenCode E2E](../runbooks/production-opencode-e2e.md)
+- [Kilo backend](../reference/backends/kilo.md)
+- [Real Claude Code probes](../runbooks/real-claude-probes.md)
+- [Real OpenCode probes](../runbooks/real-opencode-probes.md)
 
 The release OpenCode slot probe is:
 
@@ -117,7 +117,7 @@ RETINUE_REAL_OPENCODE_AGENT_AB_PROBE=1 RETINUE_OPENCODE_AGENT_LIST=plan,explore 
 
 ### Backend candidate probes
 
-Use `pnpm run probe:real:backend-candidates` to inspect Kilo CLI and Crush command surfaces before backend implementation. Model-backed candidate runs require `RETINUE_BACKEND_CANDIDATE_REAL_PROBE=1` and default to `intentmux`; see `docs/runbooks/BACKEND_CANDIDATE_PROBES.md`.
+Use `pnpm run probe:real:backend-candidates` to inspect Kilo CLI and Crush command surfaces before backend implementation. Model-backed candidate runs require `RETINUE_BACKEND_CANDIDATE_REAL_PROBE=1` and default to `intentmux`; see [Backend candidate probes](../runbooks/backend-candidate-probes.md).
 
 The A/B probe is a compatibility diagnostic, not a substitute for `gate:dogfood`.
 

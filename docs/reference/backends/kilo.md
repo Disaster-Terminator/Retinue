@@ -2,7 +2,7 @@
 
 The Kilo backend is an OpenCode-compatible adapter. Retinue uses the same session, prompt, message, abort, and permission bridge shape as the OpenCode backend, but starts or attaches to a Kilo server.
 
-This backend exists to validate whether another OpenCode-like runtime can be supported without adding a new Retinue delegation abstraction.
+This backend validates that another OpenCode-like runtime can use the same Retinue delegation abstraction without adding Kilo-specific product tools.
 
 ## Server Target
 
@@ -112,24 +112,18 @@ Kilo support currently depends on OpenCode-compatible HTTP behavior. Before trea
 - abort closes the child session
 - permission requests are visible through `/permission` and replyable through `/permission/:requestID/reply`
 
-## Current Evidence
+## Verification
 
-Kilo 7.3.1 exposes the required `serve`, `run`, `session`, `export`, and `agent` command surfaces. A transient `@kilocode/cli` server accepted `GET /global/health`, `POST /session`, `GET /session/:id`, `GET /session/:id/message`, and `POST /session/:id/abort`.
-
-The global pnpm Kilo 7.3.1 install resolved `kilo` on PATH and `kilo models litellm` listed `litellm/intentmux` after Kilo config reused the OpenCode LiteLLM provider with file references for secrets. The CLI `kilo run --auto --format json --model litellm/intentmux --dir /home/raystorm/projects/Retinue "Reply exactly: RETINUE_KILO_LITELLM_INTENTMUX_OK"` completed with the expected text.
-
-The Retinue Kilo MCP probe also completed through the real backend:
+Before treating a Kilo deployment as usable, run the real backend probe:
 
 ```bash
 RETINUE_REAL_KILO_PROBE=1 pnpm run probe:real:retinue-kilo
 ```
 
-Evidence: `backend=kilo`, `mode=auto-serve`, `status=completed`, `result=RETINUE_KILO_REAL_OK`, and `closeStatus=completed`.
-
-The real permission bridge also completed through Kilo:
+Run the permission bridge probe when validating external-directory approval behavior:
 
 ```bash
 RETINUE_REAL_KILO_PROBE=1 pnpm run probe:real:retinue-kilo -- --permission
 ```
 
-Evidence: an external `/tmp/.../marker.txt` read produced `permission.permission=external_directory`, `permission.reply=once`, `remainingPermissionCount=0`, `status=completed`, `result=RETINUE_KILO_PERMISSION_OK`, and `closeStatus=completed`.
+For lower-level CLI/server candidate checks, use [Backend candidate probes](../../runbooks/backend-candidate-probes.md). Record real probe evidence in release planning notes or runbooks, not in this reference page.

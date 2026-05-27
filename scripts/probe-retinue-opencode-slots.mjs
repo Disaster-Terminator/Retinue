@@ -32,7 +32,7 @@ async function main() {
       "Read package.json and summarize the project scripts in one paragraph.",
       "Inspect src/mcp.ts and summarize the Retinue product tools.",
       "Inspect tests/mcp-tools.test.ts and summarize MCP coverage.",
-      "Inspect docs/integrations/HERMES.md and summarize Hermes integration."
+      "Inspect docs/how-to/integrate-hermes.md and summarize Hermes integration."
     ];
 
     const spawns = [];

@@ -486,7 +486,7 @@ Remaining daemon limitations:
 
 ## Manual And Opt-In Real Probes
 
-Real Claude Code probes are documented in [Real Claude Code Probes](../runbooks/REAL_CLAUDE_PROBES.md).
+Real Claude Code probes are documented in [Real Claude Code Probes](../runbooks/real-claude-probes.md).
 
 These probes are not part of `pnpm test`, `pnpm run typecheck`, or `pnpm run build`. They must be run explicitly:
 
