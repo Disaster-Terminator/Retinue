@@ -60402,11 +60402,11 @@ async function createOpenCodeBackend(args) {
     ...process.env,
     RETINUE_OPENCODE_BASE_URL: args.opencodeBaseUrl ?? process.env.RETINUE_OPENCODE_BASE_URL
   };
-  const resolution = resolveOpenCodeServerFromEnv(env);
   const stateDir = resolveStateDir({ explicitStateDir: process.env.RETINUE_STATE_DIR, env: process.env });
   return new OpenCodeBackend({
     kind: "opencode",
     target: async (cwd) => {
+      const resolution = resolveOpenCodeServerFromEnv(env);
       const target = await ensureOpenCodeServer(resolution, { stateDir, cwd });
       return { client: new OpenCodeClient2(target.baseUrl, { timeoutMs: resolveHttpTimeoutMs(env) }), baseUrl: target.baseUrl };
     },
@@ -60420,11 +60420,11 @@ async function createKiloBackend(args) {
     ...process.env,
     RETINUE_KILO_BASE_URL: args.kiloBaseUrl ?? process.env.RETINUE_KILO_BASE_URL
   };
-  const resolution = resolveKiloServerFromEnv(env);
   const stateDir = resolveStateDir({ explicitStateDir: process.env.RETINUE_STATE_DIR, env: process.env });
   return new OpenCodeBackend({
     kind: "kilo",
     target: async (cwd) => {
+      const resolution = resolveKiloServerFromEnv(env);
       const target = await ensureOpenCodeServer(resolution, { stateDir, cwd });
       return {
         client: new OpenCodeClient2(target.baseUrl, { timeoutMs: resolveHttpTimeoutMs(env) }),

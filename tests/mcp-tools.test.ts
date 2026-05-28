@@ -1470,6 +1470,8 @@ describe("MCP tools", () => {
           arguments: { cwd: tempDir, message: "retinue global budget three", task_name: "global-budget-3" }
         })
       );
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+
       const queued = parseToolJson(
         await secondConnection.client.callTool({
           name: "retinue_spawn_agent",
@@ -1498,6 +1500,7 @@ describe("MCP tools", () => {
       const trace = await fs.readFile(path.join(tempDir, "logs", "retinue.jsonl"), "utf8");
       expect(trace).toContain('"event":"retinue_agent_queued"');
       expect(trace).toContain(`"jobId":"${queued.jobId}"`);
+      expect(trace).not.toContain("retinue_global_agent_budget_status_failed");
     } finally {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
