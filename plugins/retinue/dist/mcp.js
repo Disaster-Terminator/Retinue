@@ -58329,6 +58329,9 @@ function selectTaskLevelAttemptReason(meta3, diagnostic) {
   if (meta3.externalRescuePromptSubmittedAt && diagnostic.stallReason === "incomplete_assistant_round") {
     return "rescue_incomplete_assistant_round";
   }
+  if (diagnostic.stallReason === "provider_zero_progress" || diagnostic.stallReason === "provider_blank_assistant") {
+    return diagnostic.stallReason;
+  }
   return void 0;
 }
 function createTaskLevelAttemptPrompt(originalPrompt, recoveryReason, diagnostic) {

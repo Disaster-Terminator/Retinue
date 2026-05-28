@@ -789,7 +789,8 @@ describe("OpenCodeBackend", () => {
       stateDir: tempDir,
       env: {
         RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -814,7 +815,10 @@ describe("OpenCodeBackend", () => {
   });
 
   it("uses a short default stall window for blank provider assistant placeholders", async () => {
-    const backend = createBackend({ RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0" } as NodeJS.ProcessEnv);
+    const backend = createBackend({
+      RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
+      RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
+    } as NodeJS.ProcessEnv);
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "provider returned a blank assistant placeholder" });
     server!.appendBlankAssistant(started.externalSessionId!);
@@ -886,7 +890,7 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"stallReason":"provider_blank_assistant"');
   });
 
-  it("does not rescue first-turn blank provider output without tool progress", async () => {
+  it("starts a fresh task-level attempt for first-turn blank provider output", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
       baseUrl: server!.url,
@@ -899,13 +903,30 @@ describe("OpenCodeBackend", () => {
     const started = await backend.run({ cwd: tempDir, prompt: "provider fails before any tool progress" });
     server!.appendBlankAssistant(started.externalSessionId!);
 
-    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
-    expect(server!.promptRequests).toHaveLength(1);
+    const firstWait = await backend.wait({ jobId: started.jobId }, 100);
+    expect(firstWait).toMatchObject({
+      requestedJobId: started.jobId,
+      selectedAttemptJobId: expect.stringMatching(/^job_/)
+    });
+    expect(firstWait.jobId).not.toBe(started.jobId);
+    expect(firstWait.status).toBe("running");
+    expect(server!.promptRequests).toHaveLength(2);
+
+    const attempt = JSON.parse(await fs.readFile(getJobPaths(tempDir, firstWait.jobId).meta, "utf8")) as JobMeta;
+    server!.completeSessionWithFinalText(attempt.externalSessionId!, "fresh retry review");
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({
+      jobId: firstWait.jobId,
+      requestedJobId: started.jobId,
+      selectedAttemptJobId: firstWait.jobId,
+      status: "completed"
+    });
 
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"stallReason":"provider_blank_assistant"');
     expect(trace).toContain('"toolCallAssistantRounds":0');
     expect(trace).not.toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
+    expect(trace).toContain('"event":"opencode_task_level_attempt_started"');
+    expect(trace).toContain('"recoveryReason":"provider_blank_assistant"');
   });
 
   it("rescues zero-progress reasoning placeholders after completed tool rounds", async () => {

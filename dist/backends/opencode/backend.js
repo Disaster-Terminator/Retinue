@@ -2022,6 +2022,9 @@ function selectTaskLevelAttemptReason(meta, diagnostic) {
     if (meta.externalRescuePromptSubmittedAt && diagnostic.stallReason === "incomplete_assistant_round") {
         return "rescue_incomplete_assistant_round";
     }
+    if (diagnostic.stallReason === "provider_zero_progress" || diagnostic.stallReason === "provider_blank_assistant") {
+        return diagnostic.stallReason;
+    }
     return undefined;
 }
 function createTaskLevelAttemptPrompt(originalPrompt, recoveryReason, diagnostic) {
