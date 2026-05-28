@@ -6,6 +6,7 @@ coverage/
 *.tgz
 AGENTS.md
 meta.md
+.beads/
 
 # Beads / Dolt files (added by bd init)
 .dolt/
