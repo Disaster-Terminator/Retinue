@@ -21,10 +21,10 @@
     "retinue"
   ],
   "bin": {
-    "retinue": "./dist/cli.js",
-    "retinue-mcp": "./dist/mcp.js",
-    "retinued": "./dist/daemon.js",
-    "retinue-daemon": "./dist/daemon.js"
+    "retinue": "dist/cli.js",
+    "retinue-mcp": "dist/mcp.js",
+    "retinued": "dist/daemon.js",
+    "retinue-daemon": "dist/daemon.js"
   },
   "files": [
     "README.md",

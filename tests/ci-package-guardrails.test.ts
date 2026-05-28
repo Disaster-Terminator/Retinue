@@ -80,10 +80,10 @@ describe("package.json guardrails", () => {
     expect(packageJson.private).toBe(false);
     expect(packageJson.license).toBe("Apache-2.0");
     expect(packageJson.bin).toMatchObject({
-      retinue: "./dist/cli.js",
-      "retinue-mcp": "./dist/mcp.js",
-      retinued: "./dist/daemon.js",
-      "retinue-daemon": "./dist/daemon.js"
+      retinue: "dist/cli.js",
+      "retinue-mcp": "dist/mcp.js",
+      retinued: "dist/daemon.js",
+      "retinue-daemon": "dist/daemon.js"
     });
   });
 
