@@ -12,6 +12,8 @@ The product MCP surface is backend-neutral. Retinue selects the backend from dep
 | `retinue_list_agents` | List jobs known to the current Retinue MCP server session. |
 | `retinue_list_permissions` | List pending backend permission requests for one job or all known jobs. |
 | `retinue_reply_permission` | Reply to a pending backend permission request with `once`, `always`, or `reject`. |
+| `retinue_stop_runtime` | Stop Retinue-managed local runtime servers, currently OpenCode auto-serve. |
+| `retinue_restart_runtime` | Restart a Retinue-managed runtime server for one `cwd`, currently OpenCode auto-serve. |
 
 Hidden adapter/debug tools are not part of the normal product contract. Expose them only with `RETINUE_EXPOSE_BACKEND_TOOLS=1` while investigating Retinue or a backend adapter.
 
@@ -53,6 +55,14 @@ OpenCode permission requests stay OpenCode-owned. Retinue surfaces them so the s
 4. Wait again.
 
 Prefer `once` for narrowly scoped task-required access. Use `always` only for trusted repeated patterns. Use `reject` for out-of-scope paths or tools.
+
+## Runtime Lifecycle
+
+Retinue owns the lifecycle only for runtime servers it started itself. For OpenCode this means servers created by `RETINUE_OPENCODE_AUTO_SERVE=1` and recorded in Retinue discovery state. Explicit `RETINUE_OPENCODE_BASE_URL` attach targets are external and are not stopped or restarted by these tools.
+
+Use `retinue_restart_runtime` with an absolute `cwd` when OpenCode provider/profile state changed and the Retinue-managed server should be refreshed. It stops the matching managed server and starts a new one. If matching jobs are still `running`, the restart is blocked unless `force: true` is set. Forced stop marks matching running job metadata as `killed`.
+
+Use `retinue_stop_runtime` with either an absolute `cwd` or `all: true`. Without `force`, it refuses to stop servers that still have running Retinue jobs. `all: true` is intended for maintenance windows where the caller wants every Retinue-managed OpenCode server stopped so later spawns reload runtime configuration.
 
 ## Evidence Rules
 

@@ -23,6 +23,8 @@ For repository work, pass an absolute `cwd`. Ask the child to cite absolute path
 - `retinue_list_agents`
 - `retinue_list_permissions`
 - `retinue_reply_permission`
+- `retinue_stop_runtime`
+- `retinue_restart_runtime`
 
 ## Wait Handling
 
@@ -46,6 +48,7 @@ When wait output includes `requestedJobId`, `selectedAttemptJobId`, or `attemptC
 - Do not trust repository-specific conclusions when returned `externalSessionDirectory` does not match the requested `cwd`.
 - Do not use hidden backend/debug tools for normal product delegation.
 - Do not use Retinue stalled child output to support a product claim.
+- Use `retinue_stop_runtime` or `retinue_restart_runtime` only for Retinue-managed runtime maintenance, such as refreshing an auto-served OpenCode provider/profile. These tools do not manage external runtime URLs.
 
 ## Configuration Boundary
 
@@ -58,6 +61,7 @@ Retinue owns:
 - close/cleanup
 - per-session and shared-machine child-agent slot accounting
 - permission request surfacing and replies
+- lifecycle of runtime servers it auto-serves, including safe stop/restart
 
 Persistent Retinue overrides should use `RETINUE_*` environment variables in Codex `[env]` or the host MCP environment. The packaged `retinue.config.json` is a fallback that plugin refreshes can overwrite.
 

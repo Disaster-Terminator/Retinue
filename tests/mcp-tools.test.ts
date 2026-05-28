@@ -64,7 +64,9 @@ describe("MCP tools", () => {
       "retinue_close_agent",
       "retinue_list_agents",
       "retinue_list_permissions",
-      "retinue_reply_permission"
+      "retinue_reply_permission",
+      "retinue_stop_runtime",
+      "retinue_restart_runtime"
     ]);
   });
 
@@ -321,12 +323,67 @@ describe("MCP tools", () => {
       assertRequiredFields(tools.tools, "retinue_reply_permission", ["jobId", "requestId", "reply"]);
       assertOptionalField(tools.tools, "retinue_reply_permission", "message");
       assertAbsentFields(tools.tools, "retinue_reply_permission", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
+      assertOptionalField(tools.tools, "retinue_stop_runtime", "runtime");
+      assertOptionalField(tools.tools, "retinue_stop_runtime", "cwd");
+      assertOptionalField(tools.tools, "retinue_stop_runtime", "all");
+      assertOptionalField(tools.tools, "retinue_stop_runtime", "force");
+      assertAbsentFields(tools.tools, "retinue_stop_runtime", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
+      assertOptionalField(tools.tools, "retinue_restart_runtime", "runtime");
+      assertRequiredFields(tools.tools, "retinue_restart_runtime", ["cwd"]);
+      assertOptionalField(tools.tools, "retinue_restart_runtime", "force");
+      assertAbsentFields(tools.tools, "retinue_restart_runtime", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
       expect(getToolDescription(tools.tools, "retinue_list_permissions")).toContain("backend permission requests");
       expect(getToolDescription(tools.tools, "retinue_list_permissions")).not.toContain("OpenCode permission requests");
       expect(getToolDescription(tools.tools, "retinue_reply_permission")).toContain("backend permission request");
       expect(getToolDescription(tools.tools, "retinue_reply_permission")).not.toContain("OpenCode permission request");
     } finally {
       await closeMcpClient(connection);
+    }
+  });
+
+  it("enforces Retinue runtime lifecycle ownership boundaries", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-runtime-lifecycle-"));
+    const previousStateDir = process.env.RETINUE_STATE_DIR;
+    const previousBaseUrl = process.env.RETINUE_OPENCODE_BASE_URL;
+    process.env.RETINUE_STATE_DIR = tempDir;
+    process.env.RETINUE_OPENCODE_BASE_URL = "http://127.0.0.1:65535";
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }), false);
+    try {
+      await expect(
+        connection.client
+          .callTool({
+            name: "retinue_stop_runtime",
+            arguments: {}
+          })
+          .then(parseToolJson)
+      ).resolves.toMatchObject({
+        status: "invalid_request",
+        error: "retinue_stop_runtime requires cwd or all=true"
+      });
+      await expect(
+        connection.client
+          .callTool({
+            name: "retinue_restart_runtime",
+            arguments: { cwd: tempDir }
+          })
+          .then(parseToolJson)
+      ).resolves.toMatchObject({
+        backend: "opencode",
+        status: "not_managed"
+      });
+    } finally {
+      await closeMcpClient(connection);
+      if (previousStateDir === undefined) {
+        delete process.env.RETINUE_STATE_DIR;
+      } else {
+        process.env.RETINUE_STATE_DIR = previousStateDir;
+      }
+      if (previousBaseUrl === undefined) {
+        delete process.env.RETINUE_OPENCODE_BASE_URL;
+      } else {
+        process.env.RETINUE_OPENCODE_BASE_URL = previousBaseUrl;
+      }
+      await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
 

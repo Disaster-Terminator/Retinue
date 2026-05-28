@@ -337,7 +337,9 @@ describe("Retinue Codex plugin guardrails", () => {
         "retinue_close_agent",
         "retinue_list_agents",
         "retinue_list_permissions",
-        "retinue_reply_permission"
+        "retinue_reply_permission",
+        "retinue_stop_runtime",
+        "retinue_restart_runtime"
       ]);
       expect(Buffer.concat(stderrChunks).toString("utf8")).toBe("");
     } finally {
@@ -398,7 +400,9 @@ describe("Retinue Codex plugin guardrails", () => {
         "retinue_close_agent",
         "retinue_list_agents",
         "retinue_list_permissions",
-        "retinue_reply_permission"
+        "retinue_reply_permission",
+        "retinue_stop_runtime",
+        "retinue_restart_runtime"
       ]);
     } finally {
       await Promise.allSettled([client.close(), transport.close()]);

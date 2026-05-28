@@ -14,7 +14,9 @@ const EXPECTED_TOOL_NAMES = [
   "retinue_close_agent",
   "retinue_list_agents",
   "retinue_list_permissions",
-  "retinue_reply_permission"
+  "retinue_reply_permission",
+  "retinue_stop_runtime",
+  "retinue_restart_runtime"
 ];
 const execFileAsync = promisify(execFile);
 

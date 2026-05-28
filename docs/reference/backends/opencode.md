@@ -31,6 +31,8 @@ Managed OpenCode auto-serve binds to loopback only by default. `RETINUE_OPENCODE
 
 Retinue-managed OpenCode servers are not intended to live forever. After the last job using a managed server becomes terminal, Retinue schedules an idle shutdown; the default grace period is 30 seconds and can be changed with `RETINUE_OPENCODE_SERVER_IDLE_MS`. Shutdown uses process-tree termination so OpenCode helper processes such as language servers do not keep repository folders locked after the top-level `opencode serve` process exits. The trace records `opencode_server_idle_shutdown_scheduled`, `opencode_server_stopped`, or `opencode_server_stop_failed` for lifecycle debugging.
 
+Retinue also exposes agent-facing runtime lifecycle tools for servers it auto-served. Use `retinue_restart_runtime` with an absolute `cwd` to refresh an OpenCode server after provider/profile changes. Use `retinue_stop_runtime` with `cwd` or `all: true` for maintenance stops. Both tools refuse to stop a server with running Retinue jobs unless `force: true` is set; forced stops mark matching running job metadata as `killed`.
+
 Explicit attach remains available:
 
 ```text

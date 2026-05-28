@@ -61,8 +61,9 @@ type RetinueTraceEvent =
   | { event: "opencode_server_port_occupied"; host: string; port: number; baseUrl: string }
   | { event: "opencode_server_idle_shutdown_scheduled"; baseUrl: string; delayMs: number; cwd?: string }
   | { event: "opencode_server_idle_shutdown_skipped"; baseUrl: string; reason: "running_jobs"; cwd?: string }
-  | { event: "opencode_server_stopped"; baseUrl: string; pid?: number; reason: "idle" | "startup_failed" | "process_exit"; cwd?: string }
-  | { event: "opencode_server_stop_failed"; baseUrl: string; pid?: number; reason: "idle" | "startup_failed" | "process_exit"; error: string; cwd?: string }
+  | { event: "opencode_server_stopped"; baseUrl: string; pid?: number; reason: OpenCodeServerStopReason; cwd?: string }
+  | { event: "opencode_server_stop_blocked"; baseUrl: string; pid?: number; reason: "running_jobs"; cwd?: string; runningJobIds: string[] }
+  | { event: "opencode_server_stop_failed"; baseUrl: string; pid?: number; reason: OpenCodeServerStopReason; error: string; cwd?: string }
   | {
       event: "opencode_server_spawn";
       requestedCommand: string;
@@ -88,6 +89,30 @@ interface ManagedOpenCodeDiscovery {
   startedAt: string;
   version: string;
   cwd?: string;
+}
+
+type OpenCodeServerStopReason = "idle" | "startup_failed" | "process_exit" | "manual" | "restart";
+
+export interface OpenCodeManagedServerSummary {
+  baseUrl: string;
+  pid: number;
+  cwd?: string;
+}
+
+export interface OpenCodeManagedServerStopped extends OpenCodeManagedServerSummary {
+  killedJobIds: string[];
+}
+
+export interface OpenCodeManagedServerBlocked extends OpenCodeManagedServerSummary {
+  runningJobIds: string[];
+}
+
+export interface OpenCodeManagedServerStopResult {
+  backend: "opencode";
+  status: "stopped" | "blocked" | "not_found";
+  stopped: OpenCodeManagedServerStopped[];
+  blocked: OpenCodeManagedServerBlocked[];
+  force: boolean;
 }
 
 export function resolveOpenCodeServer(config: OpenCodeServerConfig): OpenCodeServerResolution {
@@ -411,6 +436,57 @@ export function scheduleManagedOpenCodeServerIdleShutdown(
   });
 }
 
+export async function stopManagedOpenCodeServers(options: {
+  stateDir: string;
+  cwd?: string;
+  all?: boolean;
+  force?: boolean;
+  reason?: Extract<OpenCodeServerStopReason, "manual" | "restart">;
+}): Promise<OpenCodeManagedServerStopResult> {
+  const cwd = normalizeServerCwd(options.cwd);
+  const discoveries = await listManagedOpenCodeDiscoveries(options.stateDir, options.all === true ? undefined : cwd);
+  const stopped: OpenCodeManagedServerStopped[] = [];
+  const blocked: OpenCodeManagedServerBlocked[] = [];
+  const force = options.force === true;
+
+  for (const discovery of discoveries) {
+    const runningJobIds = await listRunningOpenCodeJobIdsForServer(options.stateDir, discovery.baseUrl);
+    const summary: OpenCodeManagedServerSummary = {
+      baseUrl: discovery.baseUrl,
+      pid: discovery.pid,
+      cwd: discovery.cwd
+    };
+    if (runningJobIds.length > 0 && !force) {
+      blocked.push({ ...summary, runningJobIds });
+      await writeRetinueTrace(options.stateDir, {
+        event: "opencode_server_stop_blocked",
+        baseUrl: discovery.baseUrl,
+        pid: discovery.pid,
+        reason: "running_jobs",
+        cwd: discovery.cwd,
+        runningJobIds
+      });
+      continue;
+    }
+
+    const killedJobIds = force ? await markRunningOpenCodeJobsKilledForServer(options.stateDir, discovery.baseUrl) : [];
+    await stopDiscoveredManagedOpenCodeServer(discovery, {
+      stateDir: options.stateDir,
+      cwd: discovery.cwd,
+      reason: options.reason ?? "manual"
+    });
+    stopped.push({ ...summary, killedJobIds });
+  }
+
+  return {
+    backend: "opencode",
+    status: blocked.length > 0 ? "blocked" : stopped.length > 0 ? "stopped" : "not_found",
+    stopped,
+    blocked,
+    force
+  };
+}
+
 function cancelManagedOpenCodeServerIdleShutdown(baseUrl: string): void {
   const timer = managedServerIdleTimers.get(baseUrl);
   if (!timer) {
@@ -422,7 +498,7 @@ function cancelManagedOpenCodeServerIdleShutdown(baseUrl: string): void {
 
 async function stopManagedOpenCodeServer(
   baseUrl: string,
-  options: { stateDir?: string; cwd?: string; reason: "idle" | "startup_failed" | "process_exit" }
+  options: { stateDir?: string; cwd?: string; reason: OpenCodeServerStopReason }
 ): Promise<boolean> {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
   const managed = managedServers.get(normalizedBaseUrl);
@@ -438,10 +514,15 @@ async function stopManagedOpenCodeServer(
 }
 
 async function hasRunningOpenCodeJobsForServer(stateDir: string | undefined, baseUrl: string): Promise<boolean> {
+  return (await listRunningOpenCodeJobIdsForServer(stateDir, baseUrl)).length > 0;
+}
+
+async function listRunningOpenCodeJobIdsForServer(stateDir: string | undefined, baseUrl: string): Promise<string[]> {
   if (!stateDir) {
-    return false;
+    return [];
   }
   const jobsDir = getJobPaths(stateDir, "placeholder").dir.replace(/[\\/]placeholder$/, "");
+  const jobIds: string[] = [];
   for (const entry of await readDirIfExists(jobsDir)) {
     if (!entry.isDirectory()) {
       continue;
@@ -453,19 +534,19 @@ async function hasRunningOpenCodeJobsForServer(stateDir: string | undefined, bas
         externalServerUrl?: string;
       };
       if (meta.backend === "opencode" && meta.status === "running" && normalizeBaseUrl(meta.externalServerUrl ?? "") === baseUrl) {
-        return true;
+        jobIds.push(entry.name);
       }
     } catch {
       // Corrupted job metadata should not keep managed servers alive forever.
     }
   }
-  return false;
+  return jobIds.sort();
 }
 
 async function stopChildProcessTree(
   baseUrl: string,
   child: ChildProcess,
-  options: { stateDir?: string; cwd?: string; reason: "idle" | "startup_failed" | "process_exit" }
+  options: { stateDir?: string; cwd?: string; reason: OpenCodeServerStopReason }
 ): Promise<void> {
   const pid = child.pid;
   try {
@@ -489,6 +570,66 @@ async function stopChildProcessTree(
       cwd: options.cwd
     });
   }
+}
+
+async function stopDiscoveredManagedOpenCodeServer(
+  discovery: ManagedOpenCodeDiscovery,
+  options: { stateDir: string; cwd?: string; reason: OpenCodeServerStopReason }
+): Promise<void> {
+  const normalizedBaseUrl = normalizeBaseUrl(discovery.baseUrl);
+  cancelManagedOpenCodeServerIdleShutdown(normalizedBaseUrl);
+  const managed = managedServers.get(normalizedBaseUrl);
+  if (managed?.child && managed.child.pid === discovery.pid) {
+    await stopChildProcessTree(normalizedBaseUrl, managed.child, options);
+    managedServers.delete(normalizedBaseUrl);
+  } else {
+    try {
+      await killProcessTree(discovery.pid);
+      await writeRetinueTrace(options.stateDir, {
+        event: "opencode_server_stopped",
+        baseUrl: normalizedBaseUrl,
+        pid: discovery.pid,
+        reason: options.reason,
+        cwd: options.cwd
+      });
+    } catch (error) {
+      await writeRetinueTrace(options.stateDir, {
+        event: "opencode_server_stop_failed",
+        baseUrl: normalizedBaseUrl,
+        pid: discovery.pid,
+        reason: options.reason,
+        error: error instanceof Error ? error.message : String(error),
+        cwd: options.cwd
+      });
+    }
+  }
+  await removeDiscoveryIfMatches(options.stateDir, discovery.pid, options.cwd);
+}
+
+async function markRunningOpenCodeJobsKilledForServer(stateDir: string, baseUrl: string): Promise<string[]> {
+  const jobsDir = getJobPaths(stateDir, "placeholder").dir.replace(/[\\/]placeholder$/, "");
+  const killed: string[] = [];
+  for (const entry of await readDirIfExists(jobsDir)) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const metaPath = path.join(jobsDir, entry.name, "meta.json");
+    try {
+      const meta = JSON.parse(await fs.readFile(metaPath, "utf8")) as {
+        backend?: string;
+        status?: string;
+        externalServerUrl?: string;
+      } & Record<string, unknown>;
+      if (meta.backend !== "opencode" || meta.status !== "running" || normalizeBaseUrl(meta.externalServerUrl ?? "") !== baseUrl) {
+        continue;
+      }
+      await fs.writeFile(metaPath, `${JSON.stringify({ ...meta, status: "killed", updatedAt: new Date().toISOString() }, null, 2)}\n`, "utf8");
+      killed.push(entry.name);
+    } catch {
+      // Best-effort force shutdown should not fail because one job metadata file is corrupt.
+    }
+  }
+  return killed.sort();
 }
 
 function stopChildProcessTreeSync(child: ChildProcess): void {
@@ -629,6 +770,30 @@ async function readReusableDiscovery(stateDir: string, cwd: string | undefined):
     return undefined;
   }
   return { baseUrl: discovery.baseUrl, started: false, cwd };
+}
+
+async function listManagedOpenCodeDiscoveries(stateDir: string, cwd: string | undefined): Promise<ManagedOpenCodeDiscovery[]> {
+  const discoveryDir = path.dirname(getOpenCodeServerDiscoveryPath(stateDir));
+  const discoveries: ManagedOpenCodeDiscovery[] = [];
+  for (const entry of await readDirIfExists(discoveryDir)) {
+    if (!entry.isFile() || !/^opencode-server(?:-[a-f0-9]+)?\.json$/.test(entry.name)) {
+      continue;
+    }
+    try {
+      const discovery = normalizeOpenCodeServerDiscovery(JSON.parse(await fs.readFile(path.join(discoveryDir, entry.name), "utf8")) as Partial<ManagedOpenCodeDiscovery>);
+      if (cwd !== undefined && normalizeServerCwd(discovery.cwd) !== cwd) {
+        continue;
+      }
+      if (!isPidAlive(discovery.pid)) {
+        await removeDiscoveryIfMatches(stateDir, discovery.pid, normalizeServerCwd(discovery.cwd));
+        continue;
+      }
+      discoveries.push(discovery);
+    } catch {
+      // Ignore corrupt discovery files; startup reuse already treats them as absent.
+    }
+  }
+  return discoveries.sort((left, right) => `${left.cwd ?? ""}\0${left.baseUrl}`.localeCompare(`${right.cwd ?? ""}\0${right.baseUrl}`));
 }
 
 async function writeOpenCodeServerDiscovery(stateDir: string, value: ManagedOpenCodeDiscovery): Promise<void> {

@@ -56016,6 +56016,47 @@ function scheduleManagedOpenCodeServerIdleShutdown(baseUrl, options = {}) {
     cwd: options.cwd ?? managed.cwd
   });
 }
+async function stopManagedOpenCodeServers(options) {
+  const cwd = normalizeServerCwd(options.cwd);
+  const discoveries = await listManagedOpenCodeDiscoveries(options.stateDir, options.all === true ? void 0 : cwd);
+  const stopped = [];
+  const blocked = [];
+  const force = options.force === true;
+  for (const discovery of discoveries) {
+    const runningJobIds = await listRunningOpenCodeJobIdsForServer(options.stateDir, discovery.baseUrl);
+    const summary = {
+      baseUrl: discovery.baseUrl,
+      pid: discovery.pid,
+      cwd: discovery.cwd
+    };
+    if (runningJobIds.length > 0 && !force) {
+      blocked.push({ ...summary, runningJobIds });
+      await writeRetinueTrace(options.stateDir, {
+        event: "opencode_server_stop_blocked",
+        baseUrl: discovery.baseUrl,
+        pid: discovery.pid,
+        reason: "running_jobs",
+        cwd: discovery.cwd,
+        runningJobIds
+      });
+      continue;
+    }
+    const killedJobIds = force ? await markRunningOpenCodeJobsKilledForServer(options.stateDir, discovery.baseUrl) : [];
+    await stopDiscoveredManagedOpenCodeServer(discovery, {
+      stateDir: options.stateDir,
+      cwd: discovery.cwd,
+      reason: options.reason ?? "manual"
+    });
+    stopped.push({ ...summary, killedJobIds });
+  }
+  return {
+    backend: "opencode",
+    status: blocked.length > 0 ? "blocked" : stopped.length > 0 ? "stopped" : "not_found",
+    stopped,
+    blocked,
+    force
+  };
+}
 function cancelManagedOpenCodeServerIdleShutdown(baseUrl) {
   const timer = managedServerIdleTimers.get(baseUrl);
   if (!timer) {
@@ -56038,10 +56079,14 @@ async function stopManagedOpenCodeServer(baseUrl, options) {
   return true;
 }
 async function hasRunningOpenCodeJobsForServer(stateDir, baseUrl) {
+  return (await listRunningOpenCodeJobIdsForServer(stateDir, baseUrl)).length > 0;
+}
+async function listRunningOpenCodeJobIdsForServer(stateDir, baseUrl) {
   if (!stateDir) {
-    return false;
+    return [];
   }
   const jobsDir = getJobPaths(stateDir, "placeholder").dir.replace(/[\\/]placeholder$/, "");
+  const jobIds = [];
   for (const entry of await readDirIfExists2(jobsDir)) {
     if (!entry.isDirectory()) {
       continue;
@@ -56049,12 +56094,12 @@ async function hasRunningOpenCodeJobsForServer(stateDir, baseUrl) {
     try {
       const meta3 = JSON.parse(await fs3.readFile(path2.join(jobsDir, entry.name, "meta.json"), "utf8"));
       if (meta3.backend === "opencode" && meta3.status === "running" && normalizeBaseUrl(meta3.externalServerUrl ?? "") === baseUrl) {
-        return true;
+        jobIds.push(entry.name);
       }
     } catch {
     }
   }
-  return false;
+  return jobIds.sort();
 }
 async function stopChildProcessTree(baseUrl, child, options) {
   const pid = child.pid;
@@ -56079,6 +56124,57 @@ async function stopChildProcessTree(baseUrl, child, options) {
       cwd: options.cwd
     });
   }
+}
+async function stopDiscoveredManagedOpenCodeServer(discovery, options) {
+  const normalizedBaseUrl = normalizeBaseUrl(discovery.baseUrl);
+  cancelManagedOpenCodeServerIdleShutdown(normalizedBaseUrl);
+  const managed = managedServers.get(normalizedBaseUrl);
+  if (managed?.child && managed.child.pid === discovery.pid) {
+    await stopChildProcessTree(normalizedBaseUrl, managed.child, options);
+    managedServers.delete(normalizedBaseUrl);
+  } else {
+    try {
+      await killProcessTree(discovery.pid);
+      await writeRetinueTrace(options.stateDir, {
+        event: "opencode_server_stopped",
+        baseUrl: normalizedBaseUrl,
+        pid: discovery.pid,
+        reason: options.reason,
+        cwd: options.cwd
+      });
+    } catch (error51) {
+      await writeRetinueTrace(options.stateDir, {
+        event: "opencode_server_stop_failed",
+        baseUrl: normalizedBaseUrl,
+        pid: discovery.pid,
+        reason: options.reason,
+        error: error51 instanceof Error ? error51.message : String(error51),
+        cwd: options.cwd
+      });
+    }
+  }
+  await removeDiscoveryIfMatches(options.stateDir, discovery.pid, options.cwd);
+}
+async function markRunningOpenCodeJobsKilledForServer(stateDir, baseUrl) {
+  const jobsDir = getJobPaths(stateDir, "placeholder").dir.replace(/[\\/]placeholder$/, "");
+  const killed = [];
+  for (const entry of await readDirIfExists2(jobsDir)) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const metaPath = path2.join(jobsDir, entry.name, "meta.json");
+    try {
+      const meta3 = JSON.parse(await fs3.readFile(metaPath, "utf8"));
+      if (meta3.backend !== "opencode" || meta3.status !== "running" || normalizeBaseUrl(meta3.externalServerUrl ?? "") !== baseUrl) {
+        continue;
+      }
+      await fs3.writeFile(metaPath, `${JSON.stringify({ ...meta3, status: "killed", updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
+`, "utf8");
+      killed.push(entry.name);
+    } catch {
+    }
+  }
+  return killed.sort();
 }
 function stopChildProcessTreeSync(child) {
   const pid = child.pid;
@@ -56203,6 +56299,28 @@ async function readReusableDiscovery(stateDir, cwd) {
     return void 0;
   }
   return { baseUrl: discovery.baseUrl, started: false, cwd };
+}
+async function listManagedOpenCodeDiscoveries(stateDir, cwd) {
+  const discoveryDir = path2.dirname(getOpenCodeServerDiscoveryPath(stateDir));
+  const discoveries = [];
+  for (const entry of await readDirIfExists2(discoveryDir)) {
+    if (!entry.isFile() || !/^opencode-server(?:-[a-f0-9]+)?\.json$/.test(entry.name)) {
+      continue;
+    }
+    try {
+      const discovery = normalizeOpenCodeServerDiscovery(JSON.parse(await fs3.readFile(path2.join(discoveryDir, entry.name), "utf8")));
+      if (cwd !== void 0 && normalizeServerCwd(discovery.cwd) !== cwd) {
+        continue;
+      }
+      if (!isPidAlive(discovery.pid)) {
+        await removeDiscoveryIfMatches(stateDir, discovery.pid, normalizeServerCwd(discovery.cwd));
+        continue;
+      }
+      discoveries.push(discovery);
+    } catch {
+    }
+  }
+  return discoveries.sort((left, right) => `${left.cwd ?? ""}\0${left.baseUrl}`.localeCompare(`${right.cwd ?? ""}\0${right.baseUrl}`));
 }
 async function writeOpenCodeServerDiscovery(stateDir, value) {
   const filePath = getScopedOpenCodeServerDiscoveryPath(stateDir, normalizeServerCwd(value.cwd));
@@ -59773,7 +59891,9 @@ var RETINUE_TOOL_NAMES = [
   "retinue_close_agent",
   "retinue_list_agents",
   "retinue_list_permissions",
-  "retinue_reply_permission"
+  "retinue_reply_permission",
+  "retinue_stop_runtime",
+  "retinue_restart_runtime"
 ];
 var RETINUE_DIAGNOSTIC_TOOL_NAMES = ["retinue_audit_logs"];
 var DEFAULT_MCP_WAIT_MAX_MS = 18e4;
@@ -60159,6 +60279,82 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
         throw new Error(`Retinue backend ${backend.kind} does not expose permission requests`);
       }
       return jsonToolResult(await backend.replyPermission({ jobId }, { requestId, reply, message }));
+    }
+  );
+  server.registerTool(
+    "retinue_stop_runtime",
+    {
+      title: "Stop Retinue Runtime",
+      description: "Stop Retinue-managed local runtime servers. Only OpenCode auto-serve servers started by Retinue are managed.",
+      inputSchema: {
+        runtime: external_exports.enum(["opencode"]).optional(),
+        cwd: external_exports.string().optional(),
+        all: external_exports.boolean().optional(),
+        force: external_exports.boolean().optional()
+      }
+    },
+    async ({ runtime, cwd, all, force }) => {
+      const selectedRuntime = runtime ?? "opencode";
+      if (selectedRuntime !== "opencode") {
+        return jsonToolResult({ runtime: selectedRuntime, status: "unsupported" });
+      }
+      if (all !== true && !cwd?.trim()) {
+        return jsonToolResult({
+          runtime: selectedRuntime,
+          status: "invalid_request",
+          error: "retinue_stop_runtime requires cwd or all=true"
+        });
+      }
+      const stateDir = resolveStateDir({
+        explicitStateDir: process.env.RETINUE_STATE_DIR,
+        env: process.env
+      });
+      return jsonToolResult(await stopManagedOpenCodeServers({ stateDir, cwd, all, force, reason: "manual" }));
+    }
+  );
+  server.registerTool(
+    "retinue_restart_runtime",
+    {
+      title: "Restart Retinue Runtime",
+      description: "Restart a Retinue-managed local runtime server for one cwd. Only OpenCode auto-serve servers started by Retinue are managed.",
+      inputSchema: {
+        runtime: external_exports.enum(["opencode"]).optional(),
+        cwd: external_exports.string(),
+        force: external_exports.boolean().optional()
+      }
+    },
+    async ({ runtime, cwd, force }) => {
+      const selectedRuntime = runtime ?? "opencode";
+      if (selectedRuntime !== "opencode") {
+        return jsonToolResult({ runtime: selectedRuntime, status: "unsupported" });
+      }
+      const resolution = resolveOpenCodeServerFromEnv(process.env);
+      if (resolution.mode === "attach") {
+        return jsonToolResult({
+          backend: selectedRuntime,
+          status: "not_managed",
+          error: "retinue_restart_runtime only manages Retinue auto-served OpenCode servers; RETINUE_OPENCODE_BASE_URL is external."
+        });
+      }
+      const stateDir = resolveStateDir({
+        explicitStateDir: process.env.RETINUE_STATE_DIR,
+        env: process.env
+      });
+      const stopped = await stopManagedOpenCodeServers({ stateDir, cwd, force, reason: "restart" });
+      if (stopped.status === "blocked") {
+        return jsonToolResult(stopped);
+      }
+      const started = await ensureOpenCodeServer(resolution, { stateDir, cwd });
+      return jsonToolResult({
+        backend: selectedRuntime,
+        status: "restarted",
+        stopped: stopped.stopped,
+        started: {
+          baseUrl: started.baseUrl,
+          cwd,
+          reusedExisting: started.started !== true
+        }
+      });
     }
   );
   if (options.exposeDiagnosticTools ?? process.env.RETINUE_EXPOSE_DIAGNOSTIC_TOOLS === "1") {

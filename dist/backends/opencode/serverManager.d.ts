@@ -32,6 +32,25 @@ export interface OpenCodeSpawnCommand {
     command: string;
     shell: boolean;
 }
+type OpenCodeServerStopReason = "idle" | "startup_failed" | "process_exit" | "manual" | "restart";
+export interface OpenCodeManagedServerSummary {
+    baseUrl: string;
+    pid: number;
+    cwd?: string;
+}
+export interface OpenCodeManagedServerStopped extends OpenCodeManagedServerSummary {
+    killedJobIds: string[];
+}
+export interface OpenCodeManagedServerBlocked extends OpenCodeManagedServerSummary {
+    runningJobIds: string[];
+}
+export interface OpenCodeManagedServerStopResult {
+    backend: "opencode";
+    status: "stopped" | "blocked" | "not_found";
+    stopped: OpenCodeManagedServerStopped[];
+    blocked: OpenCodeManagedServerBlocked[];
+    force: boolean;
+}
 export declare function resolveOpenCodeServer(config: OpenCodeServerConfig): OpenCodeServerResolution;
 export declare function resolveOpenCodeServerFromEnv(env: NodeJS.ProcessEnv | Record<string, string | undefined>): OpenCodeServerResolution;
 export declare function resolveKiloServerFromEnv(env: NodeJS.ProcessEnv | Record<string, string | undefined>): OpenCodeServerResolution;
@@ -58,3 +77,11 @@ export declare function scheduleManagedOpenCodeServerIdleShutdown(baseUrl: strin
     delayMs?: number;
     reason?: "idle";
 }): void;
+export declare function stopManagedOpenCodeServers(options: {
+    stateDir: string;
+    cwd?: string;
+    all?: boolean;
+    force?: boolean;
+    reason?: Extract<OpenCodeServerStopReason, "manual" | "restart">;
+}): Promise<OpenCodeManagedServerStopResult>;
+export {};

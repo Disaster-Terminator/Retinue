@@ -37,6 +37,8 @@ Hermes registers Retinue MCP tools with the `mcp_retinue_` prefix:
 - `mcp_retinue_retinue_list_agents`
 - `mcp_retinue_retinue_list_permissions`
 - `mcp_retinue_retinue_reply_permission`
+- `mcp_retinue_retinue_stop_runtime`
+- `mcp_retinue_retinue_restart_runtime`
 
 ## Wait Handling
 
@@ -57,6 +59,7 @@ Prefer `once` for scoped task-required permission replies. Reserve `always` for 
 - Do not treat `stalled` as review evidence.
 - Do not trust repository conclusions when `cwd` and `externalSessionDirectory` disagree.
 - Do not use hidden diagnostic or backend tools for normal delegation.
+- Use runtime stop/restart tools only for Retinue-managed runtime maintenance, such as refreshing an auto-served OpenCode provider/profile. They do not manage external runtime URLs.
 
 ## Configuration Boundary
 

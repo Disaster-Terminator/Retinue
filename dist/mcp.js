@@ -9,7 +9,7 @@ import { z } from "zod";
 import { ClaudeCodeSdkBackend } from "./backends/claude/sdkBackend.js";
 import { OpenCodeBackend } from "./backends/opencode/backend.js";
 import { OpenCodeClient } from "./backends/opencode/client.js";
-import { ensureOpenCodeServer, resolveKiloServerFromEnv, resolveOpenCodeServerFromEnv } from "./backends/opencode/serverManager.js";
+import { ensureOpenCodeServer, resolveKiloServerFromEnv, resolveOpenCodeServerFromEnv, stopManagedOpenCodeServers } from "./backends/opencode/serverManager.js";
 import { DaemonClient } from "./daemon/client.js";
 import { readDaemonDiscoverySync } from "./daemon/discovery.js";
 import { readTextTailIfExists } from "./core/fileTail.js";
@@ -45,7 +45,9 @@ export const RETINUE_TOOL_NAMES = [
     "retinue_close_agent",
     "retinue_list_agents",
     "retinue_list_permissions",
-    "retinue_reply_permission"
+    "retinue_reply_permission",
+    "retinue_stop_runtime",
+    "retinue_restart_runtime"
 ];
 export const RETINUE_DIAGNOSTIC_TOOL_NAMES = ["retinue_audit_logs"];
 const DEFAULT_MCP_WAIT_MAX_MS = 180_000;
@@ -404,6 +406,74 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             throw new Error(`Retinue backend ${backend.kind} does not expose permission requests`);
         }
         return jsonToolResult(await backend.replyPermission({ jobId }, { requestId, reply, message }));
+    });
+    server.registerTool("retinue_stop_runtime", {
+        title: "Stop Retinue Runtime",
+        description: "Stop Retinue-managed local runtime servers. Only OpenCode auto-serve servers started by Retinue are managed.",
+        inputSchema: {
+            runtime: z.enum(["opencode"]).optional(),
+            cwd: z.string().optional(),
+            all: z.boolean().optional(),
+            force: z.boolean().optional()
+        }
+    }, async ({ runtime, cwd, all, force }) => {
+        const selectedRuntime = runtime ?? "opencode";
+        if (selectedRuntime !== "opencode") {
+            return jsonToolResult({ runtime: selectedRuntime, status: "unsupported" });
+        }
+        if (all !== true && !cwd?.trim()) {
+            return jsonToolResult({
+                runtime: selectedRuntime,
+                status: "invalid_request",
+                error: "retinue_stop_runtime requires cwd or all=true"
+            });
+        }
+        const stateDir = resolveStateDir({
+            explicitStateDir: process.env.RETINUE_STATE_DIR,
+            env: process.env
+        });
+        return jsonToolResult(await stopManagedOpenCodeServers({ stateDir, cwd, all, force, reason: "manual" }));
+    });
+    server.registerTool("retinue_restart_runtime", {
+        title: "Restart Retinue Runtime",
+        description: "Restart a Retinue-managed local runtime server for one cwd. Only OpenCode auto-serve servers started by Retinue are managed.",
+        inputSchema: {
+            runtime: z.enum(["opencode"]).optional(),
+            cwd: z.string(),
+            force: z.boolean().optional()
+        }
+    }, async ({ runtime, cwd, force }) => {
+        const selectedRuntime = runtime ?? "opencode";
+        if (selectedRuntime !== "opencode") {
+            return jsonToolResult({ runtime: selectedRuntime, status: "unsupported" });
+        }
+        const resolution = resolveOpenCodeServerFromEnv(process.env);
+        if (resolution.mode === "attach") {
+            return jsonToolResult({
+                backend: selectedRuntime,
+                status: "not_managed",
+                error: "retinue_restart_runtime only manages Retinue auto-served OpenCode servers; RETINUE_OPENCODE_BASE_URL is external."
+            });
+        }
+        const stateDir = resolveStateDir({
+            explicitStateDir: process.env.RETINUE_STATE_DIR,
+            env: process.env
+        });
+        const stopped = await stopManagedOpenCodeServers({ stateDir, cwd, force, reason: "restart" });
+        if (stopped.status === "blocked") {
+            return jsonToolResult(stopped);
+        }
+        const started = await ensureOpenCodeServer(resolution, { stateDir, cwd });
+        return jsonToolResult({
+            backend: selectedRuntime,
+            status: "restarted",
+            stopped: stopped.stopped,
+            started: {
+                baseUrl: started.baseUrl,
+                cwd,
+                reusedExisting: started.started !== true
+            }
+        });
     });
     if (options.exposeDiagnosticTools ?? process.env.RETINUE_EXPOSE_DIAGNOSTIC_TOOLS === "1") {
         registerDiagnosticTools(server);
