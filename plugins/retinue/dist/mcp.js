@@ -57702,12 +57702,12 @@ ${textWarning2}` : stderr;
     if (!meta3.externalServerUrl) {
       return;
     }
-    if (await this.hasRunningJobsForServer(meta3.externalServerUrl)) {
+    if (await this.hasOpenJobsForServer(meta3.externalServerUrl)) {
       return;
     }
     this.onServerIdle(meta3.externalServerUrl, meta3.cwd);
   }
-  async hasRunningJobsForServer(baseUrl) {
+  async hasOpenJobsForServer(baseUrl) {
     for (const entry of await readDirIfExists3(getJobsDir2(this.stateDir))) {
       if (!entry.isDirectory()) {
         continue;
@@ -57722,6 +57722,12 @@ ${textWarning2}` : stderr;
       const status = meta3.status === "running" ? await this.reconcileStatus(meta3) : meta3;
       if (!isProblem2(status) && status.status === "running" && status.externalServerUrl === baseUrl) {
         return true;
+      }
+      if (!isProblem2(status) && status.status === "stalled" && status.externalServerUrl === baseUrl) {
+        const cachedStdout = await readTextIfExists2(getJobPaths(this.stateDir, status.jobId).stdout);
+        if (!cachedStdout.trim()) {
+          return true;
+        }
       }
     }
     return false;
@@ -60290,7 +60296,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
           options.claudeSdkQuery
         );
         const selectedStatus = await selectedBackend.status({ jobId: meta3.selectedAttemptJobId });
-        if (isJobMeta(selectedStatus) && selectedStatus.status === "running") {
+        if (isJobMeta(selectedStatus) && (selectedStatus.status === "running" || selectedStatus.status === "stalled")) {
           await selectedBackend.abort({ jobId: meta3.selectedAttemptJobId });
           agentPool.remove(meta3.selectedAttemptJobId);
           await writeJobMeta(stateDir, { ...meta3, status: "killed", updatedAt: (/* @__PURE__ */ new Date()).toISOString() });
@@ -60301,6 +60307,16 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
       const status = await backend.status({ jobId });
       if (isJobMeta(status) && status.status === "running") {
         await backend.abort({ jobId });
+        agentPool.remove(jobId);
+        return jsonToolResult({ jobId, status: "killed" });
+      }
+      if (isJobMeta(status) && status.status === "stalled") {
+        await backend.abort({ jobId });
+        agentPool.remove(jobId);
+        return jsonToolResult({ jobId, status: "killed" });
+      }
+      if (status.status === "backend_unreachable" && meta3?.status === "stalled") {
+        await writeJobMeta(stateDir, { ...meta3, status: "killed", updatedAt: (/* @__PURE__ */ new Date()).toISOString() });
         agentPool.remove(jobId);
         return jsonToolResult({ jobId, status: "killed" });
       }

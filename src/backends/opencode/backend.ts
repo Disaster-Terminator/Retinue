@@ -1442,13 +1442,13 @@ export class OpenCodeBackend implements AgentBackend {
     if (!meta.externalServerUrl) {
       return;
     }
-    if (await this.hasRunningJobsForServer(meta.externalServerUrl)) {
+    if (await this.hasOpenJobsForServer(meta.externalServerUrl)) {
       return;
     }
     this.onServerIdle(meta.externalServerUrl, meta.cwd);
   }
 
-  private async hasRunningJobsForServer(baseUrl: string): Promise<boolean> {
+  private async hasOpenJobsForServer(baseUrl: string): Promise<boolean> {
     for (const entry of await readDirIfExists(getJobsDir(this.stateDir))) {
       if (!entry.isDirectory()) {
         continue;
@@ -1463,6 +1463,12 @@ export class OpenCodeBackend implements AgentBackend {
       const status = meta.status === "running" ? await this.reconcileStatus(meta) : meta;
       if (!isProblem(status) && status.status === "running" && status.externalServerUrl === baseUrl) {
         return true;
+      }
+      if (!isProblem(status) && status.status === "stalled" && status.externalServerUrl === baseUrl) {
+        const cachedStdout = await readTextIfExists(getJobPaths(this.stateDir, status.jobId).stdout);
+        if (!cachedStdout.trim()) {
+          return true;
+        }
       }
     }
     return false;

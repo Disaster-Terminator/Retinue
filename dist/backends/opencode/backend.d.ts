@@ -69,7 +69,7 @@ export declare class OpenCodeBackend implements AgentBackend {
     private reopenExternalPermissionStall;
     private inspectJob;
     private maybeScheduleServerIdleShutdown;
-    private hasRunningJobsForServer;
+    private hasOpenJobsForServer;
     private writeJobTrace;
     private submitPromptAsync;
     private refreshNativeChildSessions;

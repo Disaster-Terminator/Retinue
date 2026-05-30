@@ -1199,12 +1199,12 @@ export class OpenCodeBackend {
         if (!meta.externalServerUrl) {
             return;
         }
-        if (await this.hasRunningJobsForServer(meta.externalServerUrl)) {
+        if (await this.hasOpenJobsForServer(meta.externalServerUrl)) {
             return;
         }
         this.onServerIdle(meta.externalServerUrl, meta.cwd);
     }
-    async hasRunningJobsForServer(baseUrl) {
+    async hasOpenJobsForServer(baseUrl) {
         for (const entry of await readDirIfExists(getJobsDir(this.stateDir))) {
             if (!entry.isDirectory()) {
                 continue;
@@ -1219,6 +1219,12 @@ export class OpenCodeBackend {
             const status = meta.status === "running" ? await this.reconcileStatus(meta) : meta;
             if (!isProblem(status) && status.status === "running" && status.externalServerUrl === baseUrl) {
                 return true;
+            }
+            if (!isProblem(status) && status.status === "stalled" && status.externalServerUrl === baseUrl) {
+                const cachedStdout = await readTextIfExists(getJobPaths(this.stateDir, status.jobId).stdout);
+                if (!cachedStdout.trim()) {
+                    return true;
+                }
             }
         }
         return false;

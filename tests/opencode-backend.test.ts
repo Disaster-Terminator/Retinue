@@ -600,6 +600,28 @@ describe("OpenCodeBackend", () => {
     expect(idleShutdowns).toEqual([{ baseUrl: server!.url, cwd: tempDir }]);
   });
 
+  it("keeps the OpenCode server alive while a stalled sibling has no persisted result", async () => {
+    const idleShutdowns: Array<{ baseUrl: string; cwd?: string }> = [];
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      onServerIdle: (baseUrl, cwd) => idleShutdowns.push({ baseUrl, cwd })
+    });
+    const first = await backend.run({ cwd: tempDir, prompt: "finish without closing server" });
+    const stalled = await writeOpenCodeJobMeta(tempDir, "job_stalled_same_server", "stalled");
+    await fs.writeFile(
+      getJobPaths(tempDir, stalled.jobId).meta,
+      `${JSON.stringify({ ...stalled, externalServerUrl: server!.url, externalSessionId: "ses_stalled" }, null, 2)}\n`,
+      "utf8"
+    );
+
+    server!.completeSession(first.externalSessionId!);
+    await expect(backend.status({ jobId: first.jobId })).resolves.toMatchObject({ status: "completed" });
+
+    expect(idleShutdowns).toEqual([]);
+  });
+
   it("records completed wait and result diagnostics for real E2E debugging", async () => {
     const backend = createBackend();
     const started = await backend.run({ cwd: tempDir, prompt: "diagnose me" });

@@ -321,7 +321,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
         if (meta?.selectedAttemptJobId) {
             const selectedBackend = await createRetinueBackendForJob(retinue, meta.selectedAttemptJobId, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
             const selectedStatus = await selectedBackend.status({ jobId: meta.selectedAttemptJobId });
-            if (isJobMeta(selectedStatus) && selectedStatus.status === "running") {
+            if (isJobMeta(selectedStatus) && (selectedStatus.status === "running" || selectedStatus.status === "stalled")) {
                 await selectedBackend.abort({ jobId: meta.selectedAttemptJobId });
                 agentPool.remove(meta.selectedAttemptJobId);
                 await writeJobMeta(stateDir, { ...meta, status: "killed", updatedAt: new Date().toISOString() });
@@ -332,6 +332,16 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
         const status = await backend.status({ jobId });
         if (isJobMeta(status) && status.status === "running") {
             await backend.abort({ jobId });
+            agentPool.remove(jobId);
+            return jsonToolResult({ jobId, status: "killed" });
+        }
+        if (isJobMeta(status) && status.status === "stalled") {
+            await backend.abort({ jobId });
+            agentPool.remove(jobId);
+            return jsonToolResult({ jobId, status: "killed" });
+        }
+        if (status.status === "backend_unreachable" && meta?.status === "stalled") {
+            await writeJobMeta(stateDir, { ...meta, status: "killed", updatedAt: new Date().toISOString() });
             agentPool.remove(jobId);
             return jsonToolResult({ jobId, status: "killed" });
         }

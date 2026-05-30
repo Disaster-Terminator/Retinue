@@ -585,6 +585,45 @@ describe("MCP tools", () => {
     }
   });
 
+  it("closes stalled OpenCode jobs so unresolved sessions do not pin managed servers", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-close-stalled-opencode-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    fakeOpenCode.setAutoAssistantResponses(false);
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.RETINUE_OPENCODE_STALL_READ_TOOL_MS = "1";
+
+      const spawn = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "read then stall", task_name: "close-stalled" }
+        })
+      );
+      fakeOpenCode.appendPendingReadToolAssistant(spawn.externalSessionId);
+
+      await expect(
+        connection.client
+          .callTool({ name: "retinue_wait_agent", arguments: { jobId: spawn.jobId, timeoutMs: 1000 } })
+          .then(parseToolJson)
+      ).resolves.toMatchObject({ jobId: spawn.jobId, status: "stalled" });
+
+      await expect(
+        connection.client.callTool({ name: "retinue_close_agent", arguments: { jobId: spawn.jobId } }).then(parseToolJson)
+      ).resolves.toMatchObject({ jobId: spawn.jobId, status: "killed" });
+      await expect(fs.readFile(path.join(tempDir, "jobs", spawn.jobId, "meta.json"), "utf8").then(JSON.parse)).resolves.toMatchObject({
+        status: "killed"
+      });
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      delete process.env.RETINUE_OPENCODE_STALL_READ_TOOL_MS;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("clarifies OpenCode patch parts without write intent in agent-facing diagnostics", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-opencode-patch-summary-"));
     const fakeOpenCode = await startFakeOpenCodeServer();
