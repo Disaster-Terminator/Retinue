@@ -48,6 +48,10 @@ Hermes registers Retinue MCP tools with the `mcp_retinue_` prefix:
 | `running` | Inspect `diagnostic`, `stdoutTail`, and `stderrTail`; wait again with the same `jobId`. |
 | `queued` | Keep the handle; queued jobs promote when session and shared-machine slots open. |
 | `stalled` | Treat as non-evidence. Inspect `diagnostic.stallReason`, `diagnostic.stallSummary`, and artifact paths. |
+| `failed`, `killed`, or `timed_out` | Treat as terminal non-success. Inspect artifacts if needed, then close. |
+| `orphaned` or `abandoned` | Treat as stale/unowned local state, not current child-agent output. |
+| `backend_unreachable`, `not_found`, or `corrupted` | Treat as Retinue/backend infrastructure state, not child-agent evidence. |
+| `resource_exhausted` from spawn | No job started; wait for capacity or close unneeded jobs before retrying. |
 | Permission event | Use `mcp_retinue_retinue_list_permissions` if needed, reply with `mcp_retinue_retinue_reply_permission`, then wait again. |
 
 Prefer `once` for scoped task-required permission replies. Reserve `always` for trusted repeated patterns. Reject out-of-scope paths and tools.
@@ -57,6 +61,8 @@ Prefer `once` for scoped task-required permission replies. Reserve `always` for 
 - Do not pass backend, model, provider, profile, OpenCode server, `access_mode`, or `bash_policy` in tool arguments.
 - Do not treat `running` as done.
 - Do not treat `stalled` as review evidence.
+- Do not treat `backend_unreachable` as a child-agent conclusion.
+- Do not treat `resource_exhausted` as a queued job; it has no job handle.
 - Do not trust repository conclusions when `cwd` and `externalSessionDirectory` disagree.
 - Do not use hidden diagnostic or backend tools for normal delegation.
 - Use runtime stop/restart tools only for Retinue-managed runtime maintenance, such as refreshing an auto-served OpenCode provider/profile. They do not manage external runtime URLs.

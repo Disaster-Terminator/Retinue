@@ -1221,10 +1221,7 @@ export class OpenCodeBackend {
                 return true;
             }
             if (!isProblem(status) && status.status === "stalled" && status.externalServerUrl === baseUrl) {
-                const cachedStdout = await readTextIfExists(getJobPaths(this.stateDir, status.jobId).stdout);
-                if (!cachedStdout.trim()) {
-                    return true;
-                }
+                return true;
             }
         }
         return false;

@@ -383,6 +383,45 @@ describe("OpenCode server manager", () => {
     }
   });
 
+  it("does not stop a reused managed OpenCode server when an unresolved stalled job exists before the idle timer fires", async () => {
+    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-state-"));
+    const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-project-"));
+    const port = await freePort();
+    const command = await writeFakeOpenCodeCommandWithSessions();
+    let target: Awaited<ReturnType<typeof ensureOpenCodeServer>> | undefined;
+    try {
+      target = await ensureOpenCodeServer(
+        {
+          mode: "serve",
+          command,
+          args: buildServeArgs({ host: "127.0.0.1", port }),
+          host: "127.0.0.1",
+          port,
+          fallbackPorts: []
+        },
+        { stateDir, cwd: projectDir, healthTimeoutMs: 5000, healthPollMs: 50 }
+      );
+
+      scheduleManagedOpenCodeServerIdleShutdown(target.baseUrl, {
+        stateDir,
+        cwd: projectDir,
+        delayMs: 20
+      });
+      await writeOpenCodeRunningJob(stateDir, "job_stalled_reused_server", target.baseUrl, projectDir, undefined, "stalled");
+      await sleep(80);
+
+      await expect(fetch(`${target.baseUrl}/global/health`).then((response) => response.ok)).resolves.toBe(true);
+      const trace = await fs.readFile(getRetinueTracePath(stateDir), "utf8");
+      expect(trace).toContain('"event":"opencode_server_idle_shutdown_scheduled"');
+      expect(trace).toContain('"event":"opencode_server_idle_shutdown_skipped"');
+      expect(trace).not.toContain('"event":"opencode_server_stopped"');
+    } finally {
+      target?.child?.kill();
+      await fs.rm(stateDir, { recursive: true, force: true });
+      await fs.rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("stops a Retinue-managed OpenCode server recorded in discovery", async () => {
     const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-manual-stop-"));
     const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-project-"));
@@ -429,7 +468,7 @@ describe("OpenCode server manager", () => {
     }
   });
 
-  it("blocks managed OpenCode server stop while jobs are running unless forced", async () => {
+  it("blocks managed OpenCode server stop while jobs are running or stalled unless forced", async () => {
     const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-force-stop-"));
     const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-project-"));
     const port = await freePort();
@@ -448,21 +487,25 @@ describe("OpenCode server manager", () => {
         { stateDir, cwd: projectDir, healthTimeoutMs: 5000, healthPollMs: 50 }
       );
       await writeOpenCodeRunningJob(stateDir, "job_running_runtime_stop", target.baseUrl, projectDir);
+      await writeOpenCodeRunningJob(stateDir, "job_stalled_runtime_stop", target.baseUrl, projectDir, undefined, "stalled");
 
       await expect(stopManagedOpenCodeServers({ stateDir, cwd: projectDir, reason: "manual" })).resolves.toMatchObject({
         status: "blocked",
-        blocked: [expect.objectContaining({ runningJobIds: ["job_running_runtime_stop"] })],
+        blocked: [expect.objectContaining({ runningJobIds: ["job_running_runtime_stop", "job_stalled_runtime_stop"] })],
         stopped: []
       });
       await expect(fetch(`${target.baseUrl}/global/health`).then((response) => response.ok)).resolves.toBe(true);
 
       await expect(stopManagedOpenCodeServers({ stateDir, cwd: projectDir, reason: "manual", force: true })).resolves.toMatchObject({
         status: "stopped",
-        stopped: [expect.objectContaining({ baseUrl: target.baseUrl, killedJobIds: ["job_running_runtime_stop"] })],
+        stopped: [expect.objectContaining({ baseUrl: target.baseUrl, killedJobIds: ["job_running_runtime_stop", "job_stalled_runtime_stop"] })],
         blocked: []
       });
       await waitForUnreachable(target.baseUrl);
       await expect(fs.readFile(getJobPaths(stateDir, "job_running_runtime_stop").meta, "utf8").then(JSON.parse)).resolves.toMatchObject({
+        status: "killed"
+      });
+      await expect(fs.readFile(getJobPaths(stateDir, "job_stalled_runtime_stop").meta, "utf8").then(JSON.parse)).resolves.toMatchObject({
         status: "killed"
       });
     } finally {
@@ -767,7 +810,14 @@ async function waitForUnreachable(baseUrl: string): Promise<void> {
   }
 }
 
-async function writeOpenCodeRunningJob(stateDir: string, jobId: string, baseUrl: string, cwd: string, externalSessionId?: string): Promise<void> {
+async function writeOpenCodeRunningJob(
+  stateDir: string,
+  jobId: string,
+  baseUrl: string,
+  cwd: string,
+  externalSessionId?: string,
+  status: "running" | "stalled" = "running"
+): Promise<void> {
   const paths = getJobPaths(stateDir, jobId);
   await fs.mkdir(paths.dir, { recursive: true });
   const now = new Date().toISOString();
@@ -779,11 +829,11 @@ async function writeOpenCodeRunningJob(stateDir: string, jobId: string, baseUrl:
         backend: "opencode",
         jobId,
         pid: -1,
-        status: "running",
+        status,
         cwd,
         promptPath: paths.prompt,
-        promptPreview: "running",
-        promptSha256: "running",
+        promptPreview: status,
+        promptSha256: status,
         externalServerUrl: baseUrl,
         externalSessionId,
         args: [],

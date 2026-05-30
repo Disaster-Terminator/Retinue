@@ -34,6 +34,10 @@ For repository work, pass an absolute `cwd`. Ask the child to cite absolute path
 | `running` | Inspect `diagnostic`, `stdoutTail`, and `stderrTail`; wait again with the same `jobId`. |
 | `queued` | Keep the job handle. Later wait/list/close/spawn calls can promote it when slots open. |
 | `stalled` | Treat as non-evidence. Inspect `diagnostic.stallReason`, `diagnostic.stallSummary`, and artifact paths. |
+| `failed`, `killed`, or `timed_out` | Treat as terminal non-success. Inspect artifacts if needed, then close. |
+| `orphaned` or `abandoned` | Treat as stale/unowned local state, not current child-agent output. |
+| `backend_unreachable`, `not_found`, or `corrupted` | Treat as Retinue/backend infrastructure state, not child-agent evidence. |
+| `resource_exhausted` from spawn | No job started; wait for capacity or close unneeded jobs before retrying. |
 | `attentionRequired.kind: "permission"` or `permissionRequired: true` | Inspect `permissionActions`, or call `retinue_list_permissions`; reply with `retinue_reply_permission`; then wait again. |
 
 Prefer permission reply `once` for scoped task-required access. Use `always` only for trusted repeated patterns. Use `reject` for out-of-scope paths or tools.
@@ -45,6 +49,8 @@ When wait output includes `requestedJobId`, `selectedAttemptJobId`, or `attemptC
 - Do not pass backend, provider, profile, model, OpenCode server, `access_mode`, or `bash_policy` through Retinue tool arguments.
 - Do not treat `running` as terminal.
 - Do not treat `stalled` output as review evidence.
+- Do not treat `backend_unreachable` as a child-agent conclusion.
+- Do not treat `resource_exhausted` as a queued job; it has no job handle.
 - Do not trust repository-specific conclusions when returned `externalSessionDirectory` does not match the requested `cwd`.
 - Do not use hidden backend/debug tools for normal product delegation.
 - Do not use Retinue stalled child output to support a product claim.

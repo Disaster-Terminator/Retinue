@@ -600,7 +600,7 @@ describe("OpenCodeBackend", () => {
     expect(idleShutdowns).toEqual([{ baseUrl: server!.url, cwd: tempDir }]);
   });
 
-  it("keeps the OpenCode server alive while a stalled sibling has no persisted result", async () => {
+  it("keeps the OpenCode server alive while a stalled sibling is unresolved", async () => {
     const idleShutdowns: Array<{ baseUrl: string; cwd?: string }> = [];
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
@@ -615,6 +615,7 @@ describe("OpenCodeBackend", () => {
       `${JSON.stringify({ ...stalled, externalServerUrl: server!.url, externalSessionId: "ses_stalled" }, null, 2)}\n`,
       "utf8"
     );
+    await fs.writeFile(getJobPaths(tempDir, stalled.jobId).stdout, "partial stalled advisory text\n", "utf8");
 
     server!.completeSession(first.externalSessionId!);
     await expect(backend.status({ jobId: first.jobId })).resolves.toMatchObject({ status: "completed" });

@@ -55860,6 +55860,7 @@ async function ensureOpenCodeServer(resolution, options = {}) {
   const cwd = normalizeServerCwd(options.cwd);
   const discovered = options.stateDir ? await readReusableDiscovery(options.stateDir, cwd) : void 0;
   if (discovered) {
+    cancelManagedOpenCodeServerIdleShutdown(discovered.baseUrl);
     await writeRetinueTrace(options.stateDir, { event: "opencode_server_reused", baseUrl: discovered.baseUrl, source: "discovery", cwd });
     return discovered;
   }
@@ -55867,6 +55868,7 @@ async function ensureOpenCodeServer(resolution, options = {}) {
   try {
     const discoveredAfterLock = options.stateDir ? await readReusableDiscovery(options.stateDir, cwd) : void 0;
     if (discoveredAfterLock) {
+      cancelManagedOpenCodeServerIdleShutdown(discoveredAfterLock.baseUrl);
       await writeRetinueTrace(options.stateDir, { event: "opencode_server_reused", baseUrl: discoveredAfterLock.baseUrl, source: "discovery", cwd });
       return discoveredAfterLock;
     }
@@ -55991,7 +55993,7 @@ function scheduleManagedOpenCodeServerIdleShutdown(baseUrl, options = {}) {
     managedServerIdleTimers.delete(normalizedBaseUrl);
     void (async () => {
       const cwd = options.cwd ?? managed.cwd;
-      if (await hasRunningOpenCodeJobsForServer(options.stateDir, normalizedBaseUrl)) {
+      if (await hasBlockingOpenCodeJobsForServer(options.stateDir, normalizedBaseUrl)) {
         await writeRetinueTrace(options.stateDir, {
           event: "opencode_server_idle_shutdown_skipped",
           baseUrl: normalizedBaseUrl,
@@ -56023,7 +56025,7 @@ async function stopManagedOpenCodeServers(options) {
   const blocked = [];
   const force = options.force === true;
   for (const discovery of discoveries) {
-    const runningJobIds = await listRunningOpenCodeJobIdsForServer(options.stateDir, discovery.baseUrl);
+    const runningJobIds = await listBlockingOpenCodeJobIdsForServer(options.stateDir, discovery.baseUrl);
     const summary = {
       baseUrl: discovery.baseUrl,
       pid: discovery.pid,
@@ -56041,7 +56043,7 @@ async function stopManagedOpenCodeServers(options) {
       });
       continue;
     }
-    const killedJobIds = force ? await markRunningOpenCodeJobsKilledForServer(options.stateDir, discovery.baseUrl) : [];
+    const killedJobIds = force ? await markOpenCodeJobsKilledForServer(options.stateDir, discovery.baseUrl) : [];
     await stopDiscoveredManagedOpenCodeServer(discovery, {
       stateDir: options.stateDir,
       cwd: discovery.cwd,
@@ -56078,10 +56080,10 @@ async function stopManagedOpenCodeServer(baseUrl, options) {
   }
   return true;
 }
-async function hasRunningOpenCodeJobsForServer(stateDir, baseUrl) {
-  return (await listRunningOpenCodeJobIdsForServer(stateDir, baseUrl)).length > 0;
+async function hasBlockingOpenCodeJobsForServer(stateDir, baseUrl) {
+  return (await listBlockingOpenCodeJobIdsForServer(stateDir, baseUrl)).length > 0;
 }
-async function listRunningOpenCodeJobIdsForServer(stateDir, baseUrl) {
+async function listBlockingOpenCodeJobIdsForServer(stateDir, baseUrl) {
   if (!stateDir) {
     return [];
   }
@@ -56094,7 +56096,14 @@ async function listRunningOpenCodeJobIdsForServer(stateDir, baseUrl) {
     }
     try {
       const meta3 = JSON.parse(await fs3.readFile(path2.join(jobsDir, entry.name, "meta.json"), "utf8"));
-      if (meta3.backend === "opencode" && meta3.status === "running" && normalizeBaseUrl(meta3.externalServerUrl ?? "") === baseUrl) {
+      if (meta3.backend !== "opencode" || normalizeBaseUrl(meta3.externalServerUrl ?? "") !== baseUrl) {
+        continue;
+      }
+      if (meta3.status === "stalled") {
+        jobIds.push(entry.name);
+        continue;
+      }
+      if (meta3.status === "running") {
         if (!await isOpenCodeJobStillRunning(client2, meta3)) {
           continue;
         }
@@ -56173,7 +56182,7 @@ async function stopDiscoveredManagedOpenCodeServer(discovery, options) {
   }
   await removeDiscoveryIfMatches(options.stateDir, discovery.pid, options.cwd);
 }
-async function markRunningOpenCodeJobsKilledForServer(stateDir, baseUrl) {
+async function markOpenCodeJobsKilledForServer(stateDir, baseUrl) {
   const jobsDir = getJobPaths(stateDir, "placeholder").dir.replace(/[\\/]placeholder$/, "");
   const killed = [];
   for (const entry of await readDirIfExists2(jobsDir)) {
@@ -56183,7 +56192,7 @@ async function markRunningOpenCodeJobsKilledForServer(stateDir, baseUrl) {
     const metaPath = path2.join(jobsDir, entry.name, "meta.json");
     try {
       const meta3 = JSON.parse(await fs3.readFile(metaPath, "utf8"));
-      if (meta3.backend !== "opencode" || meta3.status !== "running" || normalizeBaseUrl(meta3.externalServerUrl ?? "") !== baseUrl) {
+      if (meta3.backend !== "opencode" || meta3.status !== "running" && meta3.status !== "stalled" || normalizeBaseUrl(meta3.externalServerUrl ?? "") !== baseUrl) {
         continue;
       }
       await fs3.writeFile(metaPath, `${JSON.stringify({ ...meta3, status: "killed", updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
@@ -57724,10 +57733,7 @@ ${textWarning2}` : stderr;
         return true;
       }
       if (!isProblem2(status) && status.status === "stalled" && status.externalServerUrl === baseUrl) {
-        const cachedStdout = await readTextIfExists2(getJobPaths(this.stateDir, status.jobId).stdout);
-        if (!cachedStdout.trim()) {
-          return true;
-        }
+        return true;
       }
     }
     return false;

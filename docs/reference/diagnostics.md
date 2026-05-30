@@ -36,6 +36,7 @@ The default output is compact. `--since` uses a larger bounded scan window than 
 | --- | --- |
 | `read_only_write_intent` | A read-only job attempted a write-capable tool. |
 | `provider_error` | OpenCode attached a provider/API error. |
+| `provider_reasoning_content_error` | A provider/router rejected thinking-mode `reasoning_content` continuity. |
 | `provider_blank_assistant` | Provider produced assistant rounds with no useful text. |
 | `provider_zero_progress` | Tool-call rounds or assistant placeholders made no useful progress. |
 | `read_tool_stalled` | A read tool call remained pending/running past the threshold. |
@@ -46,6 +47,8 @@ The default output is compact. `--since` uses a larger bounded scan window than 
 | `external_directory_permission_pending` | Backend is waiting for an external-directory permission decision. |
 
 Treat stalled jobs as terminal attention-required records, not successful child-agent output.
+
+Problem statuses such as `backend_unreachable`, `not_found`, and `corrupted`, plus spawn outcomes such as `resource_exhausted`, are state/read/capacity failures rather than stall reasons. Use them to diagnose Retinue or backend infrastructure, not child-agent evidence.
 
 ## Recovery Provenance
 
