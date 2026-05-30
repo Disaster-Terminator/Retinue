@@ -326,6 +326,13 @@ export class OpenCodeBackend {
         if (isProblem(meta)) {
             return meta;
         }
+        return this.reconcileStatus(meta, { exposeRecoverableSoftStallsAsRunning: true });
+    }
+    async statusForWait(handle) {
+        const meta = await this.readMeta(handle.jobId);
+        if (isProblem(meta)) {
+            return meta;
+        }
         return this.reconcileStatus(meta);
     }
     async listPermissions(handle) {
@@ -699,7 +706,7 @@ export class OpenCodeBackend {
         const deadline = Date.now() + Math.max(0, timeoutMs);
         let deferredSoftStall = false;
         for (;;) {
-            const status = await this.status(handle);
+            const status = await this.statusForWait(handle);
             if (isProblem(status)) {
                 return { jobId: handle.jobId, status: status.status };
             }
@@ -717,15 +724,18 @@ export class OpenCodeBackend {
                 const diagnostic = await this.inspectJob(status);
                 const canDeferStall = status.externalRescuePromptSubmittedAt === undefined &&
                     (isSoftStallRescueEligible(diagnostic) || diagnostic.readOnlyWriteIntent === true);
-                if (canDeferStall && Date.now() < deadline) {
+                if (canDeferStall) {
                     await this.maybeSubmitSoftStallRescue(status, diagnostic);
                     if (!deferredSoftStall) {
                         await this.writeJobTrace("opencode_job_soft_stall_deferred", status, diagnostic);
                         await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_soft_stall_deferred", diagnostic });
                         deferredSoftStall = true;
                     }
-                    await sleep(DEFAULT_WAIT_POLL_MS);
-                    continue;
+                    if (Date.now() < deadline) {
+                        await sleep(DEFAULT_WAIT_POLL_MS);
+                        continue;
+                    }
+                    return { jobId: handle.jobId, status: "running" };
                 }
                 if (this.isSoftStallRescuePending(status, diagnostic)) {
                     await this.writeJobTrace("opencode_job_soft_stall_rescue_pending", status, diagnostic);
@@ -884,11 +894,15 @@ export class OpenCodeBackend {
         const current = await this.readMeta(jobId);
         return isProblem(current) ? fallback : current;
     }
-    async reconcileStatus(meta) {
+    async reconcileStatus(meta, options = {}) {
         if (meta.status === "stalled") {
             const cachedStdout = await readTextIfExists(getJobPaths(this.stateDir, meta.jobId).stdout);
             if (cachedStdout.trim()) {
                 return meta;
+            }
+            const diagnostic = await this.inspectJob(meta);
+            if (options.exposeRecoverableSoftStallsAsRunning && this.isRecoverableSoftStallForStatus(meta, diagnostic)) {
+                return { ...meta, status: "running" };
             }
         }
         if (!meta.externalSessionId && meta.selectedAttemptJobId) {
@@ -925,13 +939,24 @@ export class OpenCodeBackend {
                 status = "killed";
             }
             else if (meta.status === "stalled") {
-                status = "stalled";
-            }
-            else if (await this.isStalledOpenCodeJob(client, meta.externalSessionId, meta)) {
-                status = "stalled";
+                const diagnostic = await this.stallDiagnosticForOpenCodeJob(client, meta.externalSessionId, meta);
+                status =
+                    options.exposeRecoverableSoftStallsAsRunning &&
+                        diagnostic &&
+                        this.isRecoverableSoftStallForStatus(meta, diagnostic)
+                        ? "running"
+                        : "stalled";
             }
             else {
-                status = "running";
+                const diagnostic = await this.stallDiagnosticForOpenCodeJob(client, meta.externalSessionId, meta);
+                status =
+                    options.exposeRecoverableSoftStallsAsRunning &&
+                        diagnostic &&
+                        this.isRecoverableSoftStallForStatus(meta, diagnostic)
+                        ? "running"
+                        : diagnostic
+                            ? "stalled"
+                            : "running";
             }
             if (status === meta.status) {
                 return meta;
@@ -1028,12 +1053,20 @@ export class OpenCodeBackend {
         const writeIntentMessages = selectReadOnlyWriteIntentMessagesForMeta(jobMessages, meta);
         return countWriteIntentToolParts(writeIntentMessages) > 0;
     }
-    async isStalledOpenCodeJob(client, sessionId, meta) {
+    async stallDiagnosticForOpenCodeJob(client, sessionId, meta) {
         const messages = await client.messages(sessionId);
         const jobMessages = selectMessagesForMeta(messages, meta);
         const pendingPermissions = await this.pendingPermissionsForJob(client, meta);
-        const stall = computeStallDiagnostic(jobMessages, meta, this.env, pendingPermissions);
-        return stall !== undefined;
+        return computeStallDiagnostic(jobMessages, meta, this.env, pendingPermissions);
+    }
+    isRecoverableSoftStallForStatus(meta, diagnostic) {
+        if (this.isSoftStallRescuePending(meta, diagnostic)) {
+            return true;
+        }
+        if (meta.externalRescuePromptSubmittedAt) {
+            return false;
+        }
+        return isSoftStallRescueEligible(diagnostic);
     }
     async pendingPermissionsForJob(client, meta) {
         if (!meta.externalSessionId) {

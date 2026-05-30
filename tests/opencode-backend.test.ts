@@ -766,7 +766,7 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"lastAssistantPartTypes":["step-start","step-finish"]');
   });
 
-  it("returns stalled instead of running when a soft stall appears during a wait window", async () => {
+  it("returns running when a recoverable soft stall appears at the wait deadline", async () => {
     const backend = createBackend();
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "inspect docs and summarize near deadline" });
@@ -774,8 +774,8 @@ describe("OpenCodeBackend", () => {
       server!.appendEmptyStopAssistant(started.externalSessionId!);
     }, 20);
 
-    await expect(backend.wait({ jobId: started.jobId }, 50)).resolves.toMatchObject({ status: "stalled" });
-    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "stalled" });
+    await expect(backend.wait({ jobId: started.jobId }, 50)).resolves.toMatchObject({ status: "running" });
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "running" });
 
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"event":"opencode_job_stalled"');
@@ -882,6 +882,7 @@ describe("OpenCodeBackend", () => {
     server!.appendBlankAssistant(started.externalSessionId!);
 
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "running" });
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "running" });
     expect(server!.promptRequests).toHaveLength(2);
 
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
@@ -963,6 +964,27 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"lastAssistantModelID":"semantic-router"');
     expect(trace).toContain('"lastAssistantPartTypes":["step-start","reasoning"]');
     expect(trace).toContain('"textBytes":0');
+    expect(server!.promptRequests).toHaveLength(2);
+  });
+
+  it("keeps zero-progress recovery running during the rescue grace window", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "60000"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "review keeps thinking without output" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source two");
+    server!.appendZeroProgressReasoningAssistant(started.externalSessionId!);
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "running" });
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "running" });
     expect(server!.promptRequests).toHaveLength(2);
   });
 
@@ -1869,7 +1891,7 @@ describe("OpenCodeBackend", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 5));
 
-    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "stalled" });
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "running" });
     server!.completeSessionWithFinalText(started.externalSessionId!, "final audit result");
 
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });

@@ -36,6 +36,7 @@ export declare class OpenCodeBackend implements AgentBackend {
     run(options: AgentRunOptions): Promise<JobMeta>;
     continueJob(options: AgentContinueOptions): Promise<JobMeta>;
     status(handle: AgentHandle): Promise<JobStatusResult>;
+    private statusForWait;
     listPermissions(handle: AgentHandle): Promise<AgentPermissionListResult>;
     replyPermission(handle: AgentHandle, options: {
         requestId: string;
@@ -62,7 +63,8 @@ export declare class OpenCodeBackend implements AgentBackend {
     private captureMessageBaseline;
     private hasNewCompletedAssistantMessage;
     private hasReadOnlyWriteIntent;
-    private isStalledOpenCodeJob;
+    private stallDiagnosticForOpenCodeJob;
+    private isRecoverableSoftStallForStatus;
     private pendingPermissionsForJob;
     private reopenExternalPermissionStall;
     private inspectJob;

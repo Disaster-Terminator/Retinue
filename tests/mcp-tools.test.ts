@@ -988,6 +988,14 @@ describe("MCP tools", () => {
         }
       });
       expect(wait.diagnostic.message).toContain("provider/router produced zero-progress assistant output");
+      const list = parseToolJson(await connection.client.callTool({ name: "retinue_list_agents", arguments: {} }));
+      expect(list.agents).toContainEqual(
+        expect.objectContaining({
+          jobId: spawn.jobId,
+          task_name: "stalled-opencode",
+          status: "running"
+        })
+      );
     } finally {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;

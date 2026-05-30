@@ -56877,6 +56877,13 @@ var OpenCodeBackend = class {
     if (isProblem2(meta3)) {
       return meta3;
     }
+    return this.reconcileStatus(meta3, { exposeRecoverableSoftStallsAsRunning: true });
+  }
+  async statusForWait(handle) {
+    const meta3 = await this.readMeta(handle.jobId);
+    if (isProblem2(meta3)) {
+      return meta3;
+    }
     return this.reconcileStatus(meta3);
   }
   async listPermissions(handle) {
@@ -57243,7 +57250,7 @@ ${textWarning2}` : stderr;
     const deadline = Date.now() + Math.max(0, timeoutMs);
     let deferredSoftStall = false;
     for (; ; ) {
-      const status = await this.status(handle);
+      const status = await this.statusForWait(handle);
       if (isProblem2(status)) {
         return { jobId: handle.jobId, status: status.status };
       }
@@ -57260,15 +57267,18 @@ ${textWarning2}` : stderr;
       if (status.status === "stalled") {
         const diagnostic = await this.inspectJob(status);
         const canDeferStall = status.externalRescuePromptSubmittedAt === void 0 && (isSoftStallRescueEligible(diagnostic) || diagnostic.readOnlyWriteIntent === true);
-        if (canDeferStall && Date.now() < deadline) {
+        if (canDeferStall) {
           await this.maybeSubmitSoftStallRescue(status, diagnostic);
           if (!deferredSoftStall) {
             await this.writeJobTrace("opencode_job_soft_stall_deferred", status, diagnostic);
             await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_soft_stall_deferred", diagnostic });
             deferredSoftStall = true;
           }
-          await sleep3(DEFAULT_WAIT_POLL_MS);
-          continue;
+          if (Date.now() < deadline) {
+            await sleep3(DEFAULT_WAIT_POLL_MS);
+            continue;
+          }
+          return { jobId: handle.jobId, status: "running" };
         }
         if (this.isSoftStallRescuePending(status, diagnostic)) {
           await this.writeJobTrace("opencode_job_soft_stall_rescue_pending", status, diagnostic);
@@ -57423,11 +57433,15 @@ ${textWarning2}` : stderr;
     const current = await this.readMeta(jobId);
     return isProblem2(current) ? fallback : current;
   }
-  async reconcileStatus(meta3) {
+  async reconcileStatus(meta3, options = {}) {
     if (meta3.status === "stalled") {
       const cachedStdout = await readTextIfExists2(getJobPaths(this.stateDir, meta3.jobId).stdout);
       if (cachedStdout.trim()) {
         return meta3;
+      }
+      const diagnostic = await this.inspectJob(meta3);
+      if (options.exposeRecoverableSoftStallsAsRunning && this.isRecoverableSoftStallForStatus(meta3, diagnostic)) {
+        return { ...meta3, status: "running" };
       }
     }
     if (!meta3.externalSessionId && meta3.selectedAttemptJobId) {
@@ -57457,11 +57471,11 @@ ${textWarning2}` : stderr;
       } else if (session.aborted === true) {
         status = "killed";
       } else if (meta3.status === "stalled") {
-        status = "stalled";
-      } else if (await this.isStalledOpenCodeJob(client2, meta3.externalSessionId, meta3)) {
-        status = "stalled";
+        const diagnostic2 = await this.stallDiagnosticForOpenCodeJob(client2, meta3.externalSessionId, meta3);
+        status = options.exposeRecoverableSoftStallsAsRunning && diagnostic2 && this.isRecoverableSoftStallForStatus(meta3, diagnostic2) ? "running" : "stalled";
       } else {
-        status = "running";
+        const diagnostic2 = await this.stallDiagnosticForOpenCodeJob(client2, meta3.externalSessionId, meta3);
+        status = options.exposeRecoverableSoftStallsAsRunning && diagnostic2 && this.isRecoverableSoftStallForStatus(meta3, diagnostic2) ? "running" : diagnostic2 ? "stalled" : "running";
       }
       if (status === meta3.status) {
         return meta3;
@@ -57555,12 +57569,20 @@ ${textWarning2}` : stderr;
     const writeIntentMessages = selectReadOnlyWriteIntentMessagesForMeta(jobMessages, meta3);
     return countWriteIntentToolParts(writeIntentMessages) > 0;
   }
-  async isStalledOpenCodeJob(client2, sessionId, meta3) {
+  async stallDiagnosticForOpenCodeJob(client2, sessionId, meta3) {
     const messages = await client2.messages(sessionId);
     const jobMessages = selectMessagesForMeta(messages, meta3);
     const pendingPermissions = await this.pendingPermissionsForJob(client2, meta3);
-    const stall = computeStallDiagnostic(jobMessages, meta3, this.env, pendingPermissions);
-    return stall !== void 0;
+    return computeStallDiagnostic(jobMessages, meta3, this.env, pendingPermissions);
+  }
+  isRecoverableSoftStallForStatus(meta3, diagnostic) {
+    if (this.isSoftStallRescuePending(meta3, diagnostic)) {
+      return true;
+    }
+    if (meta3.externalRescuePromptSubmittedAt) {
+      return false;
+    }
+    return isSoftStallRescueEligible(diagnostic);
   }
   async pendingPermissionsForJob(client2, meta3) {
     if (!meta3.externalSessionId) {

@@ -528,6 +528,14 @@ export class OpenCodeBackend implements AgentBackend {
     if (isProblem(meta)) {
       return meta;
     }
+    return this.reconcileStatus(meta, { exposeRecoverableSoftStallsAsRunning: true });
+  }
+
+  private async statusForWait(handle: AgentHandle): Promise<JobStatusResult> {
+    const meta = await this.readMeta(handle.jobId);
+    if (isProblem(meta)) {
+      return meta;
+    }
     return this.reconcileStatus(meta);
   }
 
@@ -917,7 +925,7 @@ export class OpenCodeBackend implements AgentBackend {
     const deadline = Date.now() + Math.max(0, timeoutMs);
     let deferredSoftStall = false;
     for (;;) {
-      const status = await this.status(handle);
+      const status = await this.statusForWait(handle);
       if (isProblem(status)) {
         return { jobId: handle.jobId, status: status.status };
       }
@@ -936,15 +944,18 @@ export class OpenCodeBackend implements AgentBackend {
         const canDeferStall =
           status.externalRescuePromptSubmittedAt === undefined &&
           (isSoftStallRescueEligible(diagnostic) || diagnostic.readOnlyWriteIntent === true);
-        if (canDeferStall && Date.now() < deadline) {
+        if (canDeferStall) {
           await this.maybeSubmitSoftStallRescue(status, diagnostic);
           if (!deferredSoftStall) {
             await this.writeJobTrace("opencode_job_soft_stall_deferred", status, diagnostic);
             await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_soft_stall_deferred", diagnostic });
             deferredSoftStall = true;
           }
-          await sleep(DEFAULT_WAIT_POLL_MS);
-          continue;
+          if (Date.now() < deadline) {
+            await sleep(DEFAULT_WAIT_POLL_MS);
+            continue;
+          }
+          return { jobId: handle.jobId, status: "running" };
         }
         if (this.isSoftStallRescuePending(status, diagnostic)) {
           await this.writeJobTrace("opencode_job_soft_stall_rescue_pending", status, diagnostic);
@@ -1113,11 +1124,18 @@ export class OpenCodeBackend implements AgentBackend {
     return isProblem(current) ? fallback : current;
   }
 
-  private async reconcileStatus(meta: JobMeta): Promise<JobMeta | JobProblem> {
+  private async reconcileStatus(
+    meta: JobMeta,
+    options: { exposeRecoverableSoftStallsAsRunning?: boolean } = {}
+  ): Promise<JobMeta | JobProblem> {
     if (meta.status === "stalled") {
       const cachedStdout = await readTextIfExists(getJobPaths(this.stateDir, meta.jobId).stdout);
       if (cachedStdout.trim()) {
         return meta;
+      }
+      const diagnostic = await this.inspectJob(meta);
+      if (options.exposeRecoverableSoftStallsAsRunning && this.isRecoverableSoftStallForStatus(meta, diagnostic)) {
+        return { ...meta, status: "running" };
       }
     }
     if (!meta.externalSessionId && meta.selectedAttemptJobId) {
@@ -1147,11 +1165,23 @@ export class OpenCodeBackend implements AgentBackend {
       } else if (session.aborted === true) {
         status = "killed";
       } else if (meta.status === "stalled") {
-        status = "stalled";
-      } else if (await this.isStalledOpenCodeJob(client, meta.externalSessionId, meta)) {
-        status = "stalled";
+        const diagnostic = await this.stallDiagnosticForOpenCodeJob(client, meta.externalSessionId, meta);
+        status =
+          options.exposeRecoverableSoftStallsAsRunning &&
+          diagnostic &&
+          this.isRecoverableSoftStallForStatus(meta, diagnostic)
+            ? "running"
+            : "stalled";
       } else {
-        status = "running";
+        const diagnostic = await this.stallDiagnosticForOpenCodeJob(client, meta.externalSessionId, meta);
+        status =
+          options.exposeRecoverableSoftStallsAsRunning &&
+          diagnostic &&
+          this.isRecoverableSoftStallForStatus(meta, diagnostic)
+            ? "running"
+            : diagnostic
+              ? "stalled"
+              : "running";
       }
       if (status === meta.status) {
         return meta;
@@ -1253,12 +1283,25 @@ export class OpenCodeBackend implements AgentBackend {
     return countWriteIntentToolParts(writeIntentMessages) > 0;
   }
 
-  private async isStalledOpenCodeJob(client: OpenCodeClient, sessionId: string, meta: JobMeta): Promise<boolean> {
+  private async stallDiagnosticForOpenCodeJob(
+    client: OpenCodeClient,
+    sessionId: string,
+    meta: JobMeta
+  ): Promise<Partial<OpenCodeJobDiagnostic> | undefined> {
     const messages = await client.messages(sessionId);
     const jobMessages = selectMessagesForMeta(messages, meta);
     const pendingPermissions = await this.pendingPermissionsForJob(client, meta);
-    const stall = computeStallDiagnostic(jobMessages, meta, this.env, pendingPermissions);
-    return stall !== undefined;
+    return computeStallDiagnostic(jobMessages, meta, this.env, pendingPermissions);
+  }
+
+  private isRecoverableSoftStallForStatus(meta: JobMeta, diagnostic: Partial<OpenCodeJobDiagnostic>): boolean {
+    if (this.isSoftStallRescuePending(meta, diagnostic)) {
+      return true;
+    }
+    if (meta.externalRescuePromptSubmittedAt) {
+      return false;
+    }
+    return isSoftStallRescueEligible(diagnostic);
   }
 
   private async pendingPermissionsForJob(client: OpenCodeClient, meta: JobMeta): Promise<OpenCodePermissionRequest[]> {
