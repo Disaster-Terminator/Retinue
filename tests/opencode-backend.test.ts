@@ -637,7 +637,10 @@ describe("OpenCodeBackend", () => {
   });
 
   it("marks reasoning-only stop assistant messages as stalled", async () => {
-    const backend = createBackend({ RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0" } as NodeJS.ProcessEnv);
+    const backend = createBackend({
+      RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
+      RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
+    } as NodeJS.ProcessEnv);
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "visible answer please" });
     server!.completeSessionWithReasoningOnly(started.externalSessionId!);
@@ -683,7 +686,8 @@ describe("OpenCodeBackend", () => {
       env: {
         RETINUE_OPENCODE_STALL_MS: "1",
         RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -724,7 +728,8 @@ describe("OpenCodeBackend", () => {
         RETINUE_OPENCODE_STALL_MS: "600000",
         RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS: "1",
         RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -744,8 +749,50 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"stallThresholdMs":600000');
   });
 
+  it("starts a fresh task-level attempt when completed tool-loop rescue stays stuck", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_MS: "600000",
+        RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS: "1",
+        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "inspect repeatedly then summarize", agent: "explore" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking status one");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking status two");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking status three");
+    await expect(backend.wait({ jobId: started.jobId }, 100)).resolves.toMatchObject({ status: "running" });
+    await waitForPromptCount(2);
+    server!.setAutoAssistantResponses(true);
+
+    const waited = await backend.wait({ jobId: started.jobId }, 1000);
+
+    expect(waited).toMatchObject({
+      requestedJobId: started.jobId,
+      selectedAttemptJobId: expect.stringMatching(/^job_/)
+    });
+    expect(waited.jobId).not.toBe(started.jobId);
+    const attempt = JSON.parse(await fs.readFile(getJobPaths(tempDir, waited.jobId).meta, "utf8")) as JobMeta;
+    expect(attempt).toMatchObject({
+      recoveredFromJobId: started.jobId,
+      attempt: 1,
+      recoveryReason: "rescue_tool_loop_no_completion",
+      recoveryPolicy: "fresh_task_attempt",
+      originalStallReason: "tool_loop_no_completion",
+      recoveryStallReason: "tool_loop_no_completion"
+    });
+  });
+
   it("marks empty stop assistant rounds as stalled with diagnostics", async () => {
-    const backend = createBackend({ RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0" } as NodeJS.ProcessEnv);
+    const backend = createBackend({
+      RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
+      RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
+    } as NodeJS.ProcessEnv);
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "inspect docs and summarize" });
     server!.appendEmptyStopAssistant(started.externalSessionId!);
@@ -1409,7 +1456,8 @@ describe("OpenCodeBackend", () => {
       env: {
         RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1",
         RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS: "1",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -2132,7 +2180,7 @@ describe("OpenCodeBackend", () => {
     expect(stderr).toContain('"event":"opencode_job_abort_marked_killed"');
   });
 
-  it("recovers completed OpenCode text that arrives around an abort race", async () => {
+  it("keeps killed OpenCode jobs terminal when text arrives after abort", async () => {
     const backend = createBackend();
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "finish while closing" });
@@ -2140,11 +2188,8 @@ describe("OpenCodeBackend", () => {
     await backend.abort({ jobId: started.jobId });
     server!.completeSessionWithFinalText(started.externalSessionId!, "late but usable result");
 
-    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "completed" });
-    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
-      status: "completed",
-      parsedStdout: { result: "late but usable result" }
-    });
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "killed" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({ status: "killed" });
   });
 
   it("wait returns running before completion then completed after completion", async () => {

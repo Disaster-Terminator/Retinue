@@ -1141,20 +1141,14 @@ export class OpenCodeBackend implements AgentBackend {
     if (!meta.externalSessionId && meta.selectedAttemptJobId) {
       return this.reconcileVirtualSelectedAttemptStatus(meta);
     }
-    if (!meta.externalSessionId || (isTerminal(meta.status) && meta.status !== "stalled" && meta.status !== "killed")) {
+    if (!meta.externalSessionId || (isTerminal(meta.status) && meta.status !== "stalled")) {
       return meta;
     }
     try {
       const client = this.clientForMeta(meta);
       const session = await client.getSession(meta.externalSessionId);
       let status = meta.status;
-      if (meta.status === "killed") {
-        if (session.state === "completed" || (await this.hasNewCompletedAssistantMessage(client, meta.externalSessionId, meta))) {
-          status = "completed";
-        } else {
-          return meta;
-        }
-      } else if (await this.hasReadOnlyWriteIntent(client, meta.externalSessionId, meta)) {
+      if (await this.hasReadOnlyWriteIntent(client, meta.externalSessionId, meta)) {
         status = "stalled";
       } else if (session.state === "completed") {
         status = "completed";
@@ -2454,14 +2448,8 @@ function selectTaskLevelAttemptReason(meta: JobMeta, diagnostic: Partial<OpenCod
   if (diagnostic.recoveryStallReason) {
     return `rescue_${diagnostic.recoveryStallReason}`;
   }
-  if (
-    meta.externalRescuePromptSubmittedAt &&
-    (diagnostic.stallReason === "provider_zero_progress" || diagnostic.stallReason === "provider_blank_assistant")
-  ) {
+  if (meta.externalRescuePromptSubmittedAt && diagnostic.stallReason && isSoftStallRescueEligible(diagnostic)) {
     return `rescue_${diagnostic.stallReason}`;
-  }
-  if (meta.externalRescuePromptSubmittedAt && diagnostic.stallReason === "incomplete_assistant_round") {
-    return "rescue_incomplete_assistant_round";
   }
   if (diagnostic.stallReason === "provider_zero_progress" || diagnostic.stallReason === "provider_blank_assistant") {
     return diagnostic.stallReason;

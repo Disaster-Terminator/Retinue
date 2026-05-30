@@ -57447,20 +57447,14 @@ ${textWarning2}` : stderr;
     if (!meta3.externalSessionId && meta3.selectedAttemptJobId) {
       return this.reconcileVirtualSelectedAttemptStatus(meta3);
     }
-    if (!meta3.externalSessionId || isTerminal2(meta3.status) && meta3.status !== "stalled" && meta3.status !== "killed") {
+    if (!meta3.externalSessionId || isTerminal2(meta3.status) && meta3.status !== "stalled") {
       return meta3;
     }
     try {
       const client2 = this.clientForMeta(meta3);
       const session = await client2.getSession(meta3.externalSessionId);
       let status = meta3.status;
-      if (meta3.status === "killed") {
-        if (session.state === "completed" || await this.hasNewCompletedAssistantMessage(client2, meta3.externalSessionId, meta3)) {
-          status = "completed";
-        } else {
-          return meta3;
-        }
-      } else if (await this.hasReadOnlyWriteIntent(client2, meta3.externalSessionId, meta3)) {
+      if (await this.hasReadOnlyWriteIntent(client2, meta3.externalSessionId, meta3)) {
         status = "stalled";
       } else if (session.state === "completed") {
         status = "completed";
@@ -58509,11 +58503,8 @@ function selectTaskLevelAttemptReason(meta3, diagnostic) {
   if (diagnostic.recoveryStallReason) {
     return `rescue_${diagnostic.recoveryStallReason}`;
   }
-  if (meta3.externalRescuePromptSubmittedAt && (diagnostic.stallReason === "provider_zero_progress" || diagnostic.stallReason === "provider_blank_assistant")) {
+  if (meta3.externalRescuePromptSubmittedAt && diagnostic.stallReason && isSoftStallRescueEligible(diagnostic)) {
     return `rescue_${diagnostic.stallReason}`;
-  }
-  if (meta3.externalRescuePromptSubmittedAt && diagnostic.stallReason === "incomplete_assistant_round") {
-    return "rescue_incomplete_assistant_round";
   }
   if (diagnostic.stallReason === "provider_zero_progress" || diagnostic.stallReason === "provider_blank_assistant") {
     return diagnostic.stallReason;
