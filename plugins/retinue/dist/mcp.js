@@ -57430,6 +57430,9 @@ ${textWarning2}` : stderr;
         return meta3;
       }
     }
+    if (!meta3.externalSessionId && meta3.selectedAttemptJobId) {
+      return this.reconcileVirtualSelectedAttemptStatus(meta3);
+    }
     if (!meta3.externalSessionId || isTerminal2(meta3.status) && meta3.status !== "stalled" && meta3.status !== "killed") {
       return meta3;
     }
@@ -57503,6 +57506,26 @@ ${textWarning2}` : stderr;
       }
       return { jobId: meta3.jobId, status: "corrupted", error: error51 instanceof Error ? error51.message : String(error51) };
     }
+  }
+  async reconcileVirtualSelectedAttemptStatus(meta3) {
+    if (!meta3.selectedAttemptJobId || meta3.selectedAttemptJobId === meta3.jobId) {
+      return meta3;
+    }
+    const selected = await this.readMeta(meta3.selectedAttemptJobId);
+    if (isProblem2(selected)) {
+      return meta3;
+    }
+    const selectedStatus = await this.reconcileStatus(selected);
+    if (isProblem2(selectedStatus) || !isTerminal2(selectedStatus.status) || selectedStatus.status === meta3.status) {
+      return meta3;
+    }
+    const updated = {
+      ...meta3,
+      status: selectedStatus.status,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    await writeJsonAtomic2(getJobPaths(this.stateDir, meta3.jobId).meta, updated);
+    return updated;
   }
   async captureMessageBaseline(client2, sessionId) {
     const messages = await client2.messages(sessionId);

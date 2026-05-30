@@ -1723,6 +1723,22 @@ describe("MCP tools", () => {
         status: "running"
       });
       expect(promoted.jobId).not.toBe(second.jobId);
+      const attemptMeta = JSON.parse(await fs.readFile(path.join(tempDir, "jobs", promoted.jobId, "meta.json"), "utf8")) as {
+        externalSessionId: string;
+      };
+      fakeOpenCode.completeSession(attemptMeta.externalSessionId);
+      const completed = parseToolJson(
+        await connection.client.callTool({ name: "retinue_wait_agent", arguments: { jobId: second.jobId, timeoutMs: 1000 } })
+      );
+      expect(completed).toMatchObject({
+        jobId: second.jobId,
+        status: "completed"
+      });
+      expect(completed.requestedJobId).toBeUndefined();
+      await expect(fs.readFile(path.join(tempDir, "jobs", second.jobId, "meta.json"), "utf8").then(JSON.parse)).resolves.toMatchObject({
+        status: "completed",
+        selectedAttemptJobId: promoted.jobId
+      });
 
       const trace = await fs.readFile(path.join(tempDir, "logs", "retinue.jsonl"), "utf8");
       expect(trace).toContain('"event":"retinue_queued_agent_promoted"');

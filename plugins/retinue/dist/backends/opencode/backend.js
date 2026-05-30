@@ -891,6 +891,9 @@ export class OpenCodeBackend {
                 return meta;
             }
         }
+        if (!meta.externalSessionId && meta.selectedAttemptJobId) {
+            return this.reconcileVirtualSelectedAttemptStatus(meta);
+        }
         if (!meta.externalSessionId || (isTerminal(meta.status) && meta.status !== "stalled" && meta.status !== "killed")) {
             return meta;
         }
@@ -976,6 +979,26 @@ export class OpenCodeBackend {
             }
             return { jobId: meta.jobId, status: "corrupted", error: error instanceof Error ? error.message : String(error) };
         }
+    }
+    async reconcileVirtualSelectedAttemptStatus(meta) {
+        if (!meta.selectedAttemptJobId || meta.selectedAttemptJobId === meta.jobId) {
+            return meta;
+        }
+        const selected = await this.readMeta(meta.selectedAttemptJobId);
+        if (isProblem(selected)) {
+            return meta;
+        }
+        const selectedStatus = await this.reconcileStatus(selected);
+        if (isProblem(selectedStatus) || !isTerminal(selectedStatus.status) || selectedStatus.status === meta.status) {
+            return meta;
+        }
+        const updated = {
+            ...meta,
+            status: selectedStatus.status,
+            updatedAt: new Date().toISOString()
+        };
+        await writeJsonAtomic(getJobPaths(this.stateDir, meta.jobId).meta, updated);
+        return updated;
     }
     async captureMessageBaseline(client, sessionId) {
         const messages = await client.messages(sessionId);

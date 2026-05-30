@@ -58,6 +58,7 @@ export declare class OpenCodeBackend implements AgentBackend {
     private readMeta;
     private readCurrentMetaOrFallback;
     private reconcileStatus;
+    private reconcileVirtualSelectedAttemptStatus;
     private captureMessageBaseline;
     private hasNewCompletedAssistantMessage;
     private hasReadOnlyWriteIntent;
