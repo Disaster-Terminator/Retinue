@@ -116,6 +116,7 @@ export interface JobMeta {
     externalParentSessionId?: string;
     externalChildSessionIds?: string[];
     externalServerUrl?: string;
+    externalBackendError?: string;
     externalSessionDirectory?: string;
     externalMessageId?: string;
     externalRescuePromptSubmittedAt?: string;

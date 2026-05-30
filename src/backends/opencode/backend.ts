@@ -526,7 +526,7 @@ export class OpenCodeBackend implements AgentBackend {
   async status(handle: AgentHandle): Promise<JobStatusResult> {
     const meta = await this.readMeta(handle.jobId);
     if (isProblem(meta)) {
-      return meta;
+      return problemFromMeta(meta);
     }
     return this.reconcileStatus(meta, { exposeRecoverableSoftStallsAsRunning: true });
   }
@@ -534,7 +534,7 @@ export class OpenCodeBackend implements AgentBackend {
   private async statusForWait(handle: AgentHandle): Promise<JobStatusResult> {
     const meta = await this.readMeta(handle.jobId);
     if (isProblem(meta)) {
-      return meta;
+      return problemFromMeta(meta);
     }
     return this.reconcileStatus(meta);
   }
@@ -1141,6 +1141,9 @@ export class OpenCodeBackend implements AgentBackend {
     if (!meta.externalSessionId && meta.selectedAttemptJobId) {
       return this.reconcileVirtualSelectedAttemptStatus(meta);
     }
+    if (meta.status === "backend_unreachable") {
+      return { jobId: meta.jobId, status: "backend_unreachable", error: meta.externalBackendError };
+    }
     if (!meta.externalSessionId || (isTerminal(meta.status) && meta.status !== "stalled")) {
       return meta;
     }
@@ -1219,10 +1222,38 @@ export class OpenCodeBackend implements AgentBackend {
         return meta;
       }
       if (isBackendUnavailableError(error)) {
-        return { jobId: meta.jobId, status: "backend_unreachable", error: error instanceof Error ? error.message : String(error) };
+        return this.markBackendUnreachable(meta, error);
       }
       return { jobId: meta.jobId, status: "corrupted", error: error instanceof Error ? error.message : String(error) };
     }
+  }
+
+  private async markBackendUnreachable(meta: JobMeta, error: unknown): Promise<JobProblem> {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const updated: JobMeta = { ...meta, status: "backend_unreachable", externalBackendError: errorMessage, updatedAt: new Date().toISOString() };
+    await writeJsonAtomic(getJobPaths(this.stateDir, meta.jobId).meta, updated);
+    const diagnostic: OpenCodeJobDiagnostic = {
+      baseUrl: meta.externalServerUrl ?? this.baseUrl ?? "",
+      sessionId: meta.externalSessionId,
+      runnerMode: meta.externalRunnerMode,
+      rootAgent: meta.externalRootAgent,
+      rootSessionId: meta.externalRootSessionId,
+      parentSessionId: meta.externalParentSessionId,
+      childSessionIds: meta.externalChildSessionIds,
+      sessionDirectory: meta.externalSessionDirectory,
+      error: errorMessage
+    };
+    await this.writeJobTrace("opencode_job_backend_unreachable", updated, diagnostic, {
+      fromStatus: meta.status,
+      toStatus: "backend_unreachable"
+    });
+    await appendJobDiagnostic(this.stateDir, meta.jobId, {
+      event: "opencode_job_backend_unreachable",
+      fromStatus: meta.status,
+      toStatus: "backend_unreachable",
+      diagnostic
+    });
+    return { jobId: meta.jobId, status: "backend_unreachable", error: errorMessage };
   }
 
   private async reconcileVirtualSelectedAttemptStatus(meta: JobMeta): Promise<JobMeta | JobProblem> {
@@ -1707,6 +1738,13 @@ function sleep(ms: number): Promise<void> {
 
 function isProblem(value: JobStatusResult): value is JobProblem {
   return value.status === "not_found" || value.status === "corrupted" || value.status === "backend_unreachable";
+}
+
+function problemFromMeta(value: JobMeta | JobProblem): JobProblem {
+  if (value.status === "backend_unreachable" && "externalBackendError" in value && typeof value.externalBackendError === "string") {
+    return { jobId: value.jobId, status: "backend_unreachable", error: value.externalBackendError };
+  }
+  return value as JobProblem;
 }
 
 function isBackendUnavailableError(error: unknown): boolean {

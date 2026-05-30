@@ -100,12 +100,12 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
             if (latestStatusByJobId.get(event.jobId) === "completed") {
                 continue;
             }
-            if (isNonTerminalSoftStallEvent(latestEventByJobId.get(event.jobId))) {
+            if (!isBackendUnreachableEvent(event) && isNonTerminalSoftStallEvent(latestEventByJobId.get(event.jobId))) {
                 continue;
             }
         }
-        const status = event.event === "opencode_job_stalled" || typeof diagnostic.stallReason === "string" ? "stalled" : undefined;
-        if (status !== "stalled") {
+        const status = issueStatusForEvent(event, diagnostic);
+        if (!status) {
             continue;
         }
         const chainRootJobId = typeof event.jobId === "string" ? attemptRootByJobId.get(event.jobId) : undefined;
@@ -113,14 +113,14 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
             continue;
         }
         const chainSignature = chainRootJobId ? createChainSignature(chainRootJobId, diagnostic) : undefined;
-        const signature = chainSignature ?? createDiagnosticSignature(diagnostic);
+        const signature = chainSignature ?? createDiagnosticSignature(event, diagnostic);
         const attention = isAttentionDiagnostic(diagnostic);
         const summaries = attention ? attentionsBySignature : issuesBySignature;
         const current = summaries.get(signature) ?? {
             signature,
             ...(attention ? { kind: "permission" } : {}),
-            title: attention ? createAttentionTitle(diagnostic) : createIssueTitle(diagnostic),
-            description: attention ? createAttentionDescription(diagnostic) : createIssueDescription(diagnostic),
+            title: attention ? createAttentionTitle(diagnostic) : createIssueTitle(event, diagnostic),
+            description: attention ? createAttentionDescription(diagnostic) : createIssueDescription(event, diagnostic),
             count: 0,
             firstSeen: undefined,
             lastSeen: undefined,
@@ -159,12 +159,15 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
             pendingPermissionCount: diagnostic.pendingPermissionCount,
             pendingExternalDirectoryPermissionCount: diagnostic.pendingExternalDirectoryPermissionCount,
             permissionActions: compactPermissionActions(diagnostic.pendingExternalDirectoryPermissions ?? diagnostic.pendingPermissions),
-            readOnlyWriteIntent: diagnostic.readOnlyWriteIntent
+            readOnlyWriteIntent: diagnostic.readOnlyWriteIntent,
+            problemStatus: status === "backend_unreachable" ? "backend_unreachable" : undefined,
+            baseUrl: diagnostic.baseUrl,
+            error: diagnostic.error
         });
         const selectedSample = chooseSample(current.sample, nextSample);
         if (selectedSample === nextSample) {
-            current.title = attention ? createAttentionTitle(diagnostic) : createIssueTitle(diagnostic);
-            current.description = attention ? createAttentionDescription(diagnostic) : createIssueDescription(diagnostic);
+            current.title = attention ? createAttentionTitle(diagnostic) : createIssueTitle(event, diagnostic);
+            current.description = attention ? createAttentionDescription(diagnostic) : createIssueDescription(event, diagnostic);
         }
         current.sample = selectedSample;
         summaries.set(signature, current);
@@ -181,6 +184,18 @@ function isAttentionDiagnostic(diagnostic) {
     return (diagnostic.stallReason === "external_directory_permission_pending" &&
         typeof diagnostic.pendingPermissionCount === "number" &&
         diagnostic.pendingPermissionCount > 0);
+}
+function issueStatusForEvent(event, diagnostic) {
+    if (isBackendUnreachableEvent(event)) {
+        return "backend_unreachable";
+    }
+    if (event.event === "opencode_job_stalled" || typeof diagnostic.stallReason === "string") {
+        return "stalled";
+    }
+    return undefined;
+}
+function isBackendUnreachableEvent(event) {
+    return event.event === "opencode_job_backend_unreachable" || (event.event !== "opencode_job_stalled" && event.status === "backend_unreachable");
 }
 async function collectAttemptRoots(events, stateDir) {
     const attemptRootByJobId = new Map();
@@ -251,7 +266,7 @@ function createChainSignature(rootJobId, diagnostic) {
         diagnostic.lastAssistantMode ?? "unknown_mode"
     ].join("|");
 }
-function createDiagnosticSignature(diagnostic) {
+function createDiagnosticSignature(event, diagnostic) {
     return [
         diagnostic.stallReason ?? "unknown_stall",
         diagnostic.softStallRescueSourceReason ?? "no_rescue_source",
@@ -259,8 +274,11 @@ function createDiagnosticSignature(diagnostic) {
         diagnostic.lastAssistantProviderID ?? "unknown_provider",
         diagnostic.lastAssistantModelID ?? "unknown_model",
         diagnostic.lastAssistantAgent ?? "unknown_agent",
-        diagnostic.lastAssistantMode ?? "unknown_mode"
-    ].join("|");
+        diagnostic.lastAssistantMode ?? "unknown_mode",
+        isBackendUnreachableEvent(event) ? (diagnostic.baseUrl ?? "unknown_base_url") : undefined
+    ]
+        .filter((part) => part !== undefined)
+        .join("|");
 }
 function chooseSample(current, next) {
     if (!current) {
@@ -349,7 +367,10 @@ function isNonTerminalSoftStallEvent(event) {
         event === "opencode_job_soft_stall_rescue_submitted" ||
         event === "opencode_job_soft_stall_rescue_pending");
 }
-function createIssueTitle(diagnostic) {
+function createIssueTitle(event, diagnostic) {
+    if (isBackendUnreachableEvent(event)) {
+        return "Investigate Retinue backend_unreachable for OpenCode server";
+    }
     const reason = diagnostic.stallReason ?? "unknown_stall";
     const provider = diagnostic.lastAssistantProviderID ?? "unknown_provider";
     const model = diagnostic.lastAssistantModelID ?? "unknown_model";
@@ -378,7 +399,17 @@ function createAttentionDescription(diagnostic) {
     ].filter(Boolean);
     return parts.join("; ");
 }
-function createIssueDescription(diagnostic) {
+function createIssueDescription(event, diagnostic) {
+    if (isBackendUnreachableEvent(event)) {
+        const parts = [
+            "OpenCode server became unreachable while Retinue job metadata was still active.",
+            diagnostic.error ? `error=${String(diagnostic.error)}` : undefined,
+            diagnostic.baseUrl ? `baseUrl=${String(diagnostic.baseUrl)}` : undefined,
+            diagnostic.sessionId ? `sessionId=${String(diagnostic.sessionId)}` : undefined,
+            diagnostic.sessionDirectory ? `cwd=${String(diagnostic.sessionDirectory)}` : undefined
+        ].filter(Boolean);
+        return parts.join("; ");
+    }
     const parts = [
         diagnostic.stallSummary,
         diagnostic.softStallRescueSourceReason ? `rescueSource=${String(diagnostic.softStallRescueSourceReason)}` : undefined,

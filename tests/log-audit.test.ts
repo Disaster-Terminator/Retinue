@@ -46,6 +46,59 @@ describe("Retinue log audit", () => {
     }
   });
 
+  it("surfaces backend_unreachable trace events as infrastructure issues", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-backend-unreachable-"));
+    try {
+      const tracePath = path.join(tempDir, "retinue.jsonl");
+      fs.writeFileSync(
+        tracePath,
+        [
+          JSON.stringify({
+            time: "2026-05-25T12:30:00.000Z",
+            event: "opencode_job_backend_unreachable",
+            jobId: "job_backend_down",
+            status: "backend_unreachable",
+            diagnostic: {
+              baseUrl: "http://127.0.0.1:4098",
+              sessionId: "ses_backend_down",
+              sessionDirectory: "/repo",
+              error: "fetch failed"
+            }
+          }),
+          JSON.stringify({
+            time: "2026-05-25T12:31:00.000Z",
+            event: "opencode_job_soft_stall_rescue_pending",
+            jobId: "job_backend_down",
+            status: "running",
+            diagnostic: {
+              baseUrl: "http://127.0.0.1:4098",
+              stallReason: "provider_zero_progress",
+              lastAssistantProviderID: "litellm",
+              lastAssistantModelID: "intentmux"
+            }
+          })
+        ].join("\n")
+      );
+
+      const result = await auditRetinueLogs({ tracePath, stateDir: tempDir, since: new Date("2026-05-25T12:00:00.000Z") });
+      expect(result.issueCount).toBe(1);
+      expect(result.issues[0]).toMatchObject({
+        title: "Investigate Retinue backend_unreachable for OpenCode server",
+        jobIds: ["job_backend_down"],
+        sample: {
+          problemStatus: "backend_unreachable",
+          baseUrl: "http://127.0.0.1:4098",
+          error: "fetch failed"
+        }
+      });
+      const compact = renderCompactAuditResult(result);
+      expect(compact).toContain("reason=backend_unreachable");
+      expect(compact).toContain("baseUrl=http://127.0.0.1:4098");
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("summarizes recent stalled diagnostics into deduplicated issue candidates", async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-"));
     try {

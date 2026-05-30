@@ -56884,14 +56884,14 @@ var OpenCodeBackend = class {
   async status(handle) {
     const meta3 = await this.readMeta(handle.jobId);
     if (isProblem2(meta3)) {
-      return meta3;
+      return problemFromMeta(meta3);
     }
     return this.reconcileStatus(meta3, { exposeRecoverableSoftStallsAsRunning: true });
   }
   async statusForWait(handle) {
     const meta3 = await this.readMeta(handle.jobId);
     if (isProblem2(meta3)) {
-      return meta3;
+      return problemFromMeta(meta3);
     }
     return this.reconcileStatus(meta3);
   }
@@ -57456,6 +57456,9 @@ ${textWarning2}` : stderr;
     if (!meta3.externalSessionId && meta3.selectedAttemptJobId) {
       return this.reconcileVirtualSelectedAttemptStatus(meta3);
     }
+    if (meta3.status === "backend_unreachable") {
+      return { jobId: meta3.jobId, status: "backend_unreachable", error: meta3.externalBackendError };
+    }
     if (!meta3.externalSessionId || isTerminal2(meta3.status) && meta3.status !== "stalled") {
       return meta3;
     }
@@ -57519,10 +57522,37 @@ ${textWarning2}` : stderr;
         return meta3;
       }
       if (isBackendUnavailableError(error51)) {
-        return { jobId: meta3.jobId, status: "backend_unreachable", error: error51 instanceof Error ? error51.message : String(error51) };
+        return this.markBackendUnreachable(meta3, error51);
       }
       return { jobId: meta3.jobId, status: "corrupted", error: error51 instanceof Error ? error51.message : String(error51) };
     }
+  }
+  async markBackendUnreachable(meta3, error51) {
+    const errorMessage = error51 instanceof Error ? error51.message : String(error51);
+    const updated = { ...meta3, status: "backend_unreachable", externalBackendError: errorMessage, updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
+    await writeJsonAtomic2(getJobPaths(this.stateDir, meta3.jobId).meta, updated);
+    const diagnostic = {
+      baseUrl: meta3.externalServerUrl ?? this.baseUrl ?? "",
+      sessionId: meta3.externalSessionId,
+      runnerMode: meta3.externalRunnerMode,
+      rootAgent: meta3.externalRootAgent,
+      rootSessionId: meta3.externalRootSessionId,
+      parentSessionId: meta3.externalParentSessionId,
+      childSessionIds: meta3.externalChildSessionIds,
+      sessionDirectory: meta3.externalSessionDirectory,
+      error: errorMessage
+    };
+    await this.writeJobTrace("opencode_job_backend_unreachable", updated, diagnostic, {
+      fromStatus: meta3.status,
+      toStatus: "backend_unreachable"
+    });
+    await appendJobDiagnostic(this.stateDir, meta3.jobId, {
+      event: "opencode_job_backend_unreachable",
+      fromStatus: meta3.status,
+      toStatus: "backend_unreachable",
+      diagnostic
+    });
+    return { jobId: meta3.jobId, status: "backend_unreachable", error: errorMessage };
   }
   async reconcileVirtualSelectedAttemptStatus(meta3) {
     if (!meta3.selectedAttemptJobId || meta3.selectedAttemptJobId === meta3.jobId) {
@@ -57947,6 +57977,12 @@ function sleep3(ms) {
 }
 function isProblem2(value) {
   return value.status === "not_found" || value.status === "corrupted" || value.status === "backend_unreachable";
+}
+function problemFromMeta(value) {
+  if (value.status === "backend_unreachable" && "externalBackendError" in value && typeof value.externalBackendError === "string") {
+    return { jobId: value.jobId, status: "backend_unreachable", error: value.externalBackendError };
+  }
+  return value;
 }
 function isBackendUnavailableError(error51) {
   if (!(error51 instanceof OpenCodeClientError)) {
@@ -59050,12 +59086,12 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
       if (latestStatusByJobId.get(event.jobId) === "completed") {
         continue;
       }
-      if (isNonTerminalSoftStallEvent(latestEventByJobId.get(event.jobId))) {
+      if (!isBackendUnreachableEvent(event) && isNonTerminalSoftStallEvent(latestEventByJobId.get(event.jobId))) {
         continue;
       }
     }
-    const status = event.event === "opencode_job_stalled" || typeof diagnostic.stallReason === "string" ? "stalled" : void 0;
-    if (status !== "stalled") {
+    const status = issueStatusForEvent(event, diagnostic);
+    if (!status) {
       continue;
     }
     const chainRootJobId = typeof event.jobId === "string" ? attemptRootByJobId.get(event.jobId) : void 0;
@@ -59063,14 +59099,14 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
       continue;
     }
     const chainSignature = chainRootJobId ? createChainSignature(chainRootJobId, diagnostic) : void 0;
-    const signature = chainSignature ?? createDiagnosticSignature(diagnostic);
+    const signature = chainSignature ?? createDiagnosticSignature(event, diagnostic);
     const attention = isAttentionDiagnostic(diagnostic);
     const summaries = attention ? attentionsBySignature : issuesBySignature;
     const current = summaries.get(signature) ?? {
       signature,
       ...attention ? { kind: "permission" } : {},
-      title: attention ? createAttentionTitle(diagnostic) : createIssueTitle(diagnostic),
-      description: attention ? createAttentionDescription(diagnostic) : createIssueDescription(diagnostic),
+      title: attention ? createAttentionTitle(diagnostic) : createIssueTitle(event, diagnostic),
+      description: attention ? createAttentionDescription(diagnostic) : createIssueDescription(event, diagnostic),
       count: 0,
       firstSeen: void 0,
       lastSeen: void 0,
@@ -59109,12 +59145,15 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
       pendingPermissionCount: diagnostic.pendingPermissionCount,
       pendingExternalDirectoryPermissionCount: diagnostic.pendingExternalDirectoryPermissionCount,
       permissionActions: compactPermissionActions(diagnostic.pendingExternalDirectoryPermissions ?? diagnostic.pendingPermissions),
-      readOnlyWriteIntent: diagnostic.readOnlyWriteIntent
+      readOnlyWriteIntent: diagnostic.readOnlyWriteIntent,
+      problemStatus: status === "backend_unreachable" ? "backend_unreachable" : void 0,
+      baseUrl: diagnostic.baseUrl,
+      error: diagnostic.error
     });
     const selectedSample = chooseSample(current.sample, nextSample);
     if (selectedSample === nextSample) {
-      current.title = attention ? createAttentionTitle(diagnostic) : createIssueTitle(diagnostic);
-      current.description = attention ? createAttentionDescription(diagnostic) : createIssueDescription(diagnostic);
+      current.title = attention ? createAttentionTitle(diagnostic) : createIssueTitle(event, diagnostic);
+      current.description = attention ? createAttentionDescription(diagnostic) : createIssueDescription(event, diagnostic);
     }
     current.sample = selectedSample;
     summaries.set(signature, current);
@@ -59129,6 +59168,18 @@ function sortSummaries(summaries) {
 }
 function isAttentionDiagnostic(diagnostic) {
   return diagnostic.stallReason === "external_directory_permission_pending" && typeof diagnostic.pendingPermissionCount === "number" && diagnostic.pendingPermissionCount > 0;
+}
+function issueStatusForEvent(event, diagnostic) {
+  if (isBackendUnreachableEvent(event)) {
+    return "backend_unreachable";
+  }
+  if (event.event === "opencode_job_stalled" || typeof diagnostic.stallReason === "string") {
+    return "stalled";
+  }
+  return void 0;
+}
+function isBackendUnreachableEvent(event) {
+  return event.event === "opencode_job_backend_unreachable" || event.event !== "opencode_job_stalled" && event.status === "backend_unreachable";
 }
 async function collectAttemptRoots(events, stateDir) {
   const attemptRootByJobId = /* @__PURE__ */ new Map();
@@ -59198,7 +59249,7 @@ function createChainSignature(rootJobId, diagnostic) {
     diagnostic.lastAssistantMode ?? "unknown_mode"
   ].join("|");
 }
-function createDiagnosticSignature(diagnostic) {
+function createDiagnosticSignature(event, diagnostic) {
   return [
     diagnostic.stallReason ?? "unknown_stall",
     diagnostic.softStallRescueSourceReason ?? "no_rescue_source",
@@ -59206,8 +59257,9 @@ function createDiagnosticSignature(diagnostic) {
     diagnostic.lastAssistantProviderID ?? "unknown_provider",
     diagnostic.lastAssistantModelID ?? "unknown_model",
     diagnostic.lastAssistantAgent ?? "unknown_agent",
-    diagnostic.lastAssistantMode ?? "unknown_mode"
-  ].join("|");
+    diagnostic.lastAssistantMode ?? "unknown_mode",
+    isBackendUnreachableEvent(event) ? diagnostic.baseUrl ?? "unknown_base_url" : void 0
+  ].filter((part) => part !== void 0).join("|");
 }
 function chooseSample(current, next) {
   if (!current) {
@@ -59291,7 +59343,10 @@ function collectLatestEventByJobId(events) {
 function isNonTerminalSoftStallEvent(event) {
   return event === "opencode_job_soft_stall_deferred" || event === "opencode_job_soft_stall_rescue_submitted" || event === "opencode_job_soft_stall_rescue_pending";
 }
-function createIssueTitle(diagnostic) {
+function createIssueTitle(event, diagnostic) {
+  if (isBackendUnreachableEvent(event)) {
+    return "Investigate Retinue backend_unreachable for OpenCode server";
+  }
   const reason = diagnostic.stallReason ?? "unknown_stall";
   const provider = diagnostic.lastAssistantProviderID ?? "unknown_provider";
   const model = diagnostic.lastAssistantModelID ?? "unknown_model";
@@ -59318,7 +59373,17 @@ function createAttentionDescription(diagnostic) {
   ].filter(Boolean);
   return parts.join("; ");
 }
-function createIssueDescription(diagnostic) {
+function createIssueDescription(event, diagnostic) {
+  if (isBackendUnreachableEvent(event)) {
+    const parts2 = [
+      "OpenCode server became unreachable while Retinue job metadata was still active.",
+      diagnostic.error ? `error=${String(diagnostic.error)}` : void 0,
+      diagnostic.baseUrl ? `baseUrl=${String(diagnostic.baseUrl)}` : void 0,
+      diagnostic.sessionId ? `sessionId=${String(diagnostic.sessionId)}` : void 0,
+      diagnostic.sessionDirectory ? `cwd=${String(diagnostic.sessionDirectory)}` : void 0
+    ].filter(Boolean);
+    return parts2.join("; ");
+  }
   const parts = [
     diagnostic.stallSummary,
     diagnostic.softStallRescueSourceReason ? `rescueSource=${String(diagnostic.softStallRescueSourceReason)}` : void 0,
@@ -59432,10 +59497,11 @@ function renderCompactAttention(attention, index) {
 function renderCompactIssue(issue2, index, prefix = "") {
   const sample = issue2.sample ?? {};
   const summary = [
-    `reason=${stringField(sample.stallReason)}`,
+    `reason=${stringField(sample.problemStatus) ?? stringField(sample.stallReason) ?? "unknown"}`,
     stringField(sample.softStallRescueSourceReason) ? `source=${stringField(sample.softStallRescueSourceReason)}` : void 0,
     stringField(sample.recoveryStallReason) ? `recovery=${stringField(sample.recoveryStallReason)}` : void 0,
     `provider=${providerModel(issue2)}`,
+    stringField(sample.baseUrl) ? `baseUrl=${stringField(sample.baseUrl)}` : void 0,
     stringField(sample.sessionDirectory) ? `cwd=${stringField(sample.sessionDirectory)}` : void 0,
     `agent=${agentMode(issue2)}`,
     numericField(sample.noCompletedAssistantDurationMs) ? `durationMs=${numericField(sample.noCompletedAssistantDurationMs)}` : void 0,
@@ -60309,6 +60375,16 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
           agentPool.remove(jobId);
           return jsonToolResult({ jobId, status: "killed", selectedAttemptJobId: meta3.selectedAttemptJobId });
         }
+        if (selectedStatus.status === "backend_unreachable") {
+          const selectedMeta = await readRetinueJobMeta(stateDir, meta3.selectedAttemptJobId);
+          if (selectedMeta) {
+            await writeJobMeta(stateDir, { ...selectedMeta, status: "killed", updatedAt: (/* @__PURE__ */ new Date()).toISOString() });
+          }
+          agentPool.remove(meta3.selectedAttemptJobId);
+          await writeJobMeta(stateDir, { ...meta3, status: "killed", updatedAt: (/* @__PURE__ */ new Date()).toISOString() });
+          agentPool.remove(jobId);
+          return jsonToolResult({ jobId, status: "killed", selectedAttemptJobId: meta3.selectedAttemptJobId });
+        }
       }
       const status = await backend.status({ jobId });
       if (isJobMeta(status) && status.status === "running") {
@@ -60321,7 +60397,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
         agentPool.remove(jobId);
         return jsonToolResult({ jobId, status: "killed" });
       }
-      if (status.status === "backend_unreachable" && meta3?.status === "stalled") {
+      if (status.status === "backend_unreachable" && meta3) {
         await writeJobMeta(stateDir, { ...meta3, status: "killed", updatedAt: (/* @__PURE__ */ new Date()).toISOString() });
         agentPool.remove(jobId);
         return jsonToolResult({ jobId, status: "killed" });

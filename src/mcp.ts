@@ -387,6 +387,16 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
           agentPool.remove(jobId);
           return jsonToolResult({ jobId, status: "killed", selectedAttemptJobId: meta.selectedAttemptJobId });
         }
+        if (selectedStatus.status === "backend_unreachable") {
+          const selectedMeta = await readRetinueJobMeta(stateDir, meta.selectedAttemptJobId);
+          if (selectedMeta) {
+            await writeJobMeta(stateDir, { ...selectedMeta, status: "killed", updatedAt: new Date().toISOString() });
+          }
+          agentPool.remove(meta.selectedAttemptJobId);
+          await writeJobMeta(stateDir, { ...meta, status: "killed", updatedAt: new Date().toISOString() });
+          agentPool.remove(jobId);
+          return jsonToolResult({ jobId, status: "killed", selectedAttemptJobId: meta.selectedAttemptJobId });
+        }
       }
       const status = await backend.status({ jobId });
       if (isJobMeta(status) && status.status === "running") {
@@ -399,7 +409,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
         agentPool.remove(jobId);
         return jsonToolResult({ jobId, status: "killed" });
       }
-      if (status.status === "backend_unreachable" && meta?.status === "stalled") {
+      if (status.status === "backend_unreachable" && meta) {
         await writeJobMeta(stateDir, { ...meta, status: "killed", updatedAt: new Date().toISOString() });
         agentPool.remove(jobId);
         return jsonToolResult({ jobId, status: "killed" });

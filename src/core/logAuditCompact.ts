@@ -31,10 +31,11 @@ function renderCompactAttention(attention: RetinueLogAuditAttention, index: numb
 function renderCompactIssue(issue: RetinueLogAuditIssue, index: number, prefix = ""): string {
   const sample = issue.sample ?? {};
   const summary = [
-    `reason=${stringField(sample.stallReason)}`,
+    `reason=${stringField(sample.problemStatus) ?? stringField(sample.stallReason) ?? "unknown"}`,
     stringField(sample.softStallRescueSourceReason) ? `source=${stringField(sample.softStallRescueSourceReason)}` : undefined,
     stringField(sample.recoveryStallReason) ? `recovery=${stringField(sample.recoveryStallReason)}` : undefined,
     `provider=${providerModel(issue)}`,
+    stringField(sample.baseUrl) ? `baseUrl=${stringField(sample.baseUrl)}` : undefined,
     stringField(sample.sessionDirectory) ? `cwd=${stringField(sample.sessionDirectory)}` : undefined,
     `agent=${agentMode(issue)}`,
     numericField(sample.noCompletedAssistantDurationMs) ? `durationMs=${numericField(sample.noCompletedAssistantDurationMs)}` : undefined,

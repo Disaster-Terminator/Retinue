@@ -187,9 +187,13 @@ describe("OpenCodeBackend", () => {
       error: expect.any(String)
     });
     await expect(fs.readFile(getJobPaths(tempDir, started.jobId).meta, "utf8").then(JSON.parse)).resolves.toMatchObject({
-      status: "running",
+      status: "backend_unreachable",
       externalSessionId: started.externalSessionId
     });
+    await expect(fs.readFile(getRetinueTracePath(tempDir), "utf8")).resolves.toContain('"event":"opencode_job_backend_unreachable"');
+    await expect(fs.readFile(getJobPaths(tempDir, started.jobId).stderr, "utf8")).resolves.toContain(
+      '"event":"opencode_job_backend_unreachable"'
+    );
   });
 
   it("creates read-only OpenCode sessions with readonly git bash and non-interactive permissions", async () => {
