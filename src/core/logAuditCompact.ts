@@ -8,6 +8,13 @@ export function renderCompactAuditResult(result: RetinueLogAuditResult): string 
   if (result.since) {
     lines.push(`since=${result.since}`);
   }
+  if (result.truncatedBeforeSince) {
+    lines.push(
+      `warning=scan_truncated_before_since oldestScanned=${result.oldestScannedEvent ?? "unknown"} increase --max-bytes or --max-lines`
+    );
+  } else if (result.inputTruncated) {
+    lines.push(`warning=scan_truncated oldestScanned=${result.oldestScannedEvent ?? "unknown"}`);
+  }
   for (const [index, issue] of result.issues.entries()) {
     lines.push(renderCompactIssue(issue, index + 1));
   }

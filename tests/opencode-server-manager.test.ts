@@ -472,6 +472,39 @@ describe("OpenCode server manager", () => {
     }
   });
 
+  it("does not block managed OpenCode server stop on stale running jobs whose sessions are gone", async () => {
+    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-stale-stop-"));
+    const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-project-"));
+    const port = await freePort();
+    const command = await writeFakeOpenCodeCommandWithSessions();
+    let target: Awaited<ReturnType<typeof ensureOpenCodeServer>> | undefined;
+    try {
+      target = await ensureOpenCodeServer(
+        {
+          mode: "serve",
+          command,
+          args: buildServeArgs({ host: "127.0.0.1", port }),
+          host: "127.0.0.1",
+          port,
+          fallbackPorts: []
+        },
+        { stateDir, cwd: projectDir, healthTimeoutMs: 5000, healthPollMs: 50 }
+      );
+      await writeOpenCodeRunningJob(stateDir, "job_stale_runtime_stop", target.baseUrl, projectDir, "ses_missing");
+
+      await expect(stopManagedOpenCodeServers({ stateDir, cwd: projectDir, reason: "manual" })).resolves.toMatchObject({
+        status: "stopped",
+        blocked: [],
+        stopped: [expect.objectContaining({ baseUrl: target.baseUrl })]
+      });
+      await waitForUnreachable(target.baseUrl);
+    } finally {
+      target?.child?.kill();
+      await fs.rm(stateDir, { recursive: true, force: true });
+      await fs.rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("reuses a Retinue-managed OpenCode server recorded in state discovery", async () => {
     const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-discovery-"));
     const managed = await startHealthServer(JSON.stringify({ healthy: true, version: "managed" }));
@@ -734,7 +767,7 @@ async function waitForUnreachable(baseUrl: string): Promise<void> {
   }
 }
 
-async function writeOpenCodeRunningJob(stateDir: string, jobId: string, baseUrl: string, cwd: string): Promise<void> {
+async function writeOpenCodeRunningJob(stateDir: string, jobId: string, baseUrl: string, cwd: string, externalSessionId?: string): Promise<void> {
   const paths = getJobPaths(stateDir, jobId);
   await fs.mkdir(paths.dir, { recursive: true });
   const now = new Date().toISOString();
@@ -752,6 +785,7 @@ async function writeOpenCodeRunningJob(stateDir: string, jobId: string, baseUrl:
         promptPreview: "running",
         promptSha256: "running",
         externalServerUrl: baseUrl,
+        externalSessionId,
         args: [],
         createdAt: now,
         updatedAt: now

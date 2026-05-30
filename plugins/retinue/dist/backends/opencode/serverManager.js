@@ -4,6 +4,7 @@ import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { getJobPaths, getOpenCodeServerDiscoveryPath, getOpenCodeServerLockPath, getRetinueTracePath } from "../../core/paths.js";
 import { killProcessTree, killProcessTreeSync } from "../../core/processTree.js";
+import { OpenCodeClient, OpenCodeClientError } from "./client.js";
 const DEFAULT_OPENCODE_HOST = "127.0.0.1";
 const DEFAULT_OPENCODE_PORT = 4096;
 const DEFAULT_OPENCODE_FALLBACK_PORTS = buildPortRange(4097, 4127);
@@ -368,6 +369,7 @@ async function listRunningOpenCodeJobIdsForServer(stateDir, baseUrl) {
     }
     const jobsDir = getJobPaths(stateDir, "placeholder").dir.replace(/[\\/]placeholder$/, "");
     const jobIds = [];
+    const client = new OpenCodeClient(baseUrl, { timeoutMs: 1_000 });
     for (const entry of await readDirIfExists(jobsDir)) {
         if (!entry.isDirectory()) {
             continue;
@@ -375,6 +377,9 @@ async function listRunningOpenCodeJobIdsForServer(stateDir, baseUrl) {
         try {
             const meta = JSON.parse(await fs.readFile(path.join(jobsDir, entry.name, "meta.json"), "utf8"));
             if (meta.backend === "opencode" && meta.status === "running" && normalizeBaseUrl(meta.externalServerUrl ?? "") === baseUrl) {
+                if (!(await isOpenCodeJobStillRunning(client, meta))) {
+                    continue;
+                }
                 jobIds.push(entry.name);
             }
         }
@@ -383,6 +388,21 @@ async function listRunningOpenCodeJobIdsForServer(stateDir, baseUrl) {
         }
     }
     return jobIds.sort();
+}
+async function isOpenCodeJobStillRunning(client, meta) {
+    if (typeof meta.externalSessionId !== "string" || !meta.externalSessionId.trim()) {
+        return true;
+    }
+    try {
+        const session = await client.getSession(meta.externalSessionId);
+        return session.state !== "completed" && session.state !== "failed" && session.aborted !== true;
+    }
+    catch (error) {
+        if (error instanceof OpenCodeClientError && error.status === 404) {
+            return false;
+        }
+        return true;
+    }
 }
 async function stopChildProcessTree(baseUrl, child, options) {
     const pid = child.pid;

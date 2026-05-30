@@ -498,15 +498,16 @@ export class OpenCodeBackend {
     }
     async buildAttemptChain(meta) {
         const root = await this.findAttemptRoot(meta);
-        const chain = [summarizeAttempt(root, root.selectedAttemptJobId)];
+        const selectedJobId = selectedAttemptChainJobId(root);
+        const chain = [summarizeAttempt(root, selectedJobId)];
         for (const jobId of root.attemptJobIds ?? []) {
             const attempt = await this.readMeta(jobId);
             if (!isProblem(attempt)) {
-                chain.push(summarizeAttempt(attempt, root.selectedAttemptJobId));
+                chain.push(summarizeAttempt(attempt, selectedJobId));
             }
         }
         if (meta.recoveredFromJobId && !chain.some((attempt) => attempt.jobId === meta.jobId)) {
-            chain.push(summarizeAttempt(meta, root.selectedAttemptJobId));
+            chain.push(summarizeAttempt(meta, selectedJobId));
         }
         return chain;
     }
@@ -531,7 +532,7 @@ export class OpenCodeBackend {
         const root = await this.findAttemptRoot(meta);
         return {
             ...result,
-            selectedAttemptJobId: root.selectedAttemptJobId,
+            selectedAttemptJobId: root.status === "completed" ? undefined : root.selectedAttemptJobId,
             attemptChain: chain
         };
     }
@@ -1164,7 +1165,11 @@ export class OpenCodeBackend {
             if (isProblem(meta) || meta.backend !== this.kind) {
                 continue;
             }
-            if (meta.status === "running" && meta.externalServerUrl === baseUrl) {
+            if (meta.externalServerUrl !== baseUrl) {
+                continue;
+            }
+            const status = meta.status === "running" ? await this.reconcileStatus(meta) : meta;
+            if (!isProblem(status) && status.status === "running" && status.externalServerUrl === baseUrl) {
                 return true;
             }
         }
@@ -2061,6 +2066,9 @@ function summarizeAttempt(meta, selectedAttemptJobId) {
         externalParentSessionId: meta.externalParentSessionId,
         externalRootSessionId: meta.externalRootSessionId
     };
+}
+function selectedAttemptChainJobId(root) {
+    return root.status === "completed" ? root.jobId : root.selectedAttemptJobId;
 }
 function hasToolPart(message) {
     return Array.isArray(message.parts) && message.parts.some((part) => part?.type === "tool");

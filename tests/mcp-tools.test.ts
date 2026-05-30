@@ -761,6 +761,77 @@ describe("MCP tools", () => {
     }
   });
 
+  it("does not expose a stale selected attempt when the root job completes late", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-late-root-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    const previousEnv = {
+      RETINUE_STATE_DIR: process.env.RETINUE_STATE_DIR,
+      RETINUE_OPENCODE_BASE_URL: process.env.RETINUE_OPENCODE_BASE_URL,
+      RETINUE_MCP_WAIT_MAX_MS: process.env.RETINUE_MCP_WAIT_MAX_MS,
+      RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS,
+      RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: process.env.RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS
+    };
+    try {
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.RETINUE_MCP_WAIT_MAX_MS = "5000";
+      process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS = "1";
+      process.env.RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS = "0";
+      fakeOpenCode.setAutoAssistantResponses(false);
+
+      const spawn = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue root completes after retry selection", task_name: "late-root", agent: "explore" }
+        })
+      );
+      fakeOpenCode.appendToolCallAssistant(spawn.externalSessionId, "checking source");
+      fakeOpenCode.appendZeroProgressReasoningAssistant(spawn.externalSessionId);
+
+      await expect(
+        connection.client.callTool({ name: "retinue_wait_agent", arguments: { jobId: spawn.jobId, timeoutMs: 100 } })
+      ).resolves.toBeDefined();
+
+      const selected = parseToolJson(
+        await connection.client.callTool({ name: "retinue_wait_agent", arguments: { jobId: spawn.jobId, timeoutMs: 200 } })
+      );
+      expect(selected).toMatchObject({
+        requestedJobId: spawn.jobId,
+        selectedAttemptJobId: expect.stringMatching(/^job_/)
+      });
+      expect(selected.jobId).not.toBe(spawn.jobId);
+
+      fakeOpenCode.completeSessionWithFinalText(spawn.externalSessionId, "late root review");
+
+      const completed = parseToolJson(
+        await connection.client.callTool({ name: "retinue_wait_agent", arguments: { jobId: spawn.jobId, timeoutMs: 1000 } })
+      );
+      expect(completed).toMatchObject({
+        task_name: "late-root",
+        jobId: spawn.jobId,
+        status: "completed",
+        result: {
+          status: "completed",
+          parsedStdout: { result: "late root review" }
+        },
+        attemptChain: [
+          expect.objectContaining({ jobId: spawn.jobId, status: "completed", selected: true }),
+          expect.objectContaining({ jobId: selected.selectedAttemptJobId, attempt: 1, selected: false })
+        ]
+      });
+      expect(completed.selectedAttemptJobId).toBeUndefined();
+    } finally {
+      restoreEnv("RETINUE_STATE_DIR", previousEnv.RETINUE_STATE_DIR);
+      restoreEnv("RETINUE_OPENCODE_BASE_URL", previousEnv.RETINUE_OPENCODE_BASE_URL);
+      restoreEnv("RETINUE_MCP_WAIT_MAX_MS", previousEnv.RETINUE_MCP_WAIT_MAX_MS);
+      restoreEnv("RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS", previousEnv.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS);
+      restoreEnv("RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS", previousEnv.RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS);
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("follows OpenCode agent semantics without a Retinue access-mode layer", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-agent-policy-"));
     const fakeOpenCode = await startFakeOpenCodeServer();
@@ -1564,6 +1635,53 @@ describe("MCP tools", () => {
       delete process.env.RETINUE_MAX_CONCURRENT_AGENTS;
       delete process.env.RETINUE_GLOBAL_AGENT_BUDGET;
       await Promise.allSettled([closeMcpClient(firstConnection), closeMcpClient(secondConnection), fakeOpenCode.close()]);
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("counts a running root job toward the global budget when its selected attempt metadata is stale", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-global-budget-stale-attempt-"));
+    const fakeOpenCode = await startFakeOpenCodeServer();
+    fakeOpenCode.setAutoAssistantResponses(false);
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    try {
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
+      process.env.RETINUE_MAX_CONCURRENT_AGENTS = "5";
+      process.env.RETINUE_GLOBAL_AGENT_BUDGET = "1";
+
+      const first = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue stale selected attempt one", task_name: "stale-attempt-1" }
+        })
+      );
+      expect(first).toMatchObject({ status: "running" });
+
+      const metaPath = path.join(tempDir, "jobs", first.jobId, "meta.json");
+      const meta = JSON.parse(await fs.readFile(metaPath, "utf8"));
+      await fs.writeFile(metaPath, `${JSON.stringify({ ...meta, selectedAttemptJobId: "job_missing_attempt" }, null, 2)}\n`, "utf8");
+
+      const queued = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "retinue stale selected attempt two", task_name: "stale-attempt-2" }
+        })
+      );
+      expect(queued).toMatchObject({
+        status: "queued",
+        queuePosition: 1,
+        maxQueuedAgents: 20
+      });
+      const trace = await fs.readFile(path.join(tempDir, "logs", "retinue.jsonl"), "utf8");
+      expect(trace).toContain('"hasSessionSlot":true');
+      expect(trace).toContain('"hasGlobalSlot":false');
+    } finally {
+      delete process.env.RETINUE_STATE_DIR;
+      delete process.env.RETINUE_OPENCODE_BASE_URL;
+      delete process.env.RETINUE_MAX_CONCURRENT_AGENTS;
+      delete process.env.RETINUE_GLOBAL_AGENT_BUDGET;
+      await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });

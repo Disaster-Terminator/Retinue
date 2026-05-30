@@ -337,7 +337,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
         task_name: isJobMeta(status) ? status.name : undefined,
         jobId: responseJobId,
         requestedJobId: responseJobId === jobId ? undefined : jobId,
-        selectedAttemptJobId: result.selectedAttemptJobId ?? waited.selectedAttemptJobId,
+        selectedAttemptJobId: result.attemptChain ? result.selectedAttemptJobId : result.selectedAttemptJobId ?? waited.selectedAttemptJobId,
         attemptChain: result.attemptChain ?? waited.attemptChain,
         status: responseStatus,
         ...attention,
@@ -1338,7 +1338,10 @@ async function listGlobalRunningAgents(options: GlobalAgentBudgetOptions): Promi
       continue;
     }
     if (meta.selectedAttemptJobId) {
-      continue;
+      const selectedMeta = await readRetinueJobMeta(options.stateDir, meta.selectedAttemptJobId);
+      if (selectedMeta?.backend && isActivePoolStatus(selectedMeta.status)) {
+        continue;
+      }
     }
     try {
       const backend = await createRetinueBackendByKind(

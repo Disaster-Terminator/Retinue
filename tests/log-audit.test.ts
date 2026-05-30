@@ -185,6 +185,60 @@ describe("Retinue log audit", () => {
     }
   });
 
+  it("warns when the bounded audit window may not cover the requested since timestamp", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-truncated-"));
+    try {
+      const tracePath = path.join(tempDir, "retinue.jsonl");
+      const lines = [
+        JSON.stringify({
+          time: "2026-05-20T08:00:00.000Z",
+          event: "opencode_job_stalled",
+          jobId: "job_hidden_by_tail",
+          status: "stalled",
+          diagnostic: {
+            stallReason: "provider_blank_assistant",
+            lastAssistantProviderID: "litellm",
+            lastAssistantModelID: "intentmux",
+            lastAssistantAgent: "explore",
+            lastAssistantMode: "explore"
+          }
+        }),
+        ...Array.from({ length: 20 }, (_, index) =>
+          JSON.stringify({
+            time: `2026-05-20T09:${String(index).padStart(2, "0")}:00.000Z`,
+            event: "opencode_job_result_read",
+            jobId: `job_completed_${index}`,
+            status: "completed",
+            diagnostic: {
+              lastAssistantProviderID: "litellm",
+              lastAssistantModelID: "intentmux",
+              selectedAssistantTextBytes: 20_000
+            }
+          })
+        )
+      ];
+      fs.writeFileSync(tracePath, `${lines.join("\n")}\n`);
+
+      const parsed = await auditRetinueLogs({
+        tracePath,
+        since: new Date("2026-05-20T08:00:00.000Z"),
+        maxBytes: 600,
+        maxLines: 100
+      });
+
+      expect(parsed.issueCount).toBe(0);
+      expect(parsed.inputTruncated).toBe(true);
+      expect(parsed.truncatedBeforeSince).toBe(true);
+      expect(parsed.oldestScannedEvent).not.toBe("2026-05-20T08:00:00.000Z");
+
+      const compact = renderCompactAuditResult(parsed);
+      expect(compact).toContain("warning=scan_truncated_before_since");
+      expect(compact).toContain("increase --max-bytes or --max-lines");
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("separates OpenCode external-directory permission waits from backend issues", async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-attention-"));
     try {

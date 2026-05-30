@@ -290,7 +290,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             task_name: isJobMeta(status) ? status.name : undefined,
             jobId: responseJobId,
             requestedJobId: responseJobId === jobId ? undefined : jobId,
-            selectedAttemptJobId: result.selectedAttemptJobId ?? waited.selectedAttemptJobId,
+            selectedAttemptJobId: result.attemptChain ? result.selectedAttemptJobId : result.selectedAttemptJobId ?? waited.selectedAttemptJobId,
             attemptChain: result.attemptChain ?? waited.attemptChain,
             status: responseStatus,
             ...attention,
@@ -1020,7 +1020,10 @@ async function listGlobalRunningAgents(options) {
             continue;
         }
         if (meta.selectedAttemptJobId) {
-            continue;
+            const selectedMeta = await readRetinueJobMeta(options.stateDir, meta.selectedAttemptJobId);
+            if (selectedMeta?.backend && isActivePoolStatus(selectedMeta.status)) {
+                continue;
+            }
         }
         try {
             const backend = await createRetinueBackendByKind(meta.backend, options.retinue, options.sharedRootSessions, options.claudeSdkJobs, options.preferClaudeSdk, options.claudeSdkQuery);

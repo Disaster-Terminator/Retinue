@@ -25,10 +25,10 @@ Common artifacts:
 For Retinue runtime issues, prefer the bounded audit before raw log reads:
 
 ```bash
-pnpm run audit:logs -- --since <recent-iso-time> --max-lines 120
+pnpm run audit:logs -- --since <recent-iso-time>
 ```
 
-The default output is compact. Use full JSON only when the compact summary cannot answer the question.
+The default output is compact. `--since` uses a larger bounded scan window than recent-tail mode; if compact output reports `warning=scan_truncated_before_since`, increase `--max-bytes` or `--max-lines` before treating a zero-issue audit as evidence. Use full JSON only when the compact summary cannot answer the question.
 
 ## Stall Reasons
 

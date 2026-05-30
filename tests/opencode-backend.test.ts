@@ -1046,16 +1046,17 @@ describe("OpenCodeBackend", () => {
       jobId: started.jobId,
       status: "completed"
     });
-    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+    const result = await backend.result({ jobId: started.jobId });
+    expect(result).toMatchObject({
       jobId: started.jobId,
       status: "completed",
-      selectedAttemptJobId: selected.selectedAttemptJobId,
       parsedStdout: { result: "late root review" },
       attemptChain: [
-        expect.objectContaining({ jobId: started.jobId, attempt: 0, status: "completed" }),
-        expect.objectContaining({ jobId: selected.selectedAttemptJobId, attempt: 1, selected: true })
+        expect.objectContaining({ jobId: started.jobId, attempt: 0, status: "completed", selected: true }),
+        expect.objectContaining({ jobId: selected.selectedAttemptJobId, attempt: 1, selected: false })
       ]
     });
+    expect(result.selectedAttemptJobId).toBeUndefined();
   });
 
   it("does not keep deferring an expired zero-progress rescue", async () => {
@@ -2131,6 +2132,28 @@ describe("OpenCodeBackend", () => {
     await expect(backend.wait({ jobId: started.jobId }, 1)).resolves.toMatchObject({ status: "running" });
     server!.completeSession(started.externalSessionId!);
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
+  });
+
+  it("does not let stale running OpenCode metadata block managed server idle shutdown", async () => {
+    const idleServers: string[] = [];
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      onServerIdle: (baseUrl) => idleServers.push(baseUrl)
+    });
+    const started = await backend.run({ cwd: tempDir, prompt: "complete despite stale sibling" });
+    const stale = await writeOpenCodeJobMeta(tempDir, "job_stale_running_same_server", "running");
+    await fs.writeFile(
+      getJobPaths(tempDir, stale.jobId).meta,
+      `${JSON.stringify({ ...stale, externalServerUrl: server!.url, externalSessionId: "ses_missing" }, null, 2)}\n`,
+      "utf8"
+    );
+
+    server!.completeSession(started.externalSessionId!);
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
+
+    expect(idleServers).toEqual([server!.url]);
   });
 
   it("resolves the OpenCode target from the requested run cwd", async () => {

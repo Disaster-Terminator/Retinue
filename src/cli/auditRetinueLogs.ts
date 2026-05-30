@@ -3,6 +3,8 @@
 import {
   DEFAULT_LOG_AUDIT_MAX_BYTES,
   DEFAULT_LOG_AUDIT_MAX_LINES,
+  DEFAULT_LOG_AUDIT_SINCE_MAX_BYTES,
+  DEFAULT_LOG_AUDIT_SINCE_MAX_LINES,
   auditRetinueLogs,
   type AuditRetinueLogsOptions
 } from "../core/logAudit.js";
@@ -30,10 +32,7 @@ interface CliOptions extends AuditRetinueLogsOptions {
 }
 
 function parseArgs(args: string[]): CliOptions {
-  const options: CliOptions = {
-    maxBytes: DEFAULT_LOG_AUDIT_MAX_BYTES,
-    maxLines: DEFAULT_LOG_AUDIT_MAX_LINES
-  };
+  const options: CliOptions = {};
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     const next = () => {
@@ -85,7 +84,7 @@ function parsePositiveInt(value: string, label: string): number {
 }
 
 function helpText(): string {
-  return `Usage: retinue-audit-logs [options]\n\nOptions:\n  --state-dir <dir>    Retinue state directory. Defaults to RETINUE_STATE_DIR or ~/.local/state/retinue.\n  --trace <file>       Explicit Retinue trace JSONL path.\n  --since <iso>        Only include events at or after this timestamp.\n  --max-lines <n>      Maximum recent JSONL lines to inspect. Default: ${DEFAULT_LOG_AUDIT_MAX_LINES}.\n  --max-bytes <n>      Maximum bytes to read from the tail. Default: ${DEFAULT_LOG_AUDIT_MAX_BYTES}.\n  --compact, -c        Print compact agent-facing text. This is the default.\n  --json, --full       Print the full JSON payload.\n  --no-live-reconcile  Skip live OpenCode status reconciliation for stale stalled jobs.\n`;
+  return `Usage: retinue-audit-logs [options]\n\nOptions:\n  --state-dir <dir>    Retinue state directory. Defaults to RETINUE_STATE_DIR or ~/.local/state/retinue.\n  --trace <file>       Explicit Retinue trace JSONL path.\n  --since <iso>        Only include events at or after this timestamp. Uses a larger default scan window.\n  --max-lines <n>      Maximum recent JSONL lines to inspect. Default: ${DEFAULT_LOG_AUDIT_MAX_LINES}; with --since: ${DEFAULT_LOG_AUDIT_SINCE_MAX_LINES}.\n  --max-bytes <n>      Maximum bytes to read from the tail. Default: ${DEFAULT_LOG_AUDIT_MAX_BYTES}; with --since: ${DEFAULT_LOG_AUDIT_SINCE_MAX_BYTES}.\n  --compact, -c        Print compact agent-facing text. This is the default.\n  --json, --full       Print the full JSON payload.\n  --no-live-reconcile  Skip live OpenCode status reconciliation for stale stalled jobs.\n`;
 }
 
 function createOpenCodeStatusReconciler(stateDir: string | undefined, env: NodeJS.ProcessEnv) {

@@ -4,6 +4,7 @@ import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { getJobPaths, getOpenCodeServerDiscoveryPath, getOpenCodeServerLockPath, getRetinueTracePath } from "../../core/paths.js";
 import { killProcessTree, killProcessTreeSync } from "../../core/processTree.js";
+import { OpenCodeClient, OpenCodeClientError } from "./client.js";
 
 const DEFAULT_OPENCODE_HOST = "127.0.0.1";
 const DEFAULT_OPENCODE_PORT = 4096;
@@ -523,6 +524,7 @@ async function listRunningOpenCodeJobIdsForServer(stateDir: string | undefined, 
   }
   const jobsDir = getJobPaths(stateDir, "placeholder").dir.replace(/[\\/]placeholder$/, "");
   const jobIds: string[] = [];
+  const client = new OpenCodeClient(baseUrl, { timeoutMs: 1_000 });
   for (const entry of await readDirIfExists(jobsDir)) {
     if (!entry.isDirectory()) {
       continue;
@@ -534,6 +536,9 @@ async function listRunningOpenCodeJobIdsForServer(stateDir: string | undefined, 
         externalServerUrl?: string;
       };
       if (meta.backend === "opencode" && meta.status === "running" && normalizeBaseUrl(meta.externalServerUrl ?? "") === baseUrl) {
+        if (!(await isOpenCodeJobStillRunning(client, meta))) {
+          continue;
+        }
         jobIds.push(entry.name);
       }
     } catch {
@@ -541,6 +546,24 @@ async function listRunningOpenCodeJobIdsForServer(stateDir: string | undefined, 
     }
   }
   return jobIds.sort();
+}
+
+async function isOpenCodeJobStillRunning(
+  client: OpenCodeClient,
+  meta: { externalSessionId?: string; externalServerUrl?: string; status?: string }
+): Promise<boolean> {
+  if (typeof meta.externalSessionId !== "string" || !meta.externalSessionId.trim()) {
+    return true;
+  }
+  try {
+    const session = await client.getSession(meta.externalSessionId);
+    return session.state !== "completed" && session.state !== "failed" && session.aborted !== true;
+  } catch (error) {
+    if (error instanceof OpenCodeClientError && error.status === 404) {
+      return false;
+    }
+    return true;
+  }
 }
 
 async function stopChildProcessTree(

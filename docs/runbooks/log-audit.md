@@ -11,10 +11,12 @@ If the compact audit is not enough, narrow raw-log inspection by `jobId`, attemp
 ## Command
 
 ```bash
-pnpm run audit:logs -- --since 2026-05-20T08:00:00.000Z --max-lines 120
+pnpm run audit:logs -- --since 2026-05-20T08:00:00.000Z
 ```
 
-The script reads only the tail of `logs/retinue.jsonl`, filters by `--since`, deduplicates terminal stalled OpenCode diagnostics, and emits concise issue candidates. If Retinue created a selected task-level attempt, the audit first links the root job and attempt jobs from the scanned trace plus available job `meta.json` files, then reports that recovery chain as one issue instead of splitting blank-provider, zero-progress, and malformed-read phases into separate candidates. If a job has a later `completed` event in the scanned window, earlier transient stalled diagnostics for that job are ignored. OpenCode `external_directory` permission waits are reported as `attention` items rather than backend issues, because the next step is a supervising-agent permission decision through `retinue_reply_permission`. Compact agent-facing triage is the default; add `--json` or `--full` when you need the full JSON sample payload.
+The script reads a bounded tail of `logs/retinue.jsonl`, uses a larger default scan window when `--since` is supplied, filters by that timestamp, deduplicates terminal stalled OpenCode diagnostics, and emits concise issue candidates. If Retinue created a selected task-level attempt, the audit first links the root job and attempt jobs from the scanned trace plus available job `meta.json` files, then reports that recovery chain as one issue instead of splitting blank-provider, zero-progress, and malformed-read phases into separate candidates. If a job has a later `completed` event in the scanned window, earlier transient stalled diagnostics for that job are ignored. OpenCode `external_directory` permission waits are reported as `attention` items rather than backend issues, because the next step is a supervising-agent permission decision through `retinue_reply_permission`. Compact agent-facing triage is the default; add `--json` or `--full` when you need the full JSON sample payload.
+
+If compact output includes `warning=scan_truncated_before_since`, the audit window did not reach the requested `--since` timestamp. Re-run with larger `--max-bytes` or `--max-lines` before concluding that no issues exist.
 
 This is a developer/operations diagnostic surface, not part of the default Retinue product MCP tool set. Default MCP hosts expose only child-agent lifecycle and permission bridge tools. When an agent host is explicitly dogfooding or investigating Retinue itself, set `RETINUE_EXPOSE_DIAGNOSTIC_TOOLS=1` to expose `retinue_audit_logs`; otherwise use the CLI command above from the repository.
 
@@ -22,8 +24,8 @@ Useful options:
 
 - `--state-dir <dir>`: Retinue state directory. Defaults to `RETINUE_STATE_DIR` or `~/.local/state/retinue`.
 - `--trace <file>`: explicit trace JSONL path.
-- `--since <iso>`: ignore older events from previous baselines.
-- `--max-lines <n>` and `--max-bytes <n>`: bound input size.
+- `--since <iso>`: ignore older events from previous baselines. This also uses a larger default scan window than recent-tail mode.
+- `--max-lines <n>` and `--max-bytes <n>`: bound input size. Explicit values override the since-aware defaults.
 - `--compact` or `-c`: print short text with issue and attention counts, job IDs, stall/recovery reason, provider/model, agent/mode, cwd, selected attempt markers, and one-line diagnosis. This is the default.
 - `--json` or `--full`: print the full JSON payload.
 

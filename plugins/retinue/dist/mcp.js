@@ -56087,6 +56087,7 @@ async function listRunningOpenCodeJobIdsForServer(stateDir, baseUrl) {
   }
   const jobsDir = getJobPaths(stateDir, "placeholder").dir.replace(/[\\/]placeholder$/, "");
   const jobIds = [];
+  const client2 = new OpenCodeClient2(baseUrl, { timeoutMs: 1e3 });
   for (const entry of await readDirIfExists2(jobsDir)) {
     if (!entry.isDirectory()) {
       continue;
@@ -56094,12 +56095,29 @@ async function listRunningOpenCodeJobIdsForServer(stateDir, baseUrl) {
     try {
       const meta3 = JSON.parse(await fs3.readFile(path2.join(jobsDir, entry.name, "meta.json"), "utf8"));
       if (meta3.backend === "opencode" && meta3.status === "running" && normalizeBaseUrl(meta3.externalServerUrl ?? "") === baseUrl) {
+        if (!await isOpenCodeJobStillRunning(client2, meta3)) {
+          continue;
+        }
         jobIds.push(entry.name);
       }
     } catch {
     }
   }
   return jobIds.sort();
+}
+async function isOpenCodeJobStillRunning(client2, meta3) {
+  if (typeof meta3.externalSessionId !== "string" || !meta3.externalSessionId.trim()) {
+    return true;
+  }
+  try {
+    const session = await client2.getSession(meta3.externalSessionId);
+    return session.state !== "completed" && session.state !== "failed" && session.aborted !== true;
+  } catch (error51) {
+    if (error51 instanceof OpenCodeClientError && error51.status === 404) {
+      return false;
+    }
+    return true;
+  }
 }
 async function stopChildProcessTree(baseUrl, child, options) {
   const pid = child.pid;
@@ -57026,15 +57044,16 @@ var OpenCodeBackend = class {
   }
   async buildAttemptChain(meta3) {
     const root = await this.findAttemptRoot(meta3);
-    const chain = [summarizeAttempt(root, root.selectedAttemptJobId)];
+    const selectedJobId = selectedAttemptChainJobId(root);
+    const chain = [summarizeAttempt(root, selectedJobId)];
     for (const jobId of root.attemptJobIds ?? []) {
       const attempt = await this.readMeta(jobId);
       if (!isProblem2(attempt)) {
-        chain.push(summarizeAttempt(attempt, root.selectedAttemptJobId));
+        chain.push(summarizeAttempt(attempt, selectedJobId));
       }
     }
     if (meta3.recoveredFromJobId && !chain.some((attempt) => attempt.jobId === meta3.jobId)) {
-      chain.push(summarizeAttempt(meta3, root.selectedAttemptJobId));
+      chain.push(summarizeAttempt(meta3, selectedJobId));
     }
     return chain;
   }
@@ -57059,7 +57078,7 @@ var OpenCodeBackend = class {
     const root = await this.findAttemptRoot(meta3);
     return {
       ...result,
-      selectedAttemptJobId: root.selectedAttemptJobId,
+      selectedAttemptJobId: root.status === "completed" ? void 0 : root.selectedAttemptJobId,
       attemptChain: chain
     };
   }
@@ -57658,7 +57677,11 @@ ${textWarning2}` : stderr;
       if (isProblem2(meta3) || meta3.backend !== this.kind) {
         continue;
       }
-      if (meta3.status === "running" && meta3.externalServerUrl === baseUrl) {
+      if (meta3.externalServerUrl !== baseUrl) {
+        continue;
+      }
+      const status = meta3.status === "running" ? await this.reconcileStatus(meta3) : meta3;
+      if (!isProblem2(status) && status.status === "running" && status.externalServerUrl === baseUrl) {
         return true;
       }
     }
@@ -58485,6 +58508,9 @@ function summarizeAttempt(meta3, selectedAttemptJobId) {
     externalRootSessionId: meta3.externalRootSessionId
   };
 }
+function selectedAttemptChainJobId(root) {
+  return root.status === "completed" ? root.jobId : root.selectedAttemptJobId;
+}
 function hasToolPart(message) {
   return Array.isArray(message.parts) && message.parts.some((part) => part?.type === "tool");
 }
@@ -58883,16 +58909,19 @@ function isPidAlive2(pid) {
 import fs5 from "node:fs/promises";
 import os2 from "node:os";
 import path4 from "node:path";
-var DEFAULT_LOG_AUDIT_MAX_BYTES = 1024 * 1024;
-var DEFAULT_LOG_AUDIT_MAX_LINES = 500;
+var DEFAULT_LOG_AUDIT_MAX_BYTES = 64 * 1024 * 1024;
+var DEFAULT_LOG_AUDIT_MAX_LINES = 5e4;
+var DEFAULT_LOG_AUDIT_SINCE_MAX_BYTES = 256 * 1024 * 1024;
+var DEFAULT_LOG_AUDIT_SINCE_MAX_LINES = 2e5;
 async function auditRetinueLogs(options = {}) {
   const stateDir = options.stateDir ?? path4.join(os2.homedir(), ".local/state/retinue");
   const tracePath = options.tracePath ?? path4.join(stateDir, "logs", "retinue.jsonl");
-  const events = await readRecentJsonl(tracePath, {
-    maxBytes: options.maxBytes ?? DEFAULT_LOG_AUDIT_MAX_BYTES,
-    maxLines: options.maxLines ?? DEFAULT_LOG_AUDIT_MAX_LINES,
+  const input = await readRecentJsonl(tracePath, {
+    maxBytes: options.maxBytes ?? (options.since ? DEFAULT_LOG_AUDIT_SINCE_MAX_BYTES : DEFAULT_LOG_AUDIT_MAX_BYTES),
+    maxLines: options.maxLines ?? (options.since ? DEFAULT_LOG_AUDIT_SINCE_MAX_LINES : DEFAULT_LOG_AUDIT_MAX_LINES),
     since: options.since
   });
+  const events = input.events;
   const latestStatusByJobId = await collectLatestStatusByJobId(events, stateDir, options.reconcileStatus);
   const latestEventByJobId = collectLatestEventByJobId(events);
   const attemptRootByJobId = await collectAttemptRoots(events, stateDir);
@@ -58901,6 +58930,10 @@ async function auditRetinueLogs(options = {}) {
     ok: true,
     tracePath,
     since: options.since?.toISOString(),
+    inputTruncated: input.inputTruncated,
+    truncatedBeforeSince: input.truncatedBeforeSince,
+    oldestScannedEvent: input.oldestScannedEvent?.toISOString(),
+    newestScannedEvent: input.newestScannedEvent?.toISOString(),
     scannedEvents: events.length,
     ignoredCompletedJobIds: completedJobIds(latestStatusByJobId),
     issueCount: issues.length,
@@ -58910,9 +58943,13 @@ async function auditRetinueLogs(options = {}) {
   };
 }
 async function readRecentJsonl(filePath, options) {
-  const text = await readTail(filePath, options.maxBytes);
-  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(-options.maxLines);
+  const tail = await readTail(filePath, options.maxBytes);
+  const allLines = tail.text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const lineTruncated = allLines.length > options.maxLines;
+  const lines = allLines.slice(-options.maxLines);
   const events = [];
+  let oldestScannedEvent;
+  let newestScannedEvent;
   for (const line of lines) {
     try {
       const event = JSON.parse(line);
@@ -58920,6 +58957,8 @@ async function readRecentJsonl(filePath, options) {
         continue;
       }
       const timestamp = eventTime(event);
+      oldestScannedEvent = earlierDate(oldestScannedEvent, timestamp);
+      newestScannedEvent = laterDate(newestScannedEvent, timestamp);
       if (options.since && timestamp && timestamp < options.since) {
         continue;
       }
@@ -58927,7 +58966,14 @@ async function readRecentJsonl(filePath, options) {
     } catch {
     }
   }
-  return events;
+  const inputTruncated = tail.truncated || lineTruncated;
+  return {
+    events,
+    inputTruncated,
+    truncatedBeforeSince: inputTruncated && options.since !== void 0 && (oldestScannedEvent === void 0 || oldestScannedEvent > options.since),
+    oldestScannedEvent,
+    newestScannedEvent
+  };
 }
 async function readTail(filePath, maxBytes) {
   const handle = await fs5.open(filePath, "r");
@@ -58936,7 +58982,10 @@ async function readTail(filePath, maxBytes) {
     const length = Math.min(stats.size, maxBytes);
     const buffer = Buffer.alloc(length);
     await handle.read(buffer, 0, length, stats.size - length);
-    return buffer.toString("utf8").replace(/^\uFFFD+/, "");
+    return {
+      text: buffer.toString("utf8").replace(/^\uFFFD+/, ""),
+      truncated: stats.size > length
+    };
   } finally {
     await handle.close();
   }
@@ -59259,6 +59308,24 @@ function later(left, right) {
   }
   return left > right ? left : right;
 }
+function earlierDate(left, right) {
+  if (!left) {
+    return right;
+  }
+  if (!right) {
+    return left;
+  }
+  return left < right ? left : right;
+}
+function laterDate(left, right) {
+  if (!left) {
+    return right;
+  }
+  if (!right) {
+    return left;
+  }
+  return left > right ? left : right;
+}
 function compact(record2) {
   return Object.fromEntries(Object.entries(record2).filter(([, value]) => value !== void 0));
 }
@@ -59294,6 +59361,13 @@ function renderCompactAuditResult(result) {
   ];
   if (result.since) {
     lines.push(`since=${result.since}`);
+  }
+  if (result.truncatedBeforeSince) {
+    lines.push(
+      `warning=scan_truncated_before_since oldestScanned=${result.oldestScannedEvent ?? "unknown"} increase --max-bytes or --max-lines`
+    );
+  } else if (result.inputTruncated) {
+    lines.push(`warning=scan_truncated oldestScanned=${result.oldestScannedEvent ?? "unknown"}`);
   }
   for (const [index, issue2] of result.issues.entries()) {
     lines.push(renderCompactIssue(issue2, index + 1));
@@ -60138,7 +60212,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
         task_name: isJobMeta(status) ? status.name : void 0,
         jobId: responseJobId,
         requestedJobId: responseJobId === jobId ? void 0 : jobId,
-        selectedAttemptJobId: result.selectedAttemptJobId ?? waited.selectedAttemptJobId,
+        selectedAttemptJobId: result.attemptChain ? result.selectedAttemptJobId : result.selectedAttemptJobId ?? waited.selectedAttemptJobId,
         attemptChain: result.attemptChain ?? waited.attemptChain,
         status: responseStatus,
         ...attention,
@@ -60971,7 +61045,10 @@ async function listGlobalRunningAgents(options) {
       continue;
     }
     if (meta3.selectedAttemptJobId) {
-      continue;
+      const selectedMeta = await readRetinueJobMeta(options.stateDir, meta3.selectedAttemptJobId);
+      if (selectedMeta?.backend && isActivePoolStatus(selectedMeta.status)) {
+        continue;
+      }
     }
     try {
       const backend = await createRetinueBackendByKind(

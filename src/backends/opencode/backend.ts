@@ -710,15 +710,16 @@ export class OpenCodeBackend implements AgentBackend {
 
   private async buildAttemptChain(meta: JobMeta): Promise<JobAttemptSummary[]> {
     const root = await this.findAttemptRoot(meta);
-    const chain: JobAttemptSummary[] = [summarizeAttempt(root, root.selectedAttemptJobId)];
+    const selectedJobId = selectedAttemptChainJobId(root);
+    const chain: JobAttemptSummary[] = [summarizeAttempt(root, selectedJobId)];
     for (const jobId of root.attemptJobIds ?? []) {
       const attempt = await this.readMeta(jobId);
       if (!isProblem(attempt)) {
-        chain.push(summarizeAttempt(attempt, root.selectedAttemptJobId));
+        chain.push(summarizeAttempt(attempt, selectedJobId));
       }
     }
     if (meta.recoveredFromJobId && !chain.some((attempt) => attempt.jobId === meta.jobId)) {
-      chain.push(summarizeAttempt(meta, root.selectedAttemptJobId));
+      chain.push(summarizeAttempt(meta, selectedJobId));
     }
     return chain;
   }
@@ -745,7 +746,7 @@ export class OpenCodeBackend implements AgentBackend {
     const root = await this.findAttemptRoot(meta);
     return {
       ...result,
-      selectedAttemptJobId: root.selectedAttemptJobId,
+      selectedAttemptJobId: root.status === "completed" ? undefined : root.selectedAttemptJobId,
       attemptChain: chain
     };
   }
@@ -1395,7 +1396,11 @@ export class OpenCodeBackend implements AgentBackend {
       if (isProblem(meta) || meta.backend !== this.kind) {
         continue;
       }
-      if (meta.status === "running" && meta.externalServerUrl === baseUrl) {
+      if (meta.externalServerUrl !== baseUrl) {
+        continue;
+      }
+      const status = meta.status === "running" ? await this.reconcileStatus(meta) : meta;
+      if (!isProblem(status) && status.status === "running" && status.externalServerUrl === baseUrl) {
         return true;
       }
     }
@@ -2437,6 +2442,10 @@ function summarizeAttempt(meta: JobMeta, selectedAttemptJobId: string | undefine
     externalParentSessionId: meta.externalParentSessionId,
     externalRootSessionId: meta.externalRootSessionId
   };
+}
+
+function selectedAttemptChainJobId(root: JobMeta): string | undefined {
+  return root.status === "completed" ? root.jobId : root.selectedAttemptJobId;
 }
 
 function hasToolPart(message: OpenCodeMessage): boolean {

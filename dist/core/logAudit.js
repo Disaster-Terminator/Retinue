@@ -1,16 +1,19 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-export const DEFAULT_LOG_AUDIT_MAX_BYTES = 1024 * 1024;
-export const DEFAULT_LOG_AUDIT_MAX_LINES = 500;
+export const DEFAULT_LOG_AUDIT_MAX_BYTES = 64 * 1024 * 1024;
+export const DEFAULT_LOG_AUDIT_MAX_LINES = 50_000;
+export const DEFAULT_LOG_AUDIT_SINCE_MAX_BYTES = 256 * 1024 * 1024;
+export const DEFAULT_LOG_AUDIT_SINCE_MAX_LINES = 200_000;
 export async function auditRetinueLogs(options = {}) {
     const stateDir = options.stateDir ?? path.join(os.homedir(), ".local/state/retinue");
     const tracePath = options.tracePath ?? path.join(stateDir, "logs", "retinue.jsonl");
-    const events = await readRecentJsonl(tracePath, {
-        maxBytes: options.maxBytes ?? DEFAULT_LOG_AUDIT_MAX_BYTES,
-        maxLines: options.maxLines ?? DEFAULT_LOG_AUDIT_MAX_LINES,
+    const input = await readRecentJsonl(tracePath, {
+        maxBytes: options.maxBytes ?? (options.since ? DEFAULT_LOG_AUDIT_SINCE_MAX_BYTES : DEFAULT_LOG_AUDIT_MAX_BYTES),
+        maxLines: options.maxLines ?? (options.since ? DEFAULT_LOG_AUDIT_SINCE_MAX_LINES : DEFAULT_LOG_AUDIT_MAX_LINES),
         since: options.since
     });
+    const events = input.events;
     const latestStatusByJobId = await collectLatestStatusByJobId(events, stateDir, options.reconcileStatus);
     const latestEventByJobId = collectLatestEventByJobId(events);
     const attemptRootByJobId = await collectAttemptRoots(events, stateDir);
@@ -19,6 +22,10 @@ export async function auditRetinueLogs(options = {}) {
         ok: true,
         tracePath,
         since: options.since?.toISOString(),
+        inputTruncated: input.inputTruncated,
+        truncatedBeforeSince: input.truncatedBeforeSince,
+        oldestScannedEvent: input.oldestScannedEvent?.toISOString(),
+        newestScannedEvent: input.newestScannedEvent?.toISOString(),
         scannedEvents: events.length,
         ignoredCompletedJobIds: completedJobIds(latestStatusByJobId),
         issueCount: issues.length,
@@ -28,13 +35,16 @@ export async function auditRetinueLogs(options = {}) {
     };
 }
 async function readRecentJsonl(filePath, options) {
-    const text = await readTail(filePath, options.maxBytes);
-    const lines = text
+    const tail = await readTail(filePath, options.maxBytes);
+    const allLines = tail.text
         .split(/\r?\n/)
         .map((line) => line.trim())
-        .filter(Boolean)
-        .slice(-options.maxLines);
+        .filter(Boolean);
+    const lineTruncated = allLines.length > options.maxLines;
+    const lines = allLines.slice(-options.maxLines);
     const events = [];
+    let oldestScannedEvent;
+    let newestScannedEvent;
     for (const line of lines) {
         try {
             const event = JSON.parse(line);
@@ -42,6 +52,8 @@ async function readRecentJsonl(filePath, options) {
                 continue;
             }
             const timestamp = eventTime(event);
+            oldestScannedEvent = earlierDate(oldestScannedEvent, timestamp);
+            newestScannedEvent = laterDate(newestScannedEvent, timestamp);
             if (options.since && timestamp && timestamp < options.since) {
                 continue;
             }
@@ -51,7 +63,14 @@ async function readRecentJsonl(filePath, options) {
             // Ignore partial or malformed tail lines.
         }
     }
-    return events;
+    const inputTruncated = tail.truncated || lineTruncated;
+    return {
+        events,
+        inputTruncated,
+        truncatedBeforeSince: inputTruncated && options.since !== undefined && (oldestScannedEvent === undefined || oldestScannedEvent > options.since),
+        oldestScannedEvent,
+        newestScannedEvent
+    };
 }
 async function readTail(filePath, maxBytes) {
     const handle = await fs.open(filePath, "r");
@@ -60,7 +79,10 @@ async function readTail(filePath, maxBytes) {
         const length = Math.min(stats.size, maxBytes);
         const buffer = Buffer.alloc(length);
         await handle.read(buffer, 0, length, stats.size - length);
-        return buffer.toString("utf8").replace(/^\uFFFD+/, "");
+        return {
+            text: buffer.toString("utf8").replace(/^\uFFFD+/, ""),
+            truncated: stats.size > length
+        };
     }
     finally {
         await handle.close();
@@ -388,6 +410,24 @@ function earlier(left, right) {
     return left < right ? left : right;
 }
 function later(left, right) {
+    if (!left) {
+        return right;
+    }
+    if (!right) {
+        return left;
+    }
+    return left > right ? left : right;
+}
+function earlierDate(left, right) {
+    if (!left) {
+        return right;
+    }
+    if (!right) {
+        return left;
+    }
+    return left < right ? left : right;
+}
+function laterDate(left, right) {
     if (!left) {
         return right;
     }
