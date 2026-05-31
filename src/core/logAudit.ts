@@ -159,6 +159,7 @@ function summarizeIssues(
 ): { issues: RetinueLogAuditIssue[]; attentions: RetinueLogAuditAttention[] } {
   const issuesBySignature = new Map<string, RetinueLogAuditIssue>();
   const attentionsBySignature = new Map<string, RetinueLogAuditAttention>();
+  const latestStatusByChainRootJobId = collectLatestStatusByChainRootJobId(latestStatusByJobId, attemptRootByJobId);
   for (const event of events) {
     const diagnostic = isRecord(event.diagnostic) ? event.diagnostic : undefined;
     if (!diagnostic) {
@@ -181,10 +182,11 @@ function summarizeIssues(
       continue;
     }
     const chainRootJobId = typeof event.jobId === "string" ? attemptRootByJobId.get(event.jobId) : undefined;
-    if (chainRootJobId && latestStatusByJobId.get(chainRootJobId) === "completed") {
+    const latestChainStatus = chainRootJobId ? latestStatusByChainRootJobId.get(chainRootJobId) : undefined;
+    if (latestChainStatus === "completed") {
       continue;
     }
-    if (options.includeTerminal !== true && chainRootJobId && isTerminalNonCompletedStatus(latestStatusByJobId.get(chainRootJobId))) {
+    if (options.includeTerminal !== true && isTerminalNonCompletedStatus(latestChainStatus)) {
       continue;
     }
     const chainSignature = chainRootJobId ? createChainSignature(chainRootJobId, diagnostic) : undefined;
@@ -295,6 +297,10 @@ async function collectAttemptRoots(events: Record<string, unknown>[], stateDir: 
     if (typeof event.selectedAttemptJobId === "string") {
       attemptRootByJobId.set(event.selectedAttemptJobId, rootJobId);
     }
+    if (typeof event.attemptJobId === "string") {
+      attemptRootByJobId.set(event.jobId, rootJobId);
+      attemptRootByJobId.set(event.attemptJobId, rootJobId);
+    }
     if (Array.isArray(event.attemptChain)) {
       for (const attempt of event.attemptChain) {
         if (isRecord(attempt) && typeof attempt.jobId === "string") {
@@ -327,6 +333,26 @@ async function collectAttemptRoots(events: Record<string, unknown>[], stateDir: 
     }
   }
   return attemptRootByJobId;
+}
+
+function collectLatestStatusByChainRootJobId(
+  latestStatusByJobId: Map<string, string>,
+  attemptRootByJobId: Map<string, string>
+): Map<string, string> {
+  const statuses = new Map<string, string>();
+  for (const [jobId, status] of latestStatusByJobId) {
+    const rootJobId = attemptRootByJobId.get(jobId);
+    if (!rootJobId) {
+      continue;
+    }
+    const current = statuses.get(rootJobId);
+    if (status === "completed" || (current !== "completed" && isTerminalNonCompletedStatus(status))) {
+      statuses.set(rootJobId, status);
+    } else if (!current) {
+      statuses.set(rootJobId, status);
+    }
+  }
+  return statuses;
 }
 
 async function readJobMeta(stateDir: string, jobId: string): Promise<Record<string, unknown> | undefined> {

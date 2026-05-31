@@ -110,6 +110,7 @@ describe("package.json guardrails", () => {
     expect(scripts["test:opencode"]).toContain("tests/opencode-backend.test.ts");
     expect(scripts["test:mcp"]).toContain("tests/mcp-tools.test.ts");
     expect(scripts["test:package"]).toContain("tests/ci-package-guardrails.test.ts");
+    expect(scripts["test:package"]).toContain("tests/sync-plugin-runtime.test.ts");
     expect(scripts["test:probes"]).toContain("tests/probe-dogfood.test.ts");
     expect(scripts["test:probes"]).toContain("tests/probe-backend-candidates.test.ts");
     expect(scripts["test:probes"]).toContain("tests/probe-opencode-root-binding.test.ts");

@@ -68,7 +68,7 @@
     "test:daemon": "vitest run --maxWorkers=1 tests/daemon-client.test.ts tests/daemon-discovery.test.ts tests/daemon-entrypoint.test.ts tests/daemon-rpc-contract.test.ts tests/daemon.test.ts tests/process-tree.test.ts",
     "test:opencode": "vitest run --maxWorkers=1 tests/opencode-autoserve-mcp.test.ts tests/opencode-backend.test.ts tests/opencode-client.test.ts tests/opencode-server-manager.test.ts",
     "test:mcp": "vitest run --maxWorkers=1 tests/hermes-integration.test.ts tests/mcp-tools.test.ts tests/retinue-api.test.ts",
-    "test:package": "vitest run --maxWorkers=1 tests/ci-package-guardrails.test.ts tests/sync-installed-plugin-cache.test.ts tests/verify-package.test.ts",
+    "test:package": "vitest run --maxWorkers=1 tests/ci-package-guardrails.test.ts tests/sync-installed-plugin-cache.test.ts tests/sync-plugin-runtime.test.ts tests/verify-package.test.ts",
     "test:probes": "vitest run --maxWorkers=1 tests/probe-dogfood.test.ts tests/probe-backend-candidates.test.ts tests/probe-opencode-root-binding.test.ts tests/probe-real-claude.test.ts tests/probe-real-opencode.test.ts",
     "test:cli": "vitest run --maxWorkers=1 tests/cli.test.ts",
     "typecheck": "tsc -p tsconfig.json",

@@ -59175,6 +59175,7 @@ async function readTail(filePath, maxBytes) {
 function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId, options = {}) {
   const issuesBySignature = /* @__PURE__ */ new Map();
   const attentionsBySignature = /* @__PURE__ */ new Map();
+  const latestStatusByChainRootJobId = collectLatestStatusByChainRootJobId(latestStatusByJobId, attemptRootByJobId);
   for (const event of events) {
     const diagnostic = isRecord(event.diagnostic) ? event.diagnostic : void 0;
     if (!diagnostic) {
@@ -59197,10 +59198,11 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
       continue;
     }
     const chainRootJobId = typeof event.jobId === "string" ? attemptRootByJobId.get(event.jobId) : void 0;
-    if (chainRootJobId && latestStatusByJobId.get(chainRootJobId) === "completed") {
+    const latestChainStatus = chainRootJobId ? latestStatusByChainRootJobId.get(chainRootJobId) : void 0;
+    if (latestChainStatus === "completed") {
       continue;
     }
-    if (options.includeTerminal !== true && chainRootJobId && isTerminalNonCompletedStatus(latestStatusByJobId.get(chainRootJobId))) {
+    if (options.includeTerminal !== true && isTerminalNonCompletedStatus(latestChainStatus)) {
       continue;
     }
     const chainSignature = chainRootJobId ? createChainSignature(chainRootJobId, diagnostic) : void 0;
@@ -59302,6 +59304,10 @@ async function collectAttemptRoots(events, stateDir) {
     if (typeof event.selectedAttemptJobId === "string") {
       attemptRootByJobId.set(event.selectedAttemptJobId, rootJobId);
     }
+    if (typeof event.attemptJobId === "string") {
+      attemptRootByJobId.set(event.jobId, rootJobId);
+      attemptRootByJobId.set(event.attemptJobId, rootJobId);
+    }
     if (Array.isArray(event.attemptChain)) {
       for (const attempt of event.attemptChain) {
         if (isRecord(attempt) && typeof attempt.jobId === "string") {
@@ -59334,6 +59340,22 @@ async function collectAttemptRoots(events, stateDir) {
     }
   }
   return attemptRootByJobId;
+}
+function collectLatestStatusByChainRootJobId(latestStatusByJobId, attemptRootByJobId) {
+  const statuses = /* @__PURE__ */ new Map();
+  for (const [jobId, status] of latestStatusByJobId) {
+    const rootJobId = attemptRootByJobId.get(jobId);
+    if (!rootJobId) {
+      continue;
+    }
+    const current = statuses.get(rootJobId);
+    if (status === "completed" || current !== "completed" && isTerminalNonCompletedStatus(status)) {
+      statuses.set(rootJobId, status);
+    } else if (!current) {
+      statuses.set(rootJobId, status);
+    }
+  }
+  return statuses;
 }
 async function readJobMeta(stateDir, jobId) {
   try {

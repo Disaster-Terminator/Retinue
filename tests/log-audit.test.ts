@@ -611,6 +611,72 @@ describe("Retinue log audit", () => {
     }
   });
 
+  it("suppresses recovered task-level attempts when the retry attempt completes", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-task-attempt-completed-"));
+    try {
+      const tracePath = path.join(tempDir, "logs", "retinue.jsonl");
+      fs.mkdirSync(path.dirname(tracePath), { recursive: true });
+      fs.writeFileSync(
+        tracePath,
+        [
+          JSON.stringify({
+            time: "2026-05-31T09:04:59.989Z",
+            event: "opencode_job_stalled",
+            jobId: "job_root",
+            status: "stalled",
+            diagnostic: {
+              stallReason: "provider_blank_assistant",
+              stallSummary: "OpenCode provider/router produced blank assistant output for 45190ms.",
+              lastAssistantProviderID: "litellm-cloud",
+              lastAssistantModelID: "doubao-seed-2.0-lite",
+              lastAssistantAgent: "explore",
+              lastAssistantMode: "explore"
+            }
+          }),
+          JSON.stringify({
+            time: "2026-05-31T09:05:00.068Z",
+            event: "opencode_task_level_attempt_started",
+            jobId: "job_root",
+            status: "stalled",
+            attemptJobId: "job_attempt",
+            attempt: 1,
+            recoveryReason: "provider_blank_assistant",
+            originalStallReason: "provider_blank_assistant",
+            recoveryStallReason: "provider_blank_assistant",
+            diagnostic: {
+              stallReason: "provider_blank_assistant",
+              stallSummary: "OpenCode provider/router produced blank assistant output for 45270ms.",
+              lastAssistantProviderID: "litellm-cloud",
+              lastAssistantModelID: "doubao-seed-2.0-lite",
+              lastAssistantAgent: "explore",
+              lastAssistantMode: "explore"
+            }
+          }),
+          JSON.stringify({
+            time: "2026-05-31T09:05:18.650Z",
+            event: "opencode_job_result_read",
+            jobId: "job_attempt",
+            status: "completed",
+            diagnostic: {
+              lastAssistantProviderID: "litellm-cloud",
+              lastAssistantModelID: "doubao-seed-2.0-lite",
+              lastAssistantAgent: "explore",
+              lastAssistantMode: "explore",
+              selectedAssistantTextBytes: 721
+            }
+          })
+        ].join("\n")
+      );
+
+      const parsed = await auditRetinueLogs({ stateDir: tempDir, tracePath, since: new Date("2026-05-31T09:00:00.000Z") });
+
+      expect(parsed.issueCount).toBe(0);
+      expect(parsed.ignoredCompletedJobIds).toEqual(["job_attempt"]);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("uses job metadata to link selected attempts when the trace window misses the linking event", async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-meta-chain-"));
     try {
