@@ -422,6 +422,46 @@ describe("OpenCode server manager", () => {
     }
   });
 
+  it("marks blocking jobs killed when a managed OpenCode server exits unexpectedly", async () => {
+    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-exit-cleanup-"));
+    const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-project-"));
+    const port = await freePort();
+    const command = await writeFakeOpenCodeCommandWithSessions();
+    let target: Awaited<ReturnType<typeof ensureOpenCodeServer>> | undefined;
+    try {
+      target = await ensureOpenCodeServer(
+        {
+          mode: "serve",
+          command,
+          args: buildServeArgs({ host: "127.0.0.1", port }),
+          host: "127.0.0.1",
+          port,
+          fallbackPorts: []
+        },
+        { stateDir, cwd: projectDir, healthTimeoutMs: 5000, healthPollMs: 50 }
+      );
+      await writeOpenCodeRunningJob(stateDir, "job_running_process_exit", target.baseUrl, projectDir);
+      await writeOpenCodeRunningJob(stateDir, "job_stalled_process_exit", target.baseUrl, projectDir, undefined, "stalled");
+
+      target.child?.kill();
+      await waitForUnreachable(target.baseUrl);
+      await waitForCondition(async () => {
+        const running = JSON.parse(await fs.readFile(getJobPaths(stateDir, "job_running_process_exit").meta, "utf8")) as { status?: string };
+        const stalled = JSON.parse(await fs.readFile(getJobPaths(stateDir, "job_stalled_process_exit").meta, "utf8")) as { status?: string };
+        return running.status === "killed" && stalled.status === "killed";
+      }, "Expected process-exit cleanup to mark OpenCode jobs killed");
+
+      const trace = await fs.readFile(getRetinueTracePath(stateDir), "utf8");
+      expect(trace).toContain('"event":"opencode_server_stopped"');
+      expect(trace).toContain('"reason":"process_exit"');
+      await expect(fs.access(getOpenCodeServerDiscoveryPath(stateDir))).rejects.toThrow();
+    } finally {
+      target?.child?.kill();
+      await fs.rm(stateDir, { recursive: true, force: true });
+      await fs.rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("stops a Retinue-managed OpenCode server recorded in discovery", async () => {
     const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-manual-stop-"));
     const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-project-"));
@@ -450,6 +490,10 @@ describe("OpenCode server manager", () => {
         blocked: []
       });
       await waitForUnreachable(target.baseUrl);
+      const trace = await fs.readFile(getRetinueTracePath(stateDir), "utf8");
+      expect(trace).toContain('"event":"opencode_server_stopped"');
+      expect(trace).toContain('"reason":"manual"');
+      expect(trace).not.toContain('"reason":"process_exit"');
       await expect(ensureOpenCodeServer(
         {
           mode: "serve",
@@ -793,6 +837,19 @@ function rejectAfter(ms: number, message: string): Promise<never> {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForCondition(predicate: () => Promise<boolean>, message: string): Promise<void> {
+  const deadline = Date.now() + 5000;
+  for (;;) {
+    if (await predicate()) {
+      return;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(message);
+    }
+    await sleep(25);
+  }
 }
 
 async function waitForUnreachable(baseUrl: string): Promise<void> {

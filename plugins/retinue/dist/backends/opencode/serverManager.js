@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
@@ -14,6 +15,7 @@ const DEFAULT_LOCK_TIMEOUT_MS = 10_000;
 const DEFAULT_LOCK_STALE_MS = 1_000;
 const managedServers = new Map();
 const managedServerIdleTimers = new Map();
+const intentionallyStoppingChildren = new WeakSet();
 const WINDOWS_EXECUTABLE_EXTENSIONS = [".EXE", ".CMD", ".BAT", ""];
 class OpenCodeStartupError extends Error {
     kind;
@@ -198,7 +200,11 @@ async function startManagedOpenCodeServer(resolution, options) {
             cwd: options.cwd
         });
         const startupFailure = waitForStartupFailure(child, resolution.command);
-        const cleanup = () => stopChildProcessTreeSync(child);
+        const cleanup = () => cleanupManagedOpenCodeServerSync(baseUrl, child, {
+            stateDir: options.stateDir,
+            cwd: options.cwd,
+            reason: "process_exit"
+        });
         process.once("exit", cleanup);
         try {
             await Promise.race([
@@ -255,9 +261,14 @@ async function startManagedOpenCodeServer(resolution, options) {
             managedServers.delete(baseUrl);
             cancelManagedOpenCodeServerIdleShutdown(baseUrl);
             process.removeListener("exit", cleanup);
-            if (options.stateDir && child.pid) {
-                void removeDiscoveryIfMatches(options.stateDir, child.pid, options.cwd);
+            if (intentionallyStoppingChildren.has(child)) {
+                return;
             }
+            void cleanupManagedOpenCodeServerAfterExit(baseUrl, child, {
+                stateDir: options.stateDir,
+                cwd: options.cwd,
+                reason: "process_exit"
+            });
         });
         return target;
     }
@@ -355,6 +366,7 @@ async function stopManagedOpenCodeServer(baseUrl, options) {
     if (!managed?.child) {
         return false;
     }
+    intentionallyStoppingChildren.add(managed.child);
     await stopChildProcessTree(normalizedBaseUrl, managed.child, options);
     managedServers.delete(normalizedBaseUrl);
     if (options.stateDir && managed.child.pid) {
@@ -443,6 +455,7 @@ async function stopDiscoveredManagedOpenCodeServer(discovery, options) {
     cancelManagedOpenCodeServerIdleShutdown(normalizedBaseUrl);
     const managed = managedServers.get(normalizedBaseUrl);
     if (managed?.child && managed.child.pid === discovery.pid) {
+        intentionallyStoppingChildren.add(managed.child);
         await stopChildProcessTree(normalizedBaseUrl, managed.child, options);
         managedServers.delete(normalizedBaseUrl);
     }
@@ -494,6 +507,59 @@ async function markOpenCodeJobsKilledForServer(stateDir, baseUrl) {
     }
     return killed.sort();
 }
+function markOpenCodeJobsKilledForServerSync(stateDir, baseUrl) {
+    const jobsDir = getJobPaths(stateDir, "placeholder").dir.replace(/[\\/]placeholder$/, "");
+    const killed = [];
+    for (const entry of readDirIfExistsSync(jobsDir)) {
+        if (!entry.isDirectory()) {
+            continue;
+        }
+        const metaPath = path.join(jobsDir, entry.name, "meta.json");
+        try {
+            const meta = JSON.parse(fsSync.readFileSync(metaPath, "utf8"));
+            if (meta.backend !== "opencode" ||
+                (meta.status !== "running" && meta.status !== "stalled") ||
+                normalizeBaseUrl(meta.externalServerUrl ?? "") !== baseUrl) {
+                continue;
+            }
+            fsSync.writeFileSync(metaPath, `${JSON.stringify({ ...meta, status: "killed", updatedAt: new Date().toISOString() }, null, 2)}\n`, "utf8");
+            killed.push(entry.name);
+        }
+        catch {
+            // Best-effort process-exit cleanup should not fail because one job metadata file is corrupt.
+        }
+    }
+    return killed.sort();
+}
+async function cleanupManagedOpenCodeServerAfterExit(baseUrl, child, options) {
+    await writeRetinueTrace(options.stateDir, {
+        event: "opencode_server_stopped",
+        baseUrl,
+        pid: child.pid,
+        reason: options.reason,
+        cwd: options.cwd
+    });
+    if (!options.stateDir || !child.pid) {
+        return;
+    }
+    await removeDiscoveryIfMatches(options.stateDir, child.pid, options.cwd);
+    await markOpenCodeJobsKilledForServer(options.stateDir, baseUrl);
+}
+function cleanupManagedOpenCodeServerSync(baseUrl, child, options) {
+    stopChildProcessTreeSync(child);
+    writeRetinueTraceSync(options.stateDir, {
+        event: "opencode_server_stopped",
+        baseUrl,
+        pid: child.pid,
+        reason: options.reason,
+        cwd: options.cwd
+    });
+    if (!options.stateDir || !child.pid) {
+        return;
+    }
+    removeDiscoveryIfMatchesSync(options.stateDir, child.pid, options.cwd);
+    markOpenCodeJobsKilledForServerSync(options.stateDir, baseUrl);
+}
 function stopChildProcessTreeSync(child) {
     const pid = child.pid;
     if (pid && child.exitCode === null) {
@@ -511,6 +577,19 @@ async function writeRetinueTrace(stateDir, event) {
     }
     catch {
         // Diagnostics must never make Retinue tool calls fail.
+    }
+}
+function writeRetinueTraceSync(stateDir, event) {
+    if (!stateDir) {
+        return;
+    }
+    const tracePath = getRetinueTracePath(stateDir);
+    try {
+        fsSync.mkdirSync(path.dirname(tracePath), { recursive: true });
+        fsSync.appendFileSync(tracePath, `${JSON.stringify({ time: new Date().toISOString(), pid: process.pid, ...event })}\n`, "utf8");
+    }
+    catch {
+        // Diagnostics must never block process shutdown.
     }
 }
 function waitForStartupFailure(child, command) {
@@ -665,6 +744,18 @@ async function removeDiscoveryIfMatches(stateDir, pid, cwd) {
     }
     catch {
         // Best-effort cleanup only.
+    }
+}
+function removeDiscoveryIfMatchesSync(stateDir, pid, cwd) {
+    try {
+        const filePath = getScopedOpenCodeServerDiscoveryPath(stateDir, cwd);
+        const parsed = JSON.parse(fsSync.readFileSync(filePath, "utf8"));
+        if (parsed.pid === pid) {
+            fsSync.rmSync(filePath, { force: true });
+        }
+    }
+    catch {
+        // Best-effort shutdown cleanup only.
     }
 }
 async function acquireOpenCodeServerLock(stateDir, timeoutMs, cwd) {
@@ -829,6 +920,17 @@ function isFileExistsError(error) {
 async function readDirIfExists(dirPath) {
     try {
         return await fs.readdir(dirPath, { withFileTypes: true });
+    }
+    catch (error) {
+        if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
+            return [];
+        }
+        throw error;
+    }
+}
+function readDirIfExistsSync(dirPath) {
+    try {
+        return fsSync.readdirSync(dirPath, { withFileTypes: true });
     }
     catch (error) {
         if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
