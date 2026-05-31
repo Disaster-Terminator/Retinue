@@ -9,6 +9,7 @@ export interface AuditRetinueLogsOptions {
     maxBytes?: number;
     maxLines?: number;
     reconcileStatus?: (jobId: string, meta: Record<string, unknown>) => Promise<string | undefined>;
+    includeTerminal?: boolean;
 }
 export interface RetinueLogAuditIssue {
     signature: string;
@@ -33,6 +34,7 @@ export interface RetinueLogAuditResult {
     newestScannedEvent?: string;
     scannedEvents: number;
     ignoredCompletedJobIds: string[];
+    ignoredTerminalJobIds: string[];
     issueCount: number;
     issues: RetinueLogAuditIssue[];
     attentionCount: number;

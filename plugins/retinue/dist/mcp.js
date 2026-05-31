@@ -59009,7 +59009,9 @@ async function auditRetinueLogs(options = {}) {
   const latestStatusByJobId = await collectLatestStatusByJobId(events, stateDir, options.reconcileStatus);
   const latestEventByJobId = collectLatestEventByJobId(events);
   const attemptRootByJobId = await collectAttemptRoots(events, stateDir);
-  const { issues, attentions } = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId);
+  const { issues, attentions } = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId, {
+    includeTerminal: options.includeTerminal === true
+  });
   return {
     ok: true,
     tracePath,
@@ -59020,6 +59022,7 @@ async function auditRetinueLogs(options = {}) {
     newestScannedEvent: input.newestScannedEvent?.toISOString(),
     scannedEvents: events.length,
     ignoredCompletedJobIds: completedJobIds(latestStatusByJobId),
+    ignoredTerminalJobIds: terminalJobIds(latestStatusByJobId),
     issueCount: issues.length,
     issues,
     attentionCount: attentions.length,
@@ -59074,7 +59077,7 @@ async function readTail(filePath, maxBytes) {
     await handle.close();
   }
 }
-function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId) {
+function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId, options = {}) {
   const issuesBySignature = /* @__PURE__ */ new Map();
   const attentionsBySignature = /* @__PURE__ */ new Map();
   for (const event of events) {
@@ -59083,7 +59086,11 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
       continue;
     }
     if (typeof event.jobId === "string") {
-      if (latestStatusByJobId.get(event.jobId) === "completed") {
+      const latestStatus = latestStatusByJobId.get(event.jobId);
+      if (latestStatus === "completed") {
+        continue;
+      }
+      if (options.includeTerminal !== true && isTerminalNonCompletedStatus(latestStatus)) {
         continue;
       }
       if (!isBackendUnreachableEvent(event) && isNonTerminalSoftStallEvent(latestEventByJobId.get(event.jobId))) {
@@ -59096,6 +59103,9 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
     }
     const chainRootJobId = typeof event.jobId === "string" ? attemptRootByJobId.get(event.jobId) : void 0;
     if (chainRootJobId && latestStatusByJobId.get(chainRootJobId) === "completed") {
+      continue;
+    }
+    if (options.includeTerminal !== true && chainRootJobId && isTerminalNonCompletedStatus(latestStatusByJobId.get(chainRootJobId))) {
       continue;
     }
     const chainSignature = chainRootJobId ? createChainSignature(chainRootJobId, diagnostic) : void 0;
@@ -59291,6 +59301,12 @@ function sampleSpecificityScore(sample) {
 function completedJobIds(latestStatusByJobId) {
   return [...latestStatusByJobId.entries()].filter(([, status]) => status === "completed").map(([jobId]) => jobId).sort();
 }
+function terminalJobIds(latestStatusByJobId) {
+  return [...latestStatusByJobId.entries()].filter(([, status]) => isTerminalNonCompletedStatus(status)).map(([jobId]) => jobId).sort();
+}
+function isTerminalNonCompletedStatus(status) {
+  return status === "failed" || status === "killed" || status === "timed_out";
+}
 async function collectLatestStatusByJobId(events, stateDir, reconcileStatus) {
   const statuses = /* @__PURE__ */ new Map();
   const eventJobIds = /* @__PURE__ */ new Set();
@@ -59320,7 +59336,7 @@ async function collectLatestStatusByJobId(events, stateDir, reconcileStatus) {
     }
     const timestamp = typeof meta3.updatedAt === "string" ? meta3.updatedAt : "";
     const current = statuses.get(jobId);
-    if (!current || status === "completed" || timestamp >= current.timestamp) {
+    if (!current || status === "completed" || isTerminalNonCompletedStatus(status) || timestamp >= current.timestamp) {
       statuses.set(jobId, { status, timestamp });
     }
   }
@@ -59469,7 +59485,13 @@ function isRecord(value) {
 // src/core/logAuditCompact.ts
 function renderCompactAuditResult(result) {
   const lines = [
-    `Retinue log audit: issues=${result.issueCount} attention=${result.attentionCount} scanned=${result.scannedEvents} ignoredCompleted=${result.ignoredCompletedJobIds.length}`,
+    [
+      `Retinue log audit: issues=${result.issueCount}`,
+      `attention=${result.attentionCount}`,
+      `scanned=${result.scannedEvents}`,
+      `ignoredCompleted=${result.ignoredCompletedJobIds.length}`,
+      result.ignoredTerminalJobIds.length > 0 ? `ignoredTerminal=${result.ignoredTerminalJobIds.length}` : void 0
+    ].filter((part) => Boolean(part)).join(" "),
     `trace=${result.tracePath}`
   ];
   if (result.since) {

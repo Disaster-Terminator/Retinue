@@ -21,6 +21,7 @@ export async function main(args = process.argv.slice(2), env = process.env): Pro
     since: options.since,
     maxBytes: options.maxBytes,
     maxLines: options.maxLines,
+    includeTerminal: options.includeTerminal,
     reconcileStatus: options.liveReconcile === false ? undefined : createOpenCodeStatusReconciler(options.stateDir ?? env.RETINUE_STATE_DIR, env)
   });
   process.stdout.write(options.format === "json" ? `${JSON.stringify(result, null, 2)}\n` : renderCompactAuditResult(result));
@@ -29,6 +30,7 @@ export async function main(args = process.argv.slice(2), env = process.env): Pro
 interface CliOptions extends AuditRetinueLogsOptions {
   format?: "compact" | "json";
   liveReconcile?: boolean;
+  includeTerminal?: boolean;
 }
 
 function parseArgs(args: string[]): CliOptions {
@@ -63,6 +65,8 @@ function parseArgs(args: string[]): CliOptions {
       options.format = "json";
     } else if (arg === "--no-live-reconcile") {
       options.liveReconcile = false;
+    } else if (arg === "--include-terminal") {
+      options.includeTerminal = true;
     } else if (arg === "--help" || arg === "-h") {
       process.stdout.write(helpText());
       process.exit(0);
@@ -84,7 +88,7 @@ function parsePositiveInt(value: string, label: string): number {
 }
 
 function helpText(): string {
-  return `Usage: retinue-audit-logs [options]\n\nOptions:\n  --state-dir <dir>    Retinue state directory. Defaults to RETINUE_STATE_DIR or ~/.local/state/retinue.\n  --trace <file>       Explicit Retinue trace JSONL path.\n  --since <iso>        Only include events at or after this timestamp. Uses a larger default scan window.\n  --max-lines <n>      Maximum recent JSONL lines to inspect. Default: ${DEFAULT_LOG_AUDIT_MAX_LINES}; with --since: ${DEFAULT_LOG_AUDIT_SINCE_MAX_LINES}.\n  --max-bytes <n>      Maximum bytes to read from the tail. Default: ${DEFAULT_LOG_AUDIT_MAX_BYTES}; with --since: ${DEFAULT_LOG_AUDIT_SINCE_MAX_BYTES}.\n  --compact, -c        Print compact agent-facing text. This is the default.\n  --json, --full       Print the full JSON payload.\n  --no-live-reconcile  Skip live OpenCode status reconciliation for stale stalled jobs.\n`;
+  return `Usage: retinue-audit-logs [options]\n\nOptions:\n  --state-dir <dir>    Retinue state directory. Defaults to RETINUE_STATE_DIR or ~/.local/state/retinue.\n  --trace <file>       Explicit Retinue trace JSONL path.\n  --since <iso>        Only include events at or after this timestamp. Uses a larger default scan window.\n  --max-lines <n>      Maximum recent JSONL lines to inspect. Default: ${DEFAULT_LOG_AUDIT_MAX_LINES}; with --since: ${DEFAULT_LOG_AUDIT_SINCE_MAX_LINES}.\n  --max-bytes <n>      Maximum bytes to read from the tail. Default: ${DEFAULT_LOG_AUDIT_MAX_BYTES}; with --since: ${DEFAULT_LOG_AUDIT_SINCE_MAX_BYTES}.\n  --compact, -c        Print compact agent-facing text. This is the default.\n  --json, --full       Print the full JSON payload.\n  --include-terminal   Include latest failed, killed, and timed_out jobs instead of treating them as historical noise.\n  --no-live-reconcile  Skip live OpenCode status reconciliation for stale stalled jobs.\n`;
 }
 
 function createOpenCodeStatusReconciler(stateDir: string | undefined, env: NodeJS.ProcessEnv) {

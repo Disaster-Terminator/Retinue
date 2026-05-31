@@ -2,7 +2,15 @@ import type { RetinueLogAuditAttention, RetinueLogAuditIssue, RetinueLogAuditRes
 
 export function renderCompactAuditResult(result: RetinueLogAuditResult): string {
   const lines = [
-    `Retinue log audit: issues=${result.issueCount} attention=${result.attentionCount} scanned=${result.scannedEvents} ignoredCompleted=${result.ignoredCompletedJobIds.length}`,
+    [
+      `Retinue log audit: issues=${result.issueCount}`,
+      `attention=${result.attentionCount}`,
+      `scanned=${result.scannedEvents}`,
+      `ignoredCompleted=${result.ignoredCompletedJobIds.length}`,
+      result.ignoredTerminalJobIds.length > 0 ? `ignoredTerminal=${result.ignoredTerminalJobIds.length}` : undefined
+    ]
+      .filter((part): part is string => Boolean(part))
+      .join(" "),
     `trace=${result.tracePath}`
   ];
   if (result.since) {

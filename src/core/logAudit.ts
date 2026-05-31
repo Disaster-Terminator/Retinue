@@ -14,6 +14,7 @@ export interface AuditRetinueLogsOptions {
   maxBytes?: number;
   maxLines?: number;
   reconcileStatus?: (jobId: string, meta: Record<string, unknown>) => Promise<string | undefined>;
+  includeTerminal?: boolean;
 }
 
 export interface RetinueLogAuditIssue {
@@ -41,6 +42,7 @@ export interface RetinueLogAuditResult {
   newestScannedEvent?: string;
   scannedEvents: number;
   ignoredCompletedJobIds: string[];
+  ignoredTerminalJobIds: string[];
   issueCount: number;
   issues: RetinueLogAuditIssue[];
   attentionCount: number;
@@ -59,7 +61,9 @@ export async function auditRetinueLogs(options: AuditRetinueLogsOptions = {}): P
   const latestStatusByJobId = await collectLatestStatusByJobId(events, stateDir, options.reconcileStatus);
   const latestEventByJobId = collectLatestEventByJobId(events);
   const attemptRootByJobId = await collectAttemptRoots(events, stateDir);
-  const { issues, attentions } = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId);
+  const { issues, attentions } = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId, {
+    includeTerminal: options.includeTerminal === true
+  });
   return {
     ok: true,
     tracePath,
@@ -70,6 +74,7 @@ export async function auditRetinueLogs(options: AuditRetinueLogsOptions = {}): P
     newestScannedEvent: input.newestScannedEvent?.toISOString(),
     scannedEvents: events.length,
     ignoredCompletedJobIds: completedJobIds(latestStatusByJobId),
+    ignoredTerminalJobIds: terminalJobIds(latestStatusByJobId),
     issueCount: issues.length,
     issues,
     attentionCount: attentions.length,
@@ -149,7 +154,8 @@ function summarizeIssues(
   events: Record<string, unknown>[],
   latestStatusByJobId: Map<string, string>,
   latestEventByJobId: Map<string, string>,
-  attemptRootByJobId: Map<string, string>
+  attemptRootByJobId: Map<string, string>,
+  options: { includeTerminal?: boolean } = {}
 ): { issues: RetinueLogAuditIssue[]; attentions: RetinueLogAuditAttention[] } {
   const issuesBySignature = new Map<string, RetinueLogAuditIssue>();
   const attentionsBySignature = new Map<string, RetinueLogAuditAttention>();
@@ -159,7 +165,11 @@ function summarizeIssues(
       continue;
     }
     if (typeof event.jobId === "string") {
-      if (latestStatusByJobId.get(event.jobId) === "completed") {
+      const latestStatus = latestStatusByJobId.get(event.jobId);
+      if (latestStatus === "completed") {
+        continue;
+      }
+      if (options.includeTerminal !== true && isTerminalNonCompletedStatus(latestStatus)) {
         continue;
       }
       if (!isBackendUnreachableEvent(event) && isNonTerminalSoftStallEvent(latestEventByJobId.get(event.jobId))) {
@@ -172,6 +182,9 @@ function summarizeIssues(
     }
     const chainRootJobId = typeof event.jobId === "string" ? attemptRootByJobId.get(event.jobId) : undefined;
     if (chainRootJobId && latestStatusByJobId.get(chainRootJobId) === "completed") {
+      continue;
+    }
+    if (options.includeTerminal !== true && chainRootJobId && isTerminalNonCompletedStatus(latestStatusByJobId.get(chainRootJobId))) {
       continue;
     }
     const chainSignature = chainRootJobId ? createChainSignature(chainRootJobId, diagnostic) : undefined;
@@ -388,6 +401,17 @@ function completedJobIds(latestStatusByJobId: Map<string, string>): string[] {
     .sort();
 }
 
+function terminalJobIds(latestStatusByJobId: Map<string, string>): string[] {
+  return [...latestStatusByJobId.entries()]
+    .filter(([, status]) => isTerminalNonCompletedStatus(status))
+    .map(([jobId]) => jobId)
+    .sort();
+}
+
+function isTerminalNonCompletedStatus(status: string | undefined): boolean {
+  return status === "failed" || status === "killed" || status === "timed_out";
+}
+
 async function collectLatestStatusByJobId(
   events: Record<string, unknown>[],
   stateDir: string,
@@ -421,7 +445,7 @@ async function collectLatestStatusByJobId(
     }
     const timestamp = typeof meta.updatedAt === "string" ? meta.updatedAt : "";
     const current = statuses.get(jobId);
-    if (!current || status === "completed" || timestamp >= current.timestamp) {
+    if (!current || status === "completed" || isTerminalNonCompletedStatus(status) || timestamp >= current.timestamp) {
       statuses.set(jobId, { status, timestamp });
     }
   }

@@ -17,7 +17,9 @@ export async function auditRetinueLogs(options = {}) {
     const latestStatusByJobId = await collectLatestStatusByJobId(events, stateDir, options.reconcileStatus);
     const latestEventByJobId = collectLatestEventByJobId(events);
     const attemptRootByJobId = await collectAttemptRoots(events, stateDir);
-    const { issues, attentions } = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId);
+    const { issues, attentions } = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId, {
+        includeTerminal: options.includeTerminal === true
+    });
     return {
         ok: true,
         tracePath,
@@ -28,6 +30,7 @@ export async function auditRetinueLogs(options = {}) {
         newestScannedEvent: input.newestScannedEvent?.toISOString(),
         scannedEvents: events.length,
         ignoredCompletedJobIds: completedJobIds(latestStatusByJobId),
+        ignoredTerminalJobIds: terminalJobIds(latestStatusByJobId),
         issueCount: issues.length,
         issues,
         attentionCount: attentions.length,
@@ -88,7 +91,7 @@ async function readTail(filePath, maxBytes) {
         await handle.close();
     }
 }
-function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId) {
+function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId, options = {}) {
     const issuesBySignature = new Map();
     const attentionsBySignature = new Map();
     for (const event of events) {
@@ -97,7 +100,11 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
             continue;
         }
         if (typeof event.jobId === "string") {
-            if (latestStatusByJobId.get(event.jobId) === "completed") {
+            const latestStatus = latestStatusByJobId.get(event.jobId);
+            if (latestStatus === "completed") {
+                continue;
+            }
+            if (options.includeTerminal !== true && isTerminalNonCompletedStatus(latestStatus)) {
                 continue;
             }
             if (!isBackendUnreachableEvent(event) && isNonTerminalSoftStallEvent(latestEventByJobId.get(event.jobId))) {
@@ -110,6 +117,9 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
         }
         const chainRootJobId = typeof event.jobId === "string" ? attemptRootByJobId.get(event.jobId) : undefined;
         if (chainRootJobId && latestStatusByJobId.get(chainRootJobId) === "completed") {
+            continue;
+        }
+        if (options.includeTerminal !== true && chainRootJobId && isTerminalNonCompletedStatus(latestStatusByJobId.get(chainRootJobId))) {
             continue;
         }
         const chainSignature = chainRootJobId ? createChainSignature(chainRootJobId, diagnostic) : undefined;
@@ -313,6 +323,15 @@ function completedJobIds(latestStatusByJobId) {
         .map(([jobId]) => jobId)
         .sort();
 }
+function terminalJobIds(latestStatusByJobId) {
+    return [...latestStatusByJobId.entries()]
+        .filter(([, status]) => isTerminalNonCompletedStatus(status))
+        .map(([jobId]) => jobId)
+        .sort();
+}
+function isTerminalNonCompletedStatus(status) {
+    return status === "failed" || status === "killed" || status === "timed_out";
+}
 async function collectLatestStatusByJobId(events, stateDir, reconcileStatus) {
     const statuses = new Map();
     const eventJobIds = new Set();
@@ -342,7 +361,7 @@ async function collectLatestStatusByJobId(events, stateDir, reconcileStatus) {
         }
         const timestamp = typeof meta.updatedAt === "string" ? meta.updatedAt : "";
         const current = statuses.get(jobId);
-        if (!current || status === "completed" || timestamp >= current.timestamp) {
+        if (!current || status === "completed" || isTerminalNonCompletedStatus(status) || timestamp >= current.timestamp) {
             statuses.set(jobId, { status, timestamp });
         }
     }

@@ -238,6 +238,53 @@ describe("Retinue log audit", () => {
     }
   });
 
+  it("suppresses terminal non-completed jobs by default and can include them on request", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-terminal-"));
+    try {
+      const tracePath = path.join(tempDir, "retinue.jsonl");
+      fs.mkdirSync(path.join(tempDir, "jobs", "job_killed"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tempDir, "jobs", "job_killed", "meta.json"),
+        JSON.stringify({ jobId: "job_killed", status: "killed", updatedAt: "2026-05-25T12:29:00.000Z" })
+      );
+      fs.writeFileSync(
+        tracePath,
+        JSON.stringify({
+          time: "2026-05-25T12:30:00.000Z",
+          event: "opencode_job_stalled",
+          jobId: "job_killed",
+          status: "stalled",
+          diagnostic: {
+            stallReason: "provider_zero_progress",
+            stallSummary: "OpenCode provider/router made no progress.",
+            lastAssistantProviderID: "litellm",
+            lastAssistantModelID: "intentmux",
+            lastAssistantAgent: "explore",
+            lastAssistantMode: "explore"
+          }
+        })
+      );
+
+      const defaultResult = await auditRetinueLogs({ tracePath, stateDir: tempDir, since: new Date("2026-05-25T12:00:00.000Z") });
+      expect(defaultResult.issueCount).toBe(0);
+      expect(defaultResult.ignoredTerminalJobIds).toEqual(["job_killed"]);
+      expect(renderCompactAuditResult(defaultResult)).toContain(
+        "Retinue log audit: issues=0 attention=0 scanned=1 ignoredCompleted=0 ignoredTerminal=1"
+      );
+
+      const fullResult = await auditRetinueLogs({
+        tracePath,
+        stateDir: tempDir,
+        since: new Date("2026-05-25T12:00:00.000Z"),
+        includeTerminal: true
+      });
+      expect(fullResult.issueCount).toBe(1);
+      expect(fullResult.issues[0].jobIds).toEqual(["job_killed"]);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("warns when the bounded audit window may not cover the requested since timestamp", async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-truncated-"));
     try {
