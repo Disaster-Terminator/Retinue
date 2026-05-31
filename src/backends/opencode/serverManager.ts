@@ -65,6 +65,7 @@ type RetinueTraceEvent =
   | { event: "opencode_server_idle_shutdown_scheduled"; baseUrl: string; delayMs: number; cwd?: string }
   | { event: "opencode_server_idle_shutdown_skipped"; baseUrl: string; reason: "running_jobs"; cwd?: string }
   | { event: "opencode_server_stopped"; baseUrl: string; pid?: number; reason: OpenCodeServerStopReason; cwd?: string }
+  | { event: "opencode_server_process_exit_ignored"; baseUrl: string; pid?: number; reason: "server_still_healthy"; cwd?: string }
   | { event: "opencode_server_stop_blocked"; baseUrl: string; pid?: number; reason: "running_jobs"; cwd?: string; runningJobIds: string[] }
   | { event: "opencode_server_stop_failed"; baseUrl: string; pid?: number; reason: OpenCodeServerStopReason; error: string; cwd?: string }
   | {
@@ -716,6 +717,20 @@ async function cleanupManagedOpenCodeServerAfterExit(
   child: ChildProcess,
   options: { stateDir?: string; cwd?: string; reason: OpenCodeServerStopReason }
 ): Promise<void> {
+  const health = await readOpenCodeHealth(baseUrl);
+  if (health.ok) {
+    await writeRetinueTrace(options.stateDir, {
+      event: "opencode_server_process_exit_ignored",
+      baseUrl,
+      pid: child.pid,
+      reason: "server_still_healthy",
+      cwd: options.cwd
+    });
+    if (options.stateDir && child.pid) {
+      await removeDiscoveryIfMatches(options.stateDir, child.pid, options.cwd);
+    }
+    return;
+  }
   await writeRetinueTrace(options.stateDir, {
     event: "opencode_server_stopped",
     baseUrl,

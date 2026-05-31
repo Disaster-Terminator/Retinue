@@ -462,6 +462,45 @@ describe("OpenCode server manager", () => {
     }
   });
 
+  it("does not mark jobs killed when the spawned wrapper exits but the OpenCode server remains healthy", async () => {
+    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-detached-"));
+    const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-project-"));
+    const port = await freePort();
+    const command = await writeFakeOpenCodeCommandThatDetachesHealthyServer();
+    let target: Awaited<ReturnType<typeof ensureOpenCodeServer>> | undefined;
+    try {
+      target = await ensureOpenCodeServer(
+        {
+          mode: "serve",
+          command,
+          args: buildServeArgs({ host: "127.0.0.1", port }),
+          host: "127.0.0.1",
+          port,
+          fallbackPorts: []
+        },
+        { stateDir, cwd: projectDir, healthTimeoutMs: 5000, healthPollMs: 50 }
+      );
+      await writeOpenCodeRunningJob(stateDir, "job_running_detached_server", target.baseUrl, projectDir);
+
+      await waitForCondition(async () => {
+        const trace = await fs.readFile(getRetinueTracePath(stateDir), "utf8");
+        return trace.includes('"event":"opencode_server_process_exit_ignored"');
+      }, "Expected process-exit cleanup to ignore a still-healthy OpenCode server");
+
+      const running = JSON.parse(await fs.readFile(getJobPaths(stateDir, "job_running_detached_server").meta, "utf8")) as { status?: string };
+      expect(running.status).toBe("running");
+      const trace = await fs.readFile(getRetinueTracePath(stateDir), "utf8");
+      expect(trace).toContain('"event":"opencode_server_process_exit_ignored"');
+      expect(trace).not.toContain('"event":"opencode_server_stopped"');
+      await expect(fs.access(getOpenCodeServerDiscoveryPath(stateDir))).rejects.toThrow();
+    } finally {
+      await fetch(`${target?.baseUrl}/shutdown`, { method: "POST" }).catch(() => undefined);
+      target?.child?.kill();
+      await fs.rm(stateDir, { recursive: true, force: true });
+      await fs.rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("stops a Retinue-managed OpenCode server recorded in discovery", async () => {
     const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-manual-stop-"));
     const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-opencode-project-"));
@@ -975,6 +1014,52 @@ const server = http.createServer((request, response) => {
   response.end("{}");
 });
 server.listen(port, host);
+`,
+    { mode: 0o755 }
+  );
+  return file;
+}
+
+async function writeFakeOpenCodeCommandThatDetachesHealthyServer(): Promise<string> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-fake-opencode-command-"));
+  const child = path.join(dir, "opencode-detached-child.mjs");
+  const file = path.join(dir, "opencode-fake.mjs");
+  await fs.writeFile(
+    child,
+    `#!/usr/bin/env node
+import http from "node:http";
+const port = Number(process.argv[2]);
+const host = process.argv[3];
+const server = http.createServer((request, response) => {
+  response.setHeader("content-type", "application/json");
+  if (request.url === "/global/health") {
+    response.end(JSON.stringify({ healthy: true, version: "fake-detached" }));
+    return;
+  }
+  if (request.method === "POST" && request.url === "/shutdown") {
+    response.end(JSON.stringify({ ok: true }));
+    server.close(() => process.exit(0));
+    return;
+  }
+  response.statusCode = 404;
+  response.end("{}");
+});
+server.listen(port, host);
+`,
+    { mode: 0o755 }
+  );
+  await fs.writeFile(
+    file,
+    `#!/usr/bin/env node
+import { spawn } from "node:child_process";
+const port = process.argv[process.argv.indexOf("--port") + 1];
+const host = process.argv[process.argv.indexOf("--hostname") + 1];
+const child = spawn(process.execPath, [${JSON.stringify(child)}, port, host], {
+  detached: true,
+  stdio: "ignore"
+});
+child.unref();
+setTimeout(() => process.exit(0), 100);
 `,
     { mode: 0o755 }
   );

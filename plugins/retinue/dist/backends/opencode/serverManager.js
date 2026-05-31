@@ -532,6 +532,20 @@ function markOpenCodeJobsKilledForServerSync(stateDir, baseUrl) {
     return killed.sort();
 }
 async function cleanupManagedOpenCodeServerAfterExit(baseUrl, child, options) {
+    const health = await readOpenCodeHealth(baseUrl);
+    if (health.ok) {
+        await writeRetinueTrace(options.stateDir, {
+            event: "opencode_server_process_exit_ignored",
+            baseUrl,
+            pid: child.pid,
+            reason: "server_still_healthy",
+            cwd: options.cwd
+        });
+        if (options.stateDir && child.pid) {
+            await removeDiscoveryIfMatches(options.stateDir, child.pid, options.cwd);
+        }
+        return;
+    }
     await writeRetinueTrace(options.stateDir, {
         event: "opencode_server_stopped",
         baseUrl,
