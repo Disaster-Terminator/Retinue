@@ -754,7 +754,7 @@ export class OpenCodeBackend implements AgentBackend {
     const root = await this.findAttemptRoot(meta);
     return {
       ...result,
-      selectedAttemptJobId: root.status === "completed" ? undefined : root.selectedAttemptJobId,
+      selectedAttemptJobId: root.status === "completed" && root.externalSessionId ? undefined : root.selectedAttemptJobId,
       attemptChain: chain
     };
   }
@@ -787,6 +787,12 @@ export class OpenCodeBackend implements AgentBackend {
     const meta = await this.status(handle);
     if (isProblem(meta)) {
       return { jobId: handle.jobId, status: meta.status, error: meta.error };
+    }
+    if (!meta.externalSessionId && meta.selectedAttemptJobId) {
+      const selected = await this.readMeta(meta.selectedAttemptJobId);
+      if (!isProblem(selected)) {
+        return this.decorateResultWithAttemptChain(await this.result({ jobId: selected.jobId }), meta);
+      }
     }
     const selectedAttempt = await this.selectedAttemptFor(meta);
     if (selectedAttempt) {
@@ -2541,7 +2547,7 @@ function summarizeAttempt(meta: JobMeta, selectedAttemptJobId: string | undefine
 }
 
 function selectedAttemptChainJobId(root: JobMeta): string | undefined {
-  return root.status === "completed" ? root.jobId : root.selectedAttemptJobId;
+  return root.status === "completed" && root.externalSessionId ? root.jobId : root.selectedAttemptJobId;
 }
 
 function hasToolPart(message: OpenCodeMessage): boolean {

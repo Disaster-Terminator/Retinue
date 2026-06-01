@@ -1807,13 +1807,17 @@ describe("MCP tools", () => {
       const attemptMeta = JSON.parse(await fs.readFile(path.join(tempDir, "jobs", promoted.jobId, "meta.json"), "utf8")) as {
         externalSessionId: string;
       };
-      fakeOpenCode.completeSession(attemptMeta.externalSessionId);
+      fakeOpenCode.completeSessionWithFinalText(attemptMeta.externalSessionId, "queued final");
       const completed = parseToolJson(
         await connection.client.callTool({ name: "retinue_wait_agent", arguments: { jobId: second.jobId, timeoutMs: 1000 } })
       );
       expect(completed).toMatchObject({
         jobId: second.jobId,
-        status: "completed"
+        status: "completed",
+        result: {
+          status: "completed",
+          stdout: "queued final"
+        }
       });
       expect(completed.requestedJobId).toBeUndefined();
       await expect(fs.readFile(path.join(tempDir, "jobs", second.jobId, "meta.json"), "utf8").then(JSON.parse)).resolves.toMatchObject({

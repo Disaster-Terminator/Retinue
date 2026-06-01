@@ -57203,7 +57203,7 @@ var OpenCodeBackend = class {
     const root = await this.findAttemptRoot(meta3);
     return {
       ...result,
-      selectedAttemptJobId: root.status === "completed" ? void 0 : root.selectedAttemptJobId,
+      selectedAttemptJobId: root.status === "completed" && root.externalSessionId ? void 0 : root.selectedAttemptJobId,
       attemptChain: chain
     };
   }
@@ -57232,6 +57232,12 @@ var OpenCodeBackend = class {
     const meta3 = await this.status(handle);
     if (isProblem2(meta3)) {
       return { jobId: handle.jobId, status: meta3.status, error: meta3.error };
+    }
+    if (!meta3.externalSessionId && meta3.selectedAttemptJobId) {
+      const selected = await this.readMeta(meta3.selectedAttemptJobId);
+      if (!isProblem2(selected)) {
+        return this.decorateResultWithAttemptChain(await this.result({ jobId: selected.jobId }), meta3);
+      }
     }
     const selectedAttempt = await this.selectedAttemptFor(meta3);
     if (selectedAttempt) {
@@ -58702,7 +58708,7 @@ function summarizeAttempt(meta3, selectedAttemptJobId) {
   };
 }
 function selectedAttemptChainJobId(root) {
-  return root.status === "completed" ? root.jobId : root.selectedAttemptJobId;
+  return root.status === "completed" && root.externalSessionId ? root.jobId : root.selectedAttemptJobId;
 }
 function hasToolPart(message) {
   return Array.isArray(message.parts) && message.parts.some((part) => part?.type === "tool");
