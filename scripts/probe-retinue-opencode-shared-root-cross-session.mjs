@@ -32,7 +32,7 @@ async function main() {
   process.env.RETINUE_OPENCODE_AUTO_SERVE = process.env.RETINUE_OPENCODE_AUTO_SERVE ?? "1";
   process.env.RETINUE_OPENCODE_HOST = process.env.RETINUE_OPENCODE_HOST ?? "127.0.0.1";
   process.env.RETINUE_OPENCODE_ROOT_BINDING_MODE = "shared_root";
-  process.env.RETINUE_OPENCODE_AGENT = writable ? "build" : "explore";
+  process.env.RETINUE_OPENCODE_AGENT = writable ? "general" : "explore";
 
   const a = await connect("a");
   const b = await connect("b");
@@ -101,7 +101,7 @@ async function spawn(client, cwd, name, canWrite) {
   const parsed = parseToolJson(
     await client.callTool({
       name: "retinue_spawn_agent",
-      arguments: { cwd, task_name: `cross-session-${name}`, agent: canWrite ? "build" : "explore", message }
+      arguments: { cwd, task_name: `cross-session-${name}`, agent: canWrite ? "general" : "explore", message }
     })
   );
   return { ...parsed, client, group: name.slice(0, 1) };

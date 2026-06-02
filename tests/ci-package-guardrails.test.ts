@@ -41,6 +41,7 @@ const configurationReference = readFileSync("docs/reference/configuration.md", "
 const mcpToolsReference = readFileSync("docs/reference/mcp-tools.md", "utf8");
 const diagnosticsReference = readFileSync("docs/reference/diagnostics.md", "utf8");
 const realOpenCodeMcpProbe = readFileSync("scripts/probe-retinue-opencode-mcp.mjs", "utf8");
+const realOpenCodeCrossSessionProbe = readFileSync("scripts/probe-retinue-opencode-shared-root-cross-session.mjs", "utf8");
 const opencodeBackendSource = readFileSync("src/backends/opencode/backend.ts", "utf8");
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   name?: string;
@@ -154,6 +155,12 @@ describe("package.json guardrails", () => {
     expect(realOpenCodeMcpProbe).not.toContain("Missing RETINUE_OPENCODE_BASE_URL");
   });
 
+  it("keeps writable OpenCode probes on native subagent semantics", () => {
+    expect(realOpenCodeCrossSessionProbe).toContain('process.env.RETINUE_OPENCODE_AGENT = writable ? "general" : "explore"');
+    expect(realOpenCodeCrossSessionProbe).toContain('agent: canWrite ? "general" : "explore"');
+    expect(realOpenCodeCrossSessionProbe).not.toContain('writable ? "build"');
+  });
+
   it("packages the Codex plugin surface", () => {
     expect(packageJson.files).toEqual(expect.arrayContaining(["plugins/**", ".agents/plugins/**", "dist/cli/**"]));
   });
@@ -201,6 +208,18 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(diagnosticsReference).toContain("read_tool_invalid_input");
     expect(diagnosticsReference).toContain("provider_zero_progress");
     expect(diagnosticsReference).not.toContain("default 75-second soft-stall");
+  });
+
+  it("documents OpenCode native subagent choices without treating build as writable default", () => {
+    expect(configurationReference).toContain("`explore` for read-only work and `general` for writable multi-step work");
+    expect(readmeZh).toContain("`explore`");
+    expect(readmeEn).toContain("`explore`");
+    expect(readFileSync("docs/reference/backends/opencode.md", "utf8")).toContain(
+      "`build` is a primary agent/root candidate, not the default writable subagent"
+    );
+    expect(readFileSync("docs/runbooks/real-opencode-probes.md", "utf8")).toContain(
+      "The writable variant uses OpenCode's built-in `general` subagent"
+    );
   });
 
   it("routes documentation by reader intent", () => {

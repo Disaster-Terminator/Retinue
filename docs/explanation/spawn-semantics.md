@@ -38,7 +38,7 @@ Retinue does not use OpenCode's `SubtaskPartInput` as the normal spawn path beca
 
 `per_spawn` is a legacy/fallback topology. Each Retinue child job creates its own unprompted OpenCode root session and then a prompted child session. Use it for compatibility checks, isolation probes, or debugging when shared-root behavior is suspected.
 
-OpenCode owns child agent behavior, tools, and permissions. A writable child such as `build` may edit files directly through OpenCode. Retinue must not replace that with a patch-only protocol or a prompt-text write-intent blocker.
+OpenCode owns child agent behavior, tools, and permissions. For OpenCode-native subagent semantics, use subagents such as `explore` for read-only exploration and `general` for writable multi-step work. `build` is a primary/root agent; Retinue can target it only when the caller explicitly asks for that OpenCode agent, but Retinue should not describe it as the default writable subagent. Retinue must not replace writable child execution with a patch-only protocol or a prompt-text write-intent blocker.
 
 The edge case is cross-session concurrency: multiple independent Retinue MCP sessions, possibly from multiple Codex/Hermes hosts or backends, may target the same cwd. That is outside one OpenCode root's native scheduling boundary. Retinue should make this observable through explicit probes and diagnostics before adding any opt-in safety policy.
 

@@ -49,7 +49,7 @@ RETINUE_OPENCODE_MODEL=litellm/pro-router
 
 CLI/MCP request fields win over environment variables, and environment variables win over the packaged Retinue JSON defaults. If none is set, retinue does not send `model`; for plugin installs, the packaged fallback may provide an OpenCode `agent`.
 
-Retinue v0.2.0 plugin deployments ship `opencode.agent: "explore"` in `retinue.config.json` as an installation-cache fallback. Do not edit the cached file for persistent deployment state; plugin refreshes can overwrite it. Use `RETINUE_OPENCODE_AGENT` when a deployment needs a persistent default. Retinue follows the active OpenCode profile and selected OpenCode agent semantics. `retinue_spawn_agent` can override the OpenCode agent for one child with `agent`; it does not expose a separate Retinue access-mode layer.
+Retinue v0.2.0 plugin deployments ship `opencode.agent: "explore"` in `retinue.config.json` as an installation-cache fallback. Do not edit the cached file for persistent deployment state; plugin refreshes can overwrite it. Use `RETINUE_OPENCODE_AGENT` when a deployment needs a persistent default. Retinue follows the active OpenCode profile and selected OpenCode agent semantics. `retinue_spawn_agent` can override the OpenCode agent for one child with `agent`; it does not expose a separate Retinue access-mode layer. For OpenCode-native semantics, `explore` is the default read-only subagent and `general` is the built-in writable subagent for multi-step work. `build` is a primary agent/root candidate, not the default writable subagent.
 
 ## Profile
 
@@ -93,7 +93,7 @@ MCP hosts commonly enforce their own per-tool timeout. Retinue therefore clamps 
 
 Retinue's local HTTP clients also apply a 30-second transport timeout to OpenCode and daemon requests. Set `RETINUE_HTTP_TIMEOUT_MS` when a deployment needs a different local request ceiling; set it to `0` only when another layer already enforces a reliable timeout.
 
-Product `retinue_spawn_agent` calls are agent-aware on the OpenCode backend. OpenCode owns the effective profile, permissions, tools, plugins, and agent behavior. Retinue does not inject a read-only prompt contract, does not send prompt-level tool overrides, and does not expose `access_mode` or `bash_policy` on the product MCP tool.
+Product `retinue_spawn_agent` calls are agent-aware on the OpenCode backend. OpenCode owns the effective profile, permissions, tools, plugins, and agent behavior. Retinue does not inject a read-only prompt contract, does not send prompt-level tool overrides, and does not expose `access_mode` or `bash_policy` on the product MCP tool. The normal OpenCode child-agent choices are OpenCode's own subagents: `explore` for read-only research and `general` for writable multi-step work.
 
 Retinue does not submit OpenCode `SubtaskPartInput` as the normal spawn path because that path runs inside the parent prompt loop and can wake the parent agent/model after the subtask completes. Instead, Retinue keeps a direct child session topology and mirrors the important OpenCode `TaskTool` permission behavior: it reads `/agent` metadata, creates the requested child session under the parent, inherits parent edit denies plus parent-session deny/external-directory rules, and denies child `todowrite`/`task` unless the requested OpenCode subagent explicitly allows them.
 

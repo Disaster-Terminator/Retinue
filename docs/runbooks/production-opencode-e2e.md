@@ -44,7 +44,7 @@ RETINUE_OPENCODE_MODEL=litellm/pro-router
 RETINUE_OPENCODE_AGENT=explore
 ```
 
-Retinue 0.1.0 uses OpenCode's built-in `explore` subagent as the default plugin agent. Use `build` only when the deployment intentionally allows the child agent to edit.
+Retinue uses OpenCode's built-in `explore` subagent as the default plugin agent. Use OpenCode's built-in `general` subagent when a child is intentionally allowed to edit. `build` is a primary/root agent, not the default writable subagent.
 
 Precedence is:
 
