@@ -57270,7 +57270,19 @@ var OpenCodeBackend = class {
       }
     }
     const client2 = this.clientForMeta(meta3);
-    const messages = await client2.messages(meta3.externalSessionId);
+    let messages;
+    try {
+      messages = await client2.messages(meta3.externalSessionId);
+    } catch (error51) {
+      if (meta3.status === "completed" && isBackendUnavailableError(error51)) {
+        const cachedResult = await this.completedCachedResult(handle.jobId, meta3, paths);
+        if (cachedResult) {
+          return this.decorateResultWithAttemptChain(cachedResult, meta3);
+        }
+        return this.decorateResultWithAttemptChain(await this.completedResultBackendUnavailable(handle.jobId, meta3, paths, error51), meta3);
+      }
+      throw error51;
+    }
     const jobMessages = selectMessagesForMeta(messages, meta3);
     const diagnostic = await this.inspectJob(meta3);
     if (meta3.status === "stalled") {
@@ -57346,6 +57358,103 @@ ${textWarning2}` : stderr;
       sessionId: meta3.externalSessionId,
       parsedStdout: { result: text }
     }, meta3);
+  }
+  async completedResultBackendUnavailable(jobId, meta3, paths, error51) {
+    const errorMessage = error51 instanceof Error ? error51.message : String(error51);
+    const diagnostic = {
+      baseUrl: meta3.externalServerUrl ?? this.baseUrl ?? "",
+      sessionId: meta3.externalSessionId,
+      runnerMode: meta3.externalRunnerMode,
+      rootAgent: meta3.externalRootAgent,
+      rootSessionId: meta3.externalRootSessionId,
+      parentSessionId: meta3.externalParentSessionId,
+      childSessionIds: meta3.externalChildSessionIds,
+      sessionDirectory: meta3.externalSessionDirectory,
+      error: errorMessage
+    };
+    await this.writeJobTrace("opencode_job_completed_result_backend_unreachable", meta3, diagnostic);
+    await appendJobDiagnostic(this.stateDir, jobId, {
+      event: "opencode_job_completed_result_backend_unreachable",
+      diagnostic
+    });
+    return {
+      jobId,
+      status: "backend_unreachable",
+      error: `OpenCode completed job result was not cached and the backend is unreachable: ${errorMessage}`,
+      stdoutPath: paths.stdout,
+      stderrPath: paths.stderr,
+      sessionId: meta3.externalSessionId
+    };
+  }
+  async completedCachedResult(jobId, meta3, paths) {
+    const cachedStdout = await readTextIfExists2(paths.stdout);
+    if (!cachedStdout.trim()) {
+      return void 0;
+    }
+    const diagnostic = {
+      baseUrl: meta3.externalServerUrl ?? this.baseUrl ?? "",
+      sessionId: meta3.externalSessionId,
+      runnerMode: meta3.externalRunnerMode,
+      rootAgent: meta3.externalRootAgent,
+      rootSessionId: meta3.externalRootSessionId,
+      parentSessionId: meta3.externalParentSessionId,
+      childSessionIds: meta3.externalChildSessionIds,
+      sessionDirectory: meta3.externalSessionDirectory,
+      selectedAssistantTextBytes: Buffer.byteLength(cachedStdout, "utf8"),
+      selectedAssistantSha256: sha2562(cachedStdout)
+    };
+    if (process.env.RETINUE_TRACE_TEXT_PREVIEW === "1") {
+      diagnostic.selectedAssistantPreview = createPromptPreview2(cachedStdout);
+    }
+    await this.writeJobTrace("opencode_job_result_read", meta3, diagnostic);
+    await appendJobDiagnostic(this.stateDir, jobId, { event: "opencode_job_result_read", diagnostic });
+    const cachedStderr = await readTextIfExists2(paths.stderr);
+    return {
+      jobId,
+      status: meta3.status,
+      stdout: cachedStdout,
+      stderr: cachedStderr,
+      stdoutPath: paths.stdout,
+      stderrPath: paths.stderr,
+      stdoutBytes: Buffer.byteLength(cachedStdout, "utf8"),
+      stderrBytes: Buffer.byteLength(cachedStderr, "utf8"),
+      stdoutTruncated: false,
+      stderrTruncated: false,
+      sessionId: meta3.externalSessionId,
+      parsedStdout: { result: cachedStdout }
+    };
+  }
+  async persistCompletedResultSnapshot(meta3, client2, diagnostic) {
+    if (meta3.status !== "completed" || !meta3.externalSessionId) {
+      return;
+    }
+    const paths = getJobPaths(this.stateDir, meta3.jobId);
+    const cachedStdout = await readTextIfExists2(paths.stdout);
+    if (cachedStdout.trim()) {
+      return;
+    }
+    const messages = await client2.messages(meta3.externalSessionId);
+    const jobMessages = selectMessagesForMeta(messages, meta3);
+    const resultMessages = selectResultMessagesForMeta(jobMessages, meta3);
+    const text = meta3.externalMessageBaselineCount === void 0 && resultMessages === jobMessages ? latestAssistantMessageText(messages) : latestAssistantMessageText(resultMessages);
+    if (!text.trim()) {
+      return;
+    }
+    const textWarning = meta3.readOnly === true ? createReadOnlyTextWarning(text) : void 0;
+    if (textWarning) {
+      diagnostic.readOnlyTextWarning = true;
+      diagnostic.readOnlyTextWarningSummary = textWarning;
+      await fs4.appendFile(paths.stderr, `${textWarning}
+`, "utf8");
+    }
+    await fs4.writeFile(paths.stdout, text, "utf8");
+    diagnostic.selectedAssistantTextBytes = Buffer.byteLength(text, "utf8");
+    diagnostic.selectedAssistantSha256 = sha2562(text);
+    if (process.env.RETINUE_TRACE_TEXT_PREVIEW === "1") {
+      diagnostic.selectedAssistantPreview = createPromptPreview2(text);
+    }
+    await this.writeJobTrace("opencode_job_completed_result_cached", meta3, diagnostic);
+    await appendJobDiagnostic(this.stateDir, meta3.jobId, { event: "opencode_job_completed_result_cached", diagnostic });
   }
   async abort(handle) {
     const meta3 = await this.readMeta(handle.jobId);
@@ -57616,6 +57725,9 @@ ${textWarning2}` : stderr;
         toStatus: status,
         diagnostic
       });
+      if (status === "completed") {
+        await this.persistCompletedResultSnapshot(updated, client2, diagnostic);
+      }
       if (status === "stalled") {
         await this.writeJobTrace("opencode_job_stalled", updated, diagnostic, { fromStatus: meta3.status, toStatus: status });
         await appendJobDiagnostic(this.stateDir, meta3.jobId, {

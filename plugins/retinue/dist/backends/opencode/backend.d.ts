@@ -51,6 +51,9 @@ export declare class OpenCodeBackend implements AgentBackend {
     private decorateResultWithAttemptChain;
     private createTaskAttemptExhaustedMessage;
     result(handle: AgentHandle): Promise<JobResult>;
+    private completedResultBackendUnavailable;
+    private completedCachedResult;
+    private persistCompletedResultSnapshot;
     abort(handle: AgentHandle): Promise<void>;
     wait(handle: AgentHandle, timeoutMs?: number): Promise<WaitResult>;
     private isSoftStallRescuePending;

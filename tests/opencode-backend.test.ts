@@ -693,6 +693,42 @@ describe("OpenCodeBackend", () => {
     await expect(fs.readFile(getJobPaths(tempDir, started.jobId).stderr, "utf8")).resolves.toContain('"event":"opencode_job_result_read"');
   });
 
+  it("persists completed result text during status reconciliation before backend loss", async () => {
+    const backend = createBackend();
+    const started = await backend.run({ cwd: tempDir, prompt: "cache before backend loss" });
+    server!.completeSessionWithFinalText(started.externalSessionId!, "cached final review");
+
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "completed" });
+    await expect(fs.readFile(getJobPaths(tempDir, started.jobId).stdout, "utf8")).resolves.toBe("cached final review");
+
+    await server!.close();
+    server = undefined;
+
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "completed",
+      stdout: "cached final review",
+      parsedStdout: { result: "cached final review" }
+    });
+  });
+
+  it("returns structured backend-unreachable when completed result text was never cached", async () => {
+    const backend = createBackend();
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "completed without text" });
+    server!.completeSession(started.externalSessionId!);
+
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "completed" });
+    await expect(fs.readFile(getJobPaths(tempDir, started.jobId).stdout, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+
+    await server!.close();
+    server = undefined;
+
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "backend_unreachable",
+      error: expect.stringContaining("completed job result was not cached")
+    });
+  });
+
   it("transitions to completed from completed assistant messages when session state is absent", async () => {
     const backend = createBackend();
     const started = await backend.run({ cwd: tempDir, prompt: "result please" });

@@ -825,7 +825,19 @@ export class OpenCodeBackend implements AgentBackend {
       }
     }
     const client = this.clientForMeta(meta);
-    const messages = await client.messages(meta.externalSessionId);
+    let messages: OpenCodeMessage[];
+    try {
+      messages = await client.messages(meta.externalSessionId);
+    } catch (error) {
+      if (meta.status === "completed" && isBackendUnavailableError(error)) {
+        const cachedResult = await this.completedCachedResult(handle.jobId, meta, paths);
+        if (cachedResult) {
+          return this.decorateResultWithAttemptChain(cachedResult, meta);
+        }
+        return this.decorateResultWithAttemptChain(await this.completedResultBackendUnavailable(handle.jobId, meta, paths, error), meta);
+      }
+      throw error;
+    }
     const jobMessages = selectMessagesForMeta(messages, meta);
     const diagnostic = await this.inspectJob(meta);
     if (meta.status === "stalled") {
@@ -901,6 +913,117 @@ export class OpenCodeBackend implements AgentBackend {
       sessionId: meta.externalSessionId,
       parsedStdout: { result: text }
     }, meta);
+  }
+
+  private async completedResultBackendUnavailable(
+    jobId: string,
+    meta: JobMeta,
+    paths: ReturnType<typeof getJobPaths>,
+    error: unknown
+  ): Promise<JobResult> {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const diagnostic: OpenCodeJobDiagnostic = {
+      baseUrl: meta.externalServerUrl ?? this.baseUrl ?? "",
+      sessionId: meta.externalSessionId,
+      runnerMode: meta.externalRunnerMode,
+      rootAgent: meta.externalRootAgent,
+      rootSessionId: meta.externalRootSessionId,
+      parentSessionId: meta.externalParentSessionId,
+      childSessionIds: meta.externalChildSessionIds,
+      sessionDirectory: meta.externalSessionDirectory,
+      error: errorMessage
+    };
+    await this.writeJobTrace("opencode_job_completed_result_backend_unreachable", meta, diagnostic);
+    await appendJobDiagnostic(this.stateDir, jobId, {
+      event: "opencode_job_completed_result_backend_unreachable",
+      diagnostic
+    });
+    return {
+      jobId,
+      status: "backend_unreachable",
+      error: `OpenCode completed job result was not cached and the backend is unreachable: ${errorMessage}`,
+      stdoutPath: paths.stdout,
+      stderrPath: paths.stderr,
+      sessionId: meta.externalSessionId
+    };
+  }
+
+  private async completedCachedResult(jobId: string, meta: JobMeta, paths: ReturnType<typeof getJobPaths>): Promise<JobResult | undefined> {
+    const cachedStdout = await readTextIfExists(paths.stdout);
+    if (!cachedStdout.trim()) {
+      return undefined;
+    }
+    const diagnostic: OpenCodeJobDiagnostic = {
+      baseUrl: meta.externalServerUrl ?? this.baseUrl ?? "",
+      sessionId: meta.externalSessionId,
+      runnerMode: meta.externalRunnerMode,
+      rootAgent: meta.externalRootAgent,
+      rootSessionId: meta.externalRootSessionId,
+      parentSessionId: meta.externalParentSessionId,
+      childSessionIds: meta.externalChildSessionIds,
+      sessionDirectory: meta.externalSessionDirectory,
+      selectedAssistantTextBytes: Buffer.byteLength(cachedStdout, "utf8"),
+      selectedAssistantSha256: sha256(cachedStdout)
+    };
+    if (process.env.RETINUE_TRACE_TEXT_PREVIEW === "1") {
+      diagnostic.selectedAssistantPreview = createPromptPreview(cachedStdout);
+    }
+    await this.writeJobTrace("opencode_job_result_read", meta, diagnostic);
+    await appendJobDiagnostic(this.stateDir, jobId, { event: "opencode_job_result_read", diagnostic });
+    const cachedStderr = await readTextIfExists(paths.stderr);
+    return {
+      jobId,
+      status: meta.status,
+      stdout: cachedStdout,
+      stderr: cachedStderr,
+      stdoutPath: paths.stdout,
+      stderrPath: paths.stderr,
+      stdoutBytes: Buffer.byteLength(cachedStdout, "utf8"),
+      stderrBytes: Buffer.byteLength(cachedStderr, "utf8"),
+      stdoutTruncated: false,
+      stderrTruncated: false,
+      sessionId: meta.externalSessionId,
+      parsedStdout: { result: cachedStdout }
+    };
+  }
+
+  private async persistCompletedResultSnapshot(
+    meta: JobMeta,
+    client: OpenCodeClient,
+    diagnostic: OpenCodeJobDiagnostic
+  ): Promise<void> {
+    if (meta.status !== "completed" || !meta.externalSessionId) {
+      return;
+    }
+    const paths = getJobPaths(this.stateDir, meta.jobId);
+    const cachedStdout = await readTextIfExists(paths.stdout);
+    if (cachedStdout.trim()) {
+      return;
+    }
+    const messages = await client.messages(meta.externalSessionId);
+    const jobMessages = selectMessagesForMeta(messages, meta);
+    const resultMessages = selectResultMessagesForMeta(jobMessages, meta);
+    const text =
+      meta.externalMessageBaselineCount === undefined && resultMessages === jobMessages
+        ? latestAssistantMessageText(messages)
+        : latestAssistantMessageText(resultMessages);
+    if (!text.trim()) {
+      return;
+    }
+    const textWarning = meta.readOnly === true ? createReadOnlyTextWarning(text) : undefined;
+    if (textWarning) {
+      diagnostic.readOnlyTextWarning = true;
+      diagnostic.readOnlyTextWarningSummary = textWarning;
+      await fs.appendFile(paths.stderr, `${textWarning}\n`, "utf8");
+    }
+    await fs.writeFile(paths.stdout, text, "utf8");
+    diagnostic.selectedAssistantTextBytes = Buffer.byteLength(text, "utf8");
+    diagnostic.selectedAssistantSha256 = sha256(text);
+    if (process.env.RETINUE_TRACE_TEXT_PREVIEW === "1") {
+      diagnostic.selectedAssistantPreview = createPromptPreview(text);
+    }
+    await this.writeJobTrace("opencode_job_completed_result_cached", meta, diagnostic);
+    await appendJobDiagnostic(this.stateDir, meta.jobId, { event: "opencode_job_completed_result_cached", diagnostic });
   }
 
   async abort(handle: AgentHandle): Promise<void> {
@@ -1207,6 +1330,9 @@ export class OpenCodeBackend implements AgentBackend {
         toStatus: status,
         diagnostic
       });
+      if (status === "completed") {
+        await this.persistCompletedResultSnapshot(updated, client, diagnostic);
+      }
       if (status === "stalled") {
         await this.writeJobTrace("opencode_job_stalled", updated, diagnostic, { fromStatus: meta.status, toStatus: status });
         await appendJobDiagnostic(this.stateDir, meta.jobId, {
