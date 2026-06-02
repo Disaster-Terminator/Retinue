@@ -17,19 +17,27 @@ Set `RETINUE_OPENCODE_BASE_URL` only when intentionally validating attach mode a
 
 ## Dogfood root binding comparison
 
-Use this when comparing Retinue's default per-spawn OpenCode root container against the experimental shared-root container. The probe still goes through the Retinue MCP surface; it does not treat the low-level OpenCode HTTP probe as product evidence.
+Use this when comparing Retinue's default shared-root OpenCode container against the legacy per-spawn fallback. The probe still goes through the Retinue MCP surface; it does not treat the low-level OpenCode HTTP probe as product evidence.
 
 ```bash
-RETINUE_DOGFOOD_OPENCODE_ROOT_BINDING_MODE_LIST=per_spawn,shared_root \
-RETINUE_DOGFOOD_OPENCODE_ACCESS_MODE=profile \
+RETINUE_DOGFOOD_OPENCODE_ROOT_BINDING_MODE_LIST=shared_root,per_spawn \
 pnpm run probe:dogfood:opencode
 ```
 
-`RETINUE_OPENCODE_ROOT_BINDING_MODE=shared_root` is an experimental opt-in. The default remains `per_spawn`, where each Retinue job gets its own unprompted OpenCode root session plus one prompted child session. In `shared_root`, jobs in the same Retinue MCP server session with the same OpenCode server URL, cwd, and root agent reuse one unprompted root session and create separate prompted child sessions under it. Separate MCP server sessions do not share roots.
+`shared_root` is the default. Jobs in the same Retinue MCP server session with the same OpenCode server URL, cwd, and root agent reuse one unprompted OpenCode root session and create separate prompted child sessions under it. `per_spawn` remains available with `RETINUE_OPENCODE_ROOT_BINDING_MODE=per_spawn`; in that mode each Retinue job gets its own unprompted OpenCode root session plus one prompted child session. Separate MCP server sessions do not share roots.
 
 The default root agent is `build`. Set `RETINUE_OPENCODE_ROOT_AGENT=<agent>` only when validating a different OpenCode primary/root agent as the unprompted container; the Retinue child agent still comes from `RETINUE_OPENCODE_AGENT` or the MCP `agent` argument.
 
 The probe output includes `externalRunnerMode`, `externalRootAgent`, `externalRootSessionId`, `externalParentSessionId`, and the child `externalSessionId` so per-spawn and shared-root logs do not get mixed.
+
+Use the cross-session probe for the edge case where two independent Retinue MCP sessions target the same cwd:
+
+```bash
+pnpm run probe:real:opencode-shared-root-cross-session
+RETINUE_CROSS_SESSION_WRITABLE=1 pnpm run probe:real:opencode-shared-root-cross-session
+```
+
+The writable variant writes to a temporary probe workspace by default. Set `RETINUE_CROSS_SESSION_CWD` only when intentionally probing a specific workspace.
 
 ## Low-level OpenCode HTTP probe
 

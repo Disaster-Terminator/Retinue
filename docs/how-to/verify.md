@@ -101,13 +101,24 @@ When comparing OpenCode root binding modes, keep both modes in the same Retinue 
 output separate them:
 
 ```bash
-RETINUE_DOGFOOD_OPENCODE_ROOT_BINDING_MODE_LIST=per_spawn,shared_root pnpm run gate:dogfood
+RETINUE_DOGFOOD_OPENCODE_ROOT_BINDING_MODE_LIST=shared_root,per_spawn pnpm run gate:dogfood
 ```
 
-The default product path is still `per_spawn`. `shared_root` is experimental and should become a
-default only after real Retinue dogfood shows a clear reliability advantage. The dogfood JSON records
+The default product path is `shared_root`. `per_spawn` remains a legacy/fallback mode for isolation
+checks and debugging. The dogfood JSON records
 `externalRunnerMode`, `externalRootAgent`, `externalRootSessionId`, `externalParentSessionId`, and the
 child `externalSessionId` for this comparison.
+
+Use the cross-session probe when validating the edge case where two independent Retinue MCP sessions
+target the same cwd:
+
+```bash
+pnpm run probe:real:opencode-shared-root-cross-session
+RETINUE_CROSS_SESSION_WRITABLE=1 pnpm run probe:real:opencode-shared-root-cross-session
+```
+
+The writable variant uses a temporary probe workspace unless `RETINUE_CROSS_SESSION_CWD` is explicitly
+set.
 
 Use the OpenCode agent A/B probe only when comparing runtime behavior across built-in agents:
 

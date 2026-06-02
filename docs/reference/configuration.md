@@ -38,7 +38,7 @@ The packaged `retinue.config.json` is not persistent user state. Plugin refresh,
 | `RETINUE_OPENCODE_COMMAND` | `opencode` plus common install paths | OpenCode executable. |
 | `RETINUE_OPENCODE_MODEL` | unset | Optional OpenCode `provider/model` override. If unset, Retinue does not send a model and OpenCode uses its profile default. |
 | `RETINUE_OPENCODE_AGENT` | packaged fallback `explore` | Default OpenCode child agent. A single spawn may override it with `agent`. |
-| `RETINUE_OPENCODE_ROOT_BINDING_MODE` | deployment default | Controls OpenCode root/session binding experiments. Record `externalRunnerMode` when comparing behavior. |
+| `RETINUE_OPENCODE_ROOT_BINDING_MODE` | `shared_root` | Controls OpenCode root/session binding. Use `per_spawn` only for legacy compatibility, isolation probes, or debugging. Record `externalRunnerMode` when comparing behavior. |
 | `RETINUE_OPENCODE_SERVER_IDLE_MS` | `30000` | Idle shutdown grace for managed OpenCode server. |
 | `RETINUE_OPENCODE_SOFT_STALL_RESCUE_AGENT` | `build` | Agent used for same-session final-answer rescue. Use `none`, `0`, or `false` to keep the original agent. |
 | `RETINUE_OPENCODE_TASK_ATTEMPT_MAX` | implementation default | Maximum fresh task attempts after malformed read or failed finalization rescue. Set `0` to disable. |

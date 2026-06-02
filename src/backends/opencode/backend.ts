@@ -2674,11 +2674,11 @@ function resolveReadOnlyBashPolicy(value: AgentRunOptions["readOnlyBashPolicy"])
 
 function resolveRunnerMode(env: RetinueOptions["env"]): OpenCodeRunnerMode {
   const value = env?.RETINUE_OPENCODE_ROOT_BINDING_MODE?.trim().toLowerCase();
-  if (value === undefined || value === "" || value === "per_spawn" || value === "per-spawn") {
-    return "per-spawn";
-  }
-  if (value === "shared_root" || value === "shared-root") {
+  if (value === undefined || value === "" || value === "shared_root" || value === "shared-root") {
     return "shared-root";
+  }
+  if (value === "per_spawn" || value === "per-spawn") {
+    return "per-spawn";
   }
   throw new Error(`Unsupported RETINUE_OPENCODE_ROOT_BINDING_MODE: ${value}`);
 }

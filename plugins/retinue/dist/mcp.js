@@ -58817,11 +58817,11 @@ function resolveReadOnlyBashPolicy(value) {
 }
 function resolveRunnerMode(env) {
   const value = env?.RETINUE_OPENCODE_ROOT_BINDING_MODE?.trim().toLowerCase();
-  if (value === void 0 || value === "" || value === "per_spawn" || value === "per-spawn") {
-    return "per-spawn";
-  }
-  if (value === "shared_root" || value === "shared-root") {
+  if (value === void 0 || value === "" || value === "shared_root" || value === "shared-root") {
     return "shared-root";
+  }
+  if (value === "per_spawn" || value === "per-spawn") {
+    return "per-spawn";
   }
   throw new Error(`Unsupported RETINUE_OPENCODE_ROOT_BINDING_MODE: ${value}`);
 }

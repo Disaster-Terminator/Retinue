@@ -513,7 +513,7 @@ describe("MCP tools", () => {
       const spawn = parseToolJson(
         await connection.client.callTool({
           name: "retinue_spawn_agent",
-        arguments: { cwd: tempDir, message: "retinue mcp", task_name: "smoke", agent: "explore" }
+          arguments: { cwd: tempDir, message: "retinue mcp", task_name: "smoke", agent: "explore" }
         })
       );
       expect(spawn).toMatchObject({
@@ -523,7 +523,7 @@ describe("MCP tools", () => {
         cwd: tempDir,
         jobDir: path.join(tempDir, "jobs", spawn.jobId),
         externalServerUrl: fakeOpenCode.url,
-        externalRunnerMode: "per-spawn",
+        externalRunnerMode: "shared-root",
         externalRootAgent: "build",
         externalRootSessionId: expect.stringMatching(/^ses_/),
         externalParentSessionId: expect.stringMatching(/^ses_/),
@@ -711,10 +711,11 @@ describe("MCP tools", () => {
     const fakeOpenCode = await startFakeOpenCodeServer();
     const firstConnection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
     const secondConnection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+    const previousRootBindingMode = process.env.RETINUE_OPENCODE_ROOT_BINDING_MODE;
     try {
       process.env.RETINUE_STATE_DIR = tempDir;
       process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
-      process.env.RETINUE_OPENCODE_ROOT_BINDING_MODE = "shared_root";
+      delete process.env.RETINUE_OPENCODE_ROOT_BINDING_MODE;
 
       const first = parseToolJson(
         await firstConnection.client.callTool({
@@ -734,23 +735,33 @@ describe("MCP tools", () => {
           arguments: { cwd: tempDir, message: "shared root other mcp", task_name: "shared-other-mcp", agent: "explore" }
         })
       );
+      const fourth = parseToolJson(
+        await secondConnection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "shared root other mcp second child", task_name: "shared-other-mcp-two", agent: "explore" }
+        })
+      );
 
       expect(first.externalRunnerMode).toBe("shared-root");
       expect(second.externalRunnerMode).toBe("shared-root");
       expect(third.externalRunnerMode).toBe("shared-root");
+      expect(fourth.externalRunnerMode).toBe("shared-root");
       expect(second.externalRootSessionId).toBe(first.externalRootSessionId);
       expect(third.externalRootSessionId).not.toBe(first.externalRootSessionId);
+      expect(fourth.externalRootSessionId).toBe(third.externalRootSessionId);
+      expect(fourth.externalSessionId).not.toBe(third.externalSessionId);
       expect(fakeOpenCode.sessionRequests).toEqual([
         expect.objectContaining({ title: "retinue-shared-root", agent: "build" }),
         expect.objectContaining({ parentID: first.externalRootSessionId, agent: "explore" }),
         expect.objectContaining({ parentID: first.externalRootSessionId, agent: "explore" }),
         expect.objectContaining({ title: "retinue-shared-root", agent: "build" }),
+        expect.objectContaining({ parentID: third.externalRootSessionId, agent: "explore" }),
         expect.objectContaining({ parentID: third.externalRootSessionId, agent: "explore" })
       ]);
     } finally {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
-      delete process.env.RETINUE_OPENCODE_ROOT_BINDING_MODE;
+      restoreEnv("RETINUE_OPENCODE_ROOT_BINDING_MODE", previousRootBindingMode);
       await Promise.allSettled([closeMcpClient(firstConnection), closeMcpClient(secondConnection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });
     }

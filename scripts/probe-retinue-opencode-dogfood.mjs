@@ -36,13 +36,12 @@ async function main() {
   const rootStateDir = await ensureStateDir(process.env.RETINUE_STATE_DIR);
   const agents = parseAgents(process.env.RETINUE_DOGFOOD_OPENCODE_AGENT_LIST ?? process.env.RETINUE_OPENCODE_AGENT_LIST);
   const rootBindingModes = parseRootBindingModes(process.env.RETINUE_DOGFOOD_OPENCODE_ROOT_BINDING_MODE_LIST);
-  const accessMode = parseAccessMode(process.env.RETINUE_DOGFOOD_OPENCODE_ACCESS_MODE);
   const timeoutMs = parsePositiveInt(process.env.RETINUE_DOGFOOD_OPENCODE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);
   const results = [];
 
   for (const agent of agents) {
     for (const rootBindingMode of rootBindingModes) {
-      results.push(await runAgentDogfood({ agent, rootBindingMode, accessMode, rootStateDir, timeoutMs }));
+      results.push(await runAgentDogfood({ agent, rootBindingMode, rootStateDir, timeoutMs }));
     }
   }
 
@@ -52,7 +51,6 @@ async function main() {
     cwd: process.cwd(),
     agents,
     rootBindingModes,
-    accessMode,
     timeoutMs,
     rootStateDir,
     tracePath: path.join(rootStateDir, "logs", "retinue.jsonl"),
@@ -69,7 +67,7 @@ async function main() {
   process.exitCode = 1;
 }
 
-async function runAgentDogfood({ agent, rootBindingMode, accessMode, rootStateDir, timeoutMs }) {
+async function runAgentDogfood({ agent, rootBindingMode, rootStateDir, timeoutMs }) {
   const stateDir = rootStateDir;
   await mkdir(path.join(stateDir, "dogfood-runs", sanitizePathPart(agent), sanitizePathPart(rootBindingMode)), { recursive: true });
 
@@ -92,10 +90,10 @@ async function runAgentDogfood({ agent, rootBindingMode, accessMode, rootStateDi
   const client = new Client({ name: `retinue-opencode-dogfood-${agent}`, version: "0.1.0" });
   const server = createMcpServer();
   const spawns = [];
+  const cwd = process.cwd();
 
   try {
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
-    const cwd = process.cwd();
     for (const task of TASKS) {
       spawns.push({
         task,
@@ -105,8 +103,6 @@ async function runAgentDogfood({ agent, rootBindingMode, accessMode, rootStateDi
             arguments: {
               cwd,
               task_name: `${agent}-${rootBindingMode}-${task.name}`,
-              access_mode: accessMode,
-              bash_policy: "readonly_git",
               message: task.message
             }
           })
@@ -141,11 +137,14 @@ async function runAgentDogfood({ agent, rootBindingMode, accessMode, rootStateDi
         })
       )
     );
+    await client.callTool({
+      name: "retinue_stop_runtime",
+      arguments: { runtime: "opencode", cwd, force: true }
+    });
 
     return {
       agent,
       rootBindingMode,
-      accessMode,
       stateDir,
       agentArtifactDir: path.join(stateDir, "dogfood-runs", sanitizePathPart(agent), sanitizePathPart(rootBindingMode)),
       tracePath: path.join(stateDir, "logs", "retinue.jsonl"),
@@ -244,7 +243,7 @@ function parseAgents(value) {
 }
 
 function parseRootBindingModes(value) {
-  const modes = (value ? value.split(",") : ["per_spawn"]).map((mode) => mode.trim()).filter(Boolean);
+  const modes = (value ? value.split(",") : ["shared_root"]).map((mode) => mode.trim()).filter(Boolean);
   if (modes.length === 0) {
     throw new Error("RETINUE_DOGFOOD_OPENCODE_ROOT_BINDING_MODE_LIST did not include any modes");
   }
@@ -254,16 +253,6 @@ function parseRootBindingModes(value) {
     }
   }
   return modes;
-}
-
-function parseAccessMode(value) {
-  if (value === undefined || value === "") {
-    return "read_only";
-  }
-  if (value === "read_only" || value === "profile") {
-    return value;
-  }
-  throw new Error(`Unsupported RETINUE_DOGFOOD_OPENCODE_ACCESS_MODE: ${value}`);
 }
 
 function parsePositiveInt(value, fallback) {

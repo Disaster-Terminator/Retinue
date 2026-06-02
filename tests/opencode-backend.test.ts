@@ -60,7 +60,7 @@ describe("OpenCodeBackend", () => {
     });
   });
 
-  it("uses a direct OpenCode child session as the default run path", async () => {
+  it("uses a shared OpenCode root session as the default run path", async () => {
     const backend = createBackend();
 
     const started = await backend.run({
@@ -73,7 +73,7 @@ describe("OpenCodeBackend", () => {
 
     expect(server!.sessionRequests.at(-2)).toMatchObject({
       directory: tempDir,
-      title: "native demo",
+      title: "retinue-shared-root",
       agent: "build"
     });
     expect(server!.sessionRequests.at(-1)).toMatchObject({
@@ -98,8 +98,8 @@ describe("OpenCodeBackend", () => {
     });
   });
 
-  it("can reuse one OpenCode root session for multiple child jobs in shared-root mode", async () => {
-    const backend = createBackend({ RETINUE_OPENCODE_ROOT_BINDING_MODE: "shared_root" } as NodeJS.ProcessEnv);
+  it("can reuse one OpenCode root session for multiple child jobs by default", async () => {
+    const backend = createBackend();
 
     const first = await backend.run({
       cwd: tempDir,
@@ -146,6 +146,49 @@ describe("OpenCodeBackend", () => {
     );
   });
 
+  it("keeps per-spawn available as an explicit legacy mode", async () => {
+    const backend = createBackend({ RETINUE_OPENCODE_ROOT_BINDING_MODE: "per_spawn" } as NodeJS.ProcessEnv);
+
+    const first = await backend.run({
+      cwd: tempDir,
+      prompt: "review package scripts",
+      title: "legacy demo one",
+      agent: "explore"
+    });
+    const second = await backend.run({
+      cwd: tempDir,
+      prompt: "review mcp surface",
+      title: "legacy demo two",
+      agent: "explore"
+    });
+
+    expect(first.externalRunnerMode).toBe("per-spawn");
+    expect(second.externalRunnerMode).toBe("per-spawn");
+    expect(second.externalRootSessionId).not.toBe(first.externalRootSessionId);
+    expect(first.externalSessionId).not.toBe(second.externalSessionId);
+    expect(server!.sessionRequests).toHaveLength(4);
+    expect(server!.sessionRequests[0]).toMatchObject({
+      directory: tempDir,
+      title: "legacy demo one",
+      agent: "build"
+    });
+    expect(server!.sessionRequests[1]).toMatchObject({
+      directory: tempDir,
+      parentID: first.externalRootSessionId,
+      agent: "explore"
+    });
+    expect(server!.sessionRequests[2]).toMatchObject({
+      directory: tempDir,
+      title: "legacy demo two",
+      agent: "build"
+    });
+    expect(server!.sessionRequests[3]).toMatchObject({
+      directory: tempDir,
+      parentID: second.externalRootSessionId,
+      agent: "explore"
+    });
+  });
+
   it("can select the OpenCode root agent without changing the child agent", async () => {
     const backend = createBackend({ RETINUE_OPENCODE_ROOT_AGENT: "plan" } as NodeJS.ProcessEnv);
 
@@ -156,11 +199,11 @@ describe("OpenCodeBackend", () => {
       agent: "explore"
     });
 
-    expect(started.externalRunnerMode).toBe("per-spawn");
+    expect(started.externalRunnerMode).toBe("shared-root");
     expect(started.externalRootAgent).toBe("plan");
     expect(server!.sessionRequests[0]).toMatchObject({
       directory: tempDir,
-      title: "root agent demo",
+      title: "retinue-shared-root",
       agent: "plan"
     });
     expect(server!.sessionRequests[1]).toMatchObject({

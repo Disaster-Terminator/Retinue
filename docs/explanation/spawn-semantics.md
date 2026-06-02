@@ -34,7 +34,13 @@ Retinue does not use OpenCode's `SubtaskPartInput` as the normal spawn path beca
 
 ## Shared Root vs Per Spawn
 
-`shared_root` means one supervising Codex/Hermes thread can reuse a root OpenCode session for multiple Retinue child jobs. `per_spawn` gives each child a more isolated OpenCode session topology.
+`shared_root` is the default OpenCode topology. One supervising Codex/Hermes thread gets one Retinue MCP server session, which reuses one OpenCode root session for multiple child jobs with the same OpenCode server URL, cwd, and root agent. This matches OpenCode's native parent/child session shape while keeping Retinue in charge of MCP job handles, waits, closes, permission surfacing, and resource budgets.
+
+`per_spawn` is a legacy/fallback topology. Each Retinue child job creates its own unprompted OpenCode root session and then a prompted child session. Use it for compatibility checks, isolation probes, or debugging when shared-root behavior is suspected.
+
+OpenCode owns child agent behavior, tools, and permissions. A writable child such as `build` may edit files directly through OpenCode. Retinue must not replace that with a patch-only protocol or a prompt-text write-intent blocker.
+
+The edge case is cross-session concurrency: multiple independent Retinue MCP sessions, possibly from multiple Codex/Hermes hosts or backends, may target the same cwd. That is outside one OpenCode root's native scheduling boundary. Retinue should make this observable through explicit probes and diagnostics before adding any opt-in safety policy.
 
 The useful comparison is runtime behavior, not abstraction taste. When testing the modes, record:
 
