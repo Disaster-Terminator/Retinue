@@ -158,6 +158,10 @@ describe("package.json guardrails", () => {
   it("keeps writable OpenCode probes on native subagent semantics", () => {
     expect(realOpenCodeCrossSessionProbe).toContain('process.env.RETINUE_OPENCODE_AGENT = writable ? "general" : "explore"');
     expect(realOpenCodeCrossSessionProbe).toContain('agent: canWrite ? "general" : "explore"');
+    expect(realOpenCodeCrossSessionProbe).toContain("ok: topologyOk && waitsOk && marker.ok");
+    expect(realOpenCodeCrossSessionProbe).toContain('const expectedLines = canWrite ? ["initial", ...taskNames] : ["initial"]');
+    expect(realOpenCodeCrossSessionProbe).toContain("missingLines");
+    expect(realOpenCodeCrossSessionProbe).toContain("unexpectedLines");
     expect(realOpenCodeCrossSessionProbe).not.toContain('writable ? "build"');
   });
 

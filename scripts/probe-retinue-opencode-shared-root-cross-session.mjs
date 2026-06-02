@@ -9,6 +9,7 @@ import { createMcpServer } from "../dist/mcp.js";
 
 const timeoutMs = Number.parseInt(process.env.RETINUE_CROSS_SESSION_PROBE_TIMEOUT_MS ?? "180000", 10);
 const writable = process.env.RETINUE_CROSS_SESSION_WRITABLE === "1";
+const taskNames = ["a-one", "a-two", "b-one", "b-two"];
 
 async function main() {
   const stateDir = process.env.RETINUE_STATE_DIR ?? (await mkdtemp(path.join(os.tmpdir(), "retinue-cross-session-state-")));
@@ -38,10 +39,10 @@ async function main() {
   const b = await connect("b");
   try {
     const spawns = await Promise.all([
-      spawn(a.client, cwd, "a-one", writable),
-      spawn(a.client, cwd, "a-two", writable),
-      spawn(b.client, cwd, "b-one", writable),
-      spawn(b.client, cwd, "b-two", writable)
+      spawn(a.client, cwd, taskNames[0], writable),
+      spawn(a.client, cwd, taskNames[1], writable),
+      spawn(b.client, cwd, taskNames[2], writable),
+      spawn(b.client, cwd, taskNames[3], writable)
     ]);
     const waits = await Promise.all(spawns.map((spawned) => waitTerminal(spawned.client, spawned.jobId)));
     await Promise.allSettled(
@@ -54,12 +55,18 @@ async function main() {
 
     const rootsA = unique(spawns.filter((item) => item.group === "a").map((item) => item.externalRootSessionId));
     const rootsB = unique(spawns.filter((item) => item.group === "b").map((item) => item.externalRootSessionId));
+    const markerText = await readFile(markerPath, "utf8").catch(() => "");
+    const marker = summarizeMarker(markerText, writable);
+    const topologyOk = rootsA.length === 1 && rootsB.length === 1 && rootsA[0] !== rootsB[0];
+    const waitsOk = waits.every((item) => item.status === "completed");
     const output = {
-      ok: rootsA.length === 1 && rootsB.length === 1 && rootsA[0] !== rootsB[0] && waits.every((item) => item.status === "completed"),
+      ok: topologyOk && waitsOk && marker.ok,
       writable,
       cwd,
       stateDir,
       tracePath: path.join(stateDir, "logs", "retinue.jsonl"),
+      topologyOk,
+      waitsOk,
       rootsA,
       rootsB,
       spawns: spawns.map(({ client, ...rest }) => rest),
@@ -68,7 +75,8 @@ async function main() {
         status: wait.status,
         stallReason: wait.diagnostic?.stallReason
       })),
-      markerText: await readFile(markerPath, "utf8").catch(() => "")
+      markerText,
+      marker
     };
     process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
     if (!output.ok) process.exitCode = 1;
@@ -141,6 +149,21 @@ function parseToolJson(result) {
 
 function unique(values) {
   return [...new Set(values.filter(Boolean))];
+}
+
+function summarizeMarker(text, canWrite) {
+  const observedLines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const expectedLines = canWrite ? ["initial", ...taskNames] : ["initial"];
+  const missingLines = expectedLines.filter((line) => !observedLines.includes(line));
+  const unexpectedLines = observedLines.filter((line) => !expectedLines.includes(line));
+  const ok = missingLines.length === 0 && unexpectedLines.length === 0;
+  return {
+    ok,
+    expectedLines,
+    observedLines,
+    missingLines,
+    unexpectedLines
+  };
 }
 
 function snapshotEnv(keys) {

@@ -37,7 +37,7 @@ pnpm run probe:real:opencode-shared-root-cross-session
 RETINUE_CROSS_SESSION_WRITABLE=1 pnpm run probe:real:opencode-shared-root-cross-session
 ```
 
-The writable variant uses OpenCode's built-in `general` subagent and writes to a temporary probe workspace by default. Set `RETINUE_CROSS_SESSION_CWD` only when intentionally probing a specific workspace.
+The writable variant uses OpenCode's built-in `general` subagent and writes to a temporary probe workspace by default. It only reports `ok: true` when the shared-root topology is correct, every child job completed, and the marker file contains `initial`, `a-one`, `a-two`, `b-one`, and `b-two` with no unexpected lines. Set `RETINUE_CROSS_SESSION_CWD` only when intentionally probing a specific workspace.
 
 ## Low-level OpenCode HTTP probe
 
