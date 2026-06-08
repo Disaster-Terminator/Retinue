@@ -103,6 +103,11 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
           ]
         },
         {
+          name: "general",
+          mode: "subagent",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }]
+        },
+        {
           name: "plan",
           mode: "primary",
           permission: [{ permission: "*", pattern: "*", action: "allow" }]

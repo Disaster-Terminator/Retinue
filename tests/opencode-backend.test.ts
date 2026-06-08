@@ -146,6 +146,38 @@ describe("OpenCodeBackend", () => {
     );
   });
 
+  it("rejects Codex model names passed as OpenCode child agents before creating sessions", async () => {
+    const backend = createBackend();
+
+    await expect(
+      backend.run({
+        cwd: tempDir,
+        prompt: "review this repository",
+        title: "wrong agent namespace",
+        agent: "codex-gpt-5.5"
+      })
+    ).rejects.toThrow(/Unsupported OpenCode child agent "codex-gpt-5\.5".*backend agent name for OpenCode.*explore.*general/s);
+
+    expect(server!.sessionRequests).toHaveLength(0);
+    expect(server!.promptRequests).toHaveLength(0);
+  });
+
+  it("rejects unknown OpenCode root agents before creating sessions", async () => {
+    const backend = createBackend({ RETINUE_OPENCODE_ROOT_AGENT: "codex-gpt-5.5" } as NodeJS.ProcessEnv);
+
+    await expect(
+      backend.run({
+        cwd: tempDir,
+        prompt: "review this repository",
+        title: "wrong root agent namespace",
+        agent: "explore"
+      })
+    ).rejects.toThrow(/Unsupported OpenCode root agent "codex-gpt-5\.5".*backend agent name for OpenCode.*build.*explore.*general.*plan/s);
+
+    expect(server!.sessionRequests).toHaveLength(0);
+    expect(server!.promptRequests).toHaveLength(0);
+  });
+
   it("keeps per-spawn available as an explicit legacy mode", async () => {
     const backend = createBackend({ RETINUE_OPENCODE_ROOT_BINDING_MODE: "per_spawn" } as NodeJS.ProcessEnv);
 

@@ -106,7 +106,8 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
     "retinue_spawn_agent",
     {
       title: "Spawn Retinue Agent",
-      description: "Spawn a Retinue child agent using the deployment-selected backend and return a job handle.",
+      description:
+        "Spawn a Retinue child agent using the deployment-selected backend and return a job handle. The optional agent field is the target backend child-agent name, such as OpenCode/Kilo explore or general; it is not a Codex model or Codex native subagent name.",
       inputSchema: {
         message: z.string(),
         task_name: z.string().optional(),

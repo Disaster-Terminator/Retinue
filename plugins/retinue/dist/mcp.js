@@ -56848,6 +56848,10 @@ var OpenCodeBackend = class {
     const rootAgent = resolveRootAgent(this.env);
     const requestedAgent = options.agent ?? "explore";
     const agents = await this.listAgents(target.client);
+    const parentAgent = findOpenCodeAgent(agents, rootAgent);
+    const childAgent = findOpenCodeAgent(agents, requestedAgent);
+    validateOpenCodeAgent(agents, rootAgent, "root", this.kind);
+    validateOpenCodeAgent(agents, requestedAgent, "child", this.kind);
     const parentSession = runnerMode === "shared-root" ? await this.getOrCreateSharedRootSession(target, options.cwd, rootAgent) : await target.client.createSession({
       cwd: options.cwd,
       title: options.title ?? options.name,
@@ -56861,8 +56865,8 @@ var OpenCodeBackend = class {
       model: options.model,
       permission: this.buildChildSessionPermission({
         parentSession,
-        parentAgent: findOpenCodeAgent(agents, rootAgent),
-        childAgent: findOpenCodeAgent(agents, requestedAgent),
+        parentAgent,
+        childAgent,
         readOnly: options.readOnly === true,
         readOnlyBashPolicy
       })
@@ -58953,6 +58957,17 @@ function buildReadOnlyTools(bashPolicy) {
 function findOpenCodeAgent(agents, name) {
   return agents.find((agent) => agent.name === name);
 }
+function validateOpenCodeAgent(agents, name, role, kind) {
+  if (agents.length === 0 || findOpenCodeAgent(agents, name)) {
+    return;
+  }
+  const available = agents.map((agent) => agent.name).filter(Boolean).sort().join(", ");
+  const backend = kind === "kilo" ? "Kilo" : "OpenCode";
+  const roleLabel = role === "root" ? "root agent" : "child agent";
+  throw new Error(
+    `Unsupported ${backend} ${roleLabel} "${name}". The agent field selects a backend agent name for ${backend}, not a Codex model or Codex native subagent. Available ${backend} agents: ${available}.`
+  );
+}
 function normalizePermissionRules(value) {
   if (!Array.isArray(value)) {
     return [];
@@ -59233,10 +59248,11 @@ async function auditRetinueLogs(options = {}) {
     since: options.since
   });
   const events = input.events;
+  const jobMetaByJobId = await collectJobMetaByJobId(events, stateDir);
   const latestStatusByJobId = await collectLatestStatusByJobId(events, stateDir, options.reconcileStatus);
   const latestEventByJobId = collectLatestEventByJobId(events);
   const attemptRootByJobId = await collectAttemptRoots(events, stateDir);
-  const { issues, attentions } = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId, {
+  const { issues, attentions } = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId, jobMetaByJobId, {
     includeTerminal: options.includeTerminal === true
   });
   return {
@@ -59304,7 +59320,7 @@ async function readTail(filePath, maxBytes) {
     await handle.close();
   }
 }
-function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId, options = {}) {
+function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId, jobMetaByJobId, options = {}) {
   const issuesBySignature = /* @__PURE__ */ new Map();
   const attentionsBySignature = /* @__PURE__ */ new Map();
   const latestStatusByChainRootJobId = collectLatestStatusByChainRootJobId(latestStatusByJobId, attemptRootByJobId);
@@ -59341,11 +59357,12 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
     const signature = chainSignature ?? createDiagnosticSignature(event, diagnostic);
     const attention = isAttentionDiagnostic(diagnostic);
     const summaries = attention ? attentionsBySignature : issuesBySignature;
+    const jobMeta = typeof event.jobId === "string" ? jobMetaByJobId.get(event.jobId) : void 0;
     const current = summaries.get(signature) ?? {
       signature,
       ...attention ? { kind: "permission" } : {},
       title: attention ? createAttentionTitle(diagnostic) : createIssueTitle(event, diagnostic),
-      description: attention ? createAttentionDescription(diagnostic) : createIssueDescription(event, diagnostic),
+      description: attention ? createAttentionDescription(diagnostic, jobMeta) : createIssueDescription(event, diagnostic, jobMeta),
       count: 0,
       firstSeen: void 0,
       lastSeen: void 0,
@@ -59386,13 +59403,14 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
       permissionActions: compactPermissionActions(diagnostic.pendingExternalDirectoryPermissions ?? diagnostic.pendingPermissions),
       readOnlyWriteIntent: diagnostic.readOnlyWriteIntent,
       problemStatus: status === "backend_unreachable" ? "backend_unreachable" : void 0,
+      requestedAgent: requestedAgentFromMeta(jobMeta),
       baseUrl: diagnostic.baseUrl,
       error: diagnostic.error
     });
     const selectedSample = chooseSample(current.sample, nextSample);
     if (selectedSample === nextSample) {
       current.title = attention ? createAttentionTitle(diagnostic) : createIssueTitle(event, diagnostic);
-      current.description = attention ? createAttentionDescription(diagnostic) : createIssueDescription(event, diagnostic);
+      current.description = attention ? createAttentionDescription(diagnostic, jobMeta) : createIssueDescription(event, diagnostic, jobMeta);
     }
     current.sample = selectedSample;
     summaries.set(signature, current);
@@ -59497,6 +59515,22 @@ async function readJobMeta(stateDir, jobId) {
   } catch {
     return void 0;
   }
+}
+async function collectJobMetaByJobId(events, stateDir) {
+  const metas = /* @__PURE__ */ new Map();
+  const jobIds = /* @__PURE__ */ new Set();
+  for (const event of events) {
+    if (typeof event.jobId === "string") {
+      jobIds.add(event.jobId);
+    }
+  }
+  for (const jobId of jobIds) {
+    const meta3 = await readJobMeta(stateDir, jobId);
+    if (meta3) {
+      metas.set(jobId, meta3);
+    }
+  }
+  return metas;
 }
 function createChainSignature(rootJobId, diagnostic) {
   return [
@@ -59626,26 +59660,28 @@ function createAttentionTitle(diagnostic) {
   const model = diagnostic.lastAssistantModelID ?? "unknown_model";
   return `Resolve Retinue external_directory permission on ${String(provider)}/${String(model)}`;
 }
-function createAttentionDescription(diagnostic) {
+function createAttentionDescription(diagnostic, jobMeta) {
   const parts = [
     "OpenCode is waiting for a supervising-agent permission decision.",
     typeof diagnostic.pendingPermissionCount === "number" ? `permissions=${diagnostic.pendingPermissionCount}` : void 0,
     diagnostic.sessionDirectory ? `cwd=${String(diagnostic.sessionDirectory)}` : void 0,
     diagnostic.lastAssistantAgent ? `agent=${String(diagnostic.lastAssistantAgent)}` : void 0,
+    requestedAgentFromMeta(jobMeta) ? `requestedAgent=${requestedAgentFromMeta(jobMeta)}` : void 0,
     diagnostic.lastAssistantMode ? `mode=${String(diagnostic.lastAssistantMode)}` : void 0,
     typeof diagnostic.noCompletedAssistantDurationMs === "number" && Number.isFinite(diagnostic.noCompletedAssistantDurationMs) ? `durationMs=${diagnostic.noCompletedAssistantDurationMs}` : void 0,
     "Use retinue_list_permissions or the wait response permissions, then retinue_reply_permission."
   ].filter(Boolean);
   return parts.join("; ");
 }
-function createIssueDescription(event, diagnostic) {
+function createIssueDescription(event, diagnostic, jobMeta) {
   if (isBackendUnreachableEvent(event)) {
     const parts2 = [
       "OpenCode server became unreachable while Retinue job metadata was still active.",
       diagnostic.error ? `error=${String(diagnostic.error)}` : void 0,
       diagnostic.baseUrl ? `baseUrl=${String(diagnostic.baseUrl)}` : void 0,
       diagnostic.sessionId ? `sessionId=${String(diagnostic.sessionId)}` : void 0,
-      diagnostic.sessionDirectory ? `cwd=${String(diagnostic.sessionDirectory)}` : void 0
+      diagnostic.sessionDirectory ? `cwd=${String(diagnostic.sessionDirectory)}` : void 0,
+      requestedAgentFromMeta(jobMeta) ? `requestedAgent=${requestedAgentFromMeta(jobMeta)}` : void 0
     ].filter(Boolean);
     return parts2.join("; ");
   }
@@ -59655,10 +59691,14 @@ function createIssueDescription(event, diagnostic) {
     diagnostic.recoveryStallReason ? `recovery=${String(diagnostic.recoveryStallReason)}` : void 0,
     diagnostic.sessionDirectory ? `cwd=${String(diagnostic.sessionDirectory)}` : void 0,
     diagnostic.lastAssistantAgent ? `agent=${String(diagnostic.lastAssistantAgent)}` : void 0,
+    requestedAgentFromMeta(jobMeta) ? `requestedAgent=${requestedAgentFromMeta(jobMeta)}` : void 0,
     diagnostic.lastAssistantMode ? `mode=${String(diagnostic.lastAssistantMode)}` : void 0,
     typeof diagnostic.noCompletedAssistantDurationMs === "number" && Number.isFinite(diagnostic.noCompletedAssistantDurationMs) ? `durationMs=${diagnostic.noCompletedAssistantDurationMs}` : void 0
   ].filter(Boolean);
   return parts.join("; ");
+}
+function requestedAgentFromMeta(meta3) {
+  return typeof meta3?.agent === "string" && meta3.agent.length > 0 ? meta3.agent : void 0;
 }
 function eventTime(event) {
   const raw = typeof event.time === "string" ? event.time : typeof event.timestamp === "string" ? event.timestamp : void 0;
@@ -59775,6 +59815,7 @@ function renderCompactIssue(issue2, index, prefix = "") {
     stringField(sample.baseUrl) ? `baseUrl=${stringField(sample.baseUrl)}` : void 0,
     stringField(sample.sessionDirectory) ? `cwd=${stringField(sample.sessionDirectory)}` : void 0,
     `agent=${agentMode(issue2)}`,
+    stringField(sample.requestedAgent) ? `requestedAgent=${stringField(sample.requestedAgent)}` : void 0,
     numericField(sample.noCompletedAssistantDurationMs) ? `durationMs=${numericField(sample.noCompletedAssistantDurationMs)}` : void 0,
     stringField(sample.selectedAttemptJobId) ? `selectedAttempt=${stringField(sample.selectedAttemptJobId)}` : void 0,
     sample.attemptChainPresent === true ? "attemptChain=true" : void 0,
@@ -60376,7 +60417,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
     "retinue_spawn_agent",
     {
       title: "Spawn Retinue Agent",
-      description: "Spawn a Retinue child agent using the deployment-selected backend and return a job handle.",
+      description: "Spawn a Retinue child agent using the deployment-selected backend and return a job handle. The optional agent field is the target backend child-agent name, such as OpenCode/Kilo explore or general; it is not a Codex model or Codex native subagent name.",
       inputSchema: {
         message: external_exports.string(),
         task_name: external_exports.string().optional(),

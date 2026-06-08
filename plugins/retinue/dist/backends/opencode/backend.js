@@ -177,6 +177,10 @@ export class OpenCodeBackend {
         const rootAgent = resolveRootAgent(this.env);
         const requestedAgent = options.agent ?? "explore";
         const agents = await this.listAgents(target.client);
+        const parentAgent = findOpenCodeAgent(agents, rootAgent);
+        const childAgent = findOpenCodeAgent(agents, requestedAgent);
+        validateOpenCodeAgent(agents, rootAgent, "root", this.kind);
+        validateOpenCodeAgent(agents, requestedAgent, "child", this.kind);
         const parentSession = runnerMode === "shared-root"
             ? await this.getOrCreateSharedRootSession(target, options.cwd, rootAgent)
             : await target.client.createSession({
@@ -192,8 +196,8 @@ export class OpenCodeBackend {
             model: options.model,
             permission: this.buildChildSessionPermission({
                 parentSession,
-                parentAgent: findOpenCodeAgent(agents, rootAgent),
-                childAgent: findOpenCodeAgent(agents, requestedAgent),
+                parentAgent,
+                childAgent,
                 readOnly: options.readOnly === true,
                 readOnlyBashPolicy
             })
@@ -2406,6 +2410,15 @@ function buildReadOnlyTools(bashPolicy) {
 }
 function findOpenCodeAgent(agents, name) {
     return agents.find((agent) => agent.name === name);
+}
+function validateOpenCodeAgent(agents, name, role, kind) {
+    if (agents.length === 0 || findOpenCodeAgent(agents, name)) {
+        return;
+    }
+    const available = agents.map((agent) => agent.name).filter(Boolean).sort().join(", ");
+    const backend = kind === "kilo" ? "Kilo" : "OpenCode";
+    const roleLabel = role === "root" ? "root agent" : "child agent";
+    throw new Error(`Unsupported ${backend} ${roleLabel} "${name}". The agent field selects a backend agent name for ${backend}, not a Codex model or Codex native subagent. Available ${backend} agents: ${available}.`);
 }
 function normalizePermissionRules(value) {
     if (!Array.isArray(value)) {

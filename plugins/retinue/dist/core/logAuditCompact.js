@@ -41,6 +41,7 @@ function renderCompactIssue(issue, index, prefix = "") {
         stringField(sample.baseUrl) ? `baseUrl=${stringField(sample.baseUrl)}` : undefined,
         stringField(sample.sessionDirectory) ? `cwd=${stringField(sample.sessionDirectory)}` : undefined,
         `agent=${agentMode(issue)}`,
+        stringField(sample.requestedAgent) ? `requestedAgent=${stringField(sample.requestedAgent)}` : undefined,
         numericField(sample.noCompletedAssistantDurationMs) ? `durationMs=${numericField(sample.noCompletedAssistantDurationMs)}` : undefined,
         stringField(sample.selectedAttemptJobId) ? `selectedAttempt=${stringField(sample.selectedAttemptJobId)}` : undefined,
         sample.attemptChainPresent === true ? "attemptChain=true" : undefined,

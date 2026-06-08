@@ -14,10 +14,11 @@ export async function auditRetinueLogs(options = {}) {
         since: options.since
     });
     const events = input.events;
+    const jobMetaByJobId = await collectJobMetaByJobId(events, stateDir);
     const latestStatusByJobId = await collectLatestStatusByJobId(events, stateDir, options.reconcileStatus);
     const latestEventByJobId = collectLatestEventByJobId(events);
     const attemptRootByJobId = await collectAttemptRoots(events, stateDir);
-    const { issues, attentions } = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId, {
+    const { issues, attentions } = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId, jobMetaByJobId, {
         includeTerminal: options.includeTerminal === true
     });
     return {
@@ -91,7 +92,7 @@ async function readTail(filePath, maxBytes) {
         await handle.close();
     }
 }
-function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId, options = {}) {
+function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId, jobMetaByJobId, options = {}) {
     const issuesBySignature = new Map();
     const attentionsBySignature = new Map();
     const latestStatusByChainRootJobId = collectLatestStatusByChainRootJobId(latestStatusByJobId, attemptRootByJobId);
@@ -128,11 +129,12 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
         const signature = chainSignature ?? createDiagnosticSignature(event, diagnostic);
         const attention = isAttentionDiagnostic(diagnostic);
         const summaries = attention ? attentionsBySignature : issuesBySignature;
+        const jobMeta = typeof event.jobId === "string" ? jobMetaByJobId.get(event.jobId) : undefined;
         const current = summaries.get(signature) ?? {
             signature,
             ...(attention ? { kind: "permission" } : {}),
             title: attention ? createAttentionTitle(diagnostic) : createIssueTitle(event, diagnostic),
-            description: attention ? createAttentionDescription(diagnostic) : createIssueDescription(event, diagnostic),
+            description: attention ? createAttentionDescription(diagnostic, jobMeta) : createIssueDescription(event, diagnostic, jobMeta),
             count: 0,
             firstSeen: undefined,
             lastSeen: undefined,
@@ -173,13 +175,14 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
             permissionActions: compactPermissionActions(diagnostic.pendingExternalDirectoryPermissions ?? diagnostic.pendingPermissions),
             readOnlyWriteIntent: diagnostic.readOnlyWriteIntent,
             problemStatus: status === "backend_unreachable" ? "backend_unreachable" : undefined,
+            requestedAgent: requestedAgentFromMeta(jobMeta),
             baseUrl: diagnostic.baseUrl,
             error: diagnostic.error
         });
         const selectedSample = chooseSample(current.sample, nextSample);
         if (selectedSample === nextSample) {
             current.title = attention ? createAttentionTitle(diagnostic) : createIssueTitle(event, diagnostic);
-            current.description = attention ? createAttentionDescription(diagnostic) : createIssueDescription(event, diagnostic);
+            current.description = attention ? createAttentionDescription(diagnostic, jobMeta) : createIssueDescription(event, diagnostic, jobMeta);
         }
         current.sample = selectedSample;
         summaries.set(signature, current);
@@ -288,6 +291,22 @@ async function readJobMeta(stateDir, jobId) {
     catch {
         return undefined;
     }
+}
+async function collectJobMetaByJobId(events, stateDir) {
+    const metas = new Map();
+    const jobIds = new Set();
+    for (const event of events) {
+        if (typeof event.jobId === "string") {
+            jobIds.add(event.jobId);
+        }
+    }
+    for (const jobId of jobIds) {
+        const meta = await readJobMeta(stateDir, jobId);
+        if (meta) {
+            metas.set(jobId, meta);
+        }
+    }
+    return metas;
 }
 function createChainSignature(rootJobId, diagnostic) {
     return [
@@ -427,12 +446,13 @@ function createAttentionTitle(diagnostic) {
     const model = diagnostic.lastAssistantModelID ?? "unknown_model";
     return `Resolve Retinue external_directory permission on ${String(provider)}/${String(model)}`;
 }
-function createAttentionDescription(diagnostic) {
+function createAttentionDescription(diagnostic, jobMeta) {
     const parts = [
         "OpenCode is waiting for a supervising-agent permission decision.",
         typeof diagnostic.pendingPermissionCount === "number" ? `permissions=${diagnostic.pendingPermissionCount}` : undefined,
         diagnostic.sessionDirectory ? `cwd=${String(diagnostic.sessionDirectory)}` : undefined,
         diagnostic.lastAssistantAgent ? `agent=${String(diagnostic.lastAssistantAgent)}` : undefined,
+        requestedAgentFromMeta(jobMeta) ? `requestedAgent=${requestedAgentFromMeta(jobMeta)}` : undefined,
         diagnostic.lastAssistantMode ? `mode=${String(diagnostic.lastAssistantMode)}` : undefined,
         typeof diagnostic.noCompletedAssistantDurationMs === "number" && Number.isFinite(diagnostic.noCompletedAssistantDurationMs)
             ? `durationMs=${diagnostic.noCompletedAssistantDurationMs}`
@@ -441,14 +461,15 @@ function createAttentionDescription(diagnostic) {
     ].filter(Boolean);
     return parts.join("; ");
 }
-function createIssueDescription(event, diagnostic) {
+function createIssueDescription(event, diagnostic, jobMeta) {
     if (isBackendUnreachableEvent(event)) {
         const parts = [
             "OpenCode server became unreachable while Retinue job metadata was still active.",
             diagnostic.error ? `error=${String(diagnostic.error)}` : undefined,
             diagnostic.baseUrl ? `baseUrl=${String(diagnostic.baseUrl)}` : undefined,
             diagnostic.sessionId ? `sessionId=${String(diagnostic.sessionId)}` : undefined,
-            diagnostic.sessionDirectory ? `cwd=${String(diagnostic.sessionDirectory)}` : undefined
+            diagnostic.sessionDirectory ? `cwd=${String(diagnostic.sessionDirectory)}` : undefined,
+            requestedAgentFromMeta(jobMeta) ? `requestedAgent=${requestedAgentFromMeta(jobMeta)}` : undefined
         ].filter(Boolean);
         return parts.join("; ");
     }
@@ -458,12 +479,16 @@ function createIssueDescription(event, diagnostic) {
         diagnostic.recoveryStallReason ? `recovery=${String(diagnostic.recoveryStallReason)}` : undefined,
         diagnostic.sessionDirectory ? `cwd=${String(diagnostic.sessionDirectory)}` : undefined,
         diagnostic.lastAssistantAgent ? `agent=${String(diagnostic.lastAssistantAgent)}` : undefined,
+        requestedAgentFromMeta(jobMeta) ? `requestedAgent=${requestedAgentFromMeta(jobMeta)}` : undefined,
         diagnostic.lastAssistantMode ? `mode=${String(diagnostic.lastAssistantMode)}` : undefined,
         typeof diagnostic.noCompletedAssistantDurationMs === "number" && Number.isFinite(diagnostic.noCompletedAssistantDurationMs)
             ? `durationMs=${diagnostic.noCompletedAssistantDurationMs}`
             : undefined
     ].filter(Boolean);
     return parts.join("; ");
+}
+function requestedAgentFromMeta(meta) {
+    return typeof meta?.agent === "string" && meta.agent.length > 0 ? meta.agent : undefined;
 }
 function eventTime(event) {
     const raw = typeof event.time === "string" ? event.time : typeof event.timestamp === "string" ? event.timestamp : undefined;

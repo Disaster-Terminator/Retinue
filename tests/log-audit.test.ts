@@ -99,6 +99,55 @@ describe("Retinue log audit", () => {
     }
   });
 
+  it("surfaces requested backend agent metadata when no assistant round exists", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-requested-agent-"));
+    try {
+      const tracePath = path.join(tempDir, "retinue.jsonl");
+      fs.mkdirSync(path.join(tempDir, "jobs", "job_wrong_agent"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tempDir, "jobs", "job_wrong_agent", "meta.json"),
+        JSON.stringify({
+          jobId: "job_wrong_agent",
+          status: "stalled",
+          backend: "opencode",
+          agent: "codex-gpt-5.5",
+          updatedAt: "2026-06-08T09:46:00.000Z"
+        })
+      );
+      fs.writeFileSync(
+        tracePath,
+        JSON.stringify({
+          time: "2026-06-08T09:46:00.000Z",
+          event: "opencode_job_stalled",
+          jobId: "job_wrong_agent",
+          status: "stalled",
+          diagnostic: {
+            baseUrl: "http://127.0.0.1:4099",
+            sessionDirectory: "/home/raystorm/projects/Vela",
+            stallReason: "provider_zero_progress",
+            stallSummary: "OpenCode provider/router produced zero-progress assistant output for 120000ms.",
+            noCompletedAssistantDurationMs: 120000
+          }
+        })
+      );
+
+      const parsed = await auditRetinueLogs({ tracePath, stateDir: tempDir, since: new Date("2026-06-08T09:00:00.000Z") });
+
+      expect(parsed.issueCount).toBe(1);
+      expect(parsed.issues[0]).toMatchObject({
+        description: expect.stringContaining("requestedAgent=codex-gpt-5.5"),
+        sample: {
+          requestedAgent: "codex-gpt-5.5"
+        }
+      });
+      const compact = renderCompactAuditResult(parsed);
+      expect(compact).toContain("agent=unknown_agent/unknown_mode");
+      expect(compact).toContain("requestedAgent=codex-gpt-5.5");
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("summarizes recent stalled diagnostics into deduplicated issue candidates", async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-"));
     try {
