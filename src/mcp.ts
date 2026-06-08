@@ -902,10 +902,16 @@ async function withOpenCodeDefaults<T extends { model?: string; agent?: string }
 }
 
 async function resolveConfiguredAgentForBackend(kind: AgentBackendKind, env: NodeJS.ProcessEnv): Promise<string | undefined> {
+  if (kind === "opencode") {
+    return resolveConfiguredOpenCodeAgent(env);
+  }
   if (kind === "kilo") {
     return env.RETINUE_KILO_AGENT ?? "explore";
   }
-  return resolveConfiguredOpenCodeAgent(env);
+  if (kind === "claude-code") {
+    return env.RETINUE_CLAUDE_AGENT?.trim() || undefined;
+  }
+  return undefined;
 }
 
 type RetinueBackend = AgentBackend & {

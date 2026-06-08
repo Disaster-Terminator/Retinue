@@ -52,6 +52,7 @@ OpenCode owns profile, provider, endpoint, login, model defaults, plugins, skill
 | `RETINUE_CLAUDE_RUNTIME` | SDK path unless legacy CLI override is configured | Set `sdk` or `cli` to force the Claude backend runtime. |
 | `RETINUE_CLAUDE_USE_SDK` | unset | Compatibility toggle: `1` forces SDK, `0` forces legacy CLI. Prefer `RETINUE_CLAUDE_RUNTIME` for new deployments. |
 | `RETINUE_CLAUDE_MODEL` | unset | Optional explicit model for the Claude Agent SDK path. If unset, Claude Code owns model/profile routing. |
+| `RETINUE_CLAUDE_AGENT` | unset | Optional explicit agent/profile for the Claude Agent SDK path. If unset, Retinue does not pass an agent and Claude Code owns the default. |
 | `RETINUE_CLAUDE_COMMAND` | `claude` for legacy CLI | Legacy CLI executable or test fixture command. Presence of this variable selects the CLI path unless SDK is forced. |
 | `RETINUE_CLAUDE_PREFIX_ARGS` | unset | Extra arguments inserted before the Claude CLI command shape; mainly for wrapper/test commands. |
 | `RETINUE_DEFAULT_RUNTIME_TIMEOUT_MS` | implementation default | Timeout passed to the legacy Claude CLI runner. |

@@ -722,10 +722,16 @@ async function withOpenCodeDefaults(args) {
     };
 }
 async function resolveConfiguredAgentForBackend(kind, env) {
+    if (kind === "opencode") {
+        return resolveConfiguredOpenCodeAgent(env);
+    }
     if (kind === "kilo") {
         return env.RETINUE_KILO_AGENT ?? "explore";
     }
-    return resolveConfiguredOpenCodeAgent(env);
+    if (kind === "claude-code") {
+        return env.RETINUE_CLAUDE_AGENT?.trim() || undefined;
+    }
+    return undefined;
 }
 class RetinueAgentPool {
     entries = new Map();

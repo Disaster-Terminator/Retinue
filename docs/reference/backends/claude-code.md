@@ -42,6 +42,14 @@ If the local Claude Code default model is wrong, fix the Claude Code profile/run
 
 `retinue_spawn_agent` may pass `agent` for one Claude Code SDK job. Retinue forwards that value to the SDK `agent` option, equivalent to Claude Code's `--agent` main-thread profile selection. Claude Code owns the available agent definitions through its settings; Retinue does not enumerate or validate Claude agent names.
 
+Retinue does not set a Claude Code agent by default and does not reuse OpenCode/Kilo agent defaults such as `explore`. Use `RETINUE_CLAUDE_AGENT` only when a deployment intentionally wants a persistent Claude Code SDK agent/profile selection:
+
+```text
+RETINUE_CLAUDE_AGENT=repo-explorer
+```
+
+If the local Claude Code default agent/profile is wrong, fix the Claude Code runtime configuration before adding a Retinue override.
+
 ## Permission Flow
 
 The SDK backend records Claude Code SDK permission requests and exposes them through the same product tools as other backends:

@@ -32,6 +32,8 @@ When OpenCode or Kilo exposes an agent list, Retinue validates the requested `ag
 
 Claude Code owns its available SDK agents through Claude Code settings. Retinue does not enumerate or validate those names; Claude Code returns the native error if the requested agent profile is unavailable.
 
+Claude Code also owns the default agent/profile. Retinue passes no Claude SDK `agent` unless the spawn call supplies `agent` or deployment configuration sets `RETINUE_CLAUDE_AGENT`; OpenCode/Kilo defaults such as `explore` do not carry over to Claude Code.
+
 `retinue_spawn_agent` returns identifiers and path metadata such as `jobId`, `cwd`, `jobDir`, backend, the selected `agent` when set, and when available OpenCode session fields including `externalSessionId`, `externalSessionDirectory`, `externalRootSessionId`, `externalParentSessionId`, and `externalRunnerMode`.
 
 Compare requested `cwd` with returned `externalSessionDirectory` for repository-sensitive work. A mismatch is workspace drift; close the child and re-spawn with the right directory before trusting file claims.

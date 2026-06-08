@@ -1647,6 +1647,135 @@ describe("MCP tools", () => {
     }
   });
 
+  it("does not leak OpenCode agent defaults into Claude SDK Retinue runs", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-claude-sdk-agent-default-"));
+    const previousBackend = process.env.RETINUE_BACKEND;
+    const previousStateDir = process.env.RETINUE_STATE_DIR;
+    const previousRuntime = process.env.RETINUE_CLAUDE_RUNTIME;
+    const previousCommand = process.env.RETINUE_CLAUDE_COMMAND;
+    const previousPrefixArgs = process.env.RETINUE_CLAUDE_PREFIX_ARGS;
+    const previousClaudeAgent = process.env.RETINUE_CLAUDE_AGENT;
+    const previousOpenCodeAgent = process.env.RETINUE_OPENCODE_AGENT;
+    const seenAgents: unknown[] = [];
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }), {
+      preferClaudeSdk: true,
+      claudeSdkQuery: async function* ({ options }) {
+        seenAgents.push(options?.agent);
+        yield {
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          result: "agent-default",
+          session_id: "sdk-mcp-agent-default-session"
+        };
+      }
+    });
+    try {
+      process.env.RETINUE_BACKEND = "claude-code";
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_CLAUDE_RUNTIME = "sdk";
+      process.env.RETINUE_OPENCODE_AGENT = "explore";
+      delete process.env.RETINUE_CLAUDE_AGENT;
+      delete process.env.RETINUE_CLAUDE_COMMAND;
+      delete process.env.RETINUE_CLAUDE_PREFIX_ARGS;
+
+      const spawn = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "use claude default", task_name: "claude-sdk-agent-default" }
+        })
+      );
+      expect(spawn).toMatchObject({
+        backend: "claude-code",
+        status: "running",
+        task_name: "claude-sdk-agent-default"
+      });
+      expect(spawn.agent).toBeUndefined();
+
+      const completed = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_wait_agent",
+          arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
+        })
+      );
+      expect(completed).toMatchObject({ jobId: spawn.jobId, status: "completed" });
+      expect(seenAgents).toEqual([undefined]);
+    } finally {
+      restoreEnv("RETINUE_BACKEND", previousBackend);
+      restoreEnv("RETINUE_STATE_DIR", previousStateDir);
+      restoreEnv("RETINUE_CLAUDE_RUNTIME", previousRuntime);
+      restoreEnv("RETINUE_CLAUDE_COMMAND", previousCommand);
+      restoreEnv("RETINUE_CLAUDE_PREFIX_ARGS", previousPrefixArgs);
+      restoreEnv("RETINUE_CLAUDE_AGENT", previousClaudeAgent);
+      restoreEnv("RETINUE_OPENCODE_AGENT", previousOpenCodeAgent);
+      await closeMcpClient(connection);
+      await fs.rm(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  });
+
+  it("uses a Claude-specific agent default for Claude SDK Retinue runs", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-claude-sdk-agent-env-"));
+    const previousBackend = process.env.RETINUE_BACKEND;
+    const previousStateDir = process.env.RETINUE_STATE_DIR;
+    const previousRuntime = process.env.RETINUE_CLAUDE_RUNTIME;
+    const previousCommand = process.env.RETINUE_CLAUDE_COMMAND;
+    const previousPrefixArgs = process.env.RETINUE_CLAUDE_PREFIX_ARGS;
+    const previousClaudeAgent = process.env.RETINUE_CLAUDE_AGENT;
+    const seenAgents: unknown[] = [];
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }), {
+      preferClaudeSdk: true,
+      claudeSdkQuery: async function* ({ options }) {
+        seenAgents.push(options?.agent);
+        yield {
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          result: "agent:repo-explorer",
+          session_id: "sdk-mcp-agent-env-session"
+        };
+      }
+    });
+    try {
+      process.env.RETINUE_BACKEND = "claude-code";
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_CLAUDE_RUNTIME = "sdk";
+      process.env.RETINUE_CLAUDE_AGENT = "repo-explorer";
+      delete process.env.RETINUE_CLAUDE_COMMAND;
+      delete process.env.RETINUE_CLAUDE_PREFIX_ARGS;
+
+      const spawn = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "use claude env agent", task_name: "claude-sdk-agent-env" }
+        })
+      );
+      expect(spawn).toMatchObject({
+        backend: "claude-code",
+        status: "running",
+        task_name: "claude-sdk-agent-env",
+        agent: "repo-explorer"
+      });
+
+      const completed = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_wait_agent",
+          arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
+        })
+      );
+      expect(completed).toMatchObject({ jobId: spawn.jobId, status: "completed" });
+      expect(seenAgents).toEqual(["repo-explorer"]);
+    } finally {
+      restoreEnv("RETINUE_BACKEND", previousBackend);
+      restoreEnv("RETINUE_STATE_DIR", previousStateDir);
+      restoreEnv("RETINUE_CLAUDE_RUNTIME", previousRuntime);
+      restoreEnv("RETINUE_CLAUDE_COMMAND", previousCommand);
+      restoreEnv("RETINUE_CLAUDE_PREFIX_ARGS", previousPrefixArgs);
+      restoreEnv("RETINUE_CLAUDE_AGENT", previousClaudeAgent);
+      await closeMcpClient(connection);
+      await fs.rm(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  });
+
   it("evicts the oldest running Retinue OpenCode agent when the session slot pool is full", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-slots-"));
     const fakeOpenCode = await startFakeOpenCodeServer();
