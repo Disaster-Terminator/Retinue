@@ -39,6 +39,7 @@ type ClaudeSdkQueryParams = {
     model?: string;
     permissionMode?: RunOptions["permissionMode"];
     resume?: string;
+    agent?: string;
     canUseTool?: ClaudeSdkCanUseTool;
   };
 };
@@ -137,6 +138,7 @@ export class ClaudeCodeSdkBackend implements AgentBackend {
       promptSha256: sha256(options.prompt),
       name: options.name,
       resume: options.resume,
+      agent: options.agent,
       parentJobId: options.parentJobId,
       parentSessionId: options.parentSessionId,
       recoveredFromJobId: options.recoveredFromJobId,
@@ -361,6 +363,7 @@ export class ClaudeCodeSdkBackend implements AgentBackend {
         abortController: tracked.abortController,
         maxTurns: options.maxTurns,
         ...(this.env.RETINUE_CLAUDE_MODEL ? { model: this.env.RETINUE_CLAUDE_MODEL } : {}),
+        ...(options.agent ? { agent: options.agent } : {}),
         permissionMode: options.permissionMode,
         resume: options.resume,
         canUseTool: (toolName, input, hook) => this.recordPermission(jobId, toolName, input, hook)

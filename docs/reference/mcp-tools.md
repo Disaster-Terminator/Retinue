@@ -24,13 +24,15 @@ Pass:
 - `message`: the task for the child agent.
 - `cwd`: an absolute repository or workspace directory for file work.
 - `taskName` / `task_name` / `title`: a short label for diagnostics.
-- `agent`: optional OpenCode/Kilo child agent for this one spawn. This is a backend agent name such as `explore` or `general`, not a Codex model name or Codex native subagent name.
+- `agent`: optional backend-native agent/profile for this one spawn. For OpenCode/Kilo this is a child agent name such as `explore` or `general`; for Claude Code SDK this is passed as the Claude Code `agent`/`--agent` main-thread profile. It is not a Codex model name or Codex native subagent name.
 
 Do not pass backend, provider, profile, model, OpenCode server, `access_mode`, or `bash_policy` choices through normal product tool calls.
 
 When OpenCode or Kilo exposes an agent list, Retinue validates the requested `agent` before creating the child session. Unknown values such as Codex model names fail fast with the available backend agents instead of being sent to the runtime and later surfacing as a zero-progress stall.
 
-`retinue_spawn_agent` returns identifiers and path metadata such as `jobId`, `cwd`, `jobDir`, backend, and when available OpenCode session fields including `externalSessionId`, `externalSessionDirectory`, `externalRootSessionId`, `externalParentSessionId`, and `externalRunnerMode`.
+Claude Code owns its available SDK agents through Claude Code settings. Retinue does not enumerate or validate those names; Claude Code returns the native error if the requested agent profile is unavailable.
+
+`retinue_spawn_agent` returns identifiers and path metadata such as `jobId`, `cwd`, `jobDir`, backend, the selected `agent` when set, and when available OpenCode session fields including `externalSessionId`, `externalSessionDirectory`, `externalRootSessionId`, `externalParentSessionId`, and `externalRunnerMode`.
 
 Compare requested `cwd` with returned `externalSessionDirectory` for repository-sensitive work. A mismatch is workspace drift; close the child and re-spawn with the right directory before trusting file claims.
 

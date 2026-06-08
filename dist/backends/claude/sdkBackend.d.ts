@@ -10,6 +10,7 @@ type ClaudeSdkQueryParams = {
         model?: string;
         permissionMode?: RunOptions["permissionMode"];
         resume?: string;
+        agent?: string;
         canUseTool?: ClaudeSdkCanUseTool;
     };
 };

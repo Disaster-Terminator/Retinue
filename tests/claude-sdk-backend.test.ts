@@ -97,6 +97,33 @@ describe("ClaudeCodeSdkBackend", () => {
     }
   });
 
+  it("passes the requested Claude SDK agent profile to the query options", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-claude-sdk-agent-"));
+    const seenAgents: unknown[] = [];
+    try {
+      const backend = new ClaudeCodeSdkBackend({
+        stateDir: tempDir,
+        env: {},
+        query: async function* ({ options }) {
+          seenAgents.push(options?.agent);
+          yield {
+            type: "result",
+            subtype: "success",
+            is_error: false,
+            result: "agent-explicit",
+            session_id: "sdk-session-agent-explicit"
+          };
+        }
+      });
+      const started = await backend.run({ cwd: tempDir, prompt: "agent explicit", agent: "code-reviewer" });
+      expect(started.agent).toBe("code-reviewer");
+      await backend.wait({ jobId: started.jobId }, 1000);
+      expect(seenAgents).toEqual(["code-reviewer"]);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("surfaces canUseTool requests through the Retinue permission bridge and resumes on reply", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-claude-sdk-permission-"));
     try {

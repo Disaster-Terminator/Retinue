@@ -138,7 +138,11 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
                                 agent,
                                 readOnly: false
                             }
-                            : {})
+                            : backend.kind === "claude-code"
+                                ? {
+                                    agent
+                                }
+                                : {})
                 });
                 agentPool.add({
                     jobId: started.jobId,
@@ -178,6 +182,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
                 status: "queued",
                 backend: queued.backend,
                 cwd: queued.cwd,
+                agent: queued.agent,
                 jobDir: getJobPaths(stateDir, queued.jobId).dir,
                 queuePosition: queued.queuePosition,
                 maxQueuedAgents: queued.maxQueuedAgents,
@@ -191,6 +196,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             status: started.status,
             backend: started.backend,
             cwd: started.cwd,
+            agent: started.agent,
             jobDir: getJobPaths(stateDir, started.jobId).dir,
             sessionId: started.sessionId,
             externalSessionId: started.externalSessionId,
@@ -799,6 +805,7 @@ class RetinueAgentPool {
                 jobId: meta.jobId,
                 backend: options.backendKind,
                 cwd: options.cwd,
+                agent: meta.agent,
                 queuePosition: queuedEntries.length + 1,
                 maxQueuedAgents
             }
@@ -830,7 +837,9 @@ class RetinueAgentPool {
                         ? { model: env.RETINUE_OPENCODE_MODEL, agent: meta.agent, readOnly: false }
                         : meta.backend === "kilo"
                             ? { model: env.RETINUE_KILO_MODEL, agent: meta.agent, readOnly: false }
-                            : {})
+                            : meta.backend === "claude-code"
+                                ? { agent: meta.agent }
+                                : {})
                 });
             });
             if ("resourceExhausted" in started) {

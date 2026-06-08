@@ -40,6 +40,8 @@ RETINUE_CLAUDE_MODEL=claude-sonnet-test
 
 If the local Claude Code default model is wrong, fix the Claude Code profile/runtime configuration before adding a Retinue override.
 
+`retinue_spawn_agent` may pass `agent` for one Claude Code SDK job. Retinue forwards that value to the SDK `agent` option, equivalent to Claude Code's `--agent` main-thread profile selection. Claude Code owns the available agent definitions through its settings; Retinue does not enumerate or validate Claude agent names.
+
 ## Permission Flow
 
 The SDK backend records Claude Code SDK permission requests and exposes them through the same product tools as other backends:

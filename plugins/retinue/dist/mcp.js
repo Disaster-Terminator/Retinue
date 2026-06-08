@@ -50613,6 +50613,7 @@ var ClaudeCodeSdkBackend = class {
       promptSha256: sha256(options.prompt),
       name: options.name,
       resume: options.resume,
+      agent: options.agent,
       parentJobId: options.parentJobId,
       parentSessionId: options.parentSessionId,
       recoveredFromJobId: options.recoveredFromJobId,
@@ -50814,6 +50815,7 @@ var ClaudeCodeSdkBackend = class {
         abortController: tracked.abortController,
         maxTurns: options.maxTurns,
         ...this.env.RETINUE_CLAUDE_MODEL ? { model: this.env.RETINUE_CLAUDE_MODEL } : {},
+        ...options.agent ? { agent: options.agent } : {},
         permissionMode: options.permissionMode,
         resume: options.resume,
         canUseTool: (toolName, input, hook) => this.recordPermission(jobId, toolName, input, hook)
@@ -60483,6 +60485,8 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
                 model: process.env.RETINUE_KILO_MODEL,
                 agent,
                 readOnly: false
+              } : backend.kind === "claude-code" ? {
+                agent
               } : {}
             });
             agentPool.add({
@@ -60522,6 +60526,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
           status: "queued",
           backend: queued.backend,
           cwd: queued.cwd,
+          agent: queued.agent,
           jobDir: getJobPaths(stateDir, queued.jobId).dir,
           queuePosition: queued.queuePosition,
           maxQueuedAgents: queued.maxQueuedAgents,
@@ -60535,6 +60540,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
         status: started.status,
         backend: started.backend,
         cwd: started.cwd,
+        agent: started.agent,
         jobDir: getJobPaths(stateDir, started.jobId).dir,
         sessionId: started.sessionId,
         externalSessionId: started.externalSessionId,
@@ -61251,6 +61257,7 @@ var RetinueAgentPool = class {
         jobId: meta3.jobId,
         backend: options.backendKind,
         cwd: options.cwd,
+        agent: meta3.agent,
         queuePosition: queuedEntries.length + 1,
         maxQueuedAgents
       }
@@ -61280,7 +61287,7 @@ var RetinueAgentPool = class {
             prompt: meta3.prompt ?? "",
             name: meta3.name,
             title: meta3.title ?? meta3.name,
-            ...meta3.backend === "opencode" ? { model: env.RETINUE_OPENCODE_MODEL, agent: meta3.agent, readOnly: false } : meta3.backend === "kilo" ? { model: env.RETINUE_KILO_MODEL, agent: meta3.agent, readOnly: false } : {}
+            ...meta3.backend === "opencode" ? { model: env.RETINUE_OPENCODE_MODEL, agent: meta3.agent, readOnly: false } : meta3.backend === "kilo" ? { model: env.RETINUE_KILO_MODEL, agent: meta3.agent, readOnly: false } : meta3.backend === "claude-code" ? { agent: meta3.agent } : {}
           });
         }
       );

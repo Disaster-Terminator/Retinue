@@ -1566,7 +1566,84 @@ describe("MCP tools", () => {
       restoreEnv("RETINUE_CLAUDE_COMMAND", previousCommand);
       restoreEnv("RETINUE_CLAUDE_PREFIX_ARGS", previousPrefixArgs);
       await closeMcpClient(connection);
-      await fs.rm(tempDir, { recursive: true, force: true });
+      await fs.rm(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  });
+
+  it("passes a Retinue Claude agent selection to the Claude SDK backend", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-claude-sdk-agent-"));
+    const previousBackend = process.env.RETINUE_BACKEND;
+    const previousStateDir = process.env.RETINUE_STATE_DIR;
+    const previousRuntime = process.env.RETINUE_CLAUDE_RUNTIME;
+    const previousCommand = process.env.RETINUE_CLAUDE_COMMAND;
+    const previousPrefixArgs = process.env.RETINUE_CLAUDE_PREFIX_ARGS;
+    const seenAgents: unknown[] = [];
+    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }), {
+      preferClaudeSdk: true,
+      claudeSdkQuery: async function* ({ options }) {
+        seenAgents.push(options?.agent);
+        yield {
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          result: "agent:code-reviewer",
+          session_id: "sdk-mcp-agent-session"
+        };
+      }
+    });
+    try {
+      process.env.RETINUE_BACKEND = "claude-code";
+      process.env.RETINUE_STATE_DIR = tempDir;
+      process.env.RETINUE_CLAUDE_RUNTIME = "sdk";
+      delete process.env.RETINUE_CLAUDE_COMMAND;
+      delete process.env.RETINUE_CLAUDE_PREFIX_ARGS;
+
+      const spawn = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_spawn_agent",
+          arguments: { cwd: tempDir, message: "use code reviewer", task_name: "claude-sdk-agent", agent: "code-reviewer" }
+        })
+      );
+      expect(spawn).toMatchObject({
+        backend: "claude-code",
+        status: "running",
+        task_name: "claude-sdk-agent",
+        agent: "code-reviewer"
+      });
+
+      const completed = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_wait_agent",
+          arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
+        })
+      );
+      expect(completed).toMatchObject({
+        jobId: spawn.jobId,
+        status: "completed",
+        result: {
+          parsedStdout: {
+            result: "agent:code-reviewer",
+            session_id: "sdk-mcp-agent-session"
+          }
+        }
+      });
+      expect(seenAgents).toEqual(["code-reviewer"]);
+
+      const close = parseToolJson(
+        await connection.client.callTool({
+          name: "retinue_close_agent",
+          arguments: { jobId: spawn.jobId }
+        })
+      );
+      expect(close).toMatchObject({ jobId: spawn.jobId, status: "completed" });
+    } finally {
+      restoreEnv("RETINUE_BACKEND", previousBackend);
+      restoreEnv("RETINUE_STATE_DIR", previousStateDir);
+      restoreEnv("RETINUE_CLAUDE_RUNTIME", previousRuntime);
+      restoreEnv("RETINUE_CLAUDE_COMMAND", previousCommand);
+      restoreEnv("RETINUE_CLAUDE_PREFIX_ARGS", previousPrefixArgs);
+      await closeMcpClient(connection);
+      await fs.rm(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   });
 
