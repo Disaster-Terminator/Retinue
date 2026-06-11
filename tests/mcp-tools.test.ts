@@ -304,7 +304,7 @@ describe("MCP tools", () => {
       assertOptionalField(tools.tools, "retinue_spawn_agent", "task_name");
       assertOptionalField(tools.tools, "retinue_spawn_agent", "cwd");
       assertOptionalField(tools.tools, "retinue_spawn_agent", "agent");
-      expect(getToolDescription(tools.tools, "retinue_spawn_agent")).toContain("not a Codex model or Codex native subagent name");
+      expect(getToolDescription(tools.tools, "retinue_spawn_agent")).toContain("not a Retinue backend name like opencode");
       assertAbsentFields(tools.tools, "retinue_spawn_agent", [
         "backend",
         "profile",

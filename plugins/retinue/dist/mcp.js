@@ -58966,9 +58966,13 @@ function validateOpenCodeAgent(agents, name, role, kind) {
   const available = agents.map((agent) => agent.name).filter(Boolean).sort().join(", ");
   const backend = kind === "kilo" ? "Kilo" : "OpenCode";
   const roleLabel = role === "root" ? "root agent" : "child agent";
+  const backendHint = isRetinueBackendName(name) ? ` "${name}" is a Retinue backend name; select the backend with RETINUE_BACKEND, and use agent only for one ${backend} agent such as ${available}.` : "";
   throw new Error(
-    `Unsupported ${backend} ${roleLabel} "${name}". The agent field selects a backend agent name for ${backend}, not a Codex model or Codex native subagent. Available ${backend} agents: ${available}.`
+    `Unsupported ${backend} ${roleLabel} "${name}". The agent field selects a backend agent name for ${backend}, not a Retinue backend, Codex model, or Codex native subagent.${backendHint} Available ${backend} agents: ${available}.`
   );
+}
+function isRetinueBackendName(name) {
+  return name === "opencode" || name === "claude-code" || name === "claude" || name === "kilo";
 }
 function normalizePermissionRules(value) {
   if (!Array.isArray(value)) {
@@ -60419,7 +60423,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
     "retinue_spawn_agent",
     {
       title: "Spawn Retinue Agent",
-      description: "Spawn a Retinue child agent using the deployment-selected backend and return a job handle. The optional agent field is the target backend child-agent name, such as OpenCode/Kilo explore or general; it is not a Codex model or Codex native subagent name.",
+      description: "Spawn a Retinue child agent using the deployment-selected backend and return a job handle. The optional agent field is the target backend-native child agent/profile, such as OpenCode/Kilo explore or general; it is not a Retinue backend name like opencode, a Codex model, or a Codex native subagent name.",
       inputSchema: {
         message: external_exports.string(),
         task_name: external_exports.string().optional(),

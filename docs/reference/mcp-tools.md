@@ -24,7 +24,7 @@ Pass:
 - `message`: the task for the child agent.
 - `cwd`: an absolute repository or workspace directory for file work.
 - `taskName` / `task_name` / `title`: a short label for diagnostics.
-- `agent`: optional backend-native agent/profile for this one spawn. For OpenCode/Kilo this is a child agent name such as `explore` or `general`; for Claude Code SDK this is passed as the Claude Code `agent`/`--agent` main-thread profile. It is not a Codex model name or Codex native subagent name.
+- `agent`: optional backend-native agent/profile for this one spawn. For OpenCode/Kilo this is a child agent name such as `explore` or `general`; for Claude Code SDK this is passed as the Claude Code `agent`/`--agent` main-thread profile. It is not a Retinue backend name such as `opencode`, a Codex model name, or a Codex native subagent name.
 
 Do not pass backend, provider, profile, model, OpenCode server, `access_mode`, or `bash_policy` choices through normal product tool calls.
 

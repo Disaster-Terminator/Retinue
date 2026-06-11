@@ -162,6 +162,24 @@ describe("OpenCodeBackend", () => {
     expect(server!.promptRequests).toHaveLength(0);
   });
 
+  it("rejects Retinue backend names passed as OpenCode child agents before creating sessions", async () => {
+    const backend = createBackend();
+
+    await expect(
+      backend.run({
+        cwd: tempDir,
+        prompt: "review this repository",
+        title: "wrong backend namespace",
+        agent: "opencode"
+      })
+    ).rejects.toThrow(
+      /Unsupported OpenCode child agent "opencode".*"opencode" is a Retinue backend name; select the backend with RETINUE_BACKEND.*use agent only for one OpenCode agent.*explore.*general/s
+    );
+
+    expect(server!.sessionRequests).toHaveLength(0);
+    expect(server!.promptRequests).toHaveLength(0);
+  });
+
   it("rejects unknown OpenCode root agents before creating sessions", async () => {
     const backend = createBackend({ RETINUE_OPENCODE_ROOT_AGENT: "codex-gpt-5.5" } as NodeJS.ProcessEnv);
 
