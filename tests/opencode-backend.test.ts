@@ -1363,6 +1363,30 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"zeroProgressAssistantStallThresholdMs":45000');
   });
 
+  it("marks unknown-finish empty step-finish assistant rounds as zero-progress", async () => {
+    const backend = createBackend({
+      RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
+      RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
+      RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
+    } as NodeJS.ProcessEnv);
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "deep returned an empty assistant step" });
+    server!.appendZeroProgressFinishedAssistant(started.externalSessionId!);
+
+    const paths = getJobPaths(tempDir, started.jobId);
+    const meta = JSON.parse(await fs.readFile(paths.meta, "utf8")) as typeof started;
+    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 60_000).toISOString() })}\n`, "utf8");
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"stallReason":"provider_zero_progress"');
+    expect(trace).toContain('"zeroProgressAssistantRounds":1');
+    expect(trace).toContain('"lastAssistantProviderID":"litellm-cloud"');
+    expect(trace).toContain('"lastAssistantModelID":"deep"');
+    expect(trace).toContain('"lastAssistantPartTypes":["step-start","step-finish"]');
+  });
+
   it("marks jobs with no assistant output as zero-progress after the bounded no-progress window", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),

@@ -52,6 +52,7 @@ export interface FakeOpenCodeServer {
   appendMalformedReadToolAssistant(sessionId: string): void;
   appendBlankAssistant(sessionId: string): void;
   appendZeroProgressReasoningAssistant(sessionId: string): void;
+  appendZeroProgressFinishedAssistant(sessionId: string): void;
   appendIncompleteAssistant(sessionId: string, text?: string): void;
   appendPatchAssistant(sessionId: string, text?: string): void;
   appendErroredPatchAssistant(sessionId: string, error: unknown): void;
@@ -593,6 +594,26 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
             tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
           },
           parts: [{ type: "step-start" }, { type: "reasoning", text: "" }]
+        });
+      }
+    },
+    appendZeroProgressFinishedAssistant: (sessionId: string) => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.omitState = true;
+        session.messages.push({
+          info: {
+            id: `msg_${nextMessage++}`,
+            sessionID: session.id,
+            role: "assistant",
+            finish: "unknown",
+            providerID: "litellm-cloud",
+            modelID: "deep",
+            agent: "explore",
+            mode: "explore",
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
+          },
+          parts: [{ type: "step-start" }, { type: "step-finish" }]
         });
       }
     },

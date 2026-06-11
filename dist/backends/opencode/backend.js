@@ -2317,7 +2317,7 @@ function isZeroProgressAssistantPlaceholder(message) {
     if (message.info?.role !== "assistant") {
         return false;
     }
-    if (typeof message.info.finish === "string") {
+    if (typeof message.info.finish === "string" && message.info.finish !== "unknown") {
         return false;
     }
     if (extractMessageText(message).length > 0) {
@@ -2330,7 +2330,7 @@ function isZeroProgressAssistantPlaceholder(message) {
     if (summaries.some((part) => part.type === "tool" || (part.textBytes ?? 0) > 0)) {
         return false;
     }
-    return summaries.every((part) => part.type === "step-start" || part.type === "reasoning");
+    return summaries.every((part) => part.type === "step-start" || part.type === "reasoning" || part.type === "step-finish");
 }
 function isIncompleteAssistantMessage(message) {
     if (message?.info?.role !== "assistant") {
