@@ -18,7 +18,7 @@ Common artifacts:
 <stateDir>/jobs/<jobId>/stderr.log
 ```
 
-`retinue_wait_agent` includes compact diagnostics and artifact paths when a job is running, stalled, or attention-required.
+`wait_agent` includes compact diagnostics and artifact paths when a job is running, stalled, or attention-required.
 
 ## Log Audit
 
@@ -77,7 +77,7 @@ Permission waits include structured `permissionActions` when possible:
 - recommended reply
 - workspace relation
 
-Use `retinue_reply_permission` for the decision. Retinue validates that the request belongs to the job's OpenCode session or child sessions before replying.
+Use `reply_permission` for the decision. Retinue validates that the request belongs to the job's OpenCode session or child sessions before replying.
 
 ## What Not To Record
 

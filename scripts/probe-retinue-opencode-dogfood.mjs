@@ -99,7 +99,7 @@ async function runAgentDogfood({ agent, rootBindingMode, rootStateDir, timeoutMs
         task,
         spawn: parseToolJson(
           await client.callTool({
-            name: "retinue_spawn_agent",
+            name: "spawn_agent",
             arguments: {
               cwd,
               task_name: `${agent}-${rootBindingMode}-${task.name}`,
@@ -132,13 +132,13 @@ async function runAgentDogfood({ agent, rootBindingMode, rootStateDir, timeoutMs
     await Promise.allSettled(
       spawns.map(({ spawn }) =>
         client.callTool({
-          name: "retinue_close_agent",
+          name: "close_agent",
           arguments: { jobId: spawn.jobId }
         })
       )
     );
     await client.callTool({
-      name: "retinue_stop_runtime",
+      name: "stop_runtime",
       arguments: { runtime: "opencode", cwd, force: true }
     });
 
@@ -205,7 +205,7 @@ async function waitForTerminal(client, jobId, timeoutMs) {
     lastWait = parseToolJson(
       await client.callTool(
         {
-          name: "retinue_wait_agent",
+          name: "wait_agent",
           arguments: { jobId, timeoutMs: waitTimeoutMs }
         },
         undefined,

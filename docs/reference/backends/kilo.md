@@ -87,19 +87,19 @@ The default Kilo child agent is:
 RETINUE_KILO_AGENT=explore
 ```
 
-A single `retinue_spawn_agent` call can still pass `agent` to choose another Kilo/OpenCode-compatible agent for that child.
+A single `spawn_agent` call can still pass `agent` to choose another Kilo/OpenCode-compatible agent for that child.
 
 ## Product Boundary
 
 Normal delegation still uses:
 
 ```text
-retinue_spawn_agent
-retinue_wait_agent
-retinue_close_agent
-retinue_list_agents
-retinue_list_permissions
-retinue_reply_permission
+spawn_agent
+wait_agent
+close_agent
+list_agents
+list_permissions
+reply_permission
 ```
 
 Retinue does not expose Kilo-specific product tools. The backend selection is deployment-level via `RETINUE_BACKEND=kilo`.

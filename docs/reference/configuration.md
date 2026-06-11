@@ -66,7 +66,7 @@ These switches are for Retinue development and backend debugging, not normal pro
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `RETINUE_EXPOSE_DIAGNOSTIC_TOOLS` | unset | Exposes `retinue_audit_logs` for dogfood/debugging. |
+| `RETINUE_EXPOSE_DIAGNOSTIC_TOOLS` | unset | Exposes `audit_logs` for dogfood/debugging. |
 | `RETINUE_EXPOSE_BACKEND_TOOLS` | unset | Exposes raw `opencode_*` / `claude_*` adapter tools. |
 
 ## Daemon Variables

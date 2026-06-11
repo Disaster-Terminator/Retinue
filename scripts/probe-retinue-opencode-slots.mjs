@@ -40,7 +40,7 @@ async function main() {
       spawns.push(
         parseToolJson(
           await client.callTool({
-            name: "retinue_spawn_agent",
+            name: "spawn_agent",
             arguments: {
               cwd,
               task_name: `real-slot-${index + 1}`,
@@ -51,7 +51,7 @@ async function main() {
       );
     }
 
-    const listed = parseToolJson(await client.callTool({ name: "retinue_list_agents", arguments: {} }));
+    const listed = parseToolJson(await client.callTool({ name: "list_agents", arguments: {} }));
     const evictedJobId = spawns.at(-1)?.evictedJobId;
     if (!evictedJobId) {
       throw new Error(`Expected the fourth spawn to evict the oldest running job: ${JSON.stringify({ spawns, listed })}`);
@@ -60,7 +60,7 @@ async function main() {
     await Promise.allSettled(
       listed.agents.map((agent) =>
         client.callTool({
-          name: "retinue_close_agent",
+          name: "close_agent",
           arguments: { jobId: agent.jobId }
         })
       )

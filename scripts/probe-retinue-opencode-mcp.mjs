@@ -30,7 +30,7 @@ async function main() {
     const cwd = process.cwd();
     const spawn = parseToolJson(
       await client.callTool({
-        name: "retinue_spawn_agent",
+        name: "spawn_agent",
         arguments: {
           cwd,
           task_name: "real-opencode-smoke",
@@ -41,7 +41,7 @@ async function main() {
 
     const wait = parseToolJson(
       await client.callTool({
-        name: "retinue_wait_agent",
+        name: "wait_agent",
         arguments: { jobId: spawn.jobId, timeoutMs: 120000 }
       }, undefined, { timeout: 150000 })
     );
@@ -53,7 +53,7 @@ async function main() {
 
     const close = parseToolJson(
       await client.callTool({
-        name: "retinue_close_agent",
+        name: "close_agent",
         arguments: { jobId: spawn.jobId }
       })
     );

@@ -59,20 +59,20 @@ describe("MCP tools", () => {
 
   it("declares the Retinue Codex-like spawn tools", () => {
     expect(RETINUE_TOOL_NAMES).toEqual([
-      "retinue_spawn_agent",
-      "retinue_wait_agent",
-      "retinue_close_agent",
-      "retinue_list_agents",
-      "retinue_list_permissions",
-      "retinue_reply_permission",
-      "retinue_stop_runtime",
-      "retinue_restart_runtime"
+      "spawn_agent",
+      "wait_agent",
+      "close_agent",
+      "list_agents",
+      "list_permissions",
+      "reply_permission",
+      "stop_runtime",
+      "restart_runtime"
     ]);
   });
 
   it("declares Retinue diagnostic tools separately from the default product tools", () => {
-    expect(RETINUE_DIAGNOSTIC_TOOL_NAMES).toEqual(["retinue_audit_logs"]);
-    expect(RETINUE_TOOL_NAMES).not.toContain("retinue_audit_logs");
+    expect(RETINUE_DIAGNOSTIC_TOOL_NAMES).toEqual(["audit_logs"]);
+    expect(RETINUE_TOOL_NAMES).not.toContain("audit_logs");
   });
 
   it("creates a server instance with registered tools", () => {
@@ -300,12 +300,12 @@ describe("MCP tools", () => {
       assertOptionalField(tools.tools, "opencode_run", "opencodeBaseUrl");
       assertOptionalField(tools.tools, "opencode_run", "model");
       assertOptionalField(tools.tools, "opencode_run", "agent");
-      assertRequiredFields(tools.tools, "retinue_spawn_agent", ["message"]);
-      assertOptionalField(tools.tools, "retinue_spawn_agent", "task_name");
-      assertOptionalField(tools.tools, "retinue_spawn_agent", "cwd");
-      assertOptionalField(tools.tools, "retinue_spawn_agent", "agent");
-      expect(getToolDescription(tools.tools, "retinue_spawn_agent")).toContain("not a Retinue backend name like opencode");
-      assertAbsentFields(tools.tools, "retinue_spawn_agent", [
+      assertRequiredFields(tools.tools, "spawn_agent", ["message"]);
+      assertOptionalField(tools.tools, "spawn_agent", "task_name");
+      assertOptionalField(tools.tools, "spawn_agent", "cwd");
+      assertOptionalField(tools.tools, "spawn_agent", "agent");
+      expect(getToolDescription(tools.tools, "spawn_agent")).toContain("not a Retinue backend name like opencode");
+      assertAbsentFields(tools.tools, "spawn_agent", [
         "backend",
         "profile",
         "model",
@@ -314,29 +314,29 @@ describe("MCP tools", () => {
         "access_mode",
         "bash_policy"
       ]);
-      assertRequiredFields(tools.tools, "retinue_wait_agent", ["jobId"]);
-      assertAbsentFields(tools.tools, "retinue_wait_agent", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
-      assertRequiredFields(tools.tools, "retinue_close_agent", ["jobId"]);
-      assertAbsentFields(tools.tools, "retinue_close_agent", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
-      assertAbsentFields(tools.tools, "retinue_list_agents", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
-      assertOptionalField(tools.tools, "retinue_list_permissions", "jobId");
-      assertAbsentFields(tools.tools, "retinue_list_permissions", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
-      assertRequiredFields(tools.tools, "retinue_reply_permission", ["jobId", "requestId", "reply"]);
-      assertOptionalField(tools.tools, "retinue_reply_permission", "message");
-      assertAbsentFields(tools.tools, "retinue_reply_permission", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
-      assertOptionalField(tools.tools, "retinue_stop_runtime", "runtime");
-      assertOptionalField(tools.tools, "retinue_stop_runtime", "cwd");
-      assertOptionalField(tools.tools, "retinue_stop_runtime", "all");
-      assertOptionalField(tools.tools, "retinue_stop_runtime", "force");
-      assertAbsentFields(tools.tools, "retinue_stop_runtime", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
-      assertOptionalField(tools.tools, "retinue_restart_runtime", "runtime");
-      assertRequiredFields(tools.tools, "retinue_restart_runtime", ["cwd"]);
-      assertOptionalField(tools.tools, "retinue_restart_runtime", "force");
-      assertAbsentFields(tools.tools, "retinue_restart_runtime", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
-      expect(getToolDescription(tools.tools, "retinue_list_permissions")).toContain("backend permission requests");
-      expect(getToolDescription(tools.tools, "retinue_list_permissions")).not.toContain("OpenCode permission requests");
-      expect(getToolDescription(tools.tools, "retinue_reply_permission")).toContain("backend permission request");
-      expect(getToolDescription(tools.tools, "retinue_reply_permission")).not.toContain("OpenCode permission request");
+      assertRequiredFields(tools.tools, "wait_agent", ["jobId"]);
+      assertAbsentFields(tools.tools, "wait_agent", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
+      assertRequiredFields(tools.tools, "close_agent", ["jobId"]);
+      assertAbsentFields(tools.tools, "close_agent", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
+      assertAbsentFields(tools.tools, "list_agents", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
+      assertOptionalField(tools.tools, "list_permissions", "jobId");
+      assertAbsentFields(tools.tools, "list_permissions", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
+      assertRequiredFields(tools.tools, "reply_permission", ["jobId", "requestId", "reply"]);
+      assertOptionalField(tools.tools, "reply_permission", "message");
+      assertAbsentFields(tools.tools, "reply_permission", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
+      assertOptionalField(tools.tools, "stop_runtime", "runtime");
+      assertOptionalField(tools.tools, "stop_runtime", "cwd");
+      assertOptionalField(tools.tools, "stop_runtime", "all");
+      assertOptionalField(tools.tools, "stop_runtime", "force");
+      assertAbsentFields(tools.tools, "stop_runtime", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
+      assertOptionalField(tools.tools, "restart_runtime", "runtime");
+      assertRequiredFields(tools.tools, "restart_runtime", ["cwd"]);
+      assertOptionalField(tools.tools, "restart_runtime", "force");
+      assertAbsentFields(tools.tools, "restart_runtime", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
+      expect(getToolDescription(tools.tools, "list_permissions")).toContain("backend permission requests");
+      expect(getToolDescription(tools.tools, "list_permissions")).not.toContain("OpenCode permission requests");
+      expect(getToolDescription(tools.tools, "reply_permission")).toContain("backend permission request");
+      expect(getToolDescription(tools.tools, "reply_permission")).not.toContain("OpenCode permission request");
     } finally {
       await closeMcpClient(connection);
     }
@@ -353,18 +353,18 @@ describe("MCP tools", () => {
       await expect(
         connection.client
           .callTool({
-            name: "retinue_stop_runtime",
+            name: "stop_runtime",
             arguments: {}
           })
           .then(parseToolJson)
       ).resolves.toMatchObject({
         status: "invalid_request",
-        error: "retinue_stop_runtime requires cwd or all=true"
+        error: "stop_runtime requires cwd or all=true"
       });
       await expect(
         connection.client
           .callTool({
-            name: "retinue_restart_runtime",
+            name: "restart_runtime",
             arguments: { cwd: tempDir }
           })
           .then(parseToolJson)
@@ -395,13 +395,13 @@ describe("MCP tools", () => {
     });
     try {
       const tools = await connection.client.listTools();
-      assertOptionalField(tools.tools, "retinue_audit_logs", "since");
-      assertOptionalField(tools.tools, "retinue_audit_logs", "maxLines");
-      assertOptionalField(tools.tools, "retinue_audit_logs", "maxBytes");
-      assertOptionalField(tools.tools, "retinue_audit_logs", "stateDir");
-      assertOptionalField(tools.tools, "retinue_audit_logs", "tracePath");
-      assertOptionalField(tools.tools, "retinue_audit_logs", "compact");
-      assertAbsentFields(tools.tools, "retinue_audit_logs", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
+      assertOptionalField(tools.tools, "audit_logs", "since");
+      assertOptionalField(tools.tools, "audit_logs", "maxLines");
+      assertOptionalField(tools.tools, "audit_logs", "maxBytes");
+      assertOptionalField(tools.tools, "audit_logs", "stateDir");
+      assertOptionalField(tools.tools, "audit_logs", "tracePath");
+      assertOptionalField(tools.tools, "audit_logs", "compact");
+      assertAbsentFields(tools.tools, "audit_logs", ["backend", "profile", "model", "agent", "permissionMode", "opencodeBaseUrl"]);
     } finally {
       await closeMcpClient(connection);
     }
@@ -460,7 +460,7 @@ describe("MCP tools", () => {
     try {
       const compactAudit = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_audit_logs",
+          name: "audit_logs",
           arguments: { tracePath, since: "2026-05-22T08:00:00.000Z" }
         })
       );
@@ -475,7 +475,7 @@ describe("MCP tools", () => {
 
       const audit = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_audit_logs",
+          name: "audit_logs",
           arguments: { tracePath, since: "2026-05-22T08:00:00.000Z", compact: false }
         })
       );
@@ -513,7 +513,7 @@ describe("MCP tools", () => {
 
       const spawn = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue mcp", task_name: "smoke", agent: "explore" }
         })
       );
@@ -537,7 +537,7 @@ describe("MCP tools", () => {
       expectTaskCompatibleChildPermission(fakeOpenCode.sessionRequests.at(-1));
       const runningWait = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_wait_agent",
+          name: "wait_agent",
           arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
         })
       );
@@ -554,7 +554,7 @@ describe("MCP tools", () => {
 
       const wait = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_wait_agent",
+          name: "wait_agent",
           arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
         })
       );
@@ -572,7 +572,7 @@ describe("MCP tools", () => {
 
       const close = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_close_agent",
+          name: "close_agent",
           arguments: { jobId: spawn.jobId }
         })
       );
@@ -598,7 +598,7 @@ describe("MCP tools", () => {
 
       const spawn = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "read then stall", task_name: "close-stalled" }
         })
       );
@@ -606,12 +606,12 @@ describe("MCP tools", () => {
 
       await expect(
         connection.client
-          .callTool({ name: "retinue_wait_agent", arguments: { jobId: spawn.jobId, timeoutMs: 1000 } })
+          .callTool({ name: "wait_agent", arguments: { jobId: spawn.jobId, timeoutMs: 1000 } })
           .then(parseToolJson)
       ).resolves.toMatchObject({ jobId: spawn.jobId, status: "stalled" });
 
       await expect(
-        connection.client.callTool({ name: "retinue_close_agent", arguments: { jobId: spawn.jobId } }).then(parseToolJson)
+        connection.client.callTool({ name: "close_agent", arguments: { jobId: spawn.jobId } }).then(parseToolJson)
       ).resolves.toMatchObject({ jobId: spawn.jobId, status: "killed" });
       await expect(fs.readFile(path.join(tempDir, "jobs", spawn.jobId, "meta.json"), "utf8").then(JSON.parse)).resolves.toMatchObject({
         status: "killed"
@@ -636,14 +636,14 @@ describe("MCP tools", () => {
 
       const spawn = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "server disappears", task_name: "close-unreachable" }
         })
       );
       await fakeOpenCode.close();
 
       await expect(
-        connection.client.callTool({ name: "retinue_close_agent", arguments: { jobId: spawn.jobId } }).then(parseToolJson)
+        connection.client.callTool({ name: "close_agent", arguments: { jobId: spawn.jobId } }).then(parseToolJson)
       ).resolves.toMatchObject({ jobId: spawn.jobId, status: "killed" });
       await expect(fs.readFile(path.join(tempDir, "jobs", spawn.jobId, "meta.json"), "utf8").then(JSON.parse)).resolves.toMatchObject({
         status: "killed"
@@ -670,7 +670,7 @@ describe("MCP tools", () => {
 
       const spawn = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "read-only review", task_name: "patch-summary" }
         })
       );
@@ -679,7 +679,7 @@ describe("MCP tools", () => {
 
       const wait = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_wait_agent",
+          name: "wait_agent",
           arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
         })
       );
@@ -720,25 +720,25 @@ describe("MCP tools", () => {
 
       const first = parseToolJson(
         await firstConnection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "shared root one", task_name: "shared-one", agent: "explore" }
         })
       );
       const second = parseToolJson(
         await firstConnection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "shared root two", task_name: "shared-two", agent: "explore" }
         })
       );
       const third = parseToolJson(
         await secondConnection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "shared root other mcp", task_name: "shared-other-mcp", agent: "explore" }
         })
       );
       const fourth = parseToolJson(
         await secondConnection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "shared root other mcp second child", task_name: "shared-other-mcp-two", agent: "explore" }
         })
       );
@@ -787,7 +787,7 @@ describe("MCP tools", () => {
 
       const spawn = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue malformed read retry", task_name: "attempt-smoke", agent: "explore" }
         })
       );
@@ -796,7 +796,7 @@ describe("MCP tools", () => {
 
       const wait = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_wait_agent",
+          name: "wait_agent",
           arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
         })
       );
@@ -817,7 +817,7 @@ describe("MCP tools", () => {
 
       const completed = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_wait_agent",
+          name: "wait_agent",
           arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
         })
       );
@@ -867,7 +867,7 @@ describe("MCP tools", () => {
 
       const spawn = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue root completes after retry selection", task_name: "late-root", agent: "explore" }
         })
       );
@@ -875,11 +875,11 @@ describe("MCP tools", () => {
       fakeOpenCode.appendZeroProgressReasoningAssistant(spawn.externalSessionId);
 
       await expect(
-        connection.client.callTool({ name: "retinue_wait_agent", arguments: { jobId: spawn.jobId, timeoutMs: 100 } })
+        connection.client.callTool({ name: "wait_agent", arguments: { jobId: spawn.jobId, timeoutMs: 100 } })
       ).resolves.toBeDefined();
 
       const selected = parseToolJson(
-        await connection.client.callTool({ name: "retinue_wait_agent", arguments: { jobId: spawn.jobId, timeoutMs: 200 } })
+        await connection.client.callTool({ name: "wait_agent", arguments: { jobId: spawn.jobId, timeoutMs: 200 } })
       );
       expect(selected).toMatchObject({
         requestedJobId: spawn.jobId,
@@ -890,7 +890,7 @@ describe("MCP tools", () => {
       fakeOpenCode.completeSessionWithFinalText(spawn.externalSessionId, "late root review");
 
       const completed = parseToolJson(
-        await connection.client.callTool({ name: "retinue_wait_agent", arguments: { jobId: spawn.jobId, timeoutMs: 1000 } })
+        await connection.client.callTool({ name: "wait_agent", arguments: { jobId: spawn.jobId, timeoutMs: 1000 } })
       );
       expect(completed).toMatchObject({
         task_name: "late-root",
@@ -926,7 +926,7 @@ describe("MCP tools", () => {
       process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
 
       await connection.client.callTool({
-        name: "retinue_spawn_agent",
+        name: "spawn_agent",
         arguments: { cwd: tempDir, message: "inspect with native explore profile", task_name: "explore-policy", agent: "explore" }
       });
 
@@ -936,7 +936,7 @@ describe("MCP tools", () => {
       expectTaskCompatibleChildPermission(fakeOpenCode.sessionRequests.at(-1));
 
       await connection.client.callTool({
-        name: "retinue_spawn_agent",
+        name: "spawn_agent",
         arguments: { cwd: tempDir, message: "write the implementation plan", task_name: "plan-policy", agent: "plan" }
       });
 
@@ -946,7 +946,7 @@ describe("MCP tools", () => {
       expectTaskCompatibleChildPermission(fakeOpenCode.sessionRequests.at(-1));
 
       await connection.client.callTool({
-        name: "retinue_spawn_agent",
+        name: "spawn_agent",
         arguments: { cwd: tempDir, message: "make the requested change", task_name: "build-policy", agent: "build" }
       });
 
@@ -974,14 +974,14 @@ describe("MCP tools", () => {
 
       const spawn = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue still running", task_name: "running-opencode" }
         })
       );
 
       const wait = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_wait_agent",
+          name: "wait_agent",
           arguments: { jobId: spawn.jobId, timeoutMs: 5000 }
         })
       );
@@ -1045,7 +1045,7 @@ describe("MCP tools", () => {
 
       const spawn = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "risk review stalls after tools", task_name: "stalled-opencode" }
         })
       );
@@ -1055,7 +1055,7 @@ describe("MCP tools", () => {
 
       const wait = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_wait_agent",
+          name: "wait_agent",
           arguments: { jobId: spawn.jobId, timeoutMs: 100 }
         })
       );
@@ -1073,7 +1073,7 @@ describe("MCP tools", () => {
         }
       });
       expect(wait.diagnostic.message).toContain("provider/router produced zero-progress assistant output");
-      const list = parseToolJson(await connection.client.callTool({ name: "retinue_list_agents", arguments: {} }));
+      const list = parseToolJson(await connection.client.callTool({ name: "list_agents", arguments: {} }));
       expect(list.agents).toContainEqual(
         expect.objectContaining({
           jobId: spawn.jobId,
@@ -1106,7 +1106,7 @@ describe("MCP tools", () => {
 
       const spawn = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "risk review stalls after tools", task_name: "stalled-opencode" }
         })
       );
@@ -1116,7 +1116,7 @@ describe("MCP tools", () => {
 
       const wait = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_wait_agent",
+          name: "wait_agent",
           arguments: { jobId: spawn.jobId, timeoutMs: 5000 }
         })
       );
@@ -1164,7 +1164,7 @@ describe("MCP tools", () => {
 
       const spawn = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "risk review leaves a read pending", task_name: "read-stalled-opencode" }
         })
       );
@@ -1172,7 +1172,7 @@ describe("MCP tools", () => {
 
       const wait = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_wait_agent",
+          name: "wait_agent",
           arguments: { jobId: spawn.jobId, timeoutMs: 5000 }
         })
       );
@@ -1227,7 +1227,7 @@ describe("MCP tools", () => {
 
       const spawn = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue permission bridge", task_name: "permission-bridge" }
         })
       );
@@ -1236,7 +1236,7 @@ describe("MCP tools", () => {
 
       const wait = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_wait_agent",
+          name: "wait_agent",
           arguments: { jobId: spawn.jobId, timeoutMs: 5000 }
         })
       );
@@ -1330,7 +1330,7 @@ describe("MCP tools", () => {
 
       const list = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_list_permissions",
+          name: "list_permissions",
           arguments: { jobId: spawn.jobId }
         })
       );
@@ -1361,7 +1361,7 @@ describe("MCP tools", () => {
 
       const allPermissions = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_list_permissions",
+          name: "list_permissions",
           arguments: {}
         })
       );
@@ -1399,7 +1399,7 @@ describe("MCP tools", () => {
 
       const reply = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_reply_permission",
+          name: "reply_permission",
           arguments: { jobId: spawn.jobId, requestId: "per_1", reply: "reject", message: "headless deny" }
         })
       );
@@ -1425,7 +1425,7 @@ describe("MCP tools", () => {
       process.env.RETINUE_BACKEND = "claude-code";
 
       const result = (await connection.client.callTool({
-        name: "retinue_list_permissions",
+        name: "list_permissions",
         arguments: { jobId: "job_without_permission_bridge" }
       })) as { isError?: boolean; content?: Array<{ type: string; text?: string }> };
 
@@ -1487,7 +1487,7 @@ describe("MCP tools", () => {
 
       const spawn = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "read /etc/hostname", task_name: "claude-sdk-permission" }
         })
       );
@@ -1499,7 +1499,7 @@ describe("MCP tools", () => {
 
       const wait = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_wait_agent",
+          name: "wait_agent",
           arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
         })
       );
@@ -1529,7 +1529,7 @@ describe("MCP tools", () => {
 
       const reply = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_reply_permission",
+          name: "reply_permission",
           arguments: { jobId: spawn.jobId, requestId: "tool-read-1", reply: "once" }
         })
       );
@@ -1543,7 +1543,7 @@ describe("MCP tools", () => {
 
       const completed = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_wait_agent",
+          name: "wait_agent",
           arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
         })
       );
@@ -1600,7 +1600,7 @@ describe("MCP tools", () => {
 
       const spawn = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "use code reviewer", task_name: "claude-sdk-agent", agent: "code-reviewer" }
         })
       );
@@ -1613,7 +1613,7 @@ describe("MCP tools", () => {
 
       const completed = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_wait_agent",
+          name: "wait_agent",
           arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
         })
       );
@@ -1631,7 +1631,7 @@ describe("MCP tools", () => {
 
       const close = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_close_agent",
+          name: "close_agent",
           arguments: { jobId: spawn.jobId }
         })
       );
@@ -1681,7 +1681,7 @@ describe("MCP tools", () => {
 
       const spawn = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "use claude default", task_name: "claude-sdk-agent-default" }
         })
       );
@@ -1694,7 +1694,7 @@ describe("MCP tools", () => {
 
       const completed = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_wait_agent",
+          name: "wait_agent",
           arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
         })
       );
@@ -1745,7 +1745,7 @@ describe("MCP tools", () => {
 
       const spawn = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "use claude env agent", task_name: "claude-sdk-agent-env" }
         })
       );
@@ -1758,7 +1758,7 @@ describe("MCP tools", () => {
 
       const completed = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_wait_agent",
+          name: "wait_agent",
           arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
         })
       );
@@ -1792,7 +1792,7 @@ describe("MCP tools", () => {
         spawns.push(
           parseToolJson(
             await connection.client.callTool({
-              name: "retinue_spawn_agent",
+              name: "spawn_agent",
               arguments: { cwd: tempDir, message: `retinue ${taskName}`, task_name: taskName }
             })
           )
@@ -1808,7 +1808,7 @@ describe("MCP tools", () => {
 
       const evicted = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_close_agent",
+          name: "close_agent",
           arguments: { jobId: spawns[0].jobId }
         })
       );
@@ -1842,7 +1842,7 @@ describe("MCP tools", () => {
         ["concurrent-slot-1", "concurrent-slot-2", "concurrent-slot-3", "concurrent-slot-4"].map((taskName) =>
           connection.client
             .callTool({
-              name: "retinue_spawn_agent",
+              name: "spawn_agent",
               arguments: { cwd: tempDir, message: `retinue ${taskName}`, task_name: taskName }
             })
             .then(parseToolJson)
@@ -1852,7 +1852,7 @@ describe("MCP tools", () => {
       const evictions = spawns.filter((spawn) => typeof spawn.evictedJobId === "string");
       expect(evictions).toHaveLength(1);
 
-      const list = parseToolJson(await connection.client.callTool({ name: "retinue_list_agents", arguments: {} }));
+      const list = parseToolJson(await connection.client.callTool({ name: "list_agents", arguments: {} }));
       expect(list.maxAgents).toBe(3);
       expect(list.agents).toHaveLength(3);
       expect(list.agents.map((agent: { jobId: string }) => agent.jobId)).not.toContain(spawns[0].jobId);
@@ -1881,19 +1881,19 @@ describe("MCP tools", () => {
 
       const first = parseToolJson(
         await firstConnection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue global budget one", task_name: "global-budget-1" }
         })
       );
       const second = parseToolJson(
         await firstConnection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue global budget two", task_name: "global-budget-2" }
         })
       );
       const third = parseToolJson(
         await secondConnection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue global budget three", task_name: "global-budget-3" }
         })
       );
@@ -1901,7 +1901,7 @@ describe("MCP tools", () => {
 
       const queued = parseToolJson(
         await secondConnection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue global budget four", task_name: "global-budget-4" }
         })
       );
@@ -1916,8 +1916,8 @@ describe("MCP tools", () => {
       });
       expect(queued.jobId).toEqual(expect.any(String));
 
-      const firstList = parseToolJson(await firstConnection.client.callTool({ name: "retinue_list_agents", arguments: {} }));
-      const secondList = parseToolJson(await secondConnection.client.callTool({ name: "retinue_list_agents", arguments: {} }));
+      const firstList = parseToolJson(await firstConnection.client.callTool({ name: "list_agents", arguments: {} }));
+      const secondList = parseToolJson(await secondConnection.client.callTool({ name: "list_agents", arguments: {} }));
       expect(firstList.agents).toHaveLength(2);
       expect(secondList.agents).toEqual([
         expect.objectContaining({ jobId: third.jobId, status: "running" }),
@@ -1951,7 +1951,7 @@ describe("MCP tools", () => {
 
       const first = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue stale selected attempt one", task_name: "stale-attempt-1" }
         })
       );
@@ -1963,7 +1963,7 @@ describe("MCP tools", () => {
 
       const queued = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue stale selected attempt two", task_name: "stale-attempt-2" }
         })
       );
@@ -1997,13 +1997,13 @@ describe("MCP tools", () => {
 
       const first = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue queued promote one", task_name: "queue-promote-1" }
         })
       );
       const second = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue queued promote two", task_name: "queue-promote-2" }
         })
       );
@@ -2011,9 +2011,9 @@ describe("MCP tools", () => {
       expect(first).toMatchObject({ status: "running" });
       expect(second).toMatchObject({ status: "queued", queuePosition: 1 });
 
-      await connection.client.callTool({ name: "retinue_close_agent", arguments: { jobId: first.jobId } });
+      await connection.client.callTool({ name: "close_agent", arguments: { jobId: first.jobId } });
       const promoted = parseToolJson(
-        await connection.client.callTool({ name: "retinue_wait_agent", arguments: { jobId: second.jobId, timeoutMs: 0 } })
+        await connection.client.callTool({ name: "wait_agent", arguments: { jobId: second.jobId, timeoutMs: 0 } })
       );
 
       expect(promoted).toMatchObject({
@@ -2027,7 +2027,7 @@ describe("MCP tools", () => {
       };
       fakeOpenCode.completeSessionWithFinalText(attemptMeta.externalSessionId, "queued final");
       const completed = parseToolJson(
-        await connection.client.callTool({ name: "retinue_wait_agent", arguments: { jobId: second.jobId, timeoutMs: 1000 } })
+        await connection.client.callTool({ name: "wait_agent", arguments: { jobId: second.jobId, timeoutMs: 1000 } })
       );
       expect(completed).toMatchObject({
         jobId: second.jobId,
@@ -2069,13 +2069,13 @@ describe("MCP tools", () => {
 
       const first = parseToolJson(
         await firstConnection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue both limits one", task_name: "both-limits-1" }
         })
       );
       const queued = parseToolJson(
         await firstConnection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue both limits queued", task_name: "both-limits-queued" }
         })
       );
@@ -2083,13 +2083,13 @@ describe("MCP tools", () => {
       process.env.RETINUE_MAX_CONCURRENT_AGENTS = "3";
       const second = parseToolJson(
         await secondConnection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue both limits two", task_name: "both-limits-2" }
         })
       );
       const third = parseToolJson(
         await secondConnection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue both limits three", task_name: "both-limits-3" }
         })
       );
@@ -2097,23 +2097,23 @@ describe("MCP tools", () => {
       expect([first.status, second.status, third.status]).toEqual(["running", "running", "running"]);
       expect(queued).toMatchObject({ status: "queued", queuePosition: 1 });
 
-      await firstConnection.client.callTool({ name: "retinue_close_agent", arguments: { jobId: first.jobId } });
+      await firstConnection.client.callTool({ name: "close_agent", arguments: { jobId: first.jobId } });
       const fourth = parseToolJson(
         await secondConnection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue both limits four", task_name: "both-limits-4" }
         })
       );
       expect(fourth).toMatchObject({ status: "running" });
 
       const stillQueued = parseToolJson(
-        await firstConnection.client.callTool({ name: "retinue_wait_agent", arguments: { jobId: queued.jobId, timeoutMs: 0 } })
+        await firstConnection.client.callTool({ name: "wait_agent", arguments: { jobId: queued.jobId, timeoutMs: 0 } })
       );
       expect(stillQueued).toMatchObject({ jobId: queued.jobId, status: "queued", queuePosition: 1 });
 
-      await secondConnection.client.callTool({ name: "retinue_close_agent", arguments: { jobId: second.jobId } });
+      await secondConnection.client.callTool({ name: "close_agent", arguments: { jobId: second.jobId } });
       const promoted = parseToolJson(
-        await firstConnection.client.callTool({ name: "retinue_wait_agent", arguments: { jobId: queued.jobId, timeoutMs: 0 } })
+        await firstConnection.client.callTool({ name: "wait_agent", arguments: { jobId: queued.jobId, timeoutMs: 0 } })
       );
       expect(promoted).toMatchObject({
         requestedJobId: queued.jobId,
@@ -2145,19 +2145,19 @@ describe("MCP tools", () => {
 
       const first = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue queue exhausted one", task_name: "queue-exhausted-1" }
         })
       );
       const queued = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue queue exhausted two", task_name: "queue-exhausted-2" }
         })
       );
       const exhausted = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue queue exhausted three", task_name: "queue-exhausted-3" }
         })
       );
@@ -2204,37 +2204,37 @@ describe("MCP tools", () => {
 
       const first = parseToolJson(
         await firstConnection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue default budget one", task_name: "default-budget-1" }
         })
       );
       const second = parseToolJson(
         await firstConnection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue default budget two", task_name: "default-budget-2" }
         })
       );
       const third = parseToolJson(
         await firstConnection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue default budget three", task_name: "default-budget-3" }
         })
       );
       const fourth = parseToolJson(
         await secondConnection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue default budget four", task_name: "default-budget-4" }
         })
       );
       const fifth = parseToolJson(
         await secondConnection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue default budget five", task_name: "default-budget-5" }
         })
       );
       const queued = parseToolJson(
         await secondConnection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue default budget six", task_name: "default-budget-6" }
         })
       );
@@ -2253,8 +2253,8 @@ describe("MCP tools", () => {
         maxQueuedAgents: 20
       });
 
-      const firstList = parseToolJson(await firstConnection.client.callTool({ name: "retinue_list_agents", arguments: {} }));
-      const secondList = parseToolJson(await secondConnection.client.callTool({ name: "retinue_list_agents", arguments: {} }));
+      const firstList = parseToolJson(await firstConnection.client.callTool({ name: "list_agents", arguments: {} }));
+      const secondList = parseToolJson(await secondConnection.client.callTool({ name: "list_agents", arguments: {} }));
       expect(firstList).toMatchObject({ maxAgents: 3 });
       expect(secondList).toMatchObject({ maxAgents: 3 });
       expect(firstList.agents).toHaveLength(3);
@@ -2299,18 +2299,18 @@ describe("MCP tools", () => {
 
       const first = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue list first", task_name: "list-first" }
         })
       );
       const second = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue list second", task_name: "list-second" }
         })
       );
 
-      const list = parseToolJson(await connection.client.callTool({ name: "retinue_list_agents", arguments: {} }));
+      const list = parseToolJson(await connection.client.callTool({ name: "list_agents", arguments: {} }));
       expect(list).toMatchObject({
         maxAgents: 3,
         agents: [
@@ -2340,7 +2340,7 @@ describe("MCP tools", () => {
 
       const spawn = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: {
             cwd: tempDir,
             message: "retinue stalled pool",
@@ -2355,7 +2355,7 @@ describe("MCP tools", () => {
 
       const wait = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_wait_agent",
+          name: "wait_agent",
           arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
         })
       );
@@ -2364,7 +2364,7 @@ describe("MCP tools", () => {
         status: "stalled"
       });
 
-      const list = parseToolJson(await connection.client.callTool({ name: "retinue_list_agents", arguments: {} }));
+      const list = parseToolJson(await connection.client.callTool({ name: "list_agents", arguments: {} }));
       expect(list.agents.map((agent: { jobId: string }) => agent.jobId)).not.toContain(spawn.jobId);
     } finally {
       delete process.env.RETINUE_STATE_DIR;
@@ -2388,16 +2388,16 @@ describe("MCP tools", () => {
 
       const spawn = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue close pool", task_name: "close-pool" }
         })
       );
       await connection.client.callTool({
-        name: "retinue_close_agent",
+        name: "close_agent",
         arguments: { jobId: spawn.jobId }
       });
 
-      const list = parseToolJson(await connection.client.callTool({ name: "retinue_list_agents", arguments: {} }));
+      const list = parseToolJson(await connection.client.callTool({ name: "list_agents", arguments: {} }));
       expect(list).toMatchObject({ maxAgents: 3, agents: [] });
     } finally {
       delete process.env.RETINUE_STATE_DIR;
@@ -2417,7 +2417,7 @@ describe("MCP tools", () => {
 
       const spawn = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue bound opencode", task_name: "bound-opencode" }
         })
       );
@@ -2428,7 +2428,7 @@ describe("MCP tools", () => {
 
       const wait = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_wait_agent",
+          name: "wait_agent",
           arguments: { jobId: spawn.jobId, timeoutMs: 1000 }
         })
       );
@@ -2441,7 +2441,7 @@ describe("MCP tools", () => {
 
       const close = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_close_agent",
+          name: "close_agent",
           arguments: { jobId: spawn.jobId }
         })
       );
@@ -2469,7 +2469,7 @@ describe("MCP tools", () => {
 
       const spawn = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue claude", task_name: "claude-smoke" }
         })
       );
@@ -2478,7 +2478,7 @@ describe("MCP tools", () => {
 
       const wait = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_wait_agent",
+          name: "wait_agent",
           arguments: { jobId: spawn.jobId, timeoutMs: 5000 }
         })
       );
@@ -2491,7 +2491,7 @@ describe("MCP tools", () => {
 
       const close = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_close_agent",
+          name: "close_agent",
           arguments: { jobId: spawn.jobId }
         })
       );
@@ -2518,7 +2518,7 @@ describe("MCP tools", () => {
 
       const spawn = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue bound claude", task_name: "bound-claude" }
         })
       );
@@ -2528,7 +2528,7 @@ describe("MCP tools", () => {
 
       const wait = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_wait_agent",
+          name: "wait_agent",
           arguments: { jobId: spawn.jobId, timeoutMs: 5000 }
         })
       );
@@ -2541,7 +2541,7 @@ describe("MCP tools", () => {
 
       const close = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_close_agent",
+          name: "close_agent",
           arguments: { jobId: spawn.jobId }
         })
       );
@@ -2654,19 +2654,19 @@ describe("MCP tools", () => {
 
       const first = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "configured first", task_name: "configured-first" }
         })
       );
       const second = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "configured second", task_name: "configured-second" }
         })
       );
       const third = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "configured third", task_name: "configured-third" }
         })
       );
@@ -2676,7 +2676,7 @@ describe("MCP tools", () => {
       expect(third).toMatchObject({ status: "queued", queuePosition: 1 });
       expect(fakeOpenCode.promptRequests.at(0)).toMatchObject({ agent: "explore" });
 
-      const list = parseToolJson(await connection.client.callTool({ name: "retinue_list_agents", arguments: {} }));
+      const list = parseToolJson(await connection.client.callTool({ name: "list_agents", arguments: {} }));
       expect(list).toMatchObject({ maxAgents: 2 });
       expect(list.agents).toHaveLength(3);
       expect(list.agents.at(-1)).toMatchObject({ jobId: third.jobId, status: "queued", queuePosition: 1 });
@@ -2700,7 +2700,7 @@ describe("MCP tools", () => {
       process.env.RETINUE_OPENCODE_AGENT = "explore";
       parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue env defaults", task_name: "env-defaults" }
         })
       );
@@ -2729,7 +2729,7 @@ describe("MCP tools", () => {
       process.env.RETINUE_KILO_AGENT = "explore";
       const run = parseToolJson(
         await connection.client.callTool({
-          name: "retinue_spawn_agent",
+          name: "spawn_agent",
           arguments: { cwd: tempDir, message: "retinue kilo defaults", task_name: "kilo-defaults" }
         })
       );

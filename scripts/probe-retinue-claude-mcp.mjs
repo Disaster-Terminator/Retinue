@@ -31,7 +31,7 @@ async function main() {
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
     const spawn = parseToolJson(
       await client.callTool({
-        name: "retinue_spawn_agent",
+        name: "spawn_agent",
         arguments: {
           cwd: options.cwd,
           task_name: permissionProbe ? "real-claude-permission" : "real-claude-smoke",
@@ -45,7 +45,7 @@ async function main() {
       ? await waitThroughPermission(client, spawn.jobId, options.timeoutMs)
       : parseToolJson(
           await client.callTool({
-            name: "retinue_wait_agent",
+            name: "wait_agent",
             arguments: { jobId: spawn.jobId, timeoutMs: options.timeoutMs }
           }, undefined, { timeout: options.timeoutMs + 30_000 })
         );
@@ -53,7 +53,7 @@ async function main() {
 
     close = parseToolJson(
       await client.callTool({
-        name: "retinue_close_agent",
+        name: "close_agent",
         arguments: { jobId: spawn.jobId }
       })
     );
@@ -91,7 +91,7 @@ async function main() {
 async function bestEffortClose(client, jobId) {
   try {
     await client.callTool({
-      name: "retinue_close_agent",
+      name: "close_agent",
       arguments: { jobId }
     });
   } catch {
@@ -103,7 +103,7 @@ async function waitThroughPermission(client, jobId, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   const first = parseToolJson(
     await client.callTool({
-      name: "retinue_wait_agent",
+      name: "wait_agent",
       arguments: { jobId, timeoutMs: Math.min(timeoutMs, 15000) }
     }, undefined, { timeout: timeoutMs + 30_000 })
   );
@@ -113,7 +113,7 @@ async function waitThroughPermission(client, jobId, timeoutMs) {
   }
   const reply = parseToolJson(
     await client.callTool({
-      name: "retinue_reply_permission",
+      name: "reply_permission",
       arguments: { jobId, requestId: permission.id, reply: "once" }
     })
   );
@@ -136,7 +136,7 @@ async function waitUntilTerminal(client, jobId, timeoutMs) {
     const waitMs = Math.min(Math.max(remaining, 1), 15000);
     last = parseToolJson(
       await client.callTool({
-        name: "retinue_wait_agent",
+        name: "wait_agent",
         arguments: { jobId, timeoutMs: waitMs }
       }, undefined, { timeout: waitMs + 30_000 })
     );

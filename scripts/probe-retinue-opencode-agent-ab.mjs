@@ -88,7 +88,7 @@ async function runAgentProbe({ agent, rootStateDir, timeoutMs }) {
       spawns.push(
         parseToolJson(
           await client.callTool({
-            name: "retinue_spawn_agent",
+            name: "spawn_agent",
             arguments: {
               cwd,
               task_name: `${agent}-${task.name}`,
@@ -120,7 +120,7 @@ async function runAgentProbe({ agent, rootStateDir, timeoutMs }) {
     await Promise.allSettled(
       spawns.map((spawn) =>
         client.callTool({
-          name: "retinue_close_agent",
+          name: "close_agent",
           arguments: { jobId: spawn.jobId }
         })
       )
@@ -178,7 +178,7 @@ async function waitForTerminal(client, jobId, timeoutMs) {
     lastWait = parseToolJson(
       await client.callTool(
         {
-          name: "retinue_wait_agent",
+          name: "wait_agent",
           arguments: { jobId, timeoutMs: waitTimeoutMs }
         },
         undefined,

@@ -21,9 +21,9 @@ Use Retinue when Hermes needs a separate local agent to inspect code, run a narr
 
 ## Quick Procedure
 
-1. Spawn with `mcp_retinue_retinue_spawn_agent`.
-2. Wait with `mcp_retinue_retinue_wait_agent`.
-3. Close with `mcp_retinue_retinue_close_agent`.
+1. Spawn with `mcp_retinue_spawn_agent`.
+2. Wait with `mcp_retinue_wait_agent`.
+3. Close with `mcp_retinue_close_agent`.
 
 For repository work, pass an absolute `cwd`, a concrete `message`, and a useful `task_name`.
 
@@ -31,14 +31,14 @@ For repository work, pass an absolute `cwd`, a concrete `message`, and a useful 
 
 Hermes registers Retinue MCP tools with the `mcp_retinue_` prefix:
 
-- `mcp_retinue_retinue_spawn_agent`
-- `mcp_retinue_retinue_wait_agent`
-- `mcp_retinue_retinue_close_agent`
-- `mcp_retinue_retinue_list_agents`
-- `mcp_retinue_retinue_list_permissions`
-- `mcp_retinue_retinue_reply_permission`
-- `mcp_retinue_retinue_stop_runtime`
-- `mcp_retinue_retinue_restart_runtime`
+- `mcp_retinue_spawn_agent`
+- `mcp_retinue_wait_agent`
+- `mcp_retinue_close_agent`
+- `mcp_retinue_list_agents`
+- `mcp_retinue_list_permissions`
+- `mcp_retinue_reply_permission`
+- `mcp_retinue_stop_runtime`
+- `mcp_retinue_restart_runtime`
 
 ## Wait Handling
 
@@ -52,7 +52,7 @@ Hermes registers Retinue MCP tools with the `mcp_retinue_` prefix:
 | `orphaned` or `abandoned` | Treat as stale/unowned local state, not current child-agent output. |
 | `backend_unreachable`, `not_found`, or `corrupted` | Treat as Retinue/backend infrastructure state, not child-agent evidence. |
 | `resource_exhausted` from spawn | No job started; wait for capacity or close unneeded jobs before retrying. |
-| Permission event | Use `mcp_retinue_retinue_list_permissions` if needed, reply with `mcp_retinue_retinue_reply_permission`, then wait again. |
+| Permission event | Use `mcp_retinue_list_permissions` if needed, reply with `mcp_retinue_reply_permission`, then wait again. |
 
 Prefer `once` for scoped task-required permission replies. Reserve `always` for trusted repeated patterns. Reject out-of-scope paths and tools.
 

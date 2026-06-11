@@ -45,7 +45,7 @@ The trace records OpenCode auto-serve events such as command resolution, port fa
 
 Job-level artifacts remain under `<stateDir>/jobs/<jobId>/`. When an OpenCode wait times out, Retinue also appends the same diagnostic snapshot to that job's `stderr.log` so E2E failures can be inspected from the job directory alone.
 
-`retinue_spawn_agent` returns after Retinue creates the OpenCode session and persists job metadata. If OpenCode `prompt_async` is slow to return, Retinue keeps submitting the prompt in the background instead of blocking the MCP spawn response. A later prompt-submission failure moves the job to `failed` and records `opencode_job_prompt_failed` diagnostics.
+`spawn_agent` returns after Retinue creates the OpenCode session and persists job metadata. If OpenCode `prompt_async` is slow to return, Retinue keeps submitting the prompt in the background instead of blocking the MCP spawn response. A later prompt-submission failure moves the job to `failed` and records `opencode_job_prompt_failed` diagnostics.
 
 The plugin MCP config starts the runtime shipped inside the plugin directory:
 
@@ -147,16 +147,16 @@ Before calling the plugin production-ready, run the real OpenCode lifecycle thro
 
 1. Confirm the installed plugin cache starts the bundled MCP server.
 2. Set `RETINUE_BACKEND=opencode`.
-3. Use `retinue_spawn_agent` with a deterministic prompt.
-4. Use `retinue_wait_agent` and verify the terminal result.
-5. Use `retinue_close_agent`.
+3. Use `spawn_agent` with a deterministic prompt.
+4. Use `wait_agent` and verify the terminal result.
+5. Use `close_agent`.
 6. Confirm tool arguments did not include backend, profile, model, OpenCode server, `access_mode`, or `bash_policy` selection. `agent` may be present only when the probe intentionally exercises a specific OpenCode child agent.
 7. Run the fake Claude parity path with `RETINUE_BACKEND=claude-code`.
 8. When Claude Code is locally usable, run the best-effort real Retinue Claude probe.
 
 The Claude real probe is allowed to fail on upstream model, quota, proxy, or Claude Code runtime instability. Treat a failure there as a local backend readiness signal, not as permission to skip fake Claude parity or the OpenCode production E2E.
 
-Backend-specific `opencode_*` and `claude_*` MCP tools are hidden by default in plugin deployments. Developers can opt into them with `RETINUE_EXPOSE_BACKEND_TOOLS=1` for adapter debugging and older runbooks, but they are raw backend surfaces rather than the primary Codex delegation contract. Product use should stay on `retinue_spawn_agent`, `retinue_wait_agent`, `retinue_close_agent`, `retinue_list_agents`, `retinue_list_permissions`, and `retinue_reply_permission`.
+Backend-specific `opencode_*` and `claude_*` MCP tools are hidden by default in plugin deployments. Developers can opt into them with `RETINUE_EXPOSE_BACKEND_TOOLS=1` for adapter debugging and older runbooks, but they are raw backend surfaces rather than the primary Codex delegation contract. Product use should stay on `spawn_agent`, `wait_agent`, `close_agent`, `list_agents`, `list_permissions`, and `reply_permission`.
 
 Record only redacted backend/profile metadata, job id, session id, and observed result. Do not record API keys or provider secrets.
 

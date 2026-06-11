@@ -48,7 +48,7 @@ const SCENARIOS = {
       name: "mcp-review",
       marker: "RETINUE_ROOT_MCP_REVIEW_DONE",
       prompt:
-        "Read-only bounded review. Use at most 3 repository inspection tool calls. Inspect src/mcp.ts only if needed. Judge whether retinue_spawn_agent exposes access_mode. Return PASS or FAIL with one evidence line and end with RETINUE_ROOT_MCP_REVIEW_DONE."
+        "Read-only bounded review. Use at most 3 repository inspection tool calls. Inspect src/mcp.ts only if needed. Judge whether spawn_agent exposes access_mode. Return PASS or FAIL with one evidence line and end with RETINUE_ROOT_MCP_REVIEW_DONE."
     }
   ],
   "write-intent-review": [

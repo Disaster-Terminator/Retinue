@@ -35,9 +35,9 @@ Ask it to inspect README.md and docs/README.md, summarize whether the docs entry
 
 The expected flow is:
 
-1. `retinue_spawn_agent` returns a `jobId`.
-2. `retinue_wait_agent` returns a terminal result or an action-required permission event.
-3. `retinue_close_agent` closes the child after the result is no longer needed.
+1. `spawn_agent` returns a `jobId`.
+2. `wait_agent` returns a terminal result or an action-required permission event.
+3. `close_agent` closes the child after the result is no longer needed.
 
 Treat `stalled` as non-evidence. It means Retinue classified a backend/model/tool-call failure and preserved diagnostics for inspection.
 

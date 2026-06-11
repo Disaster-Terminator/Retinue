@@ -212,7 +212,7 @@ In `tests/mcp-tools.test.ts`, update `scopes shared OpenCode roots to one MCP se
 ```ts
 const fourth = parseToolJson(
   await secondConnection.client.callTool({
-    name: "retinue_spawn_agent",
+    name: "spawn_agent",
     arguments: { cwd: tempDir, message: "shared root other mcp second child", task_name: "shared-other-mcp-two", agent: "explore" }
   })
 );
@@ -279,7 +279,7 @@ it("passes writable OpenCode child agent without Retinue readonly overrides", as
 
     const spawned = parseToolJson(
       await connection.client.callTool({
-        name: "retinue_spawn_agent",
+        name: "spawn_agent",
         arguments: {
           cwd: tempDir,
           message: "make a tiny safe edit",
@@ -383,7 +383,7 @@ async function main() {
     ];
     const spawns = await Promise.all(tasks);
     const waits = await Promise.all(spawns.map((spawned) => waitTerminal(spawned.client, spawned.jobId)));
-    await Promise.allSettled(spawns.map((spawned) => spawned.client.callTool({ name: "retinue_close_agent", arguments: { jobId: spawned.jobId } })));
+    await Promise.allSettled(spawns.map((spawned) => spawned.client.callTool({ name: "close_agent", arguments: { jobId: spawned.jobId } })));
 
     const rootsA = unique(spawns.filter((item) => item.group === "a").map((item) => item.externalRootSessionId));
     const rootsB = unique(spawns.filter((item) => item.group === "b").map((item) => item.externalRootSessionId));
@@ -431,7 +431,7 @@ async function spawn(client, cwd, name, writable) {
     ? `Append one line containing ${name} to RETINUE_CROSS_SESSION_MARKER.txt, then answer with ${name} DONE.`
     : `Read RETINUE_CROSS_SESSION_MARKER.txt, then answer with ${name} DONE.`;
   const parsed = parseToolJson(await client.callTool({
-    name: "retinue_spawn_agent",
+    name: "spawn_agent",
     arguments: { cwd, task_name: `cross-session-${name}`, agent: writable ? "build" : "explore", message }
   }));
   return { ...parsed, client, group: name.slice(0, 1) };
@@ -443,7 +443,7 @@ async function waitTerminal(client, jobId) {
   do {
     const remaining = Math.max(1, deadline - Date.now());
     last = parseToolJson(await client.callTool(
-      { name: "retinue_wait_agent", arguments: { jobId, timeoutMs: remaining } },
+      { name: "wait_agent", arguments: { jobId, timeoutMs: remaining } },
       undefined,
       { timeout: remaining + 30000 }
     ));
@@ -538,7 +538,7 @@ const modes = (value ? value.split(",") : ["shared_root"]).map((mode) => mode.tr
 
 - [ ] **Step 2: Remove obsolete normal-product MCP arguments from dogfood**
 
-In the `retinue_spawn_agent` arguments inside `scripts/probe-retinue-opencode-dogfood.mjs`, remove:
+In the `spawn_agent` arguments inside `scripts/probe-retinue-opencode-dogfood.mjs`, remove:
 
 ```js
 access_mode: accessMode,

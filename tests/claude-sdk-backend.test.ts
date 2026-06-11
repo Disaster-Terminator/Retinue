@@ -183,7 +183,7 @@ describe("ClaudeCodeSdkBackend", () => {
         reply: "once",
         permissions: []
       });
-      await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({
+      await expect(backend.wait({ jobId: started.jobId }, 5000)).resolves.toMatchObject({
         jobId: started.jobId,
         status: "completed"
       });

@@ -59,9 +59,9 @@ Ask it to inspect README.md and docs/README.md, summarize whether the docs entry
 
 预期结果：
 
-- Codex 调用 `retinue_spawn_agent` 并拿到 `jobId`。
-- `retinue_wait_agent` 返回 `completed`、`running`、`queued`、`stalled` 或权限事件。
-- 任务结束后，Codex 调用 `retinue_close_agent` 清理子代理。
+- Codex 调用 `spawn_agent` 并拿到 `jobId`。
+- `wait_agent` 返回 `completed`、`running`、`queued`、`stalled` 或权限事件。
+- 任务结束后，Codex 调用 `close_agent` 清理子代理。
 
 更完整的安装说明见 [Plugin install](docs/how-to/install-plugin.md)，第一次任务教程见 [Quick start](docs/get-started/quick-start.md)。
 

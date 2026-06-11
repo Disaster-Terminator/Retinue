@@ -457,7 +457,7 @@ function createAttentionDescription(diagnostic, jobMeta) {
         typeof diagnostic.noCompletedAssistantDurationMs === "number" && Number.isFinite(diagnostic.noCompletedAssistantDurationMs)
             ? `durationMs=${diagnostic.noCompletedAssistantDurationMs}`
             : undefined,
-        "Use retinue_list_permissions or the wait response permissions, then retinue_reply_permission."
+        "Use list_permissions or the wait response permissions, then reply_permission."
     ].filter(Boolean);
     return parts.join("; ");
 }

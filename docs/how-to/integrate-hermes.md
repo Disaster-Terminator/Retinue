@@ -6,21 +6,21 @@ Hermes Agent is a peer master-agent surface, not a Retinue backend. The integrat
 
 Hermes reads MCP servers from `~/.hermes/config.yaml` under the `mcp_servers` key. Retinue exposes the same product tools there:
 
-- `retinue_spawn_agent`
-- `retinue_wait_agent`
-- `retinue_close_agent`
-- `retinue_list_agents`
-- `retinue_list_permissions`
-- `retinue_reply_permission`
+- `spawn_agent`
+- `wait_agent`
+- `close_agent`
+- `list_agents`
+- `list_permissions`
+- `reply_permission`
 
 Hermes registers them with the server prefix, so Hermes tool names are:
 
-- `mcp_retinue_retinue_spawn_agent`
-- `mcp_retinue_retinue_wait_agent`
-- `mcp_retinue_retinue_close_agent`
-- `mcp_retinue_retinue_list_agents`
-- `mcp_retinue_retinue_list_permissions`
-- `mcp_retinue_retinue_reply_permission`
+- `mcp_retinue_spawn_agent`
+- `mcp_retinue_wait_agent`
+- `mcp_retinue_close_agent`
+- `mcp_retinue_list_agents`
+- `mcp_retinue_list_permissions`
+- `mcp_retinue_reply_permission`
 
 The Retinue backend remains deployment-selected. The default Hermes config uses OpenCode with Retinue-managed auto-serve and the OpenCode `explore` agent.
 
@@ -89,7 +89,7 @@ For a real OpenCode child-agent round trip, opt in explicitly:
 RETINUE_REAL_HERMES_RETINUE_PROBE=1 pnpm run probe:hermes-retinue
 ```
 
-The real probe creates a temporary workspace with a random `RETINUE_MARKER.txt`, uses `retinue_spawn_agent -> retinue_wait_agent -> retinue_close_agent`, asks the OpenCode child to read that file, and prints the Retinue state directory plus trace path. This proves the child agent can use its file-reading tools instead of only echoing prompt text.
+The real probe creates a temporary workspace with a random `RETINUE_MARKER.txt`, uses `spawn_agent -> wait_agent -> close_agent`, asks the OpenCode child to read that file, and prints the Retinue state directory plus trace path. This proves the child agent can use its file-reading tools instead of only echoing prompt text.
 
 ## Safety Notes
 

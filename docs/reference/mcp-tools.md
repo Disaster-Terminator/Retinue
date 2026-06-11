@@ -6,14 +6,14 @@ The product MCP surface is backend-neutral. Retinue selects the backend from dep
 
 | Tool | Purpose |
 | --- | --- |
-| `retinue_spawn_agent` | Start a child agent and return a job handle. |
-| `retinue_wait_agent` | Poll or wait for a result, queued promotion, stalled diagnostic, or permission event. |
-| `retinue_close_agent` | Stop or close a child agent and release active slot accounting. |
-| `retinue_list_agents` | List jobs known to the current Retinue MCP server session. |
-| `retinue_list_permissions` | List pending backend permission requests for one job or all known jobs. |
-| `retinue_reply_permission` | Reply to a pending backend permission request with `once`, `always`, or `reject`. |
-| `retinue_stop_runtime` | Stop Retinue-managed local runtime servers, currently OpenCode auto-serve. |
-| `retinue_restart_runtime` | Restart a Retinue-managed runtime server for one `cwd`, currently OpenCode auto-serve. |
+| `spawn_agent` | Start a child agent and return a job handle. |
+| `wait_agent` | Poll or wait for a result, queued promotion, stalled diagnostic, or permission event. |
+| `close_agent` | Stop or close a child agent and release active slot accounting. |
+| `list_agents` | List jobs known to the current Retinue MCP server session. |
+| `list_permissions` | List pending backend permission requests for one job or all known jobs. |
+| `reply_permission` | Reply to a pending backend permission request with `once`, `always`, or `reject`. |
+| `stop_runtime` | Stop Retinue-managed local runtime servers, currently OpenCode auto-serve. |
+| `restart_runtime` | Restart a Retinue-managed runtime server for one `cwd`, currently OpenCode auto-serve. |
 
 Hidden adapter/debug tools are not part of the normal product contract. Expose them only with `RETINUE_EXPOSE_BACKEND_TOOLS=1` while investigating Retinue or a backend adapter.
 
@@ -34,7 +34,7 @@ Claude Code owns its available SDK agents through Claude Code settings. Retinue 
 
 Claude Code also owns the default agent/profile. Retinue passes no Claude SDK `agent` unless the spawn call supplies `agent` or deployment configuration sets `RETINUE_CLAUDE_AGENT`; OpenCode/Kilo defaults such as `explore` do not carry over to Claude Code.
 
-`retinue_spawn_agent` returns identifiers and path metadata such as `jobId`, `cwd`, `jobDir`, backend, the selected `agent` when set, and when available OpenCode session fields including `externalSessionId`, `externalSessionDirectory`, `externalRootSessionId`, `externalParentSessionId`, and `externalRunnerMode`.
+`spawn_agent` returns identifiers and path metadata such as `jobId`, `cwd`, `jobDir`, backend, the selected `agent` when set, and when available OpenCode session fields including `externalSessionId`, `externalSessionDirectory`, `externalRootSessionId`, `externalParentSessionId`, and `externalRunnerMode`.
 
 Compare requested `cwd` with returned `externalSessionDirectory` for repository-sensitive work. A mismatch is workspace drift; close the child and re-spawn with the right directory before trusting file claims.
 
@@ -62,9 +62,9 @@ When Retinue starts a fresh task-level attempt, wait output can include `request
 
 OpenCode permission requests stay OpenCode-owned. Retinue surfaces them so the supervising agent can decide:
 
-1. `retinue_wait_agent` returns `attentionRequired.kind: "permission"` or compatibility field `permissionRequired: true`.
-2. Inspect `permissionActions` first when present. Use `retinue_list_permissions` when full approval details are needed.
-3. Reply with `retinue_reply_permission`.
+1. `wait_agent` returns `attentionRequired.kind: "permission"` or compatibility field `permissionRequired: true`.
+2. Inspect `permissionActions` first when present. Use `list_permissions` when full approval details are needed.
+3. Reply with `reply_permission`.
 4. Wait again.
 
 Prefer `once` for narrowly scoped task-required access. Use `always` only for trusted repeated patterns. Use `reject` for out-of-scope paths or tools.
@@ -73,9 +73,9 @@ Prefer `once` for narrowly scoped task-required access. Use `always` only for tr
 
 Retinue owns the lifecycle only for runtime servers it started itself. For OpenCode this means servers created by `RETINUE_OPENCODE_AUTO_SERVE=1` and recorded in Retinue discovery state. Explicit `RETINUE_OPENCODE_BASE_URL` attach targets are external and are not stopped or restarted by these tools.
 
-Use `retinue_restart_runtime` with an absolute `cwd` when OpenCode provider/profile state changed and the Retinue-managed server should be refreshed. It stops the matching managed server and starts a new one. If matching jobs are still `running` or unresolved `stalled`, the restart is blocked unless `force: true` is set. Forced stop marks matching running or stalled job metadata as `killed`.
+Use `restart_runtime` with an absolute `cwd` when OpenCode provider/profile state changed and the Retinue-managed server should be refreshed. It stops the matching managed server and starts a new one. If matching jobs are still `running` or unresolved `stalled`, the restart is blocked unless `force: true` is set. Forced stop marks matching running or stalled job metadata as `killed`.
 
-Use `retinue_stop_runtime` with either an absolute `cwd` or `all: true`. Without `force`, it refuses to stop servers that still have running or unresolved stalled Retinue jobs. `all: true` is intended for maintenance windows where the caller wants every Retinue-managed OpenCode server stopped so later spawns reload runtime configuration.
+Use `stop_runtime` with either an absolute `cwd` or `all: true`. Without `force`, it refuses to stop servers that still have running or unresolved stalled Retinue jobs. `all: true` is intended for maintenance windows where the caller wants every Retinue-managed OpenCode server stopped so later spawns reload runtime configuration.
 
 ## Evidence Rules
 

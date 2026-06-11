@@ -356,14 +356,14 @@ describe("Retinue Codex plugin guardrails", () => {
       await client.connect(transport);
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual([
-        "retinue_spawn_agent",
-        "retinue_wait_agent",
-        "retinue_close_agent",
-        "retinue_list_agents",
-        "retinue_list_permissions",
-        "retinue_reply_permission",
-        "retinue_stop_runtime",
-        "retinue_restart_runtime"
+        "spawn_agent",
+        "wait_agent",
+        "close_agent",
+        "list_agents",
+        "list_permissions",
+        "reply_permission",
+        "stop_runtime",
+        "restart_runtime"
       ]);
       expect(Buffer.concat(stderrChunks).toString("utf8")).toBe("");
     } finally {
@@ -390,7 +390,7 @@ describe("Retinue Codex plugin guardrails", () => {
 
     try {
       await client.connect(transport);
-      const listed = parseToolJson(await client.callTool({ name: "retinue_list_agents", arguments: {} }));
+      const listed = parseToolJson(await client.callTool({ name: "list_agents", arguments: {} }));
       expect(listed).toMatchObject({ maxAgents: 5, agents: [] });
     } finally {
       await Promise.allSettled([client.close(), transport.close()]);
@@ -419,14 +419,14 @@ describe("Retinue Codex plugin guardrails", () => {
       await client.connect(transport);
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual([
-        "retinue_spawn_agent",
-        "retinue_wait_agent",
-        "retinue_close_agent",
-        "retinue_list_agents",
-        "retinue_list_permissions",
-        "retinue_reply_permission",
-        "retinue_stop_runtime",
-        "retinue_restart_runtime"
+        "spawn_agent",
+        "wait_agent",
+        "close_agent",
+        "list_agents",
+        "list_permissions",
+        "reply_permission",
+        "stop_runtime",
+        "restart_runtime"
       ]);
     } finally {
       await Promise.allSettled([client.close(), transport.close()]);

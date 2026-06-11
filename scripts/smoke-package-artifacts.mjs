@@ -9,14 +9,14 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 const EXPECTED_TOOL_NAMES = [
-  "retinue_spawn_agent",
-  "retinue_wait_agent",
-  "retinue_close_agent",
-  "retinue_list_agents",
-  "retinue_list_permissions",
-  "retinue_reply_permission",
-  "retinue_stop_runtime",
-  "retinue_restart_runtime"
+  "spawn_agent",
+  "wait_agent",
+  "close_agent",
+  "list_agents",
+  "list_permissions",
+  "reply_permission",
+  "stop_runtime",
+  "restart_runtime"
 ];
 const execFileAsync = promisify(execFile);
 

@@ -338,7 +338,7 @@ describe("OpenCode server manager", () => {
       expect(trace).toContain('"event":"opencode_server_idle_shutdown_scheduled"');
       expect(trace).toContain('"event":"opencode_server_stopped"');
     } finally {
-      target?.child?.kill();
+      await stopTestOpenCodeTarget(target, stateDir, projectDir);
       await fs.rm(stateDir, { recursive: true, force: true });
       await fs.rm(projectDir, { recursive: true, force: true });
     }
@@ -377,7 +377,7 @@ describe("OpenCode server manager", () => {
       expect(trace).toContain('"event":"opencode_server_idle_shutdown_skipped"');
       expect(trace).not.toContain('"event":"opencode_server_stopped"');
     } finally {
-      target?.child?.kill();
+      await stopTestOpenCodeTarget(target, stateDir, projectDir);
       await fs.rm(stateDir, { recursive: true, force: true });
       await fs.rm(projectDir, { recursive: true, force: true });
     }
@@ -876,6 +876,24 @@ function rejectAfter(ms: number, message: string): Promise<never> {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function stopTestOpenCodeTarget(
+  target: Awaited<ReturnType<typeof ensureOpenCodeServer>> | undefined,
+  stateDir: string,
+  cwd: string
+): Promise<void> {
+  await stopManagedOpenCodeServers({ stateDir, cwd, force: true, reason: "manual" });
+  const child = target?.child;
+  if (!child || child.exitCode !== null) {
+    return;
+  }
+
+  const exited = new Promise<void>((resolve) => {
+    child.once("exit", () => resolve());
+  });
+  child.kill();
+  await Promise.race([exited, sleep(1000)]);
 }
 
 async function waitForCondition(predicate: () => Promise<boolean>, message: string): Promise<void> {

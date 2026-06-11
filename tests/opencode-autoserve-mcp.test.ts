@@ -54,19 +54,19 @@ describe("Retinue OpenCode auto-serve MCP E2E", () => {
 
     const firstSpawn = parseToolJson(
       await first.client.callTool({
-        name: "retinue_spawn_agent",
+        name: "spawn_agent",
         arguments: { cwd: tempDir, task_name: "first-thread", message: "Reply exactly: FIRST_OK" }
       })
     );
     const secondSpawn = parseToolJson(
       await second.client.callTool({
-        name: "retinue_spawn_agent",
+        name: "spawn_agent",
         arguments: { cwd: tempDir, task_name: "second-thread", message: "Reply exactly: SECOND_OK" }
       })
     );
 
-    const firstWait = parseToolJson(await first.client.callTool({ name: "retinue_wait_agent", arguments: { jobId: firstSpawn.jobId, timeoutMs: 5000 } }));
-    const secondWait = parseToolJson(await second.client.callTool({ name: "retinue_wait_agent", arguments: { jobId: secondSpawn.jobId, timeoutMs: 5000 } }));
+    const firstWait = parseToolJson(await first.client.callTool({ name: "wait_agent", arguments: { jobId: firstSpawn.jobId, timeoutMs: 5000 } }));
+    const secondWait = parseToolJson(await second.client.callTool({ name: "wait_agent", arguments: { jobId: secondSpawn.jobId, timeoutMs: 5000 } }));
 
     expect(firstWait).toMatchObject({ status: "completed", result: { parsedStdout: { result: expect.stringContaining("Reply exactly: FIRST_OK") } } });
     expect(secondWait).toMatchObject({ status: "completed", result: { parsedStdout: { result: expect.stringContaining("Reply exactly: SECOND_OK") } } });
@@ -97,7 +97,7 @@ describe("Retinue OpenCode auto-serve MCP E2E", () => {
         connections.map((connection, index) =>
           connection.client
             .callTool({
-              name: "retinue_spawn_agent",
+              name: "spawn_agent",
               arguments: { cwd: tempDir, task_name: `thread-${index + 1}`, message: `Reply exactly: THREAD_${index + 1}_OK` }
             })
             .then(parseToolJson)
@@ -105,7 +105,7 @@ describe("Retinue OpenCode auto-serve MCP E2E", () => {
       );
       const waits = await Promise.all(
         spawns.map((spawn, index) =>
-          connections[index].client.callTool({ name: "retinue_wait_agent", arguments: { jobId: spawn.jobId, timeoutMs: 5000 } }).then(parseToolJson)
+          connections[index].client.callTool({ name: "wait_agent", arguments: { jobId: spawn.jobId, timeoutMs: 5000 } }).then(parseToolJson)
         )
       );
 

@@ -19,7 +19,7 @@ describe("Hermes Agent integration", () => {
   it("documents Hermes as a master-agent MCP client, not a Retinue backend", () => {
     expect(hermesDoc).toContain("Hermes Agent is a peer master-agent surface, not a Retinue backend");
     expect(hermesDoc).toContain("mcp_servers");
-    expect(hermesDoc).toContain("mcp_retinue_retinue_spawn_agent");
+    expect(hermesDoc).toContain("mcp_retinue_spawn_agent");
     expect(hermesDoc).toContain("RETINUE_REAL_HERMES_RETINUE_PROBE=1");
     expect(hermesDoc).not.toContain("RETINUE_BACKEND=hermes");
   });
@@ -27,8 +27,8 @@ describe("Hermes Agent integration", () => {
   it("ships a Hermes-facing skill that names the prefixed Retinue tools", () => {
     expect(existsSync("integrations/hermes/skills/retinue/SKILL.md")).toBe(true);
     expect(hermesSkill).toContain("requires_toolsets: [retinue]");
-    expect(hermesSkill).toContain("mcp_retinue_retinue_spawn_agent");
-    expect(hermesSkill).toContain("mcp_retinue_retinue_wait_agent");
-    expect(hermesSkill).toContain("mcp_retinue_retinue_close_agent");
+    expect(hermesSkill).toContain("mcp_retinue_spawn_agent");
+    expect(hermesSkill).toContain("mcp_retinue_wait_agent");
+    expect(hermesSkill).toContain("mcp_retinue_close_agent");
   });
 });

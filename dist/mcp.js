@@ -40,16 +40,16 @@ export const OPENCODE_TOOL_NAMES = [
     "opencode_cleanup"
 ];
 export const RETINUE_TOOL_NAMES = [
-    "retinue_spawn_agent",
-    "retinue_wait_agent",
-    "retinue_close_agent",
-    "retinue_list_agents",
-    "retinue_list_permissions",
-    "retinue_reply_permission",
-    "retinue_stop_runtime",
-    "retinue_restart_runtime"
+    "spawn_agent",
+    "wait_agent",
+    "close_agent",
+    "list_agents",
+    "list_permissions",
+    "reply_permission",
+    "stop_runtime",
+    "restart_runtime"
 ];
-export const RETINUE_DIAGNOSTIC_TOOL_NAMES = ["retinue_audit_logs"];
+export const RETINUE_DIAGNOSTIC_TOOL_NAMES = ["audit_logs"];
 const DEFAULT_MCP_WAIT_MAX_MS = 180_000;
 const DEFAULT_RESOURCE_BUDGET_LOCK_TIMEOUT_MS = 10_000;
 const DEFAULT_RESOURCE_BUDGET_LOCK_STALE_MS = 5_000;
@@ -67,7 +67,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
     if (options.exposeBackendTools ?? process.env.RETINUE_EXPOSE_BACKEND_TOOLS === "1") {
         registerBackendTools(server, retinue);
     }
-    server.registerTool("retinue_spawn_agent", {
+    server.registerTool("spawn_agent", {
         title: "Spawn Retinue Agent",
         description: "Spawn a Retinue child agent using the deployment-selected backend and return a job handle. The optional agent field is the target backend-native child agent/profile, such as OpenCode/Kilo explore or general; it is not a Retinue backend name like opencode, a Codex model, or a Codex native subagent name.",
         inputSchema: {
@@ -209,7 +209,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             evictedJobId: evicted?.jobId
         });
     });
-    server.registerTool("retinue_wait_agent", {
+    server.registerTool("wait_agent", {
         title: "Wait For Retinue Agent",
         description: "Wait for a Retinue child agent and include its result when it reaches a terminal state.",
         inputSchema: {
@@ -304,7 +304,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             diagnostic: responseDiagnostic,
         });
     });
-    server.registerTool("retinue_close_agent", {
+    server.registerTool("close_agent", {
         title: "Close Retinue Agent",
         description: "Close a Retinue child agent and its backend session.",
         inputSchema: {
@@ -364,7 +364,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
         agentPool.remove(jobId);
         return jsonToolResult({ jobId, status: "status" in status ? status.status : "unknown" });
     });
-    server.registerTool("retinue_list_agents", {
+    server.registerTool("list_agents", {
         title: "List Retinue Agents",
         description: "List live Retinue child agents tracked by this MCP server session.",
         inputSchema: {}
@@ -375,7 +375,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             agents: await agentPool.list(retinue, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery)
         });
     });
-    server.registerTool("retinue_list_permissions", {
+    server.registerTool("list_permissions", {
         title: "List Retinue Permissions",
         description: "List pending backend permission requests for one Retinue child job, or all known jobs when jobId is omitted.",
         inputSchema: {
@@ -417,7 +417,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
         }
         return jsonToolResult(await backend.listPermissions({ jobId }));
     });
-    server.registerTool("retinue_reply_permission", {
+    server.registerTool("reply_permission", {
         title: "Reply To Retinue Permission",
         description: "Reply to a pending backend permission request for a Retinue child job.",
         inputSchema: {
@@ -433,7 +433,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
         }
         return jsonToolResult(await backend.replyPermission({ jobId }, { requestId, reply, message }));
     });
-    server.registerTool("retinue_stop_runtime", {
+    server.registerTool("stop_runtime", {
         title: "Stop Retinue Runtime",
         description: "Stop Retinue-managed local runtime servers. Only OpenCode auto-serve servers started by Retinue are managed.",
         inputSchema: {
@@ -451,7 +451,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             return jsonToolResult({
                 runtime: selectedRuntime,
                 status: "invalid_request",
-                error: "retinue_stop_runtime requires cwd or all=true"
+                error: "stop_runtime requires cwd or all=true"
             });
         }
         const stateDir = resolveStateDir({
@@ -460,7 +460,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
         });
         return jsonToolResult(await stopManagedOpenCodeServers({ stateDir, cwd, all, force, reason: "manual" }));
     });
-    server.registerTool("retinue_restart_runtime", {
+    server.registerTool("restart_runtime", {
         title: "Restart Retinue Runtime",
         description: "Restart a Retinue-managed local runtime server for one cwd. Only OpenCode auto-serve servers started by Retinue are managed.",
         inputSchema: {
@@ -478,7 +478,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             return jsonToolResult({
                 backend: selectedRuntime,
                 status: "not_managed",
-                error: "retinue_restart_runtime only manages Retinue auto-served OpenCode servers; RETINUE_OPENCODE_BASE_URL is external."
+                error: "restart_runtime only manages Retinue auto-served OpenCode servers; RETINUE_OPENCODE_BASE_URL is external."
             });
         }
         const stateDir = resolveStateDir({
@@ -507,7 +507,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
     return server;
 }
 function registerDiagnosticTools(server) {
-    server.registerTool("retinue_audit_logs", {
+    server.registerTool("audit_logs", {
         title: "Audit Retinue Logs",
         description: "Developer diagnostic tool for summarizing recent Retinue/OpenCode stall logs. Hidden from the default product tool surface.",
         inputSchema: {

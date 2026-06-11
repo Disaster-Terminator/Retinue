@@ -25,12 +25,12 @@ For production OpenCode E2E, see `../../docs/runbooks/production-opencode-e2e.md
 
 Codex-facing product delegation should use:
 
-- `retinue_spawn_agent`
-- `retinue_wait_agent`
-- `retinue_close_agent`
-- `retinue_list_agents`
-- `retinue_list_permissions`
-- `retinue_reply_permission`
+- `spawn_agent`
+- `wait_agent`
+- `close_agent`
+- `list_agents`
+- `list_permissions`
+- `reply_permission`
 
 The default deployment uses OpenCode `explore` and lets Retinue manage the local OpenCode server lifecycle. Keep behavior details in the shared docs instead of duplicating them here:
 

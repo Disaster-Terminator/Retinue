@@ -46,10 +46,10 @@ async function main() {
     ]);
     const waits = await Promise.all(spawns.map((spawned) => waitTerminal(spawned.client, spawned.jobId)));
     await Promise.allSettled(
-      spawns.map((spawned) => spawned.client.callTool({ name: "retinue_close_agent", arguments: { jobId: spawned.jobId } }))
+      spawns.map((spawned) => spawned.client.callTool({ name: "close_agent", arguments: { jobId: spawned.jobId } }))
     );
     await a.client.callTool({
-      name: "retinue_stop_runtime",
+      name: "stop_runtime",
       arguments: { runtime: "opencode", all: true, force: true }
     });
 
@@ -108,7 +108,7 @@ async function spawn(client, cwd, name, canWrite) {
     : `Read RETINUE_CROSS_SESSION_MARKER.txt, then answer with ${name} DONE.`;
   const parsed = parseToolJson(
     await client.callTool({
-      name: "retinue_spawn_agent",
+      name: "spawn_agent",
       arguments: { cwd, task_name: `cross-session-${name}`, agent: canWrite ? "general" : "explore", message }
     })
   );
@@ -122,7 +122,7 @@ async function waitTerminal(client, jobId) {
     const remaining = Math.max(1, deadline - Date.now());
     last = parseToolJson(
       await client.callTool(
-        { name: "retinue_wait_agent", arguments: { jobId, timeoutMs: remaining } },
+        { name: "wait_agent", arguments: { jobId, timeoutMs: remaining } },
         undefined,
         { timeout: remaining + 30000 }
       )

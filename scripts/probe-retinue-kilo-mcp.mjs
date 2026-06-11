@@ -43,7 +43,7 @@ async function runSmokeProbe(client, stateDir) {
   const cwd = process.cwd();
   const spawn = parseToolJson(
     await client.callTool({
-      name: "retinue_spawn_agent",
+      name: "spawn_agent",
       arguments: {
         cwd,
         task_name: "real-kilo-smoke",
@@ -54,7 +54,7 @@ async function runSmokeProbe(client, stateDir) {
 
   const wait = parseToolJson(
     await client.callTool({
-      name: "retinue_wait_agent",
+      name: "wait_agent",
       arguments: { jobId: spawn.jobId, timeoutMs: 120000 }
     }, undefined, { timeout: 150000 })
   );
@@ -66,7 +66,7 @@ async function runSmokeProbe(client, stateDir) {
 
   const close = parseToolJson(
     await client.callTool({
-      name: "retinue_close_agent",
+      name: "close_agent",
       arguments: { jobId: spawn.jobId }
     })
   );
@@ -89,7 +89,7 @@ async function runPermissionProbe(client, stateDir) {
 
   const spawn = parseToolJson(
     await client.callTool({
-      name: "retinue_spawn_agent",
+      name: "spawn_agent",
       arguments: {
         cwd,
         task_name: "real-kilo-permission",
@@ -103,7 +103,7 @@ async function runPermissionProbe(client, stateDir) {
 
   let wait = parseToolJson(
     await client.callTool({
-      name: "retinue_wait_agent",
+      name: "wait_agent",
       arguments: { jobId: spawn.jobId, timeoutMs: 120000 }
     }, undefined, { timeout: 150000 })
   );
@@ -114,7 +114,7 @@ async function runPermissionProbe(client, stateDir) {
 
   const permissions = parseToolJson(
     await client.callTool({
-      name: "retinue_list_permissions",
+      name: "list_permissions",
       arguments: { jobId: spawn.jobId }
     })
   );
@@ -125,14 +125,14 @@ async function runPermissionProbe(client, stateDir) {
 
   const reply = parseToolJson(
     await client.callTool({
-      name: "retinue_reply_permission",
+      name: "reply_permission",
       arguments: { jobId: spawn.jobId, requestId: request.id, reply: "once" }
     })
   );
 
   wait = parseToolJson(
     await client.callTool({
-      name: "retinue_wait_agent",
+      name: "wait_agent",
       arguments: { jobId: spawn.jobId, timeoutMs: 120000 }
     }, undefined, { timeout: 150000 })
   );
@@ -144,7 +144,7 @@ async function runPermissionProbe(client, stateDir) {
 
   const close = parseToolJson(
     await client.callTool({
-      name: "retinue_close_agent",
+      name: "close_agent",
       arguments: { jobId: spawn.jobId }
     })
   );

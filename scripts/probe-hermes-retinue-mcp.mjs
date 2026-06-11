@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 
 const REAL_PROBE_ENV = "RETINUE_REAL_HERMES_RETINUE_PROBE";
-const DEFAULT_TOOL_NAMES = ["retinue_spawn_agent", "retinue_wait_agent", "retinue_close_agent", "retinue_list_agents"];
+const DEFAULT_TOOL_NAMES = ["spawn_agent", "wait_agent", "close_agent", "list_agents"];
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -40,7 +40,7 @@ async function main() {
     assertToolList(toolNames);
 
     if (process.env[REAL_PROBE_ENV] !== "1") {
-      const pool = parseToolJson(await client.callTool({ name: "retinue_list_agents", arguments: {} }));
+      const pool = parseToolJson(await client.callTool({ name: "list_agents", arguments: {} }));
       printResult({
         ok: true,
         mode: "tool-list",
@@ -64,7 +64,7 @@ async function main() {
 
     const spawn = parseToolJson(
       await client.callTool({
-        name: "retinue_spawn_agent",
+        name: "spawn_agent",
         arguments: {
           cwd: projectCwd,
           task_name: "hermes-retinue-smoke",
@@ -74,7 +74,7 @@ async function main() {
     );
     const wait = parseToolJson(
       await client.callTool({
-        name: "retinue_wait_agent",
+        name: "wait_agent",
         arguments: { jobId: spawn.jobId, timeoutMs: options.timeoutMs }
       }, undefined, { timeout: options.timeoutMs + 30_000 })
     );
@@ -84,7 +84,7 @@ async function main() {
     }
     const close = parseToolJson(
       await client.callTool({
-        name: "retinue_close_agent",
+        name: "close_agent",
         arguments: { jobId: spawn.jobId }
       })
     );

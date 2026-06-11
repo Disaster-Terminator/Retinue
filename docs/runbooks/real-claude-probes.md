@@ -114,7 +114,7 @@ Expected result:
 
 ## Retinue MCP Real Probe
 
-This calls the product-facing MCP tools directly in memory: `retinue_spawn_agent`, `retinue_wait_agent`, and `retinue_close_agent`. The script sets `RETINUE_BACKEND=claude-code` for the probe process and leaves provider, model, proxy, permission, plugin, and profile behavior to the installed Claude Code runtime. When no legacy CLI override is configured, the MCP product path uses the Claude Agent SDK adapter. Set `RETINUE_CLAUDE_RUNTIME=cli`, `RETINUE_CLAUDE_USE_SDK=0`, `RETINUE_CLAUDE_COMMAND`, or `RETINUE_CLAUDE_PREFIX_ARGS` only when intentionally exercising the legacy CLI wrapper.
+This calls the product-facing MCP tools directly in memory: `spawn_agent`, `wait_agent`, and `close_agent`. The script sets `RETINUE_BACKEND=claude-code` for the probe process and leaves provider, model, proxy, permission, plugin, and profile behavior to the installed Claude Code runtime. When no legacy CLI override is configured, the MCP product path uses the Claude Agent SDK adapter. Set `RETINUE_CLAUDE_RUNTIME=cli`, `RETINUE_CLAUDE_USE_SDK=0`, `RETINUE_CLAUDE_COMMAND`, or `RETINUE_CLAUDE_PREFIX_ARGS` only when intentionally exercising the legacy CLI wrapper.
 
 Retinue does not set a Claude SDK model by default and does not replace the SDK subprocess environment. If the local Claude Code default model is wrong, the real probe should fail with the model error from Claude Code; fix the Claude Code profile/runtime configuration rather than adding a Retinue default. `RETINUE_CLAUDE_MODEL` is reserved for explicit deployment override cases where the operator intentionally wants Retinue to pass a model argument to the SDK.
 

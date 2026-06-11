@@ -9,22 +9,22 @@ Use Retinue for bounded local subagent work when Codex should keep control throu
 
 ## Quick Procedure
 
-1. Spawn with `retinue_spawn_agent`.
-2. Wait with `retinue_wait_agent`.
-3. Close with `retinue_close_agent` after the result is terminal or no longer needed.
+1. Spawn with `spawn_agent`.
+2. Wait with `wait_agent`.
+3. Close with `close_agent` after the result is terminal or no longer needed.
 
 For repository work, pass an absolute `cwd`. Ask the child to cite absolute paths for file-existence claims.
 
 ## Tools
 
-- `retinue_spawn_agent`
-- `retinue_wait_agent`
-- `retinue_close_agent`
-- `retinue_list_agents`
-- `retinue_list_permissions`
-- `retinue_reply_permission`
-- `retinue_stop_runtime`
-- `retinue_restart_runtime`
+- `spawn_agent`
+- `wait_agent`
+- `close_agent`
+- `list_agents`
+- `list_permissions`
+- `reply_permission`
+- `stop_runtime`
+- `restart_runtime`
 
 ## Wait Handling
 
@@ -38,7 +38,7 @@ For repository work, pass an absolute `cwd`. Ask the child to cite absolute path
 | `orphaned` or `abandoned` | Treat as stale/unowned local state, not current child-agent output. |
 | `backend_unreachable`, `not_found`, or `corrupted` | Treat as Retinue/backend infrastructure state, not child-agent evidence. |
 | `resource_exhausted` from spawn | No job started; wait for capacity or close unneeded jobs before retrying. |
-| `attentionRequired.kind: "permission"` or `permissionRequired: true` | Inspect `permissionActions`, or call `retinue_list_permissions`; reply with `retinue_reply_permission`; then wait again. |
+| `attentionRequired.kind: "permission"` or `permissionRequired: true` | Inspect `permissionActions`, or call `list_permissions`; reply with `reply_permission`; then wait again. |
 
 Prefer permission reply `once` for scoped task-required access. Use `always` only for trusted repeated patterns. Use `reject` for out-of-scope paths or tools.
 
@@ -54,7 +54,7 @@ When wait output includes `requestedJobId`, `selectedAttemptJobId`, or `attemptC
 - Do not trust repository-specific conclusions when returned `externalSessionDirectory` does not match the requested `cwd`.
 - Do not use hidden backend/debug tools for normal product delegation.
 - Do not use Retinue stalled child output to support a product claim.
-- Use `retinue_stop_runtime` or `retinue_restart_runtime` only for Retinue-managed runtime maintenance, such as refreshing an auto-served OpenCode provider/profile. These tools do not manage external runtime URLs.
+- Use `stop_runtime` or `restart_runtime` only for Retinue-managed runtime maintenance, such as refreshing an auto-served OpenCode provider/profile. These tools do not manage external runtime URLs.
 
 ## Configuration Boundary
 
