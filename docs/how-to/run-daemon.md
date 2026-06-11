@@ -63,14 +63,13 @@ Discovery metadata contains:
 CLI with explicit discovery:
 
 ```bash
-node dist/cli.js --discover-daemon status <jobId>
-node dist/cli.js --discover-daemon daemon-health
+node dist/cli.js --discover-daemon daemon health
 ```
 
 CLI with explicit URL:
 
 ```bash
-node dist/cli.js daemon-health --daemon-url http://127.0.0.1:27777
+node dist/cli.js daemon health --daemon-url http://127.0.0.1:27777
 ```
 
 MCP with explicit discovery:

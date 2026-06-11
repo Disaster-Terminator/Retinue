@@ -9,11 +9,9 @@ import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { createDaemonServer } from "../src/daemon/server.js";
 import { writeDaemonDiscovery } from "../src/daemon/discovery.js";
-import { ClaudeRetinue } from "../src/core/retinue.js";
-import { startFakeOpenCodeServer, type FakeOpenCodeServer } from "./fixtures/fake-opencode-server.js";
+import type { RetinueApi } from "../src/core/types.js";
 
 const cliPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/cli.ts");
-const fixturePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/fake-claude.mjs");
 const tsxCliPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../node_modules/tsx/dist/cli.mjs");
 const execFileAsync = promisify(execFile);
 const daemonToken = "cli-daemon-test-token";
@@ -21,7 +19,6 @@ const daemonToken = "cli-daemon-test-token";
 describe("CLI", () => {
   let tempDir: string;
   let server: http.Server | undefined;
-  let fakeOpenCode: FakeOpenCodeServer | undefined;
 
   beforeEach(async () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-cli-test-"));
@@ -32,55 +29,25 @@ describe("CLI", () => {
       await closeServer(server);
       server = undefined;
     }
-    if (fakeOpenCode) {
-      await fakeOpenCode.close();
-      fakeOpenCode = undefined;
-    }
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  it("runs, waits, and reads a job as JSON", async () => {
-    const env = cliEnv(tempDir);
+  it("rejects legacy flat job commands", async () => {
+    const failing = await execCli(["run", "--cwd", tempDir, "--prompt", "legacy"], cliEnv(tempDir)).catch(
+      (error: { stderr: string; code: number }) => error
+    );
 
-    const run = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "run", "--cwd", tempDir, "--prompt", "cli hello"], { env });
-    const started = JSON.parse(run.stdout);
-    expect(started.status).toBe("running");
-
-    const wait = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "wait", started.jobId, "--timeout-ms", "5000"], { env });
-    expect(JSON.parse(wait.stdout).status).toBe("completed");
-
-    const result = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "result", started.jobId], { env });
-    expect(JSON.parse(result.stdout).parsedStdout.result).toBe("fake result: cli hello");
-  });
-
-  it("delegates job commands to a configured daemon URL", async () => {
-    const daemonUrl = await startDaemon();
-    const env = {
-      ...process.env,
-      RETINUE_DAEMON_URL: daemonUrl,
-      RETINUE_DAEMON_TOKEN: daemonToken,
-      RETINUE_STATE_DIR: path.join(tempDir, "client-state"),
-      RETINUE_CLAUDE_COMMAND: path.join(tempDir, "missing-local-claude")
-    };
-
-    const run = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "run", "--cwd", tempDir, "--prompt", "daemon cli"], { env });
-    const started = JSON.parse(run.stdout);
-    expect(started.status).toBe("running");
-
-    const wait = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "wait", started.jobId, "--timeout-ms", "5000"], { env });
-    expect(JSON.parse(wait.stdout).status).toBe("completed");
-
-    const result = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "result", started.jobId], { env });
-    expect(JSON.parse(result.stdout).parsedStdout.result).toBe("fake result: daemon cli");
+    expect(failing.code).toBe(1);
+    expect(failing.stderr).toContain("Legacy flat CLI commands were removed");
   });
 
   it("returns daemon health from an explicit URL", async () => {
     const daemonUrl = await startDaemon();
-    const env = cliEnv(tempDir);
-
-    const result = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "daemon-health", "--daemon-url", daemonUrl], {
-      env: { ...env, RETINUE_DAEMON_TOKEN: daemonToken }
+    const result = await execCli(["daemon", "health", "--daemon-url", daemonUrl], {
+      ...cliEnv(tempDir),
+      RETINUE_DAEMON_TOKEN: daemonToken
     });
+
     const parsed = JSON.parse(result.stdout);
     expect(parsed.ok).toBe(true);
     expect(parsed.source).toBe("explicit_url");
@@ -97,9 +64,8 @@ describe("CLI", () => {
       version: "0.1.0",
       token: daemonToken
     });
-    const env = cliEnv(tempDir);
 
-    const result = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "--discover-daemon", "daemon-health"], { env });
+    const result = await execCli(["--discover-daemon", "daemon", "health"], cliEnv(tempDir));
     const parsed = JSON.parse(result.stdout);
     expect(parsed.ok).toBe(true);
     expect(parsed.source).toBe("discovery");
@@ -108,10 +74,7 @@ describe("CLI", () => {
   });
 
   it("returns structured missing target failure for daemon health", async () => {
-    const env = cliEnv(tempDir);
-    const failing = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "daemon-health"], { env }).catch(
-      (error: { stdout: string; code: number }) => error
-    );
+    const failing = await execCli(["daemon", "health"], cliEnv(tempDir)).catch((error: { stdout: string; code: number }) => error);
 
     const parsed = JSON.parse(failing.stdout);
     expect(failing.code).toBe(1);
@@ -120,248 +83,113 @@ describe("CLI", () => {
     expect(parsed.error.code).toBe("missing_daemon_target");
   });
 
-  it("rejects invalid numeric CLI flags before dispatching commands", async () => {
-    const env = cliEnv(tempDir);
-    const failing = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "wait", "job_missing", "--timeout-ms", "abc"], { env }).catch(
-      (error: { stderr: string; code: number }) => error
-    );
+  it("prints the current MCP product tools", async () => {
+    const result = await execCli(["mcp", "tools"], cliEnv(tempDir));
+    const parsed = JSON.parse(result.stdout);
 
-    expect(failing.code).toBe(1);
-    expect(failing.stderr).toContain("--timeout-ms must be a non-negative finite number");
+    expect(parsed.defaultTools).toEqual([
+      "spawn_agent",
+      "wait_agent",
+      "close_agent",
+      "list_agents",
+      "list_permissions",
+      "reply_permission",
+      "stop_runtime",
+      "restart_runtime"
+    ]);
+    expect(parsed.diagnosticTools).toBeUndefined();
+    expect(parsed.backendDebugTools).toBeUndefined();
   });
 
-  it("returns structured unreachable failure for daemon health", async () => {
-    const env = cliEnv(tempDir);
-    const failing = await execFileAsync(
-      process.execPath,
-      [tsxCliPath, cliPath, "daemon-health", "--daemon-url", "http://127.0.0.1:1"],
-      { env }
-    ).catch((error: { stdout: string; code: number }) => error);
+  it("can include non-default MCP diagnostic and backend debug tools", async () => {
+    const result = await execCli(["mcp", "tools", "--include-diagnostics", "--include-backend-debug"], cliEnv(tempDir));
+    const parsed = JSON.parse(result.stdout);
 
-    const parsed = JSON.parse(failing.stdout);
-    expect(failing.code).toBe(1);
-    expect(parsed.ok).toBe(false);
-    expect(parsed.source).toBe("explicit_url");
-    expect(parsed.error.code).toBe("daemon_unreachable");
+    expect(parsed.diagnosticTools).toEqual(["audit_logs"]);
+    expect(parsed.backendDebugTools.opencode).toContain("opencode_run");
+    expect(parsed.backendDebugTools.claude).toContain("claude_run");
   });
 
-  it("returns structured unreachable failure for discovered daemon health", async () => {
-    await writeDaemonDiscovery(tempDir, {
-      url: "http://127.0.0.1:1",
-      pid: process.pid,
-      startedAt: "2026-05-04T00:00:00.000Z",
-      version: "0.1.0"
-    });
-    const env = cliEnv(tempDir);
+  it("runs compact log audit through the CLI control plane", async () => {
+    const result = await execCli(["diagnostics", "audit-logs", "--state-dir", tempDir, "--max-lines", "10"], cliEnv(tempDir));
 
-    const failing = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "--discover-daemon", "daemon-health"], {
-      env
-    }).catch((error: { stdout: string; code: number }) => error);
-
-    const parsed = JSON.parse(failing.stdout);
-    expect(failing.code).toBe(1);
-    expect(parsed.ok).toBe(false);
-    expect(parsed.source).toBe("discovery");
-    expect(parsed.daemonUrl).toBe("http://127.0.0.1:1");
-    expect(parsed.error.code).toBe("daemon_unreachable");
+    expect(result.stdout).toContain("Retinue log audit:");
+    expect(result.stdout).toContain("issues=0");
   });
 
-  it("returns daemon_invalid_json for HTTP 200 non-JSON daemon health", async () => {
-    const daemonUrl = await startHealthServer(200, "not json");
-    const env = cliEnv(tempDir);
-    const failing = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "daemon-health", "--daemon-url", daemonUrl], {
-      env
-    }).catch((error: { stdout: string; code: number }) => error);
+  it("runs plugin cache sync as a package-level bootstrap command", async () => {
+    const cacheRoot = path.join(tempDir, "cache");
+    const target = path.join(cacheRoot, "retinue-local", "retinue", "0.2.0");
+    await fs.mkdir(path.join(target, ".codex-plugin"), { recursive: true });
+    await fs.writeFile(path.join(target, ".codex-plugin", "plugin.json"), JSON.stringify({ name: "retinue" }), "utf8");
 
-    const parsed = JSON.parse(failing.stdout);
-    expect(failing.code).toBe(1);
-    expect(parsed.ok).toBe(false);
-    expect(parsed.error.code).toBe("daemon_invalid_json");
-    expect(parsed.error.details).toBe("not json");
+    const result = await execCli(["plugin", "sync-cache", "--cache-root", cacheRoot, "--json"], cliEnv(tempDir));
+    const parsed = JSON.parse(result.stdout);
+
+    expect(parsed.ok).toBe(true);
+    expect(parsed.dryRun).toBe(true);
+    expect(parsed.pluginName).toBe("retinue");
+    expect(parsed.targets[0].targets[0].path).toBe(target);
   });
 
-  it("returns daemon_invalid_json for HTTP 200 malformed JSON daemon health", async () => {
-    const daemonUrl = await startHealthServer(200, '{"status":');
-    const env = cliEnv(tempDir);
-    const failing = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "daemon-health", "--daemon-url", daemonUrl], {
-      env
-    }).catch((error: { stdout: string; code: number }) => error);
+  it("returns structured runtime stop validation instead of throwing", async () => {
+    const result = await execCli(["runtime", "stop"], cliEnv(tempDir));
+    const parsed = JSON.parse(result.stdout);
 
-    const parsed = JSON.parse(failing.stdout);
-    expect(failing.code).toBe(1);
-    expect(parsed.ok).toBe(false);
-    expect(parsed.error.code).toBe("daemon_invalid_json");
-    expect(parsed.error.details).toBe('{"status":');
-  });
-
-  it("returns daemon_http_error with JSON details for non-OK daemon health response", async () => {
-    const daemonUrl = await startHealthServer(500, '{"error":"boom","retry":false}');
-    const env = cliEnv(tempDir);
-    const failing = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "daemon-health", "--daemon-url", daemonUrl], {
-      env
-    }).catch((error: { stdout: string; code: number }) => error);
-
-    const parsed = JSON.parse(failing.stdout);
-    expect(failing.code).toBe(1);
-    expect(parsed.ok).toBe(false);
-    expect(parsed.error.code).toBe("daemon_http_error");
-    expect(parsed.error.status).toBe(500);
-    expect(parsed.error.details).toEqual({ error: "boom", retry: false });
-  });
-
-  it("returns daemon_http_error with raw body details for non-JSON non-OK daemon health response", async () => {
-    const daemonUrl = await startHealthServer(500, "internal error");
-    const env = cliEnv(tempDir);
-    const failing = await execFileAsync(process.execPath, [tsxCliPath, cliPath, "daemon-health", "--daemon-url", daemonUrl], {
-      env
-    }).catch((error: { stdout: string; code: number }) => error);
-
-    const parsed = JSON.parse(failing.stdout);
-    expect(failing.code).toBe(1);
-    expect(parsed.ok).toBe(false);
-    expect(parsed.error.code).toBe("daemon_http_error");
-    expect(parsed.error.status).toBe(500);
-    expect(parsed.error.details).toBe("internal error");
-  });
-
-  it("discovers a daemon only when explicitly requested", async () => {
-    const daemonUrl = await startDaemon();
-    await writeDaemonDiscovery(tempDir, {
-      url: daemonUrl,
-      pid: process.pid,
-      startedAt: "2026-05-04T00:00:00.000Z",
-      version: "0.1.0",
-      token: daemonToken
-    });
-    const env = {
-      ...process.env,
-      RETINUE_STATE_DIR: tempDir,
-      RETINUE_CLAUDE_COMMAND: path.join(tempDir, "missing-local-claude")
-    };
-
-    const run = await execFileAsync(
-      process.execPath,
-      [tsxCliPath, cliPath, "--discover-daemon", "run", "--cwd", tempDir, "--prompt", "discovered cli"],
-      { env }
-    );
-    const started = JSON.parse(run.stdout);
-
-    const wait = await execFileAsync(
-      process.execPath,
-      [tsxCliPath, cliPath, "--discover-daemon", "wait", started.jobId, "--timeout-ms", "5000"],
-      { env }
-    );
-    expect(JSON.parse(wait.stdout).status).toBe("completed");
-
-    const result = await execFileAsync(
-      process.execPath,
-      [tsxCliPath, cliPath, "--discover-daemon", "result", started.jobId],
-      { env }
-    );
-    expect(JSON.parse(result.stdout).parsedStdout.result).toBe("fake result: discovered cli");
-  });
-
-  it("runs and reads an OpenCode job through an explicit server URL", async () => {
-    fakeOpenCode = await startFakeOpenCodeServer();
-    const env = { ...process.env, RETINUE_STATE_DIR: tempDir };
-
-    const run = await execFileAsync(
-      process.execPath,
-      [
-        tsxCliPath,
-        cliPath,
-        "opencode-run",
-        "--cwd",
-        tempDir,
-        "--prompt",
-        "opencode cli",
-        "--title",
-        "cli test",
-        "--opencode-base-url",
-        fakeOpenCode.url
-      ],
-      { env }
-    );
-    const started = JSON.parse(run.stdout);
-    expect(started.backend).toBe("opencode");
-    expect(started.externalSessionId).toMatch(/^ses_/);
-
-    const result = await execFileAsync(
-      process.execPath,
-      [tsxCliPath, cliPath, "opencode-result", started.jobId, "--opencode-base-url", fakeOpenCode.url],
-      { env }
-    );
-    expect(JSON.parse(result.stdout).parsedStdout.result).toBe("fake result: opencode cli");
-  });
-
-  it("uses OpenCode model and agent defaults from environment", async () => {
-    fakeOpenCode = await startFakeOpenCodeServer();
-    const env = {
-      ...process.env,
-      RETINUE_STATE_DIR: tempDir,
-      RETINUE_OPENCODE_MODEL: "litellm/pro-router",
-      RETINUE_OPENCODE_AGENT: "build"
-    };
-
-    await execFileAsync(
-      process.execPath,
-      [
-        tsxCliPath,
-        cliPath,
-        "opencode-run",
-        "--cwd",
-        tempDir,
-        "--prompt",
-        "opencode env defaults",
-        "--opencode-base-url",
-        fakeOpenCode.url
-      ],
-      { env }
-    );
-
-    expect(fakeOpenCode.promptRequests[0]).toMatchObject({
-      agent: "build",
-      model: { providerID: "litellm", modelID: "pro-router" }
+    expect(parsed).toMatchObject({
+      runtime: "opencode",
+      status: "invalid_request"
     });
   });
 
   function cliEnv(stateDir: string): NodeJS.ProcessEnv {
     return {
       ...process.env,
-      RETINUE_STATE_DIR: stateDir,
-      RETINUE_CLAUDE_COMMAND: process.execPath,
-      RETINUE_CLAUDE_PREFIX_ARGS: fixturePath
+      RETINUE_STATE_DIR: stateDir
     };
   }
 
-  async function startDaemon(): Promise<string> {
-    const retinue = new ClaudeRetinue({
-      stateDir: tempDir,
-      claudeCommand: process.execPath,
-      claudePrefixArgs: [fixturePath]
-    });
-    server = createDaemonServer(retinue, { authToken: daemonToken });
-    await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
-    const address = server.address() as AddressInfo;
-    return `http://127.0.0.1:${address.port}`;
+  async function execCli(args: string[], env: NodeJS.ProcessEnv) {
+    return execFileAsync(process.execPath, [tsxCliPath, cliPath, ...args], { env });
   }
 
-  async function startHealthServer(statusCode: number, body: string): Promise<string> {
-    server = http.createServer((request, response) => {
-      if (request.method !== "GET" || request.url !== "/health") {
-        response.statusCode = 404;
-        response.end();
-        return;
-      }
-      response.statusCode = statusCode;
-      response.setHeader("content-type", "text/plain; charset=utf-8");
-      response.end(body);
-    });
+  async function startDaemon(): Promise<string> {
+    server = createDaemonServer(createHealthOnlyRetinue(), { authToken: daemonToken });
     await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
     const address = server.address() as AddressInfo;
     return `http://127.0.0.1:${address.port}`;
   }
 });
+
+function createHealthOnlyRetinue(): RetinueApi & { getStateDir(): string } {
+  return {
+    getStateDir: () => "test-state-dir",
+    run: async () => {
+      throw new Error("not implemented in CLI health tests");
+    },
+    continueJob: async () => {
+      throw new Error("not implemented in CLI health tests");
+    },
+    status: async () => {
+      throw new Error("not implemented in CLI health tests");
+    },
+    wait: async () => {
+      throw new Error("not implemented in CLI health tests");
+    },
+    result: async () => {
+      throw new Error("not implemented in CLI health tests");
+    },
+    peek: async () => {
+      throw new Error("not implemented in CLI health tests");
+    },
+    kill: async () => {
+      throw new Error("not implemented in CLI health tests");
+    },
+    cleanup: async () => {
+      throw new Error("not implemented in CLI health tests");
+    }
+  };
+}
 
 function closeServer(server: http.Server): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -373,9 +201,4 @@ function closeServer(server: http.Server): Promise<void> {
       resolve();
     });
   });
-}
-
-function extractOpenCodeSubtaskPart(request: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
-  const parts = Array.isArray(request?.parts) ? request.parts : [];
-  return parts.find((part): part is Record<string, unknown> => typeof part === "object" && part !== null && part.type === "subtask");
 }

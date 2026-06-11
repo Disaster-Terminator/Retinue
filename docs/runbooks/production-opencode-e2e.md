@@ -61,7 +61,7 @@ Precedence is:
 }
 ```
 
-## CLI E2E Flow
+## CLI Operations
 
 Build first:
 
@@ -69,43 +69,33 @@ Build first:
 pnpm run build
 ```
 
-Run:
+The default CLI is an operator/bootstrap control plane. It does not expose the removed legacy flat job commands such as `opencode-run`, `opencode-wait`, or `opencode-result`. Use the MCP product flow below for child-agent E2E.
+
+Inspect the packaged MCP product surface:
 
 ```bash
-RETINUE_OPENCODE_BASE_URL=http://127.0.0.1:4096 \
-RETINUE_OPENCODE_MODEL=litellm/pro-router \
-node dist/cli.js opencode-run \
-  --cwd /mnt/g/repository/retinue \
-  --prompt "Reply exactly: RETINUE_SPAWN_OPENCODE_OK" \
-  --title retinue-spawn-opencode-live
+node dist/cli.js mcp tools
 ```
 
-Wait and read:
+Audit recent Retinue logs without exposing diagnostic tools through the default MCP surface:
 
 ```bash
-node dist/cli.js opencode-wait <jobId> --timeout-ms 180000
-node dist/cli.js opencode-result <jobId>
+node dist/cli.js diagnostics audit-logs --since 2026-05-20T08:00:00.000Z
 ```
 
-Continue:
+Refresh installed plugin caches after a build:
 
 ```bash
-RETINUE_OPENCODE_MODEL=litellm/pro-router \
-node dist/cli.js opencode-continue \
-  --cwd /mnt/g/repository/retinue \
-  --external-session-id <sessionId> \
-  --job-id <jobId> \
-  --prompt "Reply exactly: RETINUE_SPAWN_OPENCODE_CONTINUE_OK"
+node dist/cli.js plugin sync-cache --all --apply
 ```
 
-Kill and cleanup:
+Restart a Retinue-managed auto-served OpenCode runtime:
 
 ```bash
-node dist/cli.js opencode-kill <jobId>
-node dist/cli.js opencode-cleanup --older-than-ms 0
+node dist/cli.js runtime restart --cwd /mnt/g/repository/retinue --force
 ```
 
-PowerShell uses the same commands with `$env:RETINUE_OPENCODE_BASE_URL` and `$env:RETINUE_OPENCODE_MODEL`.
+PowerShell uses the same commands with `$env:RETINUE_OPENCODE_BASE_URL` and `$env:RETINUE_OPENCODE_MODEL` for environment configuration.
 
 ## Retinue MCP Spawn Flow
 

@@ -59312,7 +59312,15 @@ async function readRecentJsonl(filePath, options) {
   };
 }
 async function readTail(filePath, maxBytes) {
-  const handle = await fs5.open(filePath, "r");
+  let handle;
+  try {
+    handle = await fs5.open(filePath, "r");
+  } catch (error51) {
+    if (isMissingFile3(error51)) {
+      return { text: "", truncated: false };
+    }
+    throw error51;
+  }
   try {
     const stats = await handle.stat();
     const length = Math.min(stats.size, maxBytes);
@@ -59325,6 +59333,9 @@ async function readTail(filePath, maxBytes) {
   } finally {
     await handle.close();
   }
+}
+function isMissingFile3(error51) {
+  return typeof error51 === "object" && error51 !== null && "code" in error51 && error51.code === "ENOENT";
 }
 function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId, jobMetaByJobId, options = {}) {
   const issuesBySignature = /* @__PURE__ */ new Map();
@@ -60240,7 +60251,7 @@ var ClaudeRetinue = class {
     try {
       return normalizeMeta2(JSON.parse(await fs6.readFile(paths.meta, "utf8")));
     } catch (error51) {
-      if (isMissingFile3(error51)) {
+      if (isMissingFile4(error51)) {
         return { jobId, status: "not_found" };
       }
       return {
@@ -60280,7 +60291,7 @@ async function readTextIfExists3(filePath) {
   try {
     return await fs6.readFile(filePath, "utf8");
   } catch (error51) {
-    if (isMissingFile3(error51)) {
+    if (isMissingFile4(error51)) {
       return "";
     }
     throw error51;
@@ -60336,7 +60347,7 @@ function isPidAlive3(pid) {
 function isProblem3(value) {
   return value.status === "not_found" || value.status === "corrupted" || value.status === "backend_unreachable";
 }
-function isMissingFile3(error51) {
+function isMissingFile4(error51) {
   return typeof error51 === "object" && error51 !== null && "code" in error51 && error51.code === "ENOENT";
 }
 function sleep4(ms) {
@@ -60349,7 +60360,7 @@ async function readDirIfExists4(dirPath) {
   try {
     return await fs6.readdir(dirPath, { withFileTypes: true });
   } catch (error51) {
-    if (isMissingFile3(error51)) {
+    if (isMissingFile4(error51)) {
       return [];
     }
     throw error51;
@@ -61600,7 +61611,7 @@ async function readDirIfExists5(dirPath) {
   try {
     return await fs7.readdir(dirPath, { withFileTypes: true });
   } catch (error51) {
-    if (isMissingFile4(error51)) {
+    if (isMissingFile5(error51)) {
       return [];
     }
     throw error51;
@@ -61670,7 +61681,7 @@ async function readRetinueConfig(env) {
   try {
     return JSON.parse(await fs7.readFile(configPath, "utf8"));
   } catch (error51) {
-    if (isMissingFile4(error51)) {
+    if (isMissingFile5(error51)) {
       return void 0;
     }
     throw new Error(`Failed to read Retinue config ${configPath}: ${error51 instanceof Error ? error51.message : String(error51)}`);
@@ -61686,7 +61697,7 @@ function readNestedConfigValue(config2, pathSegments) {
   }
   return current;
 }
-function isMissingFile4(error51) {
+function isMissingFile5(error51) {
   return typeof error51 === "object" && error51 !== null && "code" in error51 && error51.code === "ENOENT";
 }
 async function writeMcpTrace(env, value) {

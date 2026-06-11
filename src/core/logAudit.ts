@@ -136,7 +136,15 @@ async function readRecentJsonl(filePath: string, options: ReadRecentJsonlOptions
 }
 
 async function readTail(filePath: string, maxBytes: number): Promise<{ text: string; truncated: boolean }> {
-  const handle = await fs.open(filePath, "r");
+  let handle: fs.FileHandle;
+  try {
+    handle = await fs.open(filePath, "r");
+  } catch (error) {
+    if (isMissingFile(error)) {
+      return { text: "", truncated: false };
+    }
+    throw error;
+  }
   try {
     const stats = await handle.stat();
     const length = Math.min(stats.size, maxBytes);
@@ -149,6 +157,10 @@ async function readTail(filePath: string, maxBytes: number): Promise<{ text: str
   } finally {
     await handle.close();
   }
+}
+
+function isMissingFile(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
 function summarizeIssues(

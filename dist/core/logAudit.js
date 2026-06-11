@@ -77,7 +77,16 @@ async function readRecentJsonl(filePath, options) {
     };
 }
 async function readTail(filePath, maxBytes) {
-    const handle = await fs.open(filePath, "r");
+    let handle;
+    try {
+        handle = await fs.open(filePath, "r");
+    }
+    catch (error) {
+        if (isMissingFile(error)) {
+            return { text: "", truncated: false };
+        }
+        throw error;
+    }
     try {
         const stats = await handle.stat();
         const length = Math.min(stats.size, maxBytes);
@@ -91,6 +100,9 @@ async function readTail(filePath, maxBytes) {
     finally {
         await handle.close();
     }
+}
+function isMissingFile(error) {
+    return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId, jobMetaByJobId, options = {}) {
     const issuesBySignature = new Map();

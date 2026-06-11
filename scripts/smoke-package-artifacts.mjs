@@ -57,7 +57,7 @@ async function main() {
 async function smokeCli() {
   const cliPath = path.resolve("dist/cli.js");
   try {
-    await execFileAsync(process.execPath, [cliPath, "daemon-health"], {
+    await execFileAsync(process.execPath, [cliPath, "daemon", "health"], {
       cwd: process.cwd(),
       encoding: "utf8",
       timeout: 10_000
@@ -68,14 +68,14 @@ async function smokeCli() {
     if (parsed?.ok === false && parsed?.error?.code === "missing_daemon_target") {
       return {
         label: "dist/cli.js",
-        command: "daemon-health",
+        command: "daemon health",
         ok: true,
         expectedFailureCode: parsed.error.code
       };
     }
     throw error;
   }
-  throw new Error("dist/cli.js daemon-health unexpectedly succeeded without a daemon target");
+  throw new Error("dist/cli.js daemon health unexpectedly succeeded without a daemon target");
 }
 
 async function smokeMcpServer({ label, command, args, cwd }) {

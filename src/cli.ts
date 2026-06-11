@@ -1,21 +1,32 @@
 #!/usr/bin/env node
 
-import { ClaudeRetinue } from "./core/retinue.js";
-import { DaemonClient } from "./daemon/client.js";
-import { type DaemonDiscovery, readDaemonDiscovery } from "./daemon/discovery.js";
-import { resolveHttpTimeoutMs } from "./core/http.js";
+import { spawn } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { main as auditLogsMain } from "./cli/auditRetinueLogs.js";
+import { ensureOpenCodeServer, resolveOpenCodeServerFromEnv, stopManagedOpenCodeServers } from "./backends/opencode/serverManager.js";
+import { readDaemonDiscovery, type DaemonDiscovery } from "./daemon/discovery.js";
 import { resolveStateDir } from "./core/paths.js";
-import { OpenCodeBackend } from "./backends/opencode/backend.js";
-import { OpenCodeClient } from "./backends/opencode/client.js";
-import { ensureOpenCodeServer, resolveOpenCodeServerFromEnv } from "./backends/opencode/serverManager.js";
-import type { RetinueApi } from "./core/types.js";
+import { CLAUDE_TOOL_NAMES, OPENCODE_TOOL_NAMES, RETINUE_DIAGNOSTIC_TOOL_NAMES, RETINUE_TOOL_NAMES } from "./mcp.js";
+
+type CommandContext = {
+  args: string[];
+  daemonUrl?: string;
+  daemonToken?: string;
+  discoverDaemon: boolean;
+};
 
 async function main(): Promise<void> {
-  const global = extractGlobalFlags(process.argv.slice(2));
-  const [command, ...args] = global.args;
+  const context = extractGlobalFlags(process.argv.slice(2));
+  const [group, command, ...args] = context.args;
 
-  if (command === "daemon-health") {
-    const health = await daemonHealth(global);
+  if (group === "daemon" && command === "health") {
+    const flags = parseFlags(args);
+    const health = await daemonHealth({
+      daemonUrl: flags["daemon-url"] ?? context.daemonUrl,
+      daemonToken: flags["daemon-token"] ?? context.daemonToken,
+      discoverDaemon: booleanFlag(flags, "discover-daemon", context.discoverDaemon)
+    });
     writeJson(health);
     if (isFailureResult(health)) {
       process.exitCode = 1;
@@ -23,181 +34,66 @@ async function main(): Promise<void> {
     return;
   }
 
-  const retinue = await createRetinueFromEnv(global);
-
-  switch (command) {
-    case "opencode-run": {
-      const flags = parseFlags(args);
-      const backend = await createOpenCodeBackend(flags);
-      writeJson(
-        await backend.run({
-          cwd: required(flags.cwd, "--cwd"),
-          prompt: required(flags.prompt, "--prompt"),
-          name: flags.name,
-          title: flags.title,
-          model: resolveOpenCodeModel(flags),
-          agent: resolveOpenCodeAgent(flags)
-        })
-      );
-      return;
-    }
-    case "opencode-status": {
-      writeJson(await (await createOpenCodeBackend(parseFlags(args))).status({ jobId: required(args[0], "jobId") }));
-      return;
-    }
-    case "opencode-wait": {
-      const [jobId, ...rest] = args;
-      const flags = parseFlags(rest);
-      const backend = await createOpenCodeBackend(flags);
-      const waited = await backend.wait({ jobId: required(jobId, "jobId") }, parseOptionalNonNegativeNumber(flags, "timeout-ms"));
-      writeJson(waited);
-      return;
-    }
-    case "opencode-result": {
-      writeJson(await (await createOpenCodeBackend(parseFlags(args.slice(1)))).result({ jobId: required(args[0], "jobId") }));
-      return;
-    }
-    case "opencode-continue": {
-      const flags = parseFlags(args);
-      const backend = await createOpenCodeBackend(flags);
-      writeJson(
-        await backend.continueJob({
-          cwd: required(flags.cwd, "--cwd"),
-          prompt: required(flags.prompt, "--prompt"),
-          externalSessionId: required(flags["external-session-id"], "--external-session-id"),
-          parentJobId: flags["job-id"],
-          parentSessionId: flags["external-session-id"],
-          name: flags.name,
-          title: flags.title,
-          model: resolveOpenCodeModel(flags),
-          agent: resolveOpenCodeAgent(flags)
-        })
-      );
-      return;
-    }
-    case "opencode-kill": {
-      const [jobId, ...rest] = args;
-      const backend = await createOpenCodeBackend(parseFlags(rest));
-      await backend.abort({ jobId: required(jobId, "jobId") });
-      writeJson({ jobId, status: "killed" });
-      return;
-    }
-    case "opencode-cleanup": {
-      const flags = parseFlags(args);
-      writeJson(
-        await (await createOpenCodeBackend(flags)).cleanup({
-          olderThanMs: parseOptionalNonNegativeNumber(flags, "older-than-ms")
-        })
-      );
-      return;
-    }
-    case "run": {
-      const flags = parseFlags(args);
-      const cwd = required(flags.cwd, "--cwd");
-      const prompt = required(flags.prompt, "--prompt");
-      writeJson(
-        await retinue.run({
-          cwd,
-          prompt,
-          name: flags.name,
-          resume: flags.resume,
-          maxTurns: parseOptionalNonNegativeNumber(flags, "max-turns"),
-          permissionMode: flags["permission-mode"] as never,
-          timeoutMs: parseOptionalNonNegativeNumber(flags, "timeout-ms")
-        })
-      );
-      return;
-    }
-    case "status": {
-      writeJson(await retinue.status(required(args[0], "jobId")));
-      return;
-    }
-    case "wait": {
-      const [jobId, ...rest] = args;
-      const flags = parseFlags(rest);
-      writeJson(
-        await retinue.wait(required(jobId, "jobId"), {
-          timeoutMs: parseOptionalNonNegativeNumber(flags, "timeout-ms")
-        })
-      );
-      return;
-    }
-    case "result": {
-      writeJson(await retinue.result(required(args[0], "jobId")));
-      return;
-    }
-    case "continue": {
-      const flags = parseFlags(args);
-      writeJson(
-        await retinue.continueJob({
-          cwd: required(flags.cwd, "--cwd"),
-          prompt: required(flags.prompt, "--prompt"),
-          jobId: flags["job-id"],
-          sessionId: flags["session-id"],
-          name: flags.name,
-          maxTurns: parseOptionalNonNegativeNumber(flags, "max-turns"),
-          permissionMode: flags["permission-mode"] as never,
-          timeoutMs: parseOptionalNonNegativeNumber(flags, "timeout-ms")
-        })
-      );
-      return;
-    }
-    case "peek": {
-      const [jobId, ...rest] = args;
-      const flags = parseFlags(rest);
-      writeJson(
-        await retinue.peek(required(jobId, "jobId"), {
-          stdoutTailBytes: parseOptionalNonNegativeNumber(flags, "stdout-tail-bytes"),
-          stderrTailBytes: parseOptionalNonNegativeNumber(flags, "stderr-tail-bytes")
-        })
-      );
-      return;
-    }
-    case "kill": {
-      writeJson(await retinue.kill(required(args[0], "jobId")));
-      return;
-    }
-    case "cleanup": {
-      const flags = parseFlags(args);
-      writeJson(
-        await retinue.cleanup({
-          olderThanMs: parseOptionalNonNegativeNumber(flags, "older-than-ms")
-        })
-      );
-      return;
-    }
-    default:
-      throw new Error(`Unknown command: ${command ?? "(missing)"}`);
+  if (group === "diagnostics" && command === "audit-logs") {
+    await auditLogsMain(args, process.env);
+    return;
   }
+
+  if (group === "plugin" && command === "sync-cache") {
+    await runPluginSyncCache(args);
+    return;
+  }
+
+  if (group === "mcp" && command === "tools") {
+    const flags = parseFlags(args);
+    writeJson({
+      defaultTools: [...RETINUE_TOOL_NAMES],
+      diagnosticTools: booleanFlag(flags, "include-diagnostics", false) ? [...RETINUE_DIAGNOSTIC_TOOL_NAMES] : undefined,
+      backendDebugTools: booleanFlag(flags, "include-backend-debug", false)
+        ? {
+            claude: [...CLAUDE_TOOL_NAMES],
+            opencode: [...OPENCODE_TOOL_NAMES]
+          }
+        : undefined
+    });
+    return;
+  }
+
+  if (group === "runtime" && command === "stop") {
+    const flags = parseFlags(args);
+    writeJson(
+      await stopRuntime({
+        runtime: flags.runtime,
+        cwd: flags.cwd,
+        all: booleanFlag(flags, "all", false),
+        force: booleanFlag(flags, "force", false)
+      })
+    );
+    return;
+  }
+
+  if (group === "runtime" && command === "restart") {
+    const flags = parseFlags(args);
+    writeJson(
+      await restartRuntime({
+        runtime: flags.runtime,
+        cwd: required(flags.cwd, "--cwd"),
+        force: booleanFlag(flags, "force", false)
+      })
+    );
+    return;
+  }
+
+  if (group === "help" || group === "--help" || group === "-h" || group === undefined) {
+    process.stdout.write(helpText());
+    return;
+  }
+
+  throw new Error(`Unknown command: ${[group, command].filter(Boolean).join(" ") || "(missing)"}. Legacy flat CLI commands were removed; use grouped Retinue control-plane commands.`);
 }
 
-async function createOpenCodeBackend(flags: Record<string, string | undefined>): Promise<OpenCodeBackend> {
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    RETINUE_OPENCODE_BASE_URL: flags["opencode-base-url"] ?? process.env.RETINUE_OPENCODE_BASE_URL
-  };
-  const resolution = resolveOpenCodeServerFromEnv(env);
-  const stateDir = resolveStateDir({ explicitStateDir: process.env.RETINUE_STATE_DIR, env: process.env });
-  return new OpenCodeBackend({
-    target: async (cwd) => {
-      const target = await ensureOpenCodeServer(resolution, { stateDir, cwd });
-      return { client: new OpenCodeClient(target.baseUrl, { timeoutMs: resolveHttpTimeoutMs(env) }), baseUrl: target.baseUrl };
-    },
-    stateDir,
-    env: process.env
-  });
-}
-
-function resolveOpenCodeModel(flags: Record<string, string | undefined>): string | undefined {
-  return flags.model ?? process.env.RETINUE_OPENCODE_MODEL;
-}
-
-function resolveOpenCodeAgent(flags: Record<string, string | undefined>): string | undefined {
-  return flags.agent ?? process.env.RETINUE_OPENCODE_AGENT;
-}
-
-async function daemonHealth(global: { daemonUrl?: string; daemonToken?: string; discoverDaemon: boolean }): Promise<unknown> {
-  const source = global.daemonUrl ? "explicit_url" : global.discoverDaemon ? "discovery" : "none";
+async function daemonHealth(options: { daemonUrl?: string; daemonToken?: string; discoverDaemon: boolean }): Promise<unknown> {
+  const source = options.daemonUrl ? "explicit_url" : options.discoverDaemon ? "discovery" : "none";
   if (source === "none") {
     return {
       ok: false,
@@ -209,8 +105,8 @@ async function daemonHealth(global: { daemonUrl?: string; daemonToken?: string; 
     };
   }
 
-  let daemonUrl = global.daemonUrl;
-  let daemonToken = global.daemonToken;
+  let daemonUrl = options.daemonUrl;
+  let daemonToken = options.daemonToken;
   if (!daemonUrl) {
     try {
       const discovery = await discoverDaemon();
@@ -283,6 +179,93 @@ async function readDaemonHealth(daemonUrl: string, source: "explicit_url" | "dis
   }
 }
 
+async function stopRuntime(options: { runtime?: string; cwd?: string; all: boolean; force: boolean }): Promise<unknown> {
+  const runtime = options.runtime ?? "opencode";
+  if (runtime !== "opencode") {
+    return { runtime, status: "unsupported" };
+  }
+  if (options.all !== true && !options.cwd?.trim()) {
+    return {
+      runtime,
+      status: "invalid_request",
+      error: "runtime stop requires --cwd <dir> or --all"
+    };
+  }
+  const stateDir = resolveStateDir({
+    explicitStateDir: process.env.RETINUE_STATE_DIR,
+    env: process.env
+  });
+  return stopManagedOpenCodeServers({ stateDir, cwd: options.cwd, all: options.all, force: options.force, reason: "manual" });
+}
+
+async function restartRuntime(options: { runtime?: string; cwd: string; force: boolean }): Promise<unknown> {
+  const runtime = options.runtime ?? "opencode";
+  if (runtime !== "opencode") {
+    return { runtime, status: "unsupported" };
+  }
+  const resolution = resolveOpenCodeServerFromEnv(process.env);
+  if (resolution.mode === "attach") {
+    return {
+      backend: runtime,
+      status: "not_managed",
+      error: "runtime restart only manages Retinue auto-served OpenCode servers; RETINUE_OPENCODE_BASE_URL is external."
+    };
+  }
+  const stateDir = resolveStateDir({
+    explicitStateDir: process.env.RETINUE_STATE_DIR,
+    env: process.env
+  });
+  const stopped = await stopManagedOpenCodeServers({ stateDir, cwd: options.cwd, force: options.force, reason: "restart" });
+  if (stopped.status === "blocked") {
+    return stopped;
+  }
+  const started = await ensureOpenCodeServer(resolution, { stateDir, cwd: options.cwd });
+  return {
+    backend: runtime,
+    status: "restarted",
+    stopped: stopped.stopped,
+    started: {
+      baseUrl: started.baseUrl,
+      cwd: options.cwd,
+      reusedExisting: started.started !== true
+    }
+  };
+}
+
+async function runPluginSyncCache(args: string[]): Promise<void> {
+  const translated: string[] = [];
+  for (const arg of args) {
+    if (arg === "--all") {
+      translated.push("--include-windows", "--include-wsl");
+      continue;
+    }
+    translated.push(arg);
+  }
+  await execNodeScript(resolvePackageScript("sync-installed-plugin-cache.mjs"), translated);
+}
+
+function resolvePackageScript(name: string): string {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  return path.resolve(here, "..", "scripts", name);
+}
+
+function execNodeScript(scriptPath: string, args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [scriptPath, ...args], {
+      stdio: "inherit",
+      env: process.env
+    });
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`${path.basename(scriptPath)} exited with ${signal ?? code}`));
+    });
+  });
+}
+
 function parseJson(text: string): { parsed: boolean; value: unknown } {
   if (!text.trim()) {
     return { parsed: true, value: null };
@@ -301,13 +284,19 @@ function parseFlags(args: string[]): Record<string, string | undefined> {
     if (!token?.startsWith("--")) {
       continue;
     }
-    flags[token.slice(2)] = args[index + 1];
+    const name = token.slice(2);
+    const value = args[index + 1];
+    if (value === undefined || value.startsWith("--")) {
+      flags[name] = "true";
+      continue;
+    }
+    flags[name] = value;
     index += 1;
   }
   return flags;
 }
 
-function extractGlobalFlags(args: string[]): { args: string[]; daemonUrl?: string; daemonToken?: string; discoverDaemon: boolean } {
+function extractGlobalFlags(args: string[]): CommandContext {
   const remaining: string[] = [];
   let daemonUrl = process.env.RETINUE_DAEMON_URL;
   let daemonToken = process.env.RETINUE_DAEMON_TOKEN;
@@ -315,12 +304,12 @@ function extractGlobalFlags(args: string[]): { args: string[]; daemonUrl?: strin
 
   for (let index = 0; index < args.length; index += 1) {
     if (args[index] === "--daemon-url") {
-      daemonUrl = args[index + 1];
+      daemonUrl = required(args[index + 1], "--daemon-url");
       index += 1;
       continue;
     }
     if (args[index] === "--daemon-token") {
-      daemonToken = args[index + 1];
+      daemonToken = required(args[index + 1], "--daemon-token");
       index += 1;
       continue;
     }
@@ -334,23 +323,6 @@ function extractGlobalFlags(args: string[]): { args: string[]; daemonUrl?: strin
   return { args: remaining, daemonUrl, daemonToken, discoverDaemon };
 }
 
-async function createRetinueFromEnv(global: { daemonUrl?: string; daemonToken?: string; discoverDaemon: boolean }): Promise<RetinueApi> {
-  const discovery = global.daemonUrl ? undefined : global.discoverDaemon ? await discoverDaemon() : undefined;
-  const daemonUrl = global.daemonUrl ?? discovery?.url;
-  if (daemonUrl) {
-    return new DaemonClient(daemonUrl, { timeoutMs: resolveHttpTimeoutMs(process.env), token: global.daemonToken ?? discovery?.token });
-  }
-
-  return new ClaudeRetinue({
-    stateDir: process.env.RETINUE_STATE_DIR,
-    claudeCommand: process.env.RETINUE_CLAUDE_COMMAND,
-    claudePrefixArgs: parsePrefixArgs(process.env.RETINUE_CLAUDE_PREFIX_ARGS),
-    env: process.env,
-    defaultRuntimeTimeoutMs: parseOptionalNumber(process.env.RETINUE_DEFAULT_RUNTIME_TIMEOUT_MS),
-    maxConcurrentJobs: parseOptionalNumber(process.env.RETINUE_MAX_CONCURRENT_JOBS)
-  });
-}
-
 async function discoverDaemon(): Promise<DaemonDiscovery> {
   const stateDir = resolveStateDir({
     explicitStateDir: process.env.RETINUE_STATE_DIR,
@@ -359,35 +331,12 @@ async function discoverDaemon(): Promise<DaemonDiscovery> {
   return readDaemonDiscovery(stateDir);
 }
 
-function parsePrefixArgs(value: string | undefined): string[] {
-  if (!value) {
-    return [];
-  }
-  const trimmed = value.trim();
-  if (trimmed.startsWith("[")) {
-    return JSON.parse(trimmed) as string[];
-  }
-  return [value];
-}
-
-function parseOptionalNumber(value: string | undefined): number | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function parseOptionalNonNegativeNumber(flags: Record<string, string | undefined>, name: string): number | undefined {
-  if (!(name in flags)) {
-    return undefined;
-  }
+function booleanFlag(flags: Record<string, string | undefined>, name: string, defaultValue: boolean): boolean {
   const value = flags[name];
-  const parsed = value === undefined || value.startsWith("--") ? Number.NaN : Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    throw new Error(`--${name} must be a non-negative finite number`);
+  if (value === undefined) {
+    return defaultValue;
   }
-  return parsed;
+  return value === "true" || value === "1";
 }
 
 function required(value: string | undefined, name: string): string {
@@ -403,6 +352,21 @@ function writeJson(value: unknown): void {
 
 function isFailureResult(value: unknown): boolean {
   return typeof value === "object" && value !== null && "ok" in value && (value as { ok?: boolean }).ok === false;
+}
+
+function helpText(): string {
+  return `Usage: retinue <group> <command> [options]
+
+Groups:
+  daemon health                 Check a Retinue daemon by explicit URL or discovery.
+  diagnostics audit-logs        Audit Retinue logs in compact form by default.
+  mcp tools                     Print the default MCP product tool surface.
+  plugin sync-cache             Sync the packaged Retinue plugin cache.
+  runtime stop                  Stop Retinue-managed local runtime servers.
+  runtime restart               Restart a Retinue-managed local runtime server.
+
+Legacy flat commands such as run, wait, result, and opencode-run were removed from the default CLI.
+`;
 }
 
 main().catch((error) => {
