@@ -37,6 +37,7 @@ const OPENCODE_FINAL_ANSWER_ONLY_TOOLS = {
     patch: false,
     task: false
 };
+const OPENCODE_FINAL_ANSWER_ONLY_DISABLED_TOOLS = Object.keys(OPENCODE_FINAL_ANSWER_ONLY_TOOLS);
 const OPENCODE_SOFT_STALL_RESCUE_PROMPT = [
     "Retinue recovery request:",
     "Stop using tools now and produce the final answer from the information already gathered.",
@@ -403,10 +404,16 @@ export class OpenCodeBackend {
             !isSoftStallRescueEligible(diagnostic)) {
             return;
         }
+        const submittedAt = new Date().toISOString();
+        const rescueAgent = resolveSoftStallRescueAgent(meta.agent, this.env);
         const updated = {
             ...meta,
             status: meta.status === "stalled" ? "running" : meta.status,
-            externalRescuePromptSubmittedAt: new Date().toISOString(),
+            externalRescuePromptSubmittedAt: submittedAt,
+            externalSoftStallRescueStrategy: "final_answer_no_tools",
+            externalSoftStallRescueAgent: rescueAgent,
+            externalSoftStallRescueModel: meta.model,
+            externalSoftStallRescueTools: OPENCODE_FINAL_ANSWER_ONLY_DISABLED_TOOLS,
             externalSoftStallRescueSourceReason: diagnostic.stallReason,
             externalSoftStallRescueSourceSummary: diagnostic.stallSummary,
             externalReadOnlyWriteIntentRecoveryJobMessageCount: recoverReadOnlyWriteIntent
@@ -419,7 +426,7 @@ export class OpenCodeBackend {
             await this.clientForMeta(meta).promptAsync(meta.externalSessionId, {
                 prompt: OPENCODE_SOFT_STALL_RESCUE_PROMPT,
                 model: meta.model,
-                agent: resolveSoftStallRescueAgent(meta.agent, this.env),
+                agent: rescueAgent,
                 tools: OPENCODE_FINAL_ANSWER_ONLY_TOOLS
             });
             const submittedDiagnostic = await this.inspectJob(updated);
@@ -1309,6 +1316,11 @@ export class OpenCodeBackend {
                 ? meta.externalSoftStallRescueSourceReason
                 : undefined;
             diagnostic.softStallRescueSourceSummary = meta.externalSoftStallRescueSourceSummary;
+            diagnostic.softStallRescueStrategy = meta.externalSoftStallRescueStrategy;
+            diagnostic.softStallRescueAgent = meta.externalSoftStallRescueAgent;
+            diagnostic.softStallRescueModel = meta.externalSoftStallRescueModel;
+            diagnostic.softStallRescueTools = meta.externalSoftStallRescueTools;
+            diagnostic.softStallRescueSubmittedAt = meta.externalRescuePromptSubmittedAt;
             diagnostic.recoveredFromReadOnlyWriteIntent =
                 meta.readOnly === true &&
                     meta.externalReadOnlyWriteIntentRecoveryJobMessageCount !== undefined &&

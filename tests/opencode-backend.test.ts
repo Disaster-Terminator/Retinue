@@ -2230,6 +2230,9 @@ describe("OpenCodeBackend", () => {
     });
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
+    expect(trace).toContain('"softStallRescueStrategy":"final_answer_no_tools"');
+    expect(trace).toContain('"softStallRescueAgent":"build"');
+    expect(trace).toContain('"softStallRescueTools":["read","glob","grep","list","todoread","todowrite","webfetch","lsp","bash","edit","write","apply_patch","patch","task"]');
   });
 
   it("does not reuse old completed assistant messages for continued jobs", async () => {

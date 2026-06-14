@@ -16,6 +16,20 @@ Use finalization rescue for soft no-final-text cases such as blank or zero-progr
 
 Do not use finalization rescue for malformed tool calls or provider execution failures unless the purpose is only to salvage a clearly bounded advisory summary from existing context.
 
+Finalization rescue is intentionally conservative. It answers only: "Can this same child produce a trustworthy final answer from what it already knows?" It does not mean "continue using tools until the task is done."
+
+## Continue-Task Rescue
+
+Continue-task rescue is a separate possible recovery strategy. It would ask the same OpenCode session to keep working while steering around the observed failure mode, such as avoiding a malformed read call or narrowing inspection paths.
+
+Do not treat continue-task rescue as the default soft-stall behavior. It can spend additional model/tool budget in a session that has already shown unreliable output, so it needs explicit trigger rules, a bounded budget, and diagnostics that distinguish it from finalization rescue.
+
+Until that strategy is designed, Retinue should prefer:
+
+- finalization rescue when enough completed tool progress exists and only final text is missing
+- fresh task-level retry when the execution chain itself is unreliable
+- stalled diagnostics when permissions, provider errors, or malformed tool calls cannot be safely recovered inside the current budget
+
 ## Task-Level Retry Or Reroute
 
 Task-level retry is a new attempt. It applies when the execution chain itself is unreliable, such as malformed read tool calls, provider errors, repeated zero-progress output, or a finalization rescue that itself stalls.
@@ -39,3 +53,19 @@ Malformed read is not valid audit evidence. Retinue should keep classifying it a
 Finalization rescue answers: "Can this same child produce a conclusion from what it already knows?"
 
 Task-level retry answers: "Can Retinue run a new controlled attempt that avoids the observed backend failure mode?"
+
+## Attempt Handoff Capsule
+
+A fresh task-level retry may need useful context from the previous attempt, but Retinue must not copy or trust the whole stalled session.
+
+The handoff snapshot should be a bounded, lossy Retinue Attempt Handoff Capsule. It is generated from OpenCode-native structured messages or Retinue's existing diagnostic summaries, not from raw provider logs. It may include completed tool evidence, file paths, command summaries, permission boundaries, and the normalized stall reason.
+
+The capsule must not include:
+
+- full prompts or full tool outputs
+- secrets, API keys, provider tokens, or raw provider payloads
+- old stalled final text as trusted evidence
+- assistant reasoning as trusted evidence
+- a Retinue-owned replacement for OpenCode session state
+
+The first capsule implementation should not increase retry counts or expand which stalls trigger fresh attempts. It should only improve the information carried by already selected fresh task-level attempts.

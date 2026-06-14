@@ -54,6 +54,17 @@ Problem statuses such as `backend_unreachable`, `not_found`, and `corrupted`, pl
 
 Soft stalls can trigger a same-session final-answer rescue while the wait call still has time. Malformed read output or a failed finalization rescue can trigger a fresh task-level attempt.
 
+Final-answer rescue diagnostics may include:
+
+- `softStallRescueStrategy`: currently `final_answer_no_tools`
+- `softStallRescueAgent`: the OpenCode agent used for the rescue prompt
+- `softStallRescueModel`: the explicit Retinue model override when one was sent
+- `softStallRescueTools`: tool names disabled for the final-answer rescue prompt
+- `softStallRescueSubmittedAt`: when Retinue submitted the rescue prompt
+- `softStallRescueSourceReason` and `softStallRescueSourceSummary`: the original stall being rescued
+
+These fields describe steering submitted through OpenCode's existing session API. They do not mean Retinue changed OpenCode provider configuration, bypassed permissions, or asked the child to continue tool work.
+
 When this happens, output may include:
 
 - `requestedJobId`

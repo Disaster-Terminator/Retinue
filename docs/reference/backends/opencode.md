@@ -4,6 +4,8 @@ The OpenCode backend is a thin lifecycle adapter. It does not configure provider
 
 For local production smoke testing, OpenCode is the preferred first backend. Retinue should reuse the installed OpenCode profile instead of creating a separate child-agent profile.
 
+Recovery follows the product boundary in [Retinue Attempt Recovery](../../explanation/attempt-recovery.md). Retinue may send steering prompts or start bounded fresh attempts through OpenCode's existing session APIs, but it does not require OpenCode source changes, duplicate OpenCode's session model, or treat stalled child text as trusted evidence.
+
 ## Install Assumption
 
 The default v0.2.0 user path assumes the official OpenCode install script:

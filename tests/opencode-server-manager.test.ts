@@ -416,7 +416,7 @@ describe("OpenCode server manager", () => {
       expect(trace).toContain('"event":"opencode_server_idle_shutdown_skipped"');
       expect(trace).not.toContain('"event":"opencode_server_stopped"');
     } finally {
-      target?.child?.kill();
+      await stopTestOpenCodeTarget(target, stateDir, projectDir);
       await fs.rm(stateDir, { recursive: true, force: true });
       await fs.rm(projectDir, { recursive: true, force: true });
     }

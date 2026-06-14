@@ -56728,6 +56728,7 @@ var OPENCODE_FINAL_ANSWER_ONLY_TOOLS = {
   patch: false,
   task: false
 };
+var OPENCODE_FINAL_ANSWER_ONLY_DISABLED_TOOLS = Object.keys(OPENCODE_FINAL_ANSWER_ONLY_TOOLS);
 var OPENCODE_SOFT_STALL_RESCUE_PROMPT = [
   "Retinue recovery request:",
   "Stop using tools now and produce the final answer from the information already gathered.",
@@ -57072,10 +57073,16 @@ var OpenCodeBackend = class {
     if (!meta3.externalSessionId || meta3.externalRescuePromptSubmittedAt || !isSoftStallRescueEligible(diagnostic)) {
       return;
     }
+    const submittedAt = (/* @__PURE__ */ new Date()).toISOString();
+    const rescueAgent = resolveSoftStallRescueAgent(meta3.agent, this.env);
     const updated = {
       ...meta3,
       status: meta3.status === "stalled" ? "running" : meta3.status,
-      externalRescuePromptSubmittedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      externalRescuePromptSubmittedAt: submittedAt,
+      externalSoftStallRescueStrategy: "final_answer_no_tools",
+      externalSoftStallRescueAgent: rescueAgent,
+      externalSoftStallRescueModel: meta3.model,
+      externalSoftStallRescueTools: OPENCODE_FINAL_ANSWER_ONLY_DISABLED_TOOLS,
       externalSoftStallRescueSourceReason: diagnostic.stallReason,
       externalSoftStallRescueSourceSummary: diagnostic.stallSummary,
       externalReadOnlyWriteIntentRecoveryJobMessageCount: recoverReadOnlyWriteIntent ? diagnostic.jobMessageCount ?? meta3.externalReadOnlyWriteIntentRecoveryJobMessageCount : meta3.externalReadOnlyWriteIntentRecoveryJobMessageCount,
@@ -57086,7 +57093,7 @@ var OpenCodeBackend = class {
       await this.clientForMeta(meta3).promptAsync(meta3.externalSessionId, {
         prompt: OPENCODE_SOFT_STALL_RESCUE_PROMPT,
         model: meta3.model,
-        agent: resolveSoftStallRescueAgent(meta3.agent, this.env),
+        agent: rescueAgent,
         tools: OPENCODE_FINAL_ANSWER_ONLY_TOOLS
       });
       const submittedDiagnostic = await this.inspectJob(updated);
@@ -57942,6 +57949,11 @@ ${textWarning2}` : stderr;
       diagnostic.readOnlyWriteIntentRecoveryJobMessageCount = meta3.externalReadOnlyWriteIntentRecoveryJobMessageCount;
       diagnostic.softStallRescueSourceReason = isOpenCodeStallReason(meta3.externalSoftStallRescueSourceReason) ? meta3.externalSoftStallRescueSourceReason : void 0;
       diagnostic.softStallRescueSourceSummary = meta3.externalSoftStallRescueSourceSummary;
+      diagnostic.softStallRescueStrategy = meta3.externalSoftStallRescueStrategy;
+      diagnostic.softStallRescueAgent = meta3.externalSoftStallRescueAgent;
+      diagnostic.softStallRescueModel = meta3.externalSoftStallRescueModel;
+      diagnostic.softStallRescueTools = meta3.externalSoftStallRescueTools;
+      diagnostic.softStallRescueSubmittedAt = meta3.externalRescuePromptSubmittedAt;
       diagnostic.recoveredFromReadOnlyWriteIntent = meta3.readOnly === true && meta3.externalReadOnlyWriteIntentRecoveryJobMessageCount !== void 0 && diagnostic.readOnlyWriteIntent !== true && selectResultMessagesForMeta(jobMessages, meta3).some(isCompletedAssistantMessage);
       diagnostic.messageSummaries = jobMessages.map((message) => ({
         role: message.info?.role,
@@ -59405,6 +59417,11 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
       stallSummary: diagnostic.stallSummary,
       softStallRescueSourceReason: diagnostic.softStallRescueSourceReason,
       softStallRescueSourceSummary: diagnostic.softStallRescueSourceSummary,
+      softStallRescueStrategy: diagnostic.softStallRescueStrategy,
+      softStallRescueAgent: diagnostic.softStallRescueAgent,
+      softStallRescueModel: diagnostic.softStallRescueModel,
+      softStallRescueTools: diagnostic.softStallRescueTools,
+      softStallRescueSubmittedAt: diagnostic.softStallRescueSubmittedAt,
       recoveryStallReason: diagnostic.recoveryStallReason,
       recoveryStallSummary: diagnostic.recoveryStallSummary,
       noCompletedAssistantDurationMs: diagnostic.noCompletedAssistantDurationMs,
@@ -61781,6 +61798,11 @@ function summarizeJobDiagnostic(value) {
     selectedAssistantSha256: stringValue(diagnostic.selectedAssistantSha256),
     stallReason: stringValue(diagnostic.stallReason),
     stallSummary: stringValue(diagnostic.stallSummary),
+    softStallRescueStrategy: stringValue(diagnostic.softStallRescueStrategy),
+    softStallRescueAgent: stringValue(diagnostic.softStallRescueAgent),
+    softStallRescueModel: stringValue(diagnostic.softStallRescueModel),
+    softStallRescueTools: stringArrayValue(diagnostic.softStallRescueTools),
+    softStallRescueSubmittedAt: stringValue(diagnostic.softStallRescueSubmittedAt),
     toolCallAssistantRounds: numberValue(diagnostic.toolCallAssistantRounds),
     failedToolCallAssistantRounds: numberValue(diagnostic.failedToolCallAssistantRounds),
     emptyAssistantRounds: numberValue(diagnostic.emptyAssistantRounds),

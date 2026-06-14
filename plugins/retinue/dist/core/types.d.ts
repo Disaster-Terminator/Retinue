@@ -120,6 +120,10 @@ export interface JobMeta {
     externalSessionDirectory?: string;
     externalMessageId?: string;
     externalRescuePromptSubmittedAt?: string;
+    externalSoftStallRescueStrategy?: "final_answer_no_tools";
+    externalSoftStallRescueAgent?: string;
+    externalSoftStallRescueModel?: string;
+    externalSoftStallRescueTools?: string[];
     externalSoftStallRescueSourceReason?: string;
     externalSoftStallRescueSourceSummary?: string;
     externalReadOnlyWriteIntentRecoveryJobMessageCount?: number;

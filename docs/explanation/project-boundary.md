@@ -41,6 +41,27 @@ Backends must be thin adapters over mature local agent runtimes:
 Retinue should not parse interactive TUI output or reimplement upstream provider/model selection. For OpenCode, provider login, `/connect`, model selection, agent configuration, and endpoint routing remain OpenCode-owned.
 For OpenCode, Claude Code, and Kilo, adapters must leave the model unset unless an operator sets an explicit Retinue deployment override. The normal path is to let the local runtime profile/default model decide routing.
 
+## Recovery Boundary
+
+Retinue may recover from an OpenCode child job that reaches a classified stalled state, but the recovery boundary must stay above OpenCode's execution model.
+
+OpenCode owns:
+
+- provider and model execution, including its native API-error retry policy
+- active profile, agent configuration, tools, plugins, credentials, and endpoint routing
+- permission rules and permission request semantics
+- canonical session, message, tool, child-session, and diff state
+
+Retinue owns:
+
+- MCP job handles, wait/result state, and local artifact paths
+- stalled classification, trust boundaries, recovery budgets, and attempt provenance
+- same-session finalization steering through OpenCode's existing prompt API
+- fresh task-level attempts when the current OpenCode execution chain is no longer trustworthy
+- compact handoff evidence derived from OpenCode-native structured messages
+
+Retinue should not modify OpenCode source, parse provider payloads as its normal recovery path, create a second OpenCode session model, or treat stalled assistant conclusions as evidence. External projects such as `cli-continues` are useful only as references for handoff extraction patterns, not as runtime dependencies in the Retinue product path.
+
 ## Non-Goals
 
 Retinue should not expand into these areas unless explicitly re-scoped:
