@@ -30,6 +30,22 @@ Until that strategy is designed, Retinue should prefer:
 - fresh task-level retry when the execution chain itself is unreliable
 - stalled diagnostics when permissions, provider errors, or malformed tool calls cannot be safely recovered inside the current budget
 
+Current decision:
+
+| Situation | Strategy | Why |
+| --- | --- | --- |
+| `backend_no_final_text` after useful context | Finalization rescue | The child may only need to summarize what it already knows. |
+| `tool_loop_no_completion` after completed tools | Finalization rescue | More tools would likely extend the loop; force a final answer from existing context. |
+| `provider_blank_assistant` or `provider_zero_progress` after tool progress | Finalization rescue first, then fresh task-level retry if rescue fails | The first failure may be a finalization miss; repeated failure means the execution chain is unreliable. |
+| `incomplete_assistant_round` | Finalization rescue while the wait budget allows | The latest assistant round did not finish cleanly, so ask for prose-only completion. |
+| `read_only_write_intent` | Finalization rescue with no tools, advisory-only if no trusted answer appears | The original write-intent history is quarantined; only post-rescue prose can become trusted. |
+| `read_tool_invalid_input` | Fresh task-level retry with handoff capsule | A malformed tool call indicates unreliable execution, not merely missing final text. |
+| `read_tool_stalled` | Stalled diagnostic unless another policy explicitly handles it | A stuck tool executor is not solved by asking for more same-session work. |
+| `external_directory_permission_pending` | Permission attention, not recovery | The supervising agent must decide whether to approve or reject OpenCode's native permission request. |
+| `provider_error` or `provider_reasoning_content_error` | Stalled diagnostic; future reroute candidate | OpenCode/provider configuration or upstream failure should not be hidden as a normal successful result. |
+
+Continue-task rescue remains intentionally unimplemented. It should only be added if logs show a repeated class of recoverable tasks where finalization rescue is too weak and fresh task-level retry is unnecessarily expensive.
+
 ## Task-Level Retry Or Reroute
 
 Task-level retry is a new attempt. It applies when the execution chain itself is unreliable, such as malformed read tool calls, provider errors, repeated zero-progress output, or a finalization rescue that itself stalls.
