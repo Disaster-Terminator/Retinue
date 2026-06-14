@@ -1751,6 +1751,7 @@ describe("OpenCodeBackend", () => {
     });
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "risk review emits empty read input", agent: "explore" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source before malformed read");
     server!.appendMalformedReadToolAssistant(started.externalSessionId!);
     server!.setAutoAssistantResponses(true);
 
@@ -1791,8 +1792,19 @@ describe("OpenCodeBackend", () => {
         expect.objectContaining({ jobId: waited.jobId, attempt: 1, selected: true })
       ]
     });
+    const attemptPrompt = extractPromptText(server!.promptRequests.at(-1));
+    expect(attemptPrompt).toContain("Attempt handoff capsule:");
+    expect(attemptPrompt).toContain(`sourceJobId=${started.jobId}`);
+    expect(attemptPrompt).toContain("trustedFinalText=false");
+    expect(attemptPrompt).toContain("completed tool evidence:");
+    expect(attemptPrompt).toContain("tool=task status=completed");
+    expect(attemptPrompt).toContain("tool=read status=pending");
+    expect(attemptPrompt).toContain("input={}");
+    expect(attemptPrompt).toContain("Previous attempt emitted a malformed OpenCode read tool call");
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"event":"opencode_task_level_attempt_started"');
+    expect(trace).toContain('"handoffCapsule"');
+    expect(trace).toContain('"trustedFinalText":false');
   });
 
   it("reports no usable conclusion when a malformed read retry is exhausted", async () => {

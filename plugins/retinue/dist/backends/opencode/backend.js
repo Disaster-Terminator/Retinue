@@ -133,6 +133,8 @@ const DEFAULT_SOFT_STALL_RESCUE_GRACE_MS = 60_000;
 const DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
 const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 1;
 const DIAGNOSTIC_VALUE_PREVIEW_BYTES = 1000;
+const ATTEMPT_HANDOFF_TOOL_EVIDENCE_LIMIT = 8;
+const ATTEMPT_HANDOFF_PREVIEW_BYTES = 240;
 export class OpenCodeBackend {
     kind;
     client;
@@ -461,7 +463,8 @@ export class OpenCodeBackend {
             return undefined;
         }
         const attemptNumber = (current.attempt ?? 0) + 1;
-        const attemptPrompt = createTaskLevelAttemptPrompt(originalPrompt, recoveryReason, diagnostic);
+        const handoffCapsule = buildAttemptHandoffCapsule(current, recoveryReason, diagnostic);
+        const attemptPrompt = createTaskLevelAttemptPrompt(originalPrompt, recoveryReason, diagnostic, handoffCapsule);
         const started = await this.run({
             cwd: current.cwd,
             prompt: attemptPrompt,
@@ -492,7 +495,8 @@ export class OpenCodeBackend {
             attempt: started.attempt,
             recoveryReason,
             originalStallReason: started.originalStallReason,
-            recoveryStallReason: started.recoveryStallReason
+            recoveryStallReason: started.recoveryStallReason,
+            handoffCapsule
         };
         await this.writeJobTrace("opencode_task_level_attempt_started", updated, await this.inspectJob(updated), event);
         await appendJobDiagnostic(this.stateDir, current.jobId, event);
@@ -2251,7 +2255,7 @@ function selectTaskLevelAttemptReason(meta, diagnostic) {
     }
     return undefined;
 }
-function createTaskLevelAttemptPrompt(originalPrompt, recoveryReason, diagnostic) {
+function createTaskLevelAttemptPrompt(originalPrompt, recoveryReason, diagnostic, handoffCapsule) {
     const stall = diagnostic.stallReason ? `stallReason=${diagnostic.stallReason}` : "stallReason=unknown";
     const source = diagnostic.softStallRescueSourceReason ? ` rescueSource=${diagnostic.softStallRescueSourceReason}` : "";
     const recovery = diagnostic.recoveryStallReason ? ` recovery=${diagnostic.recoveryStallReason}` : "";
@@ -2265,9 +2269,131 @@ function createTaskLevelAttemptPrompt(originalPrompt, recoveryReason, diagnostic
         readHint,
         "Do not modify files. Return a concise final answer with path evidence when applicable.",
         "",
+        formatAttemptHandoffCapsule(handoffCapsule),
+        "",
         "Original task:",
         originalPrompt
     ].join("\n");
+}
+function buildAttemptHandoffCapsule(meta, recoveryReason, diagnostic) {
+    const completedTools = [];
+    const fileEvidence = new Set();
+    const commandEvidence = new Set();
+    const warnings = new Set();
+    for (const summary of diagnostic.messageSummaries ?? []) {
+        if (summary.role !== "assistant") {
+            continue;
+        }
+        for (const part of summary.partSummaries ?? []) {
+            if (part.type !== "tool" || !part.tool) {
+                continue;
+            }
+            const evidence = toolEvidenceFromPart(part);
+            collectInputEvidence(evidence.inputPreview, fileEvidence, commandEvidence);
+            if (part.stateStatus === "completed" || part.stateStatus === "error") {
+                if (completedTools.length < ATTEMPT_HANDOFF_TOOL_EVIDENCE_LIMIT) {
+                    completedTools.push(evidence);
+                }
+                continue;
+            }
+            if (part.stateStatus === "pending" || part.stateStatus === "running") {
+                warnings.add(formatToolEvidence(evidence));
+            }
+        }
+    }
+    if (diagnostic.stallReason === "read_tool_invalid_input" || diagnostic.recoveryStallReason === "read_tool_invalid_input") {
+        warnings.add("Previous attempt emitted a malformed OpenCode read tool call; do not repeat empty read input.");
+    }
+    if (diagnostic.softStallRescueSourceReason) {
+        warnings.add(`Previous same-session finalization rescue followed ${diagnostic.softStallRescueSourceReason}.`);
+    }
+    return {
+        sourceJobId: meta.jobId,
+        sourceSessionId: meta.externalSessionId,
+        cwd: meta.cwd,
+        stallReason: diagnostic.softStallRescueSourceReason ?? diagnostic.stallReason,
+        recoveryReason,
+        trustedFinalText: false,
+        completedTools,
+        fileEvidence: [...fileEvidence].slice(0, ATTEMPT_HANDOFF_TOOL_EVIDENCE_LIMIT),
+        commandEvidence: [...commandEvidence].slice(0, ATTEMPT_HANDOFF_TOOL_EVIDENCE_LIMIT),
+        warnings: [...warnings].slice(0, ATTEMPT_HANDOFF_TOOL_EVIDENCE_LIMIT)
+    };
+}
+function toolEvidenceFromPart(part) {
+    return {
+        tool: part.tool ?? "unknown",
+        callID: part.callID,
+        status: part.stateStatus,
+        inputPreview: part.stateInput?.preview ? truncateUtf8(part.stateInput.preview, ATTEMPT_HANDOFF_PREVIEW_BYTES) : undefined
+    };
+}
+function collectInputEvidence(inputPreview, files, commands) {
+    if (!inputPreview) {
+        return;
+    }
+    const parsed = parseJsonObject(inputPreview);
+    for (const key of ["filePath", "path", "filepath"]) {
+        const value = typeof parsed?.[key] === "string" ? parsed[key] : undefined;
+        if (value) {
+            files.add(value);
+        }
+    }
+    const command = typeof parsed?.command === "string" ? parsed.command : undefined;
+    if (command) {
+        commands.add(truncateUtf8(command, ATTEMPT_HANDOFF_PREVIEW_BYTES));
+    }
+}
+function formatAttemptHandoffCapsule(capsule) {
+    if (!capsule) {
+        return "Attempt handoff capsule: unavailable.";
+    }
+    const lines = [
+        "Attempt handoff capsule:",
+        `- sourceJobId=${capsule.sourceJobId}`,
+        capsule.sourceSessionId ? `- sourceSessionId=${capsule.sourceSessionId}` : undefined,
+        `- cwd=${capsule.cwd}`,
+        capsule.stallReason ? `- stallReason=${capsule.stallReason}` : undefined,
+        `- recoveryReason=${capsule.recoveryReason}`,
+        "- trustedFinalText=false; ignore any previous stalled final answer or assistant conclusion."
+    ].filter((line) => Boolean(line));
+    if (capsule.completedTools.length > 0) {
+        lines.push("- completed tool evidence:");
+        lines.push(...capsule.completedTools.map((tool) => `  - ${formatToolEvidence(tool)}`));
+    }
+    else {
+        lines.push("- completed tool evidence: none captured in bounded diagnostics.");
+    }
+    if (capsule.fileEvidence.length > 0) {
+        lines.push(`- file evidence: ${capsule.fileEvidence.join(", ")}`);
+    }
+    if (capsule.commandEvidence.length > 0) {
+        lines.push(`- command evidence: ${capsule.commandEvidence.join(" | ")}`);
+    }
+    if (capsule.warnings.length > 0) {
+        lines.push("- warnings:");
+        lines.push(...capsule.warnings.map((warning) => `  - ${warning}`));
+    }
+    return lines.join("\n");
+}
+function formatToolEvidence(evidence) {
+    return [
+        `tool=${evidence.tool}`,
+        evidence.status ? `status=${evidence.status}` : undefined,
+        evidence.callID ? `callID=${evidence.callID}` : undefined,
+        evidence.inputPreview ? `input=${evidence.inputPreview}` : undefined
+    ]
+        .filter((part) => Boolean(part))
+        .join(" ");
+}
+function parseJsonObject(value) {
+    try {
+        const parsed = JSON.parse(value);
+        return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : undefined;
+    }
+    catch {
+        return undefined;
+    }
 }
 function summarizeAttempt(meta, selectedAttemptJobId) {
     return {

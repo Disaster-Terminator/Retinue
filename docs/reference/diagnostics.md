@@ -77,6 +77,8 @@ When this happens, output may include:
 
 Trust only the selected completed attempt. Keep the original stalled attempt as diagnostic evidence, not product evidence.
 
+Fresh task-level attempt trace events can include `handoffCapsule`, a bounded summary of previous completed tool evidence and failure warnings. Treat it as prompt handoff context for the new attempt, not as a trusted conclusion from the stalled attempt.
+
 ## Permission Diagnostics
 
 Permission waits include structured `permissionActions` when possible:
