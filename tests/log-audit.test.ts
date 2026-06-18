@@ -287,7 +287,7 @@ describe("Retinue log audit", () => {
     }
   });
 
-  it("suppresses terminal non-completed jobs by default and can include them on request", async () => {
+  it("suppresses historical terminal non-completed jobs but includes them in since-window audits", async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "retinue-log-audit-terminal-"));
     try {
       const tracePath = path.join(tempDir, "retinue.jsonl");
@@ -314,21 +314,20 @@ describe("Retinue log audit", () => {
         })
       );
 
-      const defaultResult = await auditRetinueLogs({ tracePath, stateDir: tempDir, since: new Date("2026-05-25T12:00:00.000Z") });
+      const defaultResult = await auditRetinueLogs({ tracePath, stateDir: tempDir });
       expect(defaultResult.issueCount).toBe(0);
       expect(defaultResult.ignoredTerminalJobIds).toEqual(["job_killed"]);
       expect(renderCompactAuditResult(defaultResult)).toContain(
         "Retinue log audit: issues=0 attention=0 scanned=1 ignoredCompleted=0 ignoredTerminal=1"
       );
 
-      const fullResult = await auditRetinueLogs({
+      const sinceResult = await auditRetinueLogs({
         tracePath,
         stateDir: tempDir,
-        since: new Date("2026-05-25T12:00:00.000Z"),
-        includeTerminal: true
+        since: new Date("2026-05-25T12:00:00.000Z")
       });
-      expect(fullResult.issueCount).toBe(1);
-      expect(fullResult.issues[0].jobIds).toEqual(["job_killed"]);
+      expect(sinceResult.issueCount).toBe(1);
+      expect(sinceResult.issues[0].jobIds).toEqual(["job_killed"]);
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }

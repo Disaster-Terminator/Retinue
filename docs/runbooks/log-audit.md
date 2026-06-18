@@ -14,7 +14,7 @@ If the compact audit is not enough, narrow raw-log inspection by `jobId`, attemp
 pnpm run audit:logs -- --since 2026-05-20T08:00:00.000Z
 ```
 
-The script reads a bounded tail of `logs/retinue.jsonl`, uses a larger default scan window when `--since` is supplied, filters by that timestamp, deduplicates terminal stalled OpenCode diagnostics, and emits concise issue candidates. If Retinue created a selected task-level attempt, the audit first links the root job and attempt jobs from the scanned trace plus available job `meta.json` files, then reports that recovery chain as one issue instead of splitting blank-provider, zero-progress, and malformed-read phases into separate candidates. If a job has a later terminal status in the scanned window or job metadata, earlier transient stalled diagnostics for that job are ignored by default. Completed jobs are counted as `ignoredCompleted`; failed, killed, and timed-out jobs are counted as `ignoredTerminal`. Add `--include-terminal` when you intentionally want historical failed/killed/timed-out jobs in the issue list. OpenCode `external_directory` permission waits are reported as `attention` items rather than backend issues, because the next step is a supervising-agent permission decision through `reply_permission`. Compact agent-facing triage is the default; add `--json` or `--full` when you need the full JSON sample payload.
+The script reads a bounded tail of `logs/retinue.jsonl`, uses a larger default scan window when `--since` is supplied, filters by that timestamp, deduplicates terminal stalled OpenCode diagnostics, and emits concise issue candidates. If Retinue created a selected task-level attempt, the audit first links the root job and attempt jobs from the scanned trace plus available job `meta.json` files, then reports that recovery chain as one issue instead of splitting blank-provider, zero-progress, and malformed-read phases into separate candidates. If a job has a later completed status in the scanned window or job metadata, earlier transient stalled diagnostics for that job are ignored by default. Failed, killed, and timed-out jobs are treated as historical noise only when no `--since` window is provided; with `--since`, recent terminal failures stay visible because they are usually the object of the investigation. Completed jobs are counted as `ignoredCompleted`; failed, killed, and timed-out jobs are counted as `ignoredTerminal`. OpenCode `external_directory` permission waits are reported as `attention` items rather than backend issues, because the next step is a supervising-agent permission decision through `reply_permission`. Compact agent-facing triage is the default; add `--json` or `--full` when you need the full JSON sample payload.
 
 If compact output includes `warning=scan_truncated_before_since`, the audit window did not reach the requested `--since` timestamp. Re-run with larger `--max-bytes` or `--max-lines` before concluding that no issues exist.
 
@@ -28,7 +28,7 @@ Useful options:
 - `--max-lines <n>` and `--max-bytes <n>`: bound input size. Explicit values override the since-aware defaults.
 - `--compact` or `-c`: print short text with issue and attention counts, job IDs, stall/recovery reason, provider/model, agent/mode, cwd, selected attempt markers, and one-line diagnosis. This is the default.
 - `--json` or `--full`: print the full JSON payload.
-- `--include-terminal`: include latest failed, killed, and timed-out jobs instead of treating them as historical noise.
+- `--include-terminal`: include latest failed, killed, and timed-out jobs. This is already the default when `--since` is set.
 
 ## Interpretation
 
@@ -36,7 +36,7 @@ Each issue candidate includes a signature, affected job IDs, first/last seen tim
 
 Attention candidates use the `#A<n>` compact prefix. For `external_directory_permission_pending`, compact output includes `permission[n]` lines with request id, target, patterns, tool call id, recommended reply, and workspace relation. That should usually be enough to decide whether to call `reply_permission` with `once`, `always`, or `reject`; use `list_permissions` only when you need the full `approval` object. Do not treat a permission wait as failed child-agent evidence unless the supervising agent cannot make a permission decision.
 
-If a job briefly emits `opencode_job_stalled` and then later completes after Retinue's recovery prompt, treat the final completed result as the useful evidence. The default audit output intentionally reports only jobs whose latest scanned status is still unresolved. Use `--include-terminal` to review historical terminal failures.
+If a job briefly emits `opencode_job_stalled` and then later completes after Retinue's recovery prompt, treat the final completed result as the useful evidence. Without `--since`, the default audit output intentionally reports only jobs whose latest scanned status is still unresolved. Use `--include-terminal` to review historical terminal failures in broad scans.
 
 For direct-child OpenCode runs, `sample.sessionId` is the result child session and `sample.parentSessionId` is the unprompted relationship container. If the same job also shows a later `build`/`build` candidate, that is usually the no-tools soft-stall rescue prompt, not the original child runner.
 

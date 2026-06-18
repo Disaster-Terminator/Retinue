@@ -59393,7 +59393,7 @@ async function auditRetinueLogs(options = {}) {
   const latestEventByJobId = collectLatestEventByJobId(events);
   const attemptRootByJobId = await collectAttemptRoots(events, stateDir);
   const { issues, attentions } = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId, jobMetaByJobId, {
-    includeTerminal: options.includeTerminal === true
+    includeTerminal: options.includeTerminal === true || options.since !== void 0
   });
   return {
     ok: true,
