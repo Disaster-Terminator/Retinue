@@ -57626,6 +57626,9 @@ ${textWarning2}` : stderr;
     if (!meta3.externalRescuePromptSubmittedAt || diagnostic.recoveredFromReadOnlyWriteIntent === true) {
       return false;
     }
+    if (diagnostic.recoveryStallReason) {
+      return false;
+    }
     if (isHardStallDiagnostic(diagnostic) || !isSoftStallRescueEligible(diagnostic)) {
       return false;
     }

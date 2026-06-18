@@ -1094,6 +1094,46 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"stallReason":"provider_blank_assistant"');
   });
 
+  it("starts a fresh task-level attempt when blank-provider rescue fails before grace expires", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS: "1",
+        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
+        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "60000"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "inspect repeatedly then summarize", agent: "explore" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking status one");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking status two");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking status three");
+
+    await expect(backend.wait({ jobId: started.jobId }, 100)).resolves.toMatchObject({ status: "running" });
+    await waitForPromptCount(2);
+    server!.appendBlankAssistant(started.externalSessionId!);
+
+    const waited = await backend.wait({ jobId: started.jobId }, 1000);
+
+    expect(waited).toMatchObject({
+      requestedJobId: started.jobId,
+      selectedAttemptJobId: expect.stringMatching(/^job_/)
+    });
+    expect(waited.jobId).not.toBe(started.jobId);
+    const attempt = JSON.parse(await fs.readFile(getJobPaths(tempDir, waited.jobId).meta, "utf8")) as JobMeta;
+    expect(attempt).toMatchObject({
+      recoveredFromJobId: started.jobId,
+      attempt: 1,
+      recoveryReason: "rescue_provider_blank_assistant",
+      recoveryPolicy: "fresh_task_attempt",
+      originalStallReason: "tool_loop_no_completion",
+      recoveryStallReason: "provider_blank_assistant"
+    });
+  });
+
   it("starts a fresh task-level attempt for first-turn blank provider output", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
