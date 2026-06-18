@@ -2,7 +2,9 @@
 
 This document records the production-style OpenCode path for `feature/spawn-opencode`.
 
-Retinue stays a thin lifecycle wrapper. OpenCode owns provider configuration, endpoint routing, login, model availability, agent behavior, and permission policy. Retinue owns job metadata, wait/result/continue/kill/cleanup, and MCP/CLI surfaces.
+Retinue stays a thin lifecycle wrapper. OpenCode owns provider configuration, endpoint
+routing, login, model availability, agent behavior, and permission policy. Retinue owns
+job metadata, wait/result/continue/kill/cleanup, and MCP/CLI surfaces.
 
 ## WSL Baseline
 
@@ -18,7 +20,8 @@ Provider base URL: http://localhost:4000/v1
 Secret env name: LITELLM_API_KEY
 ```
 
-Do not copy API keys into this repository. If OpenCode is started non-interactively, load the user's OpenCode env before serving:
+Do not copy API keys into this repository. If OpenCode is started non-interactively,
+load the user's OpenCode env before serving:
 
 ```bash
 set -a
@@ -27,7 +30,9 @@ set +a
 opencode serve --hostname 127.0.0.1 --port 4096
 ```
 
-Windows can either attach to that WSL server through the loopback URL or maintain its own equivalent OpenCode config. The old Windows OpenCode config is not the baseline for this project.
+Windows can either attach to that WSL server through the loopback URL or maintain its
+own equivalent OpenCode config. The old Windows OpenCode config is not the baseline for
+this project.
 
 ## Retinue Configuration
 
@@ -44,7 +49,9 @@ RETINUE_OPENCODE_MODEL=litellm/pro-router
 RETINUE_OPENCODE_AGENT=explore
 ```
 
-Retinue uses OpenCode's built-in `explore` subagent as the default plugin agent. Use OpenCode's built-in `general` subagent when a child is intentionally allowed to edit. `build` is a primary/root agent, not the default writable subagent.
+Retinue uses OpenCode's built-in `explore` subagent as the default plugin agent. Use
+OpenCode's built-in `general` subagent when a child is intentionally allowed to edit.
+`build` is a primary/root agent, not the default writable subagent.
 
 Precedence is:
 
@@ -69,7 +76,9 @@ Build first:
 pnpm run build
 ```
 
-The default CLI is an operator/bootstrap control plane. It does not expose the removed legacy flat job commands such as `opencode-run`, `opencode-wait`, or `opencode-result`. Use the MCP product flow below for child-agent E2E.
+The default CLI is an operator/bootstrap control plane. It does not expose the removed
+legacy flat job commands such as `opencode-run`, `opencode-wait`, or `opencode-result`.
+Use the MCP product flow below for child-agent E2E.
 
 Inspect the packaged MCP product surface:
 
@@ -77,7 +86,8 @@ Inspect the packaged MCP product surface:
 node dist/cli.js mcp tools
 ```
 
-Audit recent Retinue logs without exposing diagnostic tools through the default MCP surface:
+Audit recent Retinue logs without exposing diagnostic tools through the default MCP
+surface:
 
 ```bash
 node dist/cli.js diagnostics audit-logs --since 2026-05-20T08:00:00.000Z
@@ -95,7 +105,8 @@ Restart a Retinue-managed auto-served OpenCode runtime:
 node dist/cli.js runtime restart --cwd /mnt/g/repository/retinue --force
 ```
 
-PowerShell uses the same commands with `$env:RETINUE_OPENCODE_BASE_URL` and `$env:RETINUE_OPENCODE_MODEL` for environment configuration.
+PowerShell uses the same commands with `$env:RETINUE_OPENCODE_BASE_URL` and
+`$env:RETINUE_OPENCODE_MODEL` for environment configuration.
 
 ## Retinue MCP Spawn Flow
 
@@ -108,57 +119,75 @@ This probe validates the OpenCode-first Retinue product surface:
 - `list_permissions`
 - `reply_permission`
 
-It intentionally does not pass a backend, profile, model, OpenCode server, `access_mode`, or `bash_policy` choice through the MCP tool arguments. Retinue uses the deployment-selected OpenCode path and may pass a per-spawn `agent` when a probe needs to exercise a specific OpenCode agent. By default this is Retinue-managed auto-serve; set `RETINUE_OPENCODE_BASE_URL` only when intentionally attaching to an externally managed OpenCode server. If `RETINUE_OPENCODE_BASE_URL` and `RETINUE_OPENCODE_AUTO_SERVE=1` are both present, Retinue tries the explicit URL first and falls back to managed auto-serve when that attach target is unavailable. OpenCode uses its active profile.
+It intentionally does not pass a backend, profile, model, OpenCode server,
+`access_mode`, or `bash_policy` choice through the MCP tool arguments. Retinue uses the
+deployment-selected OpenCode path and may pass a per-spawn `agent` when a probe needs to
+exercise a specific OpenCode agent. By default this is Retinue-managed auto-serve; set
+`RETINUE_OPENCODE_BASE_URL` only when intentionally attaching to an externally managed
+OpenCode server. If `RETINUE_OPENCODE_BASE_URL` and `RETINUE_OPENCODE_AUTO_SERVE=1` are
+both present, Retinue tries the explicit URL first and falls back to managed auto-serve
+when that attach target is unavailable. OpenCode uses its active profile.
 
-For local E2E, set `RETINUE_STATE_DIR` to a known directory. Retinue writes job artifacts under `<stateDir>/jobs/<jobId>/` and diagnostics under `<stateDir>/logs/retinue.jsonl`. The real MCP probe prints both `stateDir` and `tracePath` on success or failure. If `wait_agent` returns `running`, inspect the returned `diagnostic` first, then `stdoutTail` and `stderrTail`; the response also includes `jobDir`, `promptPath`, `stdoutPath`, and `stderrPath` for deeper OpenCode session/message snapshots. A single MCP wait timeout is a polling event rather than a failed child, but repeated blank, zero-progress, incomplete, pending-read, and no-final-text loops are bounded and become diagnostic `stalled` results. If Retinue starts a fresh task-level attempt for malformed read output or a failed finalization rescue, the wait response can re-key from `requestedJobId` to the selected attempt `jobId` and include `selectedAttemptJobId` plus `attemptChain`; treat the original stalled job as non-evidence. If it returns `attentionRequired.kind: "permission"` or `permissionRequired: true`, treat the response as an action-required workflow event, use `list_permissions` when request ids are needed, reply with `reply_permission` using `once`, `always`, or `reject`, then wait again. If it returns `stalled` without `attentionRequired`, inspect `diagnostic.stallReason` and `diagnostic.stallSummary` before deciding whether to retry with a smaller prompt, switch backend configuration, or close the child as non-evidence.
+For local E2E, set `RETINUE_STATE_DIR` to a known directory. Retinue writes job
+artifacts under `<stateDir>/jobs/<jobId>/` and diagnostics under
+`<stateDir>/logs/retinue.jsonl`. The real MCP probe prints both `stateDir` and
+`tracePath` on success or failure. If `wait_agent` returns `running`, inspect the
+returned `diagnostic` first, then `stdoutTail` and `stderrTail`; the response also
+includes `jobDir`, `promptPath`, `stdoutPath`, and `stderrPath` for deeper OpenCode
+session/message snapshots. A single MCP wait timeout is a polling event rather than a
+failed child, but repeated blank, zero-progress, incomplete, pending-read, and
+no-final-text loops are bounded and become diagnostic `stalled` results. If Retinue
+starts a fresh task-level attempt for malformed read output or a failed finalization
+rescue, the wait response can re-key from `requestedJobId` to the selected attempt
+`jobId` and include `selectedAttemptJobId` plus `attemptChain`; treat the original
+stalled job as non-evidence. If it returns `attentionRequired.kind: "permission"` or
+`permissionRequired: true`, treat the response as an action-required workflow event, use
+`list_permissions` when request ids are needed, reply with `reply_permission` using
+`once`, `always`, or `reject`, then wait again. If it returns `stalled` without
+`attentionRequired`, inspect `diagnostic.stallReason` and `diagnostic.stallSummary`
+before deciding whether to retry with a smaller prompt, switch backend configuration, or
+close the child as non-evidence.
 
-Retinue reports OpenCode empty-output or incomplete assistant loops as
-`stalled` only after diagnostic thresholds are crossed. Defaults are tuned to
-keep real child agents responsive within a single MCP wait call: the long
-fallback no-text threshold is 10 minutes, while blank provider placeholders,
-zero-progress assistant placeholders, incomplete latest assistant rounds,
-pending/running `read` tool calls, and completed tool-call loops with no final
-text use 45-second windows. This gives OpenCode a short recovery window after
-tool use while bounding jobs that repeatedly complete tools or leave tools
-pending and never summarize.
+Retinue reports OpenCode empty-output or incomplete assistant loops as `stalled` only
+after diagnostic thresholds are crossed. Defaults are tuned to keep real child agents
+responsive within a single MCP wait call: the long fallback no-text threshold is 10
+minutes, while blank provider placeholders, zero-progress assistant placeholders,
+incomplete latest assistant rounds, pending/running `read` tool calls, and completed
+tool-call loops with no final text use 45-second windows. This gives OpenCode a short
+recovery window after tool use while bounding jobs that repeatedly complete tools or
+leave tools pending and never summarize.
 
-When a caller is still inside its `wait_agent` timeout, recoverable no-final-text
-stalls are deferred, Retinue submits a one-time no-tools final-answer recovery
-prompt to the same OpenCode session, and polling continues so a late final
-assistant answer can still become `completed`; Retinue records
-`opencode_job_soft_stall_deferred` and
-`opencode_job_soft_stall_rescue_submitted` for that path. The recovery prompt
-defaults to OpenCode's `build` agent with all tools disabled because `plan` can
-also stall while summarizing; set `RETINUE_OPENCODE_SOFT_STALL_RESCUE_AGENT=none`
-to keep the original agent, or set it to another OpenCode agent name for local
-experiments. If the rescue round itself produces a new stall reason, Retinue
-exits the rescue-pending state early instead of waiting out the full grace
-window.
+When a caller is still inside its `wait_agent` timeout, recoverable no-final-text stalls
+are deferred, Retinue submits a one-time no-tools final-answer recovery prompt to the
+same OpenCode session, and polling continues so a late final assistant answer can still
+become `completed`; Retinue records `opencode_job_soft_stall_deferred` and
+`opencode_job_soft_stall_rescue_submitted` for that path. The recovery prompt defaults
+to OpenCode's `build` agent with all tools disabled because `plan` can also stall while
+summarizing; set `RETINUE_OPENCODE_SOFT_STALL_RESCUE_AGENT=none` to keep the original
+agent, or set it to another OpenCode agent name for local experiments. If the rescue
+round itself produces a new stall reason, Retinue exits the rescue-pending state early
+instead of waiting out the full grace window.
 
 A separate task-level attempt policy can create a fresh child job/session after
-malformed read output or a failed finalization rescue; the default cap is one
-fresh attempt, and `RETINUE_OPENCODE_TASK_ATTEMPT_MAX=0` disables it.
-Provider/API errors still return immediately as hard stalls and are classified
-as `provider_error` or a narrower provider-specific reason. The product path
-does not send Retinue-owned read-only session permissions or prompt-level tool
-overrides. `stalled` no longer occupies the MCP session active-agent slot, but
-its artifacts and backend session remain available for inspection until explicit
-close/cleanup.
+malformed read output or a failed finalization rescue; the default cap is one fresh
+attempt, and `RETINUE_OPENCODE_TASK_ATTEMPT_MAX=0` disables it. Provider/API errors
+still return immediately as hard stalls and are classified as `provider_error` or a
+narrower provider-specific reason. The product path does not send Retinue-owned
+read-only session permissions or prompt-level tool overrides. `stalled` no longer
+occupies the MCP session active-agent slot, but its artifacts and backend session remain
+available for inspection until explicit close/cleanup.
 
-Use `RETINUE_OPENCODE_STALL_MS`,
-`RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS`,
+Use `RETINUE_OPENCODE_STALL_MS`, `RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS`,
 `RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS`,
-`RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS`,
-`RETINUE_OPENCODE_STALL_READ_TOOL_MS`,
+`RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS`, `RETINUE_OPENCODE_STALL_READ_TOOL_MS`,
 `RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS`,
 `RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS`, and
-`RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS` only when a probe needs a
-different failure window. Structured stall reasons currently include
-`read_only_write_intent`, `provider_error`, `provider_reasoning_content_error`,
-`provider_zero_progress`, `provider_blank_assistant`, `read_tool_stalled`,
+`RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS` only when a probe needs a different
+failure window. Structured stall reasons currently include `read_only_write_intent`,
+`provider_error`, `provider_reasoning_content_error`, `provider_zero_progress`,
+`provider_blank_assistant`, `read_tool_stalled`,
 `external_directory_permission_pending`, `read_tool_invalid_input`,
-`incomplete_assistant_round`, `backend_no_final_text`, and
-`tool_loop_no_completion`.
+`incomplete_assistant_round`, `backend_no_final_text`, and `tool_loop_no_completion`.
 
 ```bash
 pnpm run build
@@ -256,7 +285,8 @@ kill status: killed
 cleanup removed: job_aee04909-0b97-47f0-8c76-c75b2fc86f20, job_04fa0583-3968-429d-801e-242ea6b0ee0d, job_e89aabf1-f6ad-494f-a62f-5c5ef956d757
 ```
 
-OpenCode message metadata confirmed `providerID=litellm` and `modelID=pro-router`. No API key or provider secret is recorded here.
+OpenCode message metadata confirmed `providerID=litellm` and `modelID=pro-router`. No
+API key or provider secret is recorded here.
 
 WSL-side CLI result:
 
@@ -313,7 +343,8 @@ cleanup removed completed jobs: job_e69a6efb-3273-429c-9fd1-f7af8a88bf59, job_07
 cleanup removed killed job on second sequential cleanup: job_1c0bf160-afc6-4e33-972a-33b0369f68be
 ```
 
-The continued job returned the new assistant answer, not the previous assistant answer and not the user prompt.
+The continued job returned the new assistant answer, not the previous assistant answer
+and not the user prompt.
 
 ## 2026-05-07 Retinue 0.1.0 Plan-Agent E2E Result
 
@@ -352,8 +383,13 @@ Observed result:
 }
 ```
 
-This validates the Retinue 0.1.0 default OpenCode `explore` agent path without touching the user's WSL Codex plugin state.
+This validates the Retinue 0.1.0 default OpenCode `explore` agent path without touching
+the user's WSL Codex plugin state.
 
 ## Known Environment Note
 
-During the same session, direct WSL userland commands briefly returned `Wsl/Service/0x8007274c`, while the already running WSL OpenCode server remained reachable over loopback from Windows. WSL later recovered and completed the CLI E2E above. Do not reset or terminate WSL as an automatic fix; confirm with the user before any WSL lifecycle action.
+During the same session, direct WSL userland commands briefly returned
+`Wsl/Service/0x8007274c`, while the already running WSL OpenCode server remained
+reachable over loopback from Windows. WSL later recovered and completed the CLI E2E
+above. Do not reset or terminate WSL as an automatic fix; confirm with the user before
+any WSL lifecycle action.
