@@ -270,11 +270,13 @@ interface OpenCodeJobDiagnostic {
   lastMessagePartTypes?: string[];
   lastMessagePartSummaries?: OpenCodePartSummary[];
   lastMessageTextBytes?: number;
+  lastMessageReasoningTextBytes?: number;
   lastMessageError?: DiagnosticValuePreview;
   lastAssistantFinish?: string;
   lastAssistantPartTypes?: string[];
   lastAssistantPartSummaries?: OpenCodePartSummary[];
   lastAssistantTextBytes?: number;
+  lastAssistantReasoningTextBytes?: number;
   lastAssistantError?: DiagnosticValuePreview;
   lastAssistantProviderID?: string;
   lastAssistantModelID?: string;
@@ -335,6 +337,7 @@ interface OpenCodeJobDiagnostic {
   stallToolCallRoundThreshold?: number;
   stallEmptyAssistantRoundThreshold?: number;
   incompleteAssistantRound?: boolean;
+  incompleteAssistantHasReasoningProgress?: boolean;
   stallReason?: OpenCodeStallReason;
   stallSummary?: string;
   softStallRescueSourceReason?: OpenCodeStallReason;
@@ -1577,11 +1580,13 @@ export class OpenCodeBackend implements AgentBackend {
       diagnostic.lastMessagePartTypes = lastMessage?.parts?.map((part) => part.type ?? "unknown");
       diagnostic.lastMessagePartSummaries = summarizeMessageParts(lastMessage);
       diagnostic.lastMessageTextBytes = Buffer.byteLength(extractMessageText(lastMessage ?? {}), "utf8");
+      diagnostic.lastMessageReasoningTextBytes = extractReasoningTextBytes(lastMessage);
       diagnostic.lastMessageError = diagnosticValuePreview(lastMessage?.info?.error);
       diagnostic.lastAssistantFinish = stringInfo(lastAssistant, "finish");
       diagnostic.lastAssistantPartTypes = lastAssistant?.parts?.map((part) => part.type ?? "unknown");
       diagnostic.lastAssistantPartSummaries = summarizeMessageParts(lastAssistant);
       diagnostic.lastAssistantTextBytes = Buffer.byteLength(latestAssistantMessageText(jobMessages), "utf8");
+      diagnostic.lastAssistantReasoningTextBytes = extractReasoningTextBytes(lastAssistant);
       diagnostic.lastAssistantError = diagnosticValuePreview(lastAssistant?.info?.error);
       diagnostic.lastAssistantProviderID = stringInfo(lastAssistant, "providerID");
       diagnostic.lastAssistantModelID = stringInfo(lastAssistant, "modelID");
@@ -2104,6 +2109,7 @@ function computeStallDiagnostic(
   );
   const lastAssistant = [...activeMessages].reverse().find((message) => message.info?.role === "assistant");
   const incompleteAssistantRound = isIncompleteAssistantMessage(lastAssistant);
+  const incompleteAssistantHasReasoningProgress = incompleteAssistantRound && hasNonEmptyReasoningOnlyProgress(lastAssistant);
   if (
     toolCallAssistantRounds < roundThreshold &&
     failedToolCallAssistantRounds === 0 &&
@@ -2113,7 +2119,7 @@ function computeStallDiagnostic(
     assistantMessageCount > 0 &&
     runningReadToolParts === 0 &&
     pendingExternalDirectoryPermissionSummaries.length === 0 &&
-    !incompleteAssistantRound
+    (!incompleteAssistantRound || incompleteAssistantHasReasoningProgress)
   ) {
     return undefined;
   }
@@ -2135,7 +2141,7 @@ function computeStallDiagnostic(
     runningReadToolParts === 0 &&
     !incompleteAssistantRound &&
     durationMs >= completedToolLoopThresholdMs;
-  const incompleteAssistantStalled = incompleteAssistantRound && durationMs >= incompleteThresholdMs;
+  const incompleteAssistantStalled = incompleteAssistantRound && !incompleteAssistantHasReasoningProgress && durationMs >= incompleteThresholdMs;
   if (
     !emptyAssistantStalled &&
     !blankAssistantStalled &&
@@ -2173,6 +2179,7 @@ function computeStallDiagnostic(
     stallToolCallRoundThreshold: roundThreshold,
     stallEmptyAssistantRoundThreshold: emptyAssistantThreshold,
     incompleteAssistantRound,
+    incompleteAssistantHasReasoningProgress,
     stallReason: selectStallReason({
       emptyAssistantStalled,
       blankAssistantStalled,
@@ -2934,6 +2941,26 @@ function isIncompleteAssistantMessage(message: OpenCodeMessage | undefined): boo
   return partTypes.length === 0 || !partTypes.includes("step-finish");
 }
 
+function hasNonEmptyReasoningOnlyProgress(message: OpenCodeMessage | undefined): boolean {
+  if (message?.info?.role !== "assistant") {
+    return false;
+  }
+  if (!Array.isArray(message.parts) || message.parts.length === 0) {
+    return false;
+  }
+  const hasOnlyReasoningProgressParts = message.parts.every((part) => {
+    const type = part?.type ?? "unknown";
+    if (type === "step-start" || type === "reasoning" || type === "step-finish") {
+      return true;
+    }
+    return type === "text" && Buffer.byteLength(part.text ?? "", "utf8") === 0;
+  });
+  if (!hasOnlyReasoningProgressParts) {
+    return false;
+  }
+  return extractReasoningTextBytes(message) > 0;
+}
+
 function extractMessageText(message: { parts?: Array<{ type?: string; text?: string }> }): string {
   if (!Array.isArray(message.parts)) {
     return "";
@@ -2942,6 +2969,15 @@ function extractMessageText(message: { parts?: Array<{ type?: string; text?: str
     .filter((part) => part?.type === "text" && typeof part.text === "string")
     .map((part) => part.text ?? "")
     .join("");
+}
+
+function extractReasoningTextBytes(message: { parts?: Array<{ type?: string; text?: string }> } | undefined): number {
+  if (!Array.isArray(message?.parts)) {
+    return 0;
+  }
+  return message.parts
+    .filter((part) => part?.type === "reasoning" && typeof part.text === "string")
+    .reduce((total, part) => total + Buffer.byteLength(part.text ?? "", "utf8"), 0);
 }
 
 function stringInfo(message: OpenCodeMessage | undefined, key: string): string | undefined {

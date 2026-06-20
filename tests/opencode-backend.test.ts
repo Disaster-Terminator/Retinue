@@ -2102,6 +2102,41 @@ describe("OpenCodeBackend", () => {
     expect(trace).not.toContain('"event":"opencode_job_stalled"');
   });
 
+  it("keeps non-empty reasoning-only assistant streams running past the incomplete stall window", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "deep model streams reasoning before final text" });
+    server!.appendReasoningOnlyIncompleteAssistant(started.externalSessionId!, "reasoning chunk ".repeat(300));
+
+    const paths = getJobPaths(tempDir, started.jobId);
+    const meta = JSON.parse(await fs.readFile(paths.meta, "utf8")) as typeof started;
+    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 60_000).toISOString() })}\n`, "utf8");
+
+    await expect(backend.wait({ jobId: started.jobId }, 1)).resolves.toMatchObject({ status: "running" });
+    server!.completeSessionWithFinalText(started.externalSessionId!, "late answer after reasoning");
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
+    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
+      status: "completed",
+      parsedStdout: { result: "late answer after reasoning" }
+    });
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).not.toContain('"event":"opencode_job_stalled"');
+    expect(trace).toContain('"lastAssistantProviderID":"litellm-cloud"');
+    expect(trace).toContain('"lastAssistantModelID":"deep"');
+    expect(trace).toContain('"lastAssistantPartTypes":["step-start","reasoning","text"]');
+    expect(trace).toContain('"lastAssistantReasoningTextBytes":4800');
+  });
+
   it("marks default no-final assistant tool rounds as stalled after the bounded tool-loop window", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),

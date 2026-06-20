@@ -28,7 +28,10 @@ For Retinue runtime issues, prefer the bounded audit before raw log reads:
 pnpm run audit:logs -- --since <recent-iso-time>
 ```
 
-The default output is compact. `--since` uses a larger bounded scan window than recent-tail mode; if compact output reports `warning=scan_truncated_before_since`, increase `--max-bytes` or `--max-lines` before treating a zero-issue audit as evidence. Use full JSON only when the compact summary cannot answer the question.
+The default output is compact. `--since` uses a larger bounded scan window than
+recent-tail mode; if compact output reports `warning=scan_truncated_before_since`,
+increase `--max-bytes` or `--max-lines` before treating a zero-issue audit as evidence.
+Use full JSON only when the compact summary cannot answer the question.
 
 ## Stall Reasons
 
@@ -48,11 +51,22 @@ The default output is compact. `--since` uses a larger bounded scan window than 
 
 Treat stalled jobs as terminal attention-required records, not successful child-agent output.
 
-Problem statuses such as `backend_unreachable`, `not_found`, and `corrupted`, plus spawn outcomes such as `resource_exhausted`, are state/read/capacity failures rather than stall reasons. Use them to diagnose Retinue or backend infrastructure, not child-agent evidence.
+Non-empty OpenCode `reasoning` parts are progress evidence, not result evidence. Retinue
+does not return reasoning text as trusted stdout, but it also should not classify an
+unfinished assistant round as stalled only because visible `text` has not appeared yet.
+Compact diagnostics expose `lastAssistantReasoningTextBytes` and
+`incompleteAssistantHasReasoningProgress` when this distinction matters.
+
+Problem statuses such as `backend_unreachable`, `not_found`, and `corrupted`, plus
+spawn outcomes such as `resource_exhausted`, are state/read/capacity failures rather
+than stall reasons. Use them to diagnose Retinue or backend infrastructure, not
+child-agent evidence.
 
 ## Recovery Provenance
 
-Soft stalls can trigger a same-session final-answer rescue while the wait call still has time. Malformed read output or a failed finalization rescue can trigger a fresh task-level attempt.
+Soft stalls can trigger a same-session final-answer rescue while the wait call still has
+time. Malformed read output or a failed finalization rescue can trigger a fresh
+task-level attempt.
 
 Final-answer rescue diagnostics may include:
 

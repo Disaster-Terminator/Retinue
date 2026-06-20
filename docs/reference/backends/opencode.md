@@ -251,16 +251,20 @@ can set `RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS`,
 `RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS`,
 `RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS`, `RETINUE_OPENCODE_STALL_READ_TOOL_MS`,
 `RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS`, or
-`RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS`. If OpenCode attaches a provider/API
-error to an assistant message, Retinue classifies it as `provider_error` and includes
-the redacted error preview in the stalled result, so authentication or router failures
-are not mislabeled as child write intent. Read-only write intent is limited to actual
-write-capable tool calls (`write`, `edit`, or `apply_patch`). OpenCode may attach
-`patch` parts from its snapshot system; Retinue reports those in diagnostics but does
-not treat a `patch` part alone as write intent. If a read-only job attempts a
-write-capable tool, Retinue quarantines that history, submits one no-tools prose-only
-recovery prompt, and trusts only final assistant text produced after the recovery
-boundary. A clean recovery can complete the job with
+`RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS`. Non-empty `reasoning` parts are treated
+as OpenCode/provider progress for an unfinished assistant round, even when visible
+`text` has not started yet. Retinue still does not return reasoning text as trusted
+stdout; it only avoids interrupting the active OpenCode chain with a final-answer
+rescue while reasoning is the only observed progress. If OpenCode attaches a provider/API
+error to an assistant message, Retinue classifies it as `provider_error` and includes the
+redacted error preview in the stalled result, so authentication or router failures are
+not mislabeled as child write intent. Read-only write intent is limited to actual
+write-capable tool calls (`write`, `edit`, or `apply_patch`). OpenCode may attach `patch`
+parts from its snapshot system; Retinue reports those in diagnostics but does not treat a
+`patch` part alone as write intent. If a read-only job attempts a write-capable tool,
+Retinue quarantines that history, submits one no-tools prose-only recovery prompt, and
+trusts only final assistant text produced after the recovery boundary. A clean recovery
+can complete the job with
 `diagnostic.recoveredFromReadOnlyWriteIntent=true`; a second write-capable tool attempt
 keeps the job `stalled`. `stalled` jobs are attention-required terminal jobs for MCP
 slot accounting: they do not occupy Retinue's active child-agent pool, but cleanup still

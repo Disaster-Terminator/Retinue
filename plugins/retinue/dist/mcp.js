@@ -57935,11 +57935,13 @@ ${textWarning2}` : stderr;
       diagnostic.lastMessagePartTypes = lastMessage?.parts?.map((part) => part.type ?? "unknown");
       diagnostic.lastMessagePartSummaries = summarizeMessageParts(lastMessage);
       diagnostic.lastMessageTextBytes = Buffer.byteLength(extractMessageText(lastMessage ?? {}), "utf8");
+      diagnostic.lastMessageReasoningTextBytes = extractReasoningTextBytes(lastMessage);
       diagnostic.lastMessageError = diagnosticValuePreview(lastMessage?.info?.error);
       diagnostic.lastAssistantFinish = stringInfo(lastAssistant, "finish");
       diagnostic.lastAssistantPartTypes = lastAssistant?.parts?.map((part) => part.type ?? "unknown");
       diagnostic.lastAssistantPartSummaries = summarizeMessageParts(lastAssistant);
       diagnostic.lastAssistantTextBytes = Buffer.byteLength(latestAssistantMessageText(jobMessages), "utf8");
+      diagnostic.lastAssistantReasoningTextBytes = extractReasoningTextBytes(lastAssistant);
       diagnostic.lastAssistantError = diagnosticValuePreview(lastAssistant?.info?.error);
       diagnostic.lastAssistantProviderID = stringInfo(lastAssistant, "providerID");
       diagnostic.lastAssistantModelID = stringInfo(lastAssistant, "modelID");
@@ -58376,7 +58378,8 @@ function computeStallDiagnostic(jobMessages, meta3, env, pendingPermissions = []
   );
   const lastAssistant = [...activeMessages].reverse().find((message) => message.info?.role === "assistant");
   const incompleteAssistantRound = isIncompleteAssistantMessage(lastAssistant);
-  if (toolCallAssistantRounds < roundThreshold && failedToolCallAssistantRounds === 0 && emptyAssistantRounds < emptyAssistantThreshold && blankAssistantRounds === 0 && zeroProgressAssistantRounds === 0 && assistantMessageCount > 0 && runningReadToolParts === 0 && pendingExternalDirectoryPermissionSummaries.length === 0 && !incompleteAssistantRound) {
+  const incompleteAssistantHasReasoningProgress = incompleteAssistantRound && hasNonEmptyReasoningOnlyProgress(lastAssistant);
+  if (toolCallAssistantRounds < roundThreshold && failedToolCallAssistantRounds === 0 && emptyAssistantRounds < emptyAssistantThreshold && blankAssistantRounds === 0 && zeroProgressAssistantRounds === 0 && assistantMessageCount > 0 && runningReadToolParts === 0 && pendingExternalDirectoryPermissionSummaries.length === 0 && (!incompleteAssistantRound || incompleteAssistantHasReasoningProgress)) {
     return void 0;
   }
   const startedAt = Date.parse(meta3.createdAt);
@@ -58389,7 +58392,7 @@ function computeStallDiagnostic(jobMessages, meta3, env, pendingPermissions = []
   const readToolInvalidInputStalled = malformedReadToolParts > 0 && durationMs >= readToolThresholdMs;
   const externalDirectoryPermissionStalled = pendingExternalDirectoryPermissionSummaries.length > 0;
   const completedToolLoopStalled = (toolCallAssistantRounds >= roundThreshold || failedToolCallAssistantRounds > 0) && runningReadToolParts === 0 && !incompleteAssistantRound && durationMs >= completedToolLoopThresholdMs;
-  const incompleteAssistantStalled = incompleteAssistantRound && durationMs >= incompleteThresholdMs;
+  const incompleteAssistantStalled = incompleteAssistantRound && !incompleteAssistantHasReasoningProgress && durationMs >= incompleteThresholdMs;
   if (!emptyAssistantStalled && !blankAssistantStalled && !zeroProgressAssistantStalled && !noAssistantOutputStalled && !readToolStalled && !externalDirectoryPermissionStalled && !completedToolLoopStalled && !incompleteAssistantStalled && durationMs < thresholdMs) {
     return void 0;
   }
@@ -58417,6 +58420,7 @@ function computeStallDiagnostic(jobMessages, meta3, env, pendingPermissions = []
     stallToolCallRoundThreshold: roundThreshold,
     stallEmptyAssistantRoundThreshold: emptyAssistantThreshold,
     incompleteAssistantRound,
+    incompleteAssistantHasReasoningProgress,
     stallReason: selectStallReason({
       emptyAssistantStalled,
       blankAssistantStalled,
@@ -59032,11 +59036,36 @@ function isIncompleteAssistantMessage(message) {
   const partTypes = message.parts?.map((part) => part?.type ?? "unknown") ?? [];
   return partTypes.length === 0 || !partTypes.includes("step-finish");
 }
+function hasNonEmptyReasoningOnlyProgress(message) {
+  if (message?.info?.role !== "assistant") {
+    return false;
+  }
+  if (!Array.isArray(message.parts) || message.parts.length === 0) {
+    return false;
+  }
+  const hasOnlyReasoningProgressParts = message.parts.every((part) => {
+    const type = part?.type ?? "unknown";
+    if (type === "step-start" || type === "reasoning" || type === "step-finish") {
+      return true;
+    }
+    return type === "text" && Buffer.byteLength(part.text ?? "", "utf8") === 0;
+  });
+  if (!hasOnlyReasoningProgressParts) {
+    return false;
+  }
+  return extractReasoningTextBytes(message) > 0;
+}
 function extractMessageText(message) {
   if (!Array.isArray(message.parts)) {
     return "";
   }
   return message.parts.filter((part) => part?.type === "text" && typeof part.text === "string").map((part) => part.text ?? "").join("");
+}
+function extractReasoningTextBytes(message) {
+  if (!Array.isArray(message?.parts)) {
+    return 0;
+  }
+  return message.parts.filter((part) => part?.type === "reasoning" && typeof part.text === "string").reduce((total, part) => total + Buffer.byteLength(part.text ?? "", "utf8"), 0);
 }
 function stringInfo(message, key) {
   const value = message?.info?.[key];
@@ -61904,9 +61933,11 @@ function summarizeJobDiagnostic(value) {
     lastMessageFinish: stringValue(diagnostic.lastMessageFinish),
     lastMessagePartTypes: stringArrayValue(diagnostic.lastMessagePartTypes),
     lastMessagePartSummaries: arrayValue(diagnostic.lastMessagePartSummaries),
+    lastMessageReasoningTextBytes: numberValue(diagnostic.lastMessageReasoningTextBytes),
     lastAssistantFinish: stringValue(diagnostic.lastAssistantFinish),
     lastAssistantPartTypes: stringArrayValue(diagnostic.lastAssistantPartTypes),
     lastAssistantPartSummaries: arrayValue(diagnostic.lastAssistantPartSummaries),
+    lastAssistantReasoningTextBytes: numberValue(diagnostic.lastAssistantReasoningTextBytes),
     lastAssistantProviderID: stringValue(diagnostic.lastAssistantProviderID),
     lastAssistantModelID: stringValue(diagnostic.lastAssistantModelID),
     lastAssistantAgent: stringValue(diagnostic.lastAssistantAgent),
@@ -61942,6 +61973,7 @@ function summarizeJobDiagnostic(value) {
     pendingExternalDirectoryPermissions,
     permissionActions: permissionActions.length > 0 ? permissionActions : void 0,
     incompleteAssistantRound: booleanValue(diagnostic.incompleteAssistantRound),
+    incompleteAssistantHasReasoningProgress: booleanValue(diagnostic.incompleteAssistantHasReasoningProgress),
     noCompletedAssistantDurationMs: numberValue(diagnostic.noCompletedAssistantDurationMs),
     stateStatus: stringValue(diagnostic.stateStatus),
     sessionState: diagnostic.sessionState
