@@ -157,20 +157,12 @@ tool-call loops with no final text use 45-second windows. This gives OpenCode a 
 recovery window after tool use while bounding jobs that repeatedly complete tools or
 leave tools pending and never summarize.
 
-When a caller is still inside its `wait_agent` timeout, recoverable no-final-text stalls
-are deferred, Retinue submits a one-time no-tools final-answer recovery prompt to the
-same OpenCode session, and polling continues so a late final assistant answer can still
-become `completed`; Retinue records `opencode_job_soft_stall_deferred` and
-`opencode_job_soft_stall_rescue_submitted` for that path. The recovery prompt defaults
-to OpenCode's `build` agent with all tools disabled because `plan` can also stall while
-summarizing; set `RETINUE_OPENCODE_SOFT_STALL_RESCUE_AGENT=none` to keep the original
-agent, or set it to another OpenCode agent name for local experiments. If the rescue
-round itself produces a new stall reason, Retinue exits the rescue-pending state early
-instead of waiting out the full grace window.
-
-A separate task-level attempt policy can create a fresh child job/session after
-malformed read output or a failed finalization rescue; the default cap is one fresh
-attempt, and `RETINUE_OPENCODE_TASK_ATTEMPT_MAX=0` disables it. Provider/API errors
+Retinue does not submit same-session no-tools rescue prompts, switch the OpenCode
+agent behind the caller, or override child tools to simulate read-only behavior.
+OpenCode owns the active session, agent profile, tool availability, and permission
+engine. Retinue may create a fresh task-level attempt after eligible provider/no-final-text
+stalls or malformed read output; the default cap is one fresh attempt, and
+`RETINUE_OPENCODE_TASK_ATTEMPT_MAX=0` disables it. Provider/API errors
 still return immediately as hard stalls and are classified as `provider_error` or a
 narrower provider-specific reason. The product path does not send Retinue-owned
 read-only session permissions or prompt-level tool overrides. `stalled` no longer
@@ -183,8 +175,8 @@ Use `RETINUE_OPENCODE_STALL_MS`, `RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS`,
 `RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS`,
 `RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS`, and
 `RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS` only when a probe needs a different
-failure window. Structured stall reasons currently include `read_only_write_intent`,
-`provider_error`, `provider_reasoning_content_error`, `provider_zero_progress`,
+failure window. Structured stall reasons currently include `provider_error`,
+`provider_reasoning_content_error`, `provider_zero_progress`,
 `provider_blank_assistant`, `read_tool_stalled`,
 `external_directory_permission_pending`, `read_tool_invalid_input`,
 `incomplete_assistant_round`, `backend_no_final_text`, and `tool_loop_no_completion`.

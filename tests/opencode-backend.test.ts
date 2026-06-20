@@ -289,108 +289,28 @@ describe("OpenCodeBackend", () => {
     );
   });
 
-  it("creates read-only OpenCode sessions with readonly git bash and non-interactive permissions", async () => {
+  it("delegates read-only behavior to the selected OpenCode agent without prompt or tool overrides", async () => {
     const backend = createBackend();
 
     await backend.run({
       cwd: tempDir,
       prompt: "inspect only",
-      readOnly: true,
-      readOnlyPromptContract: true,
-      readOnlyToolDeny: true
+      readOnly: true
     });
 
-    const permissions = server!.sessionRequests.at(-1)?.permission ?? [];
-    expect(server!.sessionRequests.at(-1)).toMatchObject({
-      permission: expect.arrayContaining([
-        { permission: "edit", pattern: "*", action: "deny" },
-        { permission: "write", pattern: "*", action: "deny" },
-        { permission: "apply_patch", pattern: "*", action: "deny" },
-        { permission: "task", pattern: "*", action: "deny" },
-        { permission: "question", pattern: "*", action: "deny" },
-        { permission: "external_directory", pattern: "*", action: "deny" },
-        { permission: "doom_loop", pattern: "*", action: "deny" },
-        { permission: "bash", pattern: "*", action: "deny" },
-        { permission: "bash", pattern: "git diff --cached*", action: "allow" },
-        { permission: "bash", pattern: "git diff --staged*", action: "allow" },
-        { permission: "bash", pattern: "git status --short*", action: "allow" }
-      ])
-    });
-    expect(permissions.findIndex((rule) => rule.permission === "bash" && rule.pattern === "git diff --cached*")).toBeLessThan(
-      permissions.findIndex((rule) => rule.permission === "bash" && rule.pattern === "*")
-    );
-    expect(server!.promptRequests.at(-1)).toMatchObject({
-      tools: {
-        edit: false,
-        write: false,
-        apply_patch: false,
-        task: false
-      }
-    });
-    expect(server!.promptRequests.at(-1)?.tools).not.toHaveProperty("bash", false);
+    expect(server!.promptRequests.at(-1)).toMatchObject({ agent: "explore" });
+    expect(server!.promptRequests.at(-1)).not.toHaveProperty("tools");
     const submittedPrompt = extractPromptText(server!.promptRequests.at(-1));
-    expect(submittedPrompt).toContain("Retinue read-only child agent");
-    expect(submittedPrompt).toContain("Use only OpenCode read, grep, glob, and allowed read-only git bash commands");
-    expect(submittedPrompt).toContain("Allowed bash is limited to read-only git inspection commands");
-    expect(submittedPrompt).toContain("read only a small set of targeted files");
-    expect(submittedPrompt).toContain("Use read serially");
-    expect(submittedPrompt).toContain("Do not emit unified diffs");
-    expect(submittedPrompt).toContain("Do not include patch blocks");
-    expect(submittedPrompt).toContain("For code review, return findings as plain text");
-    expect(submittedPrompt).toContain("If the user provides enough facts");
-    expect(submittedPrompt).toContain("Do not use tools just to confirm prompt-provided facts");
-    expect(submittedPrompt).toContain("Use at most six inspection tool calls");
-    expect(submittedPrompt).toContain("You cannot inspect git history");
-    expect(submittedPrompt).toContain("Before using any tool, classify whether the user task depends on git-only state");
-    expect(submittedPrompt).toContain("You may inspect staged or unstaged diff only with the allowed read-only git commands");
-    expect(submittedPrompt).toContain("outside that allowlist");
-    expect(submittedPrompt).toContain("If the task asks for a diff");
-    expect(submittedPrompt).toContain("Do not call bash except for allowed read-only git inspection commands");
-    expect(submittedPrompt).toContain("inspect only");
+    expect(submittedPrompt).toBe("inspect only");
+    expect(submittedPrompt).not.toContain("Retinue read-only child agent");
   });
 
-  it("can opt read-only OpenCode sessions out of readonly git bash commands", async () => {
-    const backend = createBackend();
-
-    await backend.run({
-      cwd: tempDir,
-      prompt: "inspect staged diff",
-      readOnly: true,
-      readOnlyBashPolicy: "none",
-      readOnlyPromptContract: true,
-      readOnlyToolDeny: true
-    });
-
-    expect(server!.sessionRequests.at(-1)).toMatchObject({
-      permission: expect.arrayContaining([
-        { permission: "patch", pattern: "*", action: "deny" },
-        { permission: "bash", pattern: "*", action: "deny" }
-      ])
-    });
-    expect(server!.sessionRequests.at(-1)).toMatchObject({
-      permission: expect.not.arrayContaining([{ permission: "bash", pattern: "git diff --cached*", action: "allow" }])
-    });
-    expect(server!.promptRequests.at(-1)).toMatchObject({
-      tools: {
-        bash: false,
-        edit: false,
-        write: false,
-        apply_patch: false,
-        patch: false,
-        task: false
-      }
-    });
-    const submittedPrompt = extractPromptText(server!.promptRequests.at(-1));
-    expect(submittedPrompt).toContain("Use only OpenCode read, grep, and glob tools");
-    expect(submittedPrompt).toContain("Do not call bash");
-    expect(submittedPrompt).toContain("Do not enter patch mode");
-  });
-
-  it("does not stall read-only OpenCode jobs only because OpenCode emits patch parts", async () => {
+  it("treats OpenCode patch and write tool parts as diagnostics rather than Retinue read-only policy", async () => {
     const backend = createBackend();
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
     server!.appendPatchAssistant(started.externalSessionId!, "review text");
+    server!.appendWriteIntentAssistant(started.externalSessionId!, "write");
     server!.completeSessionWithFinalText(started.externalSessionId!, "final review");
 
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
@@ -401,12 +321,11 @@ describe("OpenCodeBackend", () => {
     });
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"patchPartCount":1');
-    expect(trace).toContain('"readOnlyPatchPartCount":1');
-    expect(trace).toContain('"readOnlyWriteIntent":false');
+    expect(trace).toContain('"writeIntentToolPartCount":1');
     expect(trace).toContain('"type":"patch"');
   });
 
-  it("classifies OpenCode provider errors before read-only patch diagnostics", async () => {
+  it("classifies OpenCode provider errors without read-only policy overlays", async () => {
     const backend = createBackend();
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
@@ -428,175 +347,8 @@ describe("OpenCodeBackend", () => {
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"stallReason":"provider_error"');
     expect(trace).toContain('"patchPartCount":1');
-    expect(trace).toContain('"readOnlyPatchPartCount":1');
-    expect(trace).toContain('"readOnlyWriteIntent":false');
     expect(trace).toContain("Authentication Error");
     expect(trace).toContain("127.0.0.1:4000");
-  });
-
-  it("stalls read-only OpenCode jobs that attempt write-capable tools", async () => {
-    const backend = createBackend({ RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0" });
-    server!.setAutoAssistantResponses(false);
-    const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
-    server!.appendWriteIntentAssistant(started.externalSessionId!, "write");
-
-    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
-    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
-      status: "stalled",
-      parsedStdout: { result: expect.stringContaining("OpenCode read-only job attempted a write-capable tool") },
-      error: expect.stringContaining("OpenCode read-only job attempted a write-capable tool")
-    });
-    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
-    expect(trace).toContain('"readOnlyWriteIntent":true');
-    expect(trace).toContain('"writeIntentToolPartCount":1');
-    expect(trace).toContain('"tool":"write"');
-  });
-
-  it("returns pre-recovery final text only as advisory when read-only write-tool intent is rejected", async () => {
-    const backend = createBackend({ RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0" });
-    server!.setAutoAssistantResponses(false);
-    const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
-    server!.appendWriteIntentAssistant(started.externalSessionId!, "write");
-    server!.completeSessionWithFinalText(started.externalSessionId!, "final review");
-
-    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
-    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
-      status: "stalled",
-      stdout: "final review",
-      parsedStdout: { result: "final review" },
-      stderr: expect.stringContaining("Retinue returned read-only write-intent text as advisory stdout only"),
-      error: expect.stringContaining("Retinue returned read-only write-intent text as advisory stdout only")
-    });
-  });
-
-  it("returns incomplete read-only write-tool intent text only as advisory when recovery fails", async () => {
-    const backend = createBackend({ RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0" });
-    server!.setAutoAssistantResponses(false);
-    const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
-    server!.appendWriteIntentAssistant(started.externalSessionId!, "write", "Finding: permission order is unsafe.");
-
-    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
-    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
-      status: "stalled",
-      stdout: "Finding: permission order is unsafe.",
-      parsedStdout: { result: "Finding: permission order is unsafe." },
-      stderr: expect.stringContaining("Retinue returned read-only write-intent text as advisory stdout only"),
-      error: expect.stringContaining("Retinue returned read-only write-intent text as advisory stdout only")
-    });
-  });
-
-  it("recovers read-only write-tool intent only from a post-recovery final answer", async () => {
-    const backend = createBackend();
-    server!.setAutoAssistantResponses(false);
-    const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
-    server!.appendWriteIntentAssistant(started.externalSessionId!, "write", "Finding: original write intent should be quarantined.");
-    server!.completeSessionWithFinalText(started.externalSessionId!, "pre-recovery final text");
-    const completeAfterRescue = waitForPromptCount(2).then(() => {
-      server!.completeSessionWithFinalText(started.externalSessionId!, "recovered prose-only review");
-    });
-
-    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
-    await completeAfterRescue;
-    expect(server!.promptRequests).toHaveLength(2);
-    expect(extractPromptText(server!.promptRequests.at(-1))).toContain("Retinue recovery request");
-    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
-      status: "completed",
-      stdout: "recovered prose-only review",
-      parsedStdout: { result: "recovered prose-only review" }
-    });
-    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
-    expect(trace).toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
-    expect(trace).toContain('"recoveredFromReadOnlyWriteIntent":true');
-  });
-
-  it("keeps read-only write-tool intent recovery running until the post-recovery answer arrives", async () => {
-    const backend = createBackend();
-    server!.setAutoAssistantResponses(false);
-    const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
-    server!.appendWriteIntentAssistant(started.externalSessionId!, "write", "Finding: original write intent should be quarantined.");
-
-    await expect(backend.wait({ jobId: started.jobId }, 100)).resolves.toMatchObject({ status: "running" });
-    await waitForPromptCount(2);
-    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "running" });
-
-    server!.completeSessionWithFinalText(started.externalSessionId!, "recovered prose-only review");
-    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
-    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
-      status: "completed",
-      stdout: "recovered prose-only review",
-      parsedStdout: { result: "recovered prose-only review" }
-    });
-  });
-
-  it("keeps read-only jobs stalled when recovery emits another write-tool intent", async () => {
-    const backend = createBackend();
-    server!.setAutoAssistantResponses(false);
-    const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
-    server!.appendWriteIntentAssistant(started.externalSessionId!, "write", "Finding: original write intent.");
-    const writeIntentAfterRescue = waitForPromptCount(2).then(() => {
-      server!.appendWriteIntentAssistant(started.externalSessionId!, "write", "Finding: recovery still tried to write.");
-    });
-
-    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
-    await writeIntentAfterRescue;
-    expect(server!.promptRequests).toHaveLength(2);
-    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
-      status: "stalled",
-      error: expect.stringContaining("OpenCode read-only job attempted a write-capable tool")
-    });
-    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
-    expect(trace).toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
-    expect(trace).toContain('"readOnlyWriteIntent":true');
-  });
-
-  it("returns read-only write-intent text as advisory stdout when recovery has no trusted final text", async () => {
-    const backend = createBackend({
-      RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1",
-      RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
-    });
-    server!.setAutoAssistantResponses(false);
-    const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
-    server!.appendWriteIntentAssistant(started.externalSessionId!, "write", "Finding: original write intent.");
-    const blankAfterRescue = waitForPromptCount(2).then(() => {
-      server!.appendBlankAssistant(started.externalSessionId!);
-    });
-
-    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
-    await blankAfterRescue;
-    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
-      status: "stalled",
-      stdout: "Finding: original write intent.",
-      stderr: expect.stringContaining("Retinue returned read-only write-intent text as advisory stdout only"),
-      error: expect.stringContaining("Retinue returned read-only write-intent text as advisory stdout only")
-    });
-    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
-    expect(trace).toContain('"stallReason":"read_only_write_intent"');
-    expect(trace).toContain('"recoveryStallReason":"provider_blank_assistant"');
-    expect(trace).toContain('"readOnlyAdvisoryText":true');
-  });
-
-  it("flags patch-like text from completed read-only OpenCode jobs without hiding stdout", async () => {
-    const backend = createBackend();
-    server!.setAutoAssistantResponses(false);
-    const started = await backend.run({ cwd: tempDir, prompt: "inspect only", readOnly: true });
-    const text = "Finding: risky change\n\n```diff\n--- a/demo.txt\n+++ b/demo.txt\n@@ -1 +1 @@\n-old\n+new\n```";
-    server!.completeSessionWithFinalText(started.externalSessionId!, text);
-
-    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
-    const result = await backend.result({ jobId: started.jobId });
-    expect(result).toMatchObject({
-      status: "completed",
-      stdout: text,
-      stderr: expect.stringContaining("read-only result may contain patch or write-command text"),
-      parsedStdout: { result: text }
-    });
-    expect(result.error).toBeUndefined();
-
-    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
-    expect(trace).toContain('"readOnlyTextWarning":true');
-    await expect(fs.readFile(getJobPaths(tempDir, started.jobId).stderr, "utf8")).resolves.toContain(
-      "read-only result may contain patch or write-command text"
-    );
   });
 
   it("returns a job handle before a slow OpenCode prompt_async call finishes", async () => {
@@ -794,7 +546,6 @@ describe("OpenCodeBackend", () => {
 
   it("marks reasoning-only stop assistant messages as stalled", async () => {
     const backend = createBackend({
-      RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
       RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
     } as NodeJS.ProcessEnv);
     server!.setAutoAssistantResponses(false);
@@ -842,7 +593,6 @@ describe("OpenCodeBackend", () => {
       env: {
         RETINUE_OPENCODE_STALL_MS: "1",
         RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
         RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
@@ -884,7 +634,6 @@ describe("OpenCodeBackend", () => {
         RETINUE_OPENCODE_STALL_MS: "600000",
         RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS: "1",
         RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
         RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
@@ -905,7 +654,7 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"stallThresholdMs":600000');
   });
 
-  it("starts a fresh task-level attempt when completed tool-loop rescue stays stuck", async () => {
+  it("starts a fresh task-level attempt when completed tool loops stall without final text", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
       baseUrl: server!.url,
@@ -913,8 +662,7 @@ describe("OpenCodeBackend", () => {
       env: {
         RETINUE_OPENCODE_STALL_MS: "600000",
         RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS: "1",
-        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
+        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -922,7 +670,10 @@ describe("OpenCodeBackend", () => {
     server!.appendToolCallAssistant(started.externalSessionId!, "checking status one");
     server!.appendToolCallAssistant(started.externalSessionId!, "checking status two");
     server!.appendToolCallAssistant(started.externalSessionId!, "checking status three");
-    await expect(backend.wait({ jobId: started.jobId }, 100)).resolves.toMatchObject({ status: "running" });
+    await expect(backend.wait({ jobId: started.jobId }, 100)).resolves.toMatchObject({
+      requestedJobId: started.jobId,
+      selectedAttemptJobId: expect.stringMatching(/^job_/)
+    });
     await waitForPromptCount(2);
     server!.setAutoAssistantResponses(true);
 
@@ -937,7 +688,7 @@ describe("OpenCodeBackend", () => {
     expect(attempt).toMatchObject({
       recoveredFromJobId: started.jobId,
       attempt: 1,
-      recoveryReason: "rescue_tool_loop_no_completion",
+      recoveryReason: "tool_loop_no_completion",
       recoveryPolicy: "fresh_task_attempt",
       originalStallReason: "tool_loop_no_completion",
       recoveryStallReason: "tool_loop_no_completion"
@@ -946,7 +697,6 @@ describe("OpenCodeBackend", () => {
 
   it("marks empty stop assistant rounds as stalled with diagnostics", async () => {
     const backend = createBackend({
-      RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
       RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
     } as NodeJS.ProcessEnv);
     server!.setAutoAssistantResponses(false);
@@ -969,7 +719,7 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"lastAssistantPartTypes":["step-start","step-finish"]');
   });
 
-  it("returns running when a recoverable soft stall appears at the wait deadline", async () => {
+  it("can return running at the wait deadline before status records the no-final-text stall", async () => {
     const backend = createBackend();
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "inspect docs and summarize near deadline" });
@@ -978,7 +728,7 @@ describe("OpenCodeBackend", () => {
     }, 20);
 
     await expect(backend.wait({ jobId: started.jobId }, 50)).resolves.toMatchObject({ status: "running" });
-    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "running" });
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "stalled" });
 
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"event":"opencode_job_stalled"');
@@ -992,7 +742,6 @@ describe("OpenCodeBackend", () => {
       stateDir: tempDir,
       env: {
         RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
         RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
@@ -1019,7 +768,6 @@ describe("OpenCodeBackend", () => {
 
   it("uses a short default stall window for blank provider assistant placeholders", async () => {
     const backend = createBackend({
-      RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
       RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
     } as NodeJS.ProcessEnv);
     server!.setAutoAssistantResponses(false);
@@ -1036,14 +784,13 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"blankAssistantStallThresholdMs":45000');
   });
 
-  it("rescues blank provider assistant placeholders after completed tool rounds", async () => {
+  it("starts a fresh task-level attempt for blank provider assistant placeholders after tool rounds", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
-        RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
+        RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -1051,32 +798,30 @@ describe("OpenCodeBackend", () => {
     server!.appendToolCallAssistant(started.externalSessionId!, "checking package docs");
     server!.appendToolCallAssistant(started.externalSessionId!, "checking packaged skill");
     server!.appendBlankAssistant(started.externalSessionId!);
-    const completeAfterRescue = waitForPromptCount(2).then(() => {
-      server!.completeSessionWithFinalText(started.externalSessionId!, "rescued blank-output review");
-    });
+    server!.setAutoAssistantResponses(true);
 
-    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
-    await completeAfterRescue;
-    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
-      status: "completed",
-      parsedStdout: { result: "rescued blank-output review" }
+    const waited = await backend.wait({ jobId: started.jobId }, 1000);
+    expect(waited).toMatchObject({
+      requestedJobId: started.jobId,
+      selectedAttemptJobId: expect.stringMatching(/^job_/)
     });
+    expect(waited.jobId).not.toBe(started.jobId);
 
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
-    expect(trace).toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
     expect(trace).toContain('"stallReason":"provider_blank_assistant"');
     expect(trace).toContain('"blankAssistantRounds":1');
+    expect(trace).toContain('"event":"opencode_task_level_attempt_started"');
     expect(server!.promptRequests).toHaveLength(2);
   });
 
-  it("keeps generic blank-provider recovery running during the rescue grace window", async () => {
+  it("returns stalled for blank provider assistant placeholders when fresh attempts are disabled", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
         RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "60000"
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -1084,26 +829,22 @@ describe("OpenCodeBackend", () => {
     server!.appendToolCallAssistant(started.externalSessionId!, "checking package docs");
     server!.appendBlankAssistant(started.externalSessionId!);
 
-    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "running" });
-    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "running" });
-    expect(server!.promptRequests).toHaveLength(2);
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "stalled" });
+    expect(server!.promptRequests).toHaveLength(1);
 
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
-    expect(trace).toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
-    expect(trace).toContain('"event":"opencode_job_soft_stall_rescue_pending"');
     expect(trace).toContain('"stallReason":"provider_blank_assistant"');
   });
 
-  it("starts a fresh task-level attempt when blank-provider rescue fails before grace expires", async () => {
+  it("starts a fresh task-level attempt for completed tool loops without final text", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
-        RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1",
         RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS: "1",
-        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "60000"
+        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -1111,10 +852,7 @@ describe("OpenCodeBackend", () => {
     server!.appendToolCallAssistant(started.externalSessionId!, "checking status one");
     server!.appendToolCallAssistant(started.externalSessionId!, "checking status two");
     server!.appendToolCallAssistant(started.externalSessionId!, "checking status three");
-
-    await expect(backend.wait({ jobId: started.jobId }, 100)).resolves.toMatchObject({ status: "running" });
-    await waitForPromptCount(2);
-    server!.appendBlankAssistant(started.externalSessionId!);
+    server!.setAutoAssistantResponses(true);
 
     const waited = await backend.wait({ jobId: started.jobId }, 1000);
 
@@ -1127,10 +865,10 @@ describe("OpenCodeBackend", () => {
     expect(attempt).toMatchObject({
       recoveredFromJobId: started.jobId,
       attempt: 1,
-      recoveryReason: "rescue_provider_blank_assistant",
+      recoveryReason: "tool_loop_no_completion",
       recoveryPolicy: "fresh_task_attempt",
       originalStallReason: "tool_loop_no_completion",
-      recoveryStallReason: "provider_blank_assistant"
+      recoveryStallReason: "tool_loop_no_completion"
     });
   });
 
@@ -1168,19 +906,17 @@ describe("OpenCodeBackend", () => {
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"stallReason":"provider_blank_assistant"');
     expect(trace).toContain('"toolCallAssistantRounds":0');
-    expect(trace).not.toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
     expect(trace).toContain('"event":"opencode_task_level_attempt_started"');
     expect(trace).toContain('"recoveryReason":"provider_blank_assistant"');
   });
 
-  it("rescues zero-progress reasoning placeholders after completed tool rounds", async () => {
+  it("starts a fresh task-level attempt for zero-progress reasoning placeholders", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
-        RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
+        RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -1188,36 +924,35 @@ describe("OpenCodeBackend", () => {
     server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
     server!.appendToolCallAssistant(started.externalSessionId!, "checking source two");
     server!.appendZeroProgressReasoningAssistant(started.externalSessionId!);
-    const completeAfterRescue = waitForPromptCount(2).then(() => {
-      server!.completeSessionWithFinalText(started.externalSessionId!, "rescued zero-progress review");
-    });
+    server!.setAutoAssistantResponses(true);
 
-    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
-    await completeAfterRescue;
-    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
-      status: "completed",
-      parsedStdout: { result: "rescued zero-progress review" }
+    const waited = await backend.wait({ jobId: started.jobId }, 1000);
+    expect(waited).toMatchObject({
+      requestedJobId: started.jobId,
+      selectedAttemptJobId: expect.stringMatching(/^job_/)
     });
+    expect(waited.jobId).not.toBe(started.jobId);
 
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
-    expect(trace).toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
     expect(trace).toContain('"stallReason":"provider_zero_progress"');
     expect(trace).toContain('"zeroProgressAssistantRounds":1');
     expect(trace).toContain('"lastAssistantProviderID":"litellm"');
     expect(trace).toContain('"lastAssistantModelID":"semantic-router"');
     expect(trace).toContain('"lastAssistantPartTypes":["step-start","reasoning"]');
     expect(trace).toContain('"textBytes":0');
+    expect(trace).toContain('"event":"opencode_task_level_attempt_started"');
+    expect(trace).toContain('"recoveryReason":"provider_zero_progress"');
     expect(server!.promptRequests).toHaveLength(2);
   });
 
-  it("keeps zero-progress recovery running during the rescue grace window", async () => {
+  it("returns stalled for zero-progress reasoning placeholders when fresh attempts are disabled", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
         RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "60000"
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -1226,58 +961,12 @@ describe("OpenCodeBackend", () => {
     server!.appendToolCallAssistant(started.externalSessionId!, "checking source two");
     server!.appendZeroProgressReasoningAssistant(started.externalSessionId!);
 
-    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "running" });
-    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "running" });
-    expect(server!.promptRequests).toHaveLength(2);
-  });
-
-  it("starts a fresh task-level attempt when zero-progress rescue stays stuck", async () => {
-    const backend = new OpenCodeBackend({
-      client: new OpenCodeClient(server!.url),
-      baseUrl: server!.url,
-      stateDir: tempDir,
-      env: {
-        RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
-      } as NodeJS.ProcessEnv
-    });
-    server!.setAutoAssistantResponses(false);
-    const started = await backend.run({ cwd: tempDir, prompt: "audit keeps thinking without final text", agent: "explore" });
-    server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
-    server!.appendToolCallAssistant(started.externalSessionId!, "checking source two");
-    server!.appendZeroProgressReasoningAssistant(started.externalSessionId!);
-    await expect(backend.wait({ jobId: started.jobId }, 100)).resolves.toMatchObject({ status: "running" });
-    await waitForPromptCount(2);
-    server!.setAutoAssistantResponses(true);
-
-    const waited = await backend.wait({ jobId: started.jobId }, 1000);
-
-    expect(waited).toMatchObject({
-      requestedJobId: started.jobId,
-      selectedAttemptJobId: expect.stringMatching(/^job_/)
-    });
-    expect(waited.jobId).not.toBe(started.jobId);
-    const attempt = JSON.parse(await fs.readFile(getJobPaths(tempDir, waited.jobId).meta, "utf8")) as JobMeta;
-    expect(attempt).toMatchObject({
-      recoveredFromJobId: started.jobId,
-      attempt: 1,
-      recoveryReason: "rescue_provider_zero_progress",
-      recoveryPolicy: "fresh_task_attempt",
-      originalStallReason: "provider_zero_progress",
-      recoveryStallReason: "provider_zero_progress"
-    });
-    server!.completeSession(attempt.externalSessionId!);
-    await expect(backend.result({ jobId: waited.jobId })).resolves.toMatchObject({
-      attemptChain: [
-        expect.objectContaining({ jobId: started.jobId, attempt: 0, status: "stalled" }),
-        expect.objectContaining({ jobId: waited.jobId, attempt: 1, selected: true })
-      ]
-    });
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
 
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
-    expect(trace).toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
-    expect(trace).toContain('"event":"opencode_task_level_attempt_started"');
-    expect(trace).toContain('"recoveryReason":"rescue_provider_zero_progress"');
+    expect(trace).toContain('"stallReason":"provider_zero_progress"');
+    expect(trace).not.toContain('"event":"opencode_task_level_attempt_started"');
+    expect(server!.promptRequests).toHaveLength(1);
   });
 
   it("prefers late root completion over a selected task-level attempt", async () => {
@@ -1286,17 +975,13 @@ describe("OpenCodeBackend", () => {
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
-        RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0"
+        RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
     const started = await backend.run({ cwd: tempDir, prompt: "audit eventually completes on root", agent: "explore" });
     server!.appendToolCallAssistant(started.externalSessionId!, "checking source");
     server!.appendZeroProgressReasoningAssistant(started.externalSessionId!);
-    await expect(backend.wait({ jobId: started.jobId }, 100)).resolves.toMatchObject({ status: "running" });
-    await waitForPromptCount(2);
-
     const selected = await backend.wait({ jobId: started.jobId }, 200);
 
     expect(selected).toMatchObject({
@@ -1324,56 +1009,12 @@ describe("OpenCodeBackend", () => {
     expect(result.selectedAttemptJobId).toBeUndefined();
   });
 
-  it("does not keep deferring an expired zero-progress rescue", async () => {
-    const backend = new OpenCodeBackend({
-      client: new OpenCodeClient(server!.url),
-      baseUrl: server!.url,
-      stateDir: tempDir,
-      env: {
-        RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "1"
-      } as NodeJS.ProcessEnv
-    });
-    server!.setAutoAssistantResponses(false);
-    const started = await backend.run({ cwd: tempDir, prompt: "audit expires after rescue", agent: "explore" });
-    server!.appendToolCallAssistant(started.externalSessionId!, "checking source");
-    server!.appendZeroProgressReasoningAssistant(started.externalSessionId!);
-    await expect(backend.wait({ jobId: started.jobId }, 100)).resolves.toMatchObject({ status: "running" });
-    await waitForPromptCount(2);
-
-    const paths = getJobPaths(tempDir, started.jobId);
-    const rescued = JSON.parse(await fs.readFile(paths.meta, "utf8")) as JobMeta;
-    await fs.writeFile(
-      paths.meta,
-      `${JSON.stringify({
-        ...rescued,
-        status: "stalled",
-        externalRescuePromptSubmittedAt: new Date(Date.now() - 60_000).toISOString()
-      })}\n`,
-      "utf8"
-    );
-    server!.setAutoAssistantResponses(true);
-
-    const waited = await backend.wait({ jobId: started.jobId }, 1000);
-
-    expect(waited).toMatchObject({
-      requestedJobId: started.jobId,
-      selectedAttemptJobId: expect.stringMatching(/^job_/),
-      attemptChain: [
-        expect.objectContaining({ jobId: started.jobId, attempt: 0 }),
-        expect.objectContaining({ attempt: 1, recoveryReason: "rescue_provider_zero_progress", selected: true })
-      ]
-    });
-    expect(waited.jobId).not.toBe(started.jobId);
-  });
-
   it("marks default zero-progress placeholders as stalled after the bounded no-progress window", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
         RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
@@ -1406,7 +1047,6 @@ describe("OpenCodeBackend", () => {
   it("marks unknown-finish empty step-finish assistant rounds as zero-progress", async () => {
     const backend = createBackend({
       RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
-      RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
       RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
     } as NodeJS.ProcessEnv);
     server!.setAutoAssistantResponses(false);
@@ -1676,7 +1316,6 @@ describe("OpenCodeBackend", () => {
       env: {
         RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1",
         RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS: "1",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
         RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
@@ -1889,7 +1528,7 @@ describe("OpenCodeBackend", () => {
     expect(result.stdout).toContain("recoveryStall=read_tool_invalid_input");
   });
 
-  it("preserves the source stall reason when a soft-stall rescue stalls in a read tool", async () => {
+  it("keeps blank provider stalls on the original reason when fresh attempts are disabled", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
       baseUrl: server!.url,
@@ -1897,7 +1536,6 @@ describe("OpenCodeBackend", () => {
       env: {
         RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1",
         RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "1000",
         RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
@@ -1905,23 +1543,16 @@ describe("OpenCodeBackend", () => {
     const started = await backend.run({ cwd: tempDir, prompt: "review stalls blank after tool progress" });
     server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
     server!.appendBlankAssistant(started.externalSessionId!);
-    const readAfterRescue = waitForPromptCount(2).then(() => {
-      server!.appendPendingReadToolAssistant(started.externalSessionId!);
-    });
 
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
-    await readAfterRescue;
     const result = await backend.result({ jobId: started.jobId });
     expect(result.status).toBe("stalled");
-    expect(result.stdout).toContain("pending/running read tool call");
-    expect(result.stdout).toContain("rescueSource=provider_blank_assistant recovery=read_tool_stalled");
+    expect(result.stdout).toContain("blank assistant placeholder");
     expect(result.stdout).toContain("provider=litellm model=semantic-router agent=plan mode=plan");
 
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
-    expect(trace).toContain('"softStallRescueSourceReason":"provider_blank_assistant"');
-    expect(trace).toContain('"recoveryStallReason":"read_tool_stalled"');
-    const persisted = JSON.parse(await fs.readFile(getJobPaths(tempDir, started.jobId).meta, "utf8")) as typeof started;
-    expect(persisted.externalSoftStallRescueSourceReason).toBe("provider_blank_assistant");
+    expect(trace).toContain('"stallReason":"provider_blank_assistant"');
+    expect(server!.promptRequests).toHaveLength(1);
   });
 
   it("does not submit no-tools rescue for stalled read tool executor calls", async () => {
@@ -1942,7 +1573,6 @@ describe("OpenCodeBackend", () => {
     expect(server!.promptRequests).toHaveLength(1);
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"stallReason":"read_tool_stalled"');
-    expect(trace).not.toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
   });
 
   it("marks incomplete assistant tool rounds as stalled before the long-duration threshold", async () => {
@@ -1954,7 +1584,6 @@ describe("OpenCodeBackend", () => {
         RETINUE_OPENCODE_STALL_MS: "600000",
         RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS: "1",
         RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
         RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
@@ -2045,7 +1674,6 @@ describe("OpenCodeBackend", () => {
       stateDir: tempDir,
       env: {
         RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
         RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
@@ -2075,7 +1703,6 @@ describe("OpenCodeBackend", () => {
       stateDir: tempDir,
       env: {
         RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
         RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
@@ -2144,7 +1771,6 @@ describe("OpenCodeBackend", () => {
       stateDir: tempDir,
       env: {
         RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "0",
         RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
@@ -2188,14 +1814,15 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"stateStatus":"running"');
   });
 
-  it("recovers a stalled OpenCode job when the backend later produces a final result", async () => {
+  it("promotes a status-observed stalled OpenCode job when the backend later produces a final result", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
         RETINUE_OPENCODE_STALL_MS: "1",
-        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3"
+        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -2206,10 +1833,9 @@ describe("OpenCodeBackend", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 5));
 
-    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "running" });
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "stalled" });
     server!.completeSessionWithFinalText(started.externalSessionId!, "final audit result");
 
-    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
       status: "completed",
       parsedStdout: { result: "final audit result" }
@@ -2237,30 +1863,26 @@ describe("OpenCodeBackend", () => {
       server!.completeSessionWithFinalText(started.externalSessionId!, "late wait result");
     }, 250);
 
-    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
-      status: "completed",
-      parsedStdout: { result: "late wait result" }
+      status: "stalled"
     });
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
-    expect(trace).toContain('"event":"opencode_job_soft_stall_deferred"');
-    expect(trace).toContain('"event":"opencode_job_status_changed"');
-    expect(trace).toContain('"toStatus":"completed"');
+    expect(trace).toContain('"event":"opencode_job_stalled"');
   });
 
-  it("does not return early while a soft-stall rescue can still expire within the wait budget", async () => {
+  it("returns stalled for zero-progress assistant output when fresh attempts are disabled", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
         RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
-        RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: "20",
         RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
-    const started = await backend.run({ cwd: tempDir, prompt: "complex audit rescue remains blank" });
+    const started = await backend.run({ cwd: tempDir, prompt: "complex audit remains blank" });
     server!.appendToolCallAssistant(started.externalSessionId!, "checking source before zero progress");
     server!.appendZeroProgressReasoningAssistant(started.externalSessionId!);
 
@@ -2268,12 +1890,11 @@ describe("OpenCodeBackend", () => {
 
     await expect(backend.wait({ jobId: started.jobId }, 250)).resolves.toMatchObject({ status: "stalled" });
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
-    expect(trace).toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
-    expect(trace).toContain('"event":"opencode_job_soft_stall_deferred"');
     expect(trace).toContain('"event":"opencode_job_stalled"');
+    expect(trace).toContain('"stallReason":"provider_zero_progress"');
   });
 
-  it("submits a no-tools final-answer rescue prompt for recoverable OpenCode stalls", async () => {
+  it("starts a fresh task-level attempt for recoverable OpenCode stalls", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
       baseUrl: server!.url,
@@ -2284,42 +1905,24 @@ describe("OpenCodeBackend", () => {
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
-    const started = await backend.run({ cwd: tempDir, prompt: "complex audit needs rescue" });
+    const started = await backend.run({ cwd: tempDir, prompt: "complex audit needs fresh attempt" });
     server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
     server!.appendToolCallAssistant(started.externalSessionId!, "checking source two");
     server!.appendToolCallAssistant(started.externalSessionId!, "checking source three");
-    const completeAfterRescue = waitForPromptCount(2).then(() => {
-      server!.completeSessionWithFinalText(started.externalSessionId!, "rescued final answer");
-    });
+    server!.setAutoAssistantResponses(true);
 
     await new Promise((resolve) => setTimeout(resolve, 5));
 
-    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
-    await completeAfterRescue;
+    const waited = await backend.wait({ jobId: started.jobId }, 1000);
+    expect(waited).toMatchObject({
+      requestedJobId: started.jobId,
+      selectedAttemptJobId: expect.stringMatching(/^job_/)
+    });
     expect(server!.promptRequests).toHaveLength(2);
-    expect(extractPromptText(server!.promptRequests.at(-1))).toContain("Retinue recovery request");
-    expect(server!.promptRequests.at(-1)).toMatchObject({
-      agent: "build",
-      tools: {
-        read: false,
-        grep: false,
-        glob: false,
-        bash: false,
-        edit: false,
-        write: false,
-        patch: false,
-        task: false
-      }
-    });
-    await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
-      status: "completed",
-      parsedStdout: { result: "rescued final answer" }
-    });
+    expect(extractPromptText(server!.promptRequests.at(-1))).toContain("Retinue task-level retry request");
+    expect(server!.promptRequests.at(-1)?.tools).toBeUndefined();
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
-    expect(trace).toContain('"event":"opencode_job_soft_stall_rescue_submitted"');
-    expect(trace).toContain('"softStallRescueStrategy":"final_answer_no_tools"');
-    expect(trace).toContain('"softStallRescueAgent":"build"');
-    expect(trace).toContain('"softStallRescueTools":["read","glob","grep","list","todoread","todowrite","webfetch","lsp","bash","edit","write","apply_patch","patch","task"]');
+    expect(trace).toContain('"event":"opencode_task_level_attempt_started"');
   });
 
   it("does not reuse old completed assistant messages for continued jobs", async () => {
@@ -2394,9 +1997,9 @@ describe("OpenCodeBackend", () => {
     expect(continued.readOnly).toBe(true);
     expect(server!.sessionRequests.at(-1)).toMatchObject({
       permission: expect.arrayContaining([
-        { permission: "edit", pattern: "*", action: "deny" },
-        { permission: "write", pattern: "*", action: "deny" },
-        { permission: "apply_patch", pattern: "*", action: "deny" }
+        { permission: "edit", pattern: "blocked-by-plan", action: "deny" },
+        { permission: "todowrite", pattern: "*", action: "deny" },
+        { permission: "task", pattern: "*", action: "deny" }
       ])
     });
     await expect(backend.result({ jobId: continued.jobId })).resolves.toMatchObject({

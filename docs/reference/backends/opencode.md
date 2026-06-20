@@ -142,7 +142,6 @@ RETINUE_OPENCODE_COMMAND=opencode
 RETINUE_OPENCODE_HOST=127.0.0.1
 RETINUE_OPENCODE_PORT=4096
 RETINUE_OPENCODE_SERVER_IDLE_MS=30000
-RETINUE_OPENCODE_SOFT_STALL_RESCUE_AGENT=build
 ```
 
 When `RETINUE_OPENCODE_PORT` is explicit, Retinue does not silently fall back to another
@@ -214,27 +213,18 @@ response has returned, the job moves to `failed` and writes `opencode_job_prompt
 diagnostics under the job directory and global trace.
 
 If OpenCode returns assistant rounds with no visible text, Retinue keeps them out of
-successful results and separates recoverable soft stalls from hard stalls. Recoverable
-no-final-text stalls include blank provider placeholders, zero-progress assistant
-placeholders, incomplete latest assistant rounds, completed tool-call loops, and empty
-`finish=stop` assistant rounds.
+successful results. No-final-text stalls include blank provider placeholders,
+zero-progress assistant placeholders, incomplete latest assistant rounds, completed
+tool-call loops, and empty `finish=stop` assistant rounds.
 
-While the current `wait_agent` call still has time, Retinue defers those soft stalls,
-submits one no-tools final-answer recovery prompt to the same OpenCode session, and
-continues polling so a late final answer can still become `completed`. The recovery
-prompt defaults to OpenCode's `build` agent because `plan` can also stall while
-summarizing; set `RETINUE_OPENCODE_SOFT_STALL_RESCUE_AGENT` to another agent name for
-experiments, or to `none`, `0`, or `false` to keep the original agent. Retinue records
-`opencode_job_soft_stall_deferred` and `opencode_job_soft_stall_rescue_submitted` for
-this path.
-
-If the rescue round itself produces a new stall reason, Retinue stops treating the
-rescue as pending even if the grace window has not expired, then moves to the configured
-fresh-attempt path or a stalled non-evidence result. If that same-session rescue or a
-malformed read call proves the execution chain is unreliable, Retinue may start one
-fresh task-level attempt with a new OpenCode child job/session. The original job remains
-`stalled` and non-evidence; the wait response is re-keyed to the selected attempt and
-includes `requestedJobId`, `selectedAttemptJobId`, and `attemptChain` provenance.
+Retinue does not submit a same-session no-tools recovery prompt, does not switch the
+OpenCode agent behind the caller's back, and does not override the child's tool set to
+simulate read-only behavior. OpenCode owns the active session, agent profile,
+permission engine, and tool availability. Retinue observes the resulting session and,
+when configured retry policy allows it, may start one fresh task-level attempt with a
+new OpenCode child job/session. The original job remains `stalled` and non-evidence;
+the wait response is re-keyed to the selected attempt and includes `requestedJobId`,
+`selectedAttemptJobId`, and `attemptChain` provenance.
 
 Set `RETINUE_OPENCODE_TASK_ATTEMPT_MAX=0` to disable fresh task attempts, or raise it
 only for controlled experiments. If the selected fresh attempt also stalls, the stalled
@@ -255,18 +245,14 @@ can set `RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS`,
 as OpenCode/provider progress for an unfinished assistant round, even when visible
 `text` has not started yet. Retinue still does not return reasoning text as trusted
 stdout; it only avoids interrupting the active OpenCode chain with a final-answer
-rescue while reasoning is the only observed progress. If OpenCode attaches a provider/API
+classification while reasoning is the only observed progress. If OpenCode attaches a provider/API
 error to an assistant message, Retinue classifies it as `provider_error` and includes the
 redacted error preview in the stalled result, so authentication or router failures are
-not mislabeled as child write intent. Read-only write intent is limited to actual
-write-capable tool calls (`write`, `edit`, or `apply_patch`). OpenCode may attach `patch`
-parts from its snapshot system; Retinue reports those in diagnostics but does not treat a
-`patch` part alone as write intent. If a read-only job attempts a write-capable tool,
-Retinue quarantines that history, submits one no-tools prose-only recovery prompt, and
-trusts only final assistant text produced after the recovery boundary. A clean recovery
-can complete the job with
-`diagnostic.recoveredFromReadOnlyWriteIntent=true`; a second write-capable tool attempt
-keeps the job `stalled`. `stalled` jobs are attention-required terminal jobs for MCP
+not mislabeled as child write intent. OpenCode may attach `patch` parts from its snapshot
+system or report write-capable tool parts in its message stream. Retinue reports those as
+neutral diagnostics (`patchPartCount`, `writeIntentToolPartCount`) but does not enforce a
+separate read-only policy on top of OpenCode's native agent/profile permissions.
+`stalled` jobs are attention-required terminal jobs for MCP
 slot accounting: they do not occupy Retinue's active child-agent pool, but cleanup still
 preserves their artifacts until the caller explicitly closes or removes them. If only
 `status` has observed a recoverable stall, a later OpenCode final answer can still
@@ -275,8 +261,8 @@ OpenCode messages do not promote that same Retinue job to `completed` or overwri
 persisted stalled result.
 
 Stall diagnostics include a compact `stallReason` and `stallSummary` when Retinue can
-classify the failure. Current reason values are `read_only_write_intent`,
-`provider_error`, `provider_reasoning_content_error`, `provider_blank_assistant`,
+classify the failure. Current reason values are `provider_error`,
+`provider_reasoning_content_error`, `provider_blank_assistant`,
 `provider_zero_progress`, `read_tool_stalled`, `read_tool_invalid_input`,
 `incomplete_assistant_round`, `backend_no_final_text`, `tool_loop_no_completion`, and
 `external_directory_permission_pending`. A `read_tool_stalled` diagnostic also includes
@@ -290,24 +276,16 @@ handled as provider/router configuration evidence. If a selected fresh attempt a
 stalls, the result keeps `status: "stalled"` and includes the attempt-exhausted
 explanation in stdout/stderr rather than manufacturing a trusted answer from incomplete
 evidence. Stalled result diagnostics also expose `selectedAssistantTextBytes` and
-`selectedAssistantSha256` when Retinue captured visible assistant text. If read-only
-write-tool recovery does not produce trusted final text, Retinue can still return the
-visible child text as advisory stdout while keeping the job `stalled`; diagnostics mark
-this with `readOnlyAdvisoryText`, and `readOnlyTextWarning` /
-`readOnlyTextWarningSummary` tell callers not to treat it as executable or trusted
-review evidence. These are backend-observation labels, not provider-specific
+`selectedAssistantSha256` when Retinue captured visible assistant text. These are
+backend-observation labels, not provider-specific
 configuration; for example, `provider_zero_progress` can describe any OpenCode provider
 or model router that produces zero useful assistant text after tool calls.
 
-Soft stall reasons are deferred within the active wait timeout:
-`provider_blank_assistant`, `provider_zero_progress`, `incomplete_assistant_round`,
-`backend_no_final_text`, and `tool_loop_no_completion`. `read_only_write_intent` is
-recoverable once through the no-tools final-answer prompt, then becomes a hard stall if
-recovery repeats the write intent. `read_tool_stalled`, `read_tool_invalid_input`,
+Provider/no-final-text stall reasons may trigger the separate fresh task-level attempt
+policy when the attempt budget allows it. `read_tool_stalled`, `read_tool_invalid_input`,
 `provider_error`, and `provider_reasoning_content_error` return as stalled diagnostics
-without a no-tools rescue prompt. `read_tool_invalid_input` and failed finalization
-rescue paths can trigger the separate fresh task-level attempt policy; this creates a
-new job rather than promoting the original stalled job.
+without a same-session recovery prompt. Fresh attempts create new jobs rather than
+promoting the original stalled job.
 
 ## Diagnostics
 

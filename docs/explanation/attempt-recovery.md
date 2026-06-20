@@ -1,87 +1,76 @@
 # Retinue Attempt Recovery
 
-Retinue has two different recovery problems and must keep them separate.
+Retinue recovery is deliberately outside the active backend session. The backend owns
+provider, model, tools, permissions, and agent behavior. Retinue owns job provenance,
+resource accounting, stalled diagnostics, and retry bookkeeping.
 
 ## Primary Run
 
-The primary run is the normal Retinue product path: spawn one backend-selected child agent and let the local backend runtime own provider, model, tools, permissions, and agent behavior. A successful primary run returns the child result directly.
+The primary run is the normal product path: spawn one backend-selected child agent and
+let the local backend runtime execute it. A successful primary run returns the child
+result directly.
 
-## Finalization Rescue
+For OpenCode, Retinue does not add a read-only prompt contract, does not override the
+child tool set, and does not classify write-capable tool parts as a Retinue policy
+violation. Use OpenCode-native agents such as `explore`, `plan`, or `general` and let
+OpenCode enforce its own profile and permission semantics.
 
-Finalization rescue is same-session cleanup. It applies only when the child appears to have gathered useful context but failed to produce completed final text.
+## Stalled Output
 
-This rescue asks the same OpenCode session to stop using tools and summarize only from already collected information. Its tool set is intentionally disabled. It is not a second attempt at the task.
+Stalled output is not product evidence. Retinue can classify why a job did not produce
+trusted final text, persist compact diagnostics, and keep enough metadata for later log
+audit.
 
-Use finalization rescue for soft no-final-text cases such as blank or zero-progress assistant output after tool progress, incomplete assistant rounds, and read-only write-intent prose recovery.
+Current stalled classes include provider errors, provider blank or zero-progress
+assistant output, incomplete assistant rounds, malformed or stuck read tools, completed
+tool loops with no final answer, no trusted backend text, and permission waits.
 
-Do not use finalization rescue for malformed tool calls or provider execution failures unless the purpose is only to salvage a clearly bounded advisory summary from existing context.
+Patch parts and write-capable tool parts are neutral OpenCode stream observations:
+`patchPartCount` and `writeIntentToolPartCount`. They do not trigger a Retinue
+read-only policy layer.
 
-Finalization rescue is intentionally conservative. It answers only: "Can this same child produce a trustworthy final answer from what it already knows?" It does not mean "continue using tools until the task is done."
+## Fresh Task Attempts
 
-## Continue-Task Rescue
+A fresh task attempt is a new Retinue child job/session with bounded handoff context
+from the failed job. It is the only automatic recovery path for OpenCode stalls.
 
-Continue-task rescue is a separate possible recovery strategy. It would ask the same OpenCode session to keep working while steering around the observed failure mode, such as avoiding a malformed read call or narrowing inspection paths.
+Fresh attempts may be used for:
 
-Do not treat continue-task rescue as the default soft-stall behavior. It can spend additional model/tool budget in a session that has already shown unreliable output, so it needs explicit trigger rules, a bounded budget, and diagnostics that distinguish it from finalization rescue.
+| Situation | Strategy |
+| --- | --- |
+| `provider_blank_assistant` | Fresh task-level attempt when budget allows |
+| `provider_zero_progress` | Fresh task-level attempt when budget allows |
+| `incomplete_assistant_round` | Fresh task-level attempt when budget allows |
+| `backend_no_final_text` | Fresh task-level attempt when budget allows |
+| `tool_loop_no_completion` | Fresh task-level attempt when budget allows |
+| `read_tool_invalid_input` | Fresh task-level attempt with malformed-read handoff guidance |
+| `read_tool_stalled` | Stalled diagnostic unless a future explicit policy handles it |
+| `external_directory_permission_pending` | Permission attention, not recovery |
+| `provider_error` or `provider_reasoning_content_error` | Stalled diagnostic; future reroute candidate |
 
-Until that strategy is designed, Retinue should prefer:
+The original job remains non-evidence. If a fresh attempt succeeds, callers receive the
+selected attempt result with provenance:
 
-- finalization rescue when enough completed tool progress exists and only final text is missing
-- fresh task-level retry when the execution chain itself is unreliable
-- stalled diagnostics when permissions, provider errors, or malformed tool calls cannot be safely recovered inside the current budget
-
-Current decision:
-
-| Situation | Strategy | Why |
-| --- | --- | --- |
-| `backend_no_final_text` after useful context | Finalization rescue | The child may only need to summarize what it already knows. |
-| `tool_loop_no_completion` after completed tools | Finalization rescue | More tools would likely extend the loop; force a final answer from existing context. |
-| `provider_blank_assistant` or `provider_zero_progress` after tool progress | Finalization rescue first, then fresh task-level retry if rescue fails | The first failure may be a finalization miss; repeated failure means the execution chain is unreliable. |
-| `incomplete_assistant_round` | Finalization rescue while the wait budget allows | The latest assistant round did not finish cleanly, so ask for prose-only completion. |
-| `read_only_write_intent` | Finalization rescue with no tools, advisory-only if no trusted answer appears | The original write-intent history is quarantined; only post-rescue prose can become trusted. |
-| `read_tool_invalid_input` | Fresh task-level retry with handoff capsule | A malformed tool call indicates unreliable execution, not merely missing final text. |
-| `read_tool_stalled` | Stalled diagnostic unless another policy explicitly handles it | A stuck tool executor is not solved by asking for more same-session work. |
-| `external_directory_permission_pending` | Permission attention, not recovery | The supervising agent must decide whether to approve or reject OpenCode's native permission request. |
-| `provider_error` or `provider_reasoning_content_error` | Stalled diagnostic; future reroute candidate | OpenCode/provider configuration or upstream failure should not be hidden as a normal successful result. |
-
-Continue-task rescue remains intentionally unimplemented. It should only be added if logs show a repeated class of recoverable tasks where finalization rescue is too weak and fresh task-level retry is unnecessarily expensive.
-
-## Task-Level Retry Or Reroute
-
-Task-level retry is a new attempt. It applies when the execution chain itself is unreliable, such as malformed read tool calls, provider errors, repeated zero-progress output, or a finalization rescue that itself stalls.
-
-The original job remains terminal and non-evidence. Retinue may create a new child job or session for the retry, carrying structured attempt metadata:
-
+- `requestedJobId`
+- `selectedAttemptJobId`
+- `attemptChain`
 - `recoveredFromJobId`
-- `attempt`
-- `rerouteReason`
+- `recoveryReason`
 - `originalStallReason`
-- `recoveryStallReason` when the previous finalization rescue failed
+- `recoveryStallReason`
 
-A retry may change only Retinue-owned execution strategy, not silently override backend ownership. Examples include a smaller prompt, a grep-only/no-read instruction, a different configured OpenCode agent, or a deployment-configured fallback model/provider when one exists.
-
-If a retry succeeds, callers receive the successful attempt result with provenance. If every attempt fails, Retinue returns the attempt chain so the caller can see whether the failure was malformed read, provider zero-progress, provider error, permission wait, or another classified stall.
+If every attempt fails, Retinue returns the attempt chain and a stalled result. The
+caller should treat the whole chain as diagnostic evidence, not a usable child-agent
+conclusion.
 
 ## Product Boundary
 
-Malformed read is not valid audit evidence. Retinue should keep classifying it as stalled, but product improvement should be a task-level retry or reroute policy, not widening finalization rescue.
+Retinue should not hide provider/tool failures by manufacturing a final answer from an
+unreliable session. It also should not mutate OpenCode semantics to make a child look
+read-only or write-capable. The safest default is:
 
-Finalization rescue answers: "Can this same child produce a conclusion from what it already knows?"
-
-Task-level retry answers: "Can Retinue run a new controlled attempt that avoids the observed backend failure mode?"
-
-## Attempt Handoff Capsule
-
-A fresh task-level retry may need useful context from the previous attempt, but Retinue must not copy or trust the whole stalled session.
-
-The handoff snapshot should be a bounded, lossy Retinue Attempt Handoff Capsule. It is generated from OpenCode-native structured messages or Retinue's existing diagnostic summaries, not from raw provider logs. It may include completed tool evidence, file paths, command summaries, permission boundaries, and the normalized stall reason.
-
-The capsule must not include:
-
-- full prompts or full tool outputs
-- secrets, API keys, provider tokens, or raw provider payloads
-- old stalled final text as trusted evidence
-- assistant reasoning as trusted evidence
-- a Retinue-owned replacement for OpenCode session state
-
-The first capsule implementation should not increase retry counts or expand which stalls trigger fresh attempts. It should only improve the information carried by already selected fresh task-level attempts.
+- trust completed backend final text
+- surface permission waits for supervising-agent decisions
+- classify malformed or stalled backend output precisely
+- start a fresh task attempt only when the retry budget allows it
+- never promote stalled text into a trusted conclusion

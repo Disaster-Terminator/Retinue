@@ -43,7 +43,6 @@ export declare class OpenCodeBackend implements AgentBackend {
         reply: AgentPermissionReply;
         message?: string;
     }): Promise<AgentPermissionReplyResult>;
-    private maybeSubmitSoftStallRescue;
     private maybeStartTaskLevelAttempt;
     private selectedAttemptFor;
     private buildAttemptChain;
@@ -56,8 +55,6 @@ export declare class OpenCodeBackend implements AgentBackend {
     private persistCompletedResultSnapshot;
     abort(handle: AgentHandle): Promise<void>;
     wait(handle: AgentHandle, timeoutMs?: number): Promise<WaitResult>;
-    private isSoftStallRescuePending;
-    private isReadOnlyWriteIntentRecoveryExpired;
     cleanup(options?: CleanupOptions): Promise<CleanupResult>;
     private readMeta;
     private readCurrentMetaOrFallback;
@@ -66,9 +63,7 @@ export declare class OpenCodeBackend implements AgentBackend {
     private reconcileVirtualSelectedAttemptStatus;
     private captureMessageBaseline;
     private hasNewCompletedAssistantMessage;
-    private hasReadOnlyWriteIntent;
     private stallDiagnosticForOpenCodeJob;
-    private isRecoverableSoftStallForStatus;
     private pendingPermissionsForJob;
     private reopenExternalPermissionStall;
     private inspectJob;

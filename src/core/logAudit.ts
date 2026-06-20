@@ -60,9 +60,8 @@ export async function auditRetinueLogs(options: AuditRetinueLogsOptions = {}): P
   const events = input.events;
   const jobMetaByJobId = await collectJobMetaByJobId(events, stateDir);
   const latestStatusByJobId = await collectLatestStatusByJobId(events, stateDir, options.reconcileStatus);
-  const latestEventByJobId = collectLatestEventByJobId(events);
   const attemptRootByJobId = await collectAttemptRoots(events, stateDir);
-  const { issues, attentions } = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId, jobMetaByJobId, {
+  const { issues, attentions } = summarizeIssues(events, latestStatusByJobId, attemptRootByJobId, jobMetaByJobId, {
     includeTerminal: options.includeTerminal === true || options.since !== undefined
   });
   return {
@@ -166,7 +165,6 @@ function isMissingFile(error: unknown): boolean {
 function summarizeIssues(
   events: Record<string, unknown>[],
   latestStatusByJobId: Map<string, string>,
-  latestEventByJobId: Map<string, string>,
   attemptRootByJobId: Map<string, string>,
   jobMetaByJobId: Map<string, Record<string, unknown>>,
   options: { includeTerminal?: boolean } = {}
@@ -185,9 +183,6 @@ function summarizeIssues(
         continue;
       }
       if (options.includeTerminal !== true && isTerminalNonCompletedStatus(latestStatus)) {
-        continue;
-      }
-      if (!isBackendUnreachableEvent(event) && isNonTerminalSoftStallEvent(latestEventByJobId.get(event.jobId))) {
         continue;
       }
     }
@@ -236,13 +231,6 @@ function summarizeIssues(
       sessionDirectory: diagnostic.sessionDirectory,
       stallReason: diagnostic.stallReason,
       stallSummary: diagnostic.stallSummary,
-      softStallRescueSourceReason: diagnostic.softStallRescueSourceReason,
-      softStallRescueSourceSummary: diagnostic.softStallRescueSourceSummary,
-      softStallRescueStrategy: diagnostic.softStallRescueStrategy,
-      softStallRescueAgent: diagnostic.softStallRescueAgent,
-      softStallRescueModel: diagnostic.softStallRescueModel,
-      softStallRescueTools: diagnostic.softStallRescueTools,
-      softStallRescueSubmittedAt: diagnostic.softStallRescueSubmittedAt,
       recoveryStallReason: diagnostic.recoveryStallReason,
       recoveryStallSummary: diagnostic.recoveryStallSummary,
       noCompletedAssistantDurationMs: diagnostic.noCompletedAssistantDurationMs,
@@ -256,7 +244,6 @@ function summarizeIssues(
       pendingPermissionCount: diagnostic.pendingPermissionCount,
       pendingExternalDirectoryPermissionCount: diagnostic.pendingExternalDirectoryPermissionCount,
       permissionActions: compactPermissionActions(diagnostic.pendingExternalDirectoryPermissions ?? diagnostic.pendingPermissions),
-      readOnlyWriteIntent: diagnostic.readOnlyWriteIntent,
       problemStatus: status === "backend_unreachable" ? "backend_unreachable" : undefined,
       requestedAgent: requestedAgentFromMeta(jobMeta),
       baseUrl: diagnostic.baseUrl,
@@ -417,7 +404,6 @@ function createChainSignature(rootJobId: string, diagnostic: Record<string, unkn
 function createDiagnosticSignature(event: Record<string, unknown>, diagnostic: Record<string, unknown>): string {
   return [
     diagnostic.stallReason ?? "unknown_stall",
-    diagnostic.softStallRescueSourceReason ?? "no_rescue_source",
     diagnostic.recoveryStallReason ?? "no_recovery_stall",
     diagnostic.lastAssistantProviderID ?? "unknown_provider",
     diagnostic.lastAssistantModelID ?? "unknown_model",
@@ -516,29 +502,6 @@ async function collectLatestStatusByJobId(
   return new Map([...statuses].map(([jobId, value]) => [jobId, value.status]));
 }
 
-function collectLatestEventByJobId(events: Record<string, unknown>[]): Map<string, string> {
-  const latest = new Map<string, { event: string; timestamp: string }>();
-  for (const event of events) {
-    if (typeof event.jobId !== "string" || typeof event.event !== "string") {
-      continue;
-    }
-    const timestamp = eventTime(event)?.toISOString() ?? "";
-    const current = latest.get(event.jobId);
-    if (!current || timestamp >= current.timestamp) {
-      latest.set(event.jobId, { event: event.event, timestamp });
-    }
-  }
-  return new Map([...latest].map(([jobId, value]) => [jobId, value.event]));
-}
-
-function isNonTerminalSoftStallEvent(event: string | undefined): boolean {
-  return (
-    event === "opencode_job_soft_stall_deferred" ||
-    event === "opencode_job_soft_stall_rescue_submitted" ||
-    event === "opencode_job_soft_stall_rescue_pending"
-  );
-}
-
 function createIssueTitle(event: Record<string, unknown>, diagnostic: Record<string, unknown>): string {
   if (isBackendUnreachableEvent(event)) {
     return "Investigate Retinue backend_unreachable for OpenCode server";
@@ -547,8 +510,7 @@ function createIssueTitle(event: Record<string, unknown>, diagnostic: Record<str
   const provider = diagnostic.lastAssistantProviderID ?? "unknown_provider";
   const model = diagnostic.lastAssistantModelID ?? "unknown_model";
   if (diagnostic.recoveryStallReason) {
-    const source = diagnostic.softStallRescueSourceReason ?? "unknown_rescue_source";
-    return `Investigate Retinue recovery ${String(diagnostic.recoveryStallReason)} after ${String(source)} on ${String(provider)}/${String(model)}`;
+    return `Investigate Retinue recovery ${String(diagnostic.recoveryStallReason)} on ${String(provider)}/${String(model)}`;
   }
   return `Investigate Retinue ${String(reason)} on ${String(provider)}/${String(model)}`;
 }
@@ -589,7 +551,6 @@ function createIssueDescription(event: Record<string, unknown>, diagnostic: Reco
   }
   const parts = [
     diagnostic.stallSummary,
-    diagnostic.softStallRescueSourceReason ? `rescueSource=${String(diagnostic.softStallRescueSourceReason)}` : undefined,
     diagnostic.recoveryStallReason ? `recovery=${String(diagnostic.recoveryStallReason)}` : undefined,
     diagnostic.sessionDirectory ? `cwd=${String(diagnostic.sessionDirectory)}` : undefined,
     diagnostic.lastAssistantAgent ? `agent=${String(diagnostic.lastAssistantAgent)}` : undefined,

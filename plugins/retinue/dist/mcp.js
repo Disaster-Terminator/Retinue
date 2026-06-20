@@ -56697,106 +56697,7 @@ function parseRequiredPort(value) {
 }
 
 // src/backends/opencode/backend.ts
-var OPENCODE_READ_ONLY_TOOLS_NO_BASH = {
-  bash: false,
-  edit: false,
-  write: false,
-  apply_patch: false,
-  patch: false,
-  task: false
-};
-var OPENCODE_READ_ONLY_TOOLS_WITH_READONLY_GIT_BASH = {
-  edit: false,
-  write: false,
-  apply_patch: false,
-  patch: false,
-  task: false
-};
-var OPENCODE_FINAL_ANSWER_ONLY_TOOLS = {
-  read: false,
-  glob: false,
-  grep: false,
-  list: false,
-  todoread: false,
-  todowrite: false,
-  webfetch: false,
-  lsp: false,
-  bash: false,
-  edit: false,
-  write: false,
-  apply_patch: false,
-  patch: false,
-  task: false
-};
-var OPENCODE_FINAL_ANSWER_ONLY_DISABLED_TOOLS = Object.keys(OPENCODE_FINAL_ANSWER_ONLY_TOOLS);
-var OPENCODE_SOFT_STALL_RESCUE_PROMPT = [
-  "Retinue recovery request:",
-  "Stop using tools now and produce the final answer from the information already gathered.",
-  "Do not call read, grep, glob, bash, edit, write, patch, apply_patch, task, or any other tool.",
-  "If the available information is insufficient, state the limitation clearly instead of inspecting more files.",
-  "Return concise plain text only. Do not emit patch blocks, unified diffs, or apply-ready replacement snippets."
-].join("\n");
 var DEFAULT_TASK_ATTEMPT_MAX = 1;
-function createReadOnlyPromptContract(bashPolicy) {
-  const allowsReadonlyGit = bashPolicy === "readonly_git";
-  return [
-    "Retinue read-only child agent contract:",
-    allowsReadonlyGit ? "- Use only OpenCode read, grep, glob, and allowed read-only git bash commands plus plain-text reasoning." : "- Use only OpenCode read, grep, and glob tools plus plain-text reasoning.",
-    allowsReadonlyGit ? "- Allowed bash is limited to read-only git inspection commands: pwd, git status --short, git status --porcelain, git diff --cached, git diff --staged, git diff --name-only --cached, git diff --name-status --cached, git diff --stat --cached, git diff -- <path>, git show --stat, git show --name-only, git ls-files, and git rev-parse --show-toplevel." : void 0,
-    allowsReadonlyGit ? "- For staged diff review, use git diff --cached or git diff --staged; for unstaged file review, use git diff -- <path>." : void 0,
-    allowsReadonlyGit ? "- Do not call bash except for allowed read-only git inspection commands; do not use shell pipes, redirects, command separators, command substitution, or write-capable git commands." : "- Do not call bash, edit, write, apply_patch, task, or nested agents.",
-    "- Do not attempt non-allowed shell commands, file writes, patches, or interactive approvals.",
-    "- Do not enter patch mode. If you identify a change, describe the affected interfaces, functions, tests, and risks in prose only.",
-    "- Do not emit unified diffs.",
-    "- Do not include patch blocks, edit scripts, or apply-ready replacement snippets.",
-    "- For code review, return findings as plain text with severity and file references; describe suggested fixes in prose.",
-    "- If the user provides enough facts to answer, answer from those facts without repository inspection.",
-    "- Do not use tools just to confirm prompt-provided facts; use tools only when the task names files, symbols, or explicitly asks for repository inspection.",
-    "- Use at most six inspection tool calls total before producing a final textual answer.",
-    "- Before using any tool, classify whether the user task depends on git-only state such as staged changes, staged diff, uncommitted diff, git history, or the latest commit.",
-    allowsReadonlyGit ? "- You may inspect staged or unstaged diff only with the allowed read-only git commands. If a requested git state is outside that allowlist or needs shell composition, state the limitation instead of approximating it from repository files." : "- If it asks for staged diff, uncommitted diff, git diff, git history, or the latest commit and the prompt did not include the needed diff/content, do not inspect the repository; immediately state that the read-only boundary cannot access that git-only state and ask the caller to provide the diff/content or use profile access.",
-    allowsReadonlyGit ? "- You cannot inspect git history, commits beyond allowed git show metadata, or shell-composed repository state unless the task provides the relevant content." : "- You cannot inspect git history, staged changes, uncommitted diffs, or the latest commit unless the task provides the relevant file paths or content.",
-    "- If the task asks for a diff, commit, or git-only state you cannot access, state that limitation instead of approximating it from repository files.",
-    "- For broad audits, start with grep/glob and read only a small set of targeted files; avoid bulk-reading large generated, cache, log, or backup directories.",
-    "- Use read serially: do not issue multiple read calls in one assistant turn, and stop reading once you have enough evidence to answer.",
-    "- If the task needs non-allowed shell or write access, say that the read-only boundary prevents that part and provide the best file-based answer you can.",
-    "- Always finish with a concise textual result; do not stop after tool calls without a final answer."
-  ].filter((line) => typeof line === "string").join("\n");
-}
-var OPENCODE_READ_ONLY_BASE_PERMISSION = [
-  { permission: "read", pattern: "*", action: "allow" },
-  { permission: "glob", pattern: "*", action: "allow" },
-  { permission: "grep", pattern: "*", action: "allow" },
-  { permission: "list", pattern: "*", action: "allow" },
-  { permission: "todoread", pattern: "*", action: "allow" },
-  { permission: "todowrite", pattern: "*", action: "allow" },
-  { permission: "webfetch", pattern: "*", action: "allow" },
-  { permission: "lsp", pattern: "*", action: "allow" },
-  { permission: "question", pattern: "*", action: "deny" },
-  { permission: "edit", pattern: "*", action: "deny" },
-  { permission: "write", pattern: "*", action: "deny" },
-  { permission: "apply_patch", pattern: "*", action: "deny" },
-  { permission: "patch", pattern: "*", action: "deny" },
-  { permission: "task", pattern: "*", action: "deny" },
-  { permission: "external_directory", pattern: "*", action: "deny" },
-  { permission: "doom_loop", pattern: "*", action: "deny" },
-  { permission: "bash", pattern: "*", action: "deny" }
-];
-var OPENCODE_READONLY_GIT_BASH_PERMISSION = [
-  { permission: "bash", pattern: "pwd", action: "allow" },
-  { permission: "bash", pattern: "git status --short*", action: "allow" },
-  { permission: "bash", pattern: "git status --porcelain*", action: "allow" },
-  { permission: "bash", pattern: "git diff --cached*", action: "allow" },
-  { permission: "bash", pattern: "git diff --staged*", action: "allow" },
-  { permission: "bash", pattern: "git diff --name-only --cached*", action: "allow" },
-  { permission: "bash", pattern: "git diff --name-status --cached*", action: "allow" },
-  { permission: "bash", pattern: "git diff --stat --cached*", action: "allow" },
-  { permission: "bash", pattern: "git diff -- *", action: "allow" },
-  { permission: "bash", pattern: "git show --stat*", action: "allow" },
-  { permission: "bash", pattern: "git show --name-only*", action: "allow" },
-  { permission: "bash", pattern: "git ls-files*", action: "allow" },
-  { permission: "bash", pattern: "git rev-parse --show-toplevel", action: "allow" }
-];
 var DEFAULT_WAIT_TIMEOUT_MS = 3e4;
 var DEFAULT_WAIT_POLL_MS = 250;
 var DEFAULT_STALL_MS = 10 * 6e4;
@@ -56806,7 +56707,6 @@ var DEFAULT_BLANK_ASSISTANT_STALL_MS = 45e3;
 var DEFAULT_ZERO_PROGRESS_ASSISTANT_STALL_MS = 45e3;
 var DEFAULT_READ_TOOL_STALL_MS = 45e3;
 var DEFAULT_COMPLETED_TOOL_LOOP_STALL_MS = 45e3;
-var DEFAULT_SOFT_STALL_RESCUE_GRACE_MS = 6e4;
 var DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
 var DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 1;
 var DIAGNOSTIC_VALUE_PREVIEW_BYTES = 1e3;
@@ -56848,7 +56748,6 @@ var OpenCodeBackend = class {
     await fs4.mkdir(paths.dir, { recursive: true });
     await fs4.writeFile(paths.prompt, options.prompt, "utf8");
     const target = await this.resolveTarget(options.cwd);
-    const readOnlyBashPolicy = resolveReadOnlyBashPolicy(options.readOnlyBashPolicy);
     const runnerMode = resolveRunnerMode(this.env);
     const rootAgent = resolveRootAgent(this.env);
     const requestedAgent = options.agent ?? "explore";
@@ -56871,9 +56770,7 @@ var OpenCodeBackend = class {
       permission: this.buildChildSessionPermission({
         parentSession,
         parentAgent,
-        childAgent,
-        readOnly: options.readOnly === true,
-        readOnlyBashPolicy
+        childAgent
       })
     });
     const baseline = await this.captureMessageBaseline(target.client, childSession.id);
@@ -56893,8 +56790,6 @@ var OpenCodeBackend = class {
       model: options.model,
       agent: options.agent,
       readOnly: options.readOnly === true,
-      readOnlyPromptContract: options.readOnlyPromptContract === true,
-      readOnlyToolDeny: options.readOnlyToolDeny === true,
       externalSessionId: childSession.id,
       externalRunnerMode: runnerMode,
       externalRootAgent: rootAgent,
@@ -56941,7 +56836,6 @@ var OpenCodeBackend = class {
         model: options.model,
         agent: options.agent,
         readOnly: true,
-        readOnlyBashPolicy: options.readOnlyBashPolicy,
         parentJobId: options.parentJobId,
         parentSessionId: options.parentSessionId ?? options.externalSessionId,
         recoveredFromJobId: options.recoveredFromJobId,
@@ -57004,7 +56898,7 @@ var OpenCodeBackend = class {
     if (isProblem2(meta3)) {
       return problemFromMeta(meta3);
     }
-    return this.reconcileStatus(meta3, { exposeRecoverableSoftStallsAsRunning: true });
+    return this.reconcileStatus(meta3);
   }
   async statusForWait(handle) {
     const meta3 = await this.readMeta(handle.jobId);
@@ -57070,50 +56964,6 @@ var OpenCodeBackend = class {
     });
     return result;
   }
-  async maybeSubmitSoftStallRescue(meta3, diagnostic) {
-    const recoverReadOnlyWriteIntent = diagnostic.readOnlyWriteIntent === true;
-    if (!meta3.externalSessionId || meta3.externalRescuePromptSubmittedAt || !isSoftStallRescueEligible(diagnostic)) {
-      return;
-    }
-    const submittedAt = (/* @__PURE__ */ new Date()).toISOString();
-    const rescueAgent = resolveSoftStallRescueAgent(meta3.agent, this.env);
-    const updated = {
-      ...meta3,
-      status: meta3.status === "stalled" ? "running" : meta3.status,
-      externalRescuePromptSubmittedAt: submittedAt,
-      externalSoftStallRescueStrategy: "final_answer_no_tools",
-      externalSoftStallRescueAgent: rescueAgent,
-      externalSoftStallRescueModel: meta3.model,
-      externalSoftStallRescueTools: OPENCODE_FINAL_ANSWER_ONLY_DISABLED_TOOLS,
-      externalSoftStallRescueSourceReason: diagnostic.stallReason,
-      externalSoftStallRescueSourceSummary: diagnostic.stallSummary,
-      externalReadOnlyWriteIntentRecoveryJobMessageCount: recoverReadOnlyWriteIntent ? diagnostic.jobMessageCount ?? meta3.externalReadOnlyWriteIntentRecoveryJobMessageCount : meta3.externalReadOnlyWriteIntentRecoveryJobMessageCount,
-      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-    };
-    await writeJsonAtomic2(getJobPaths(this.stateDir, meta3.jobId).meta, updated);
-    try {
-      await this.clientForMeta(meta3).promptAsync(meta3.externalSessionId, {
-        prompt: OPENCODE_SOFT_STALL_RESCUE_PROMPT,
-        model: meta3.model,
-        agent: rescueAgent,
-        tools: OPENCODE_FINAL_ANSWER_ONLY_TOOLS
-      });
-      const submittedDiagnostic = await this.inspectJob(updated);
-      await this.writeJobTrace("opencode_job_soft_stall_rescue_submitted", updated, submittedDiagnostic);
-      await appendJobDiagnostic(this.stateDir, meta3.jobId, { event: "opencode_job_soft_stall_rescue_submitted", diagnostic: submittedDiagnostic });
-    } catch (error51) {
-      const failedDiagnostic = {
-        ...await this.inspectJob(updated),
-        error: error51 instanceof Error ? error51.message : String(error51)
-      };
-      await this.writeJobTrace("opencode_job_soft_stall_rescue_failed", updated, failedDiagnostic);
-      await appendJobDiagnostic(this.stateDir, meta3.jobId, {
-        event: "opencode_job_soft_stall_rescue_failed",
-        error: error51 instanceof Error ? error51.message : String(error51),
-        diagnostic: failedDiagnostic
-      });
-    }
-  }
   async maybeStartTaskLevelAttempt(meta3, diagnostic) {
     const recoveryReason = selectTaskLevelAttemptReason(meta3, diagnostic);
     if (!recoveryReason || (meta3.attempt ?? 0) >= resolveTaskAttemptMax(this.env)) {
@@ -57145,7 +56995,7 @@ var OpenCodeBackend = class {
       attempt: attemptNumber,
       recoveryReason,
       recoveryPolicy: "fresh_task_attempt",
-      originalStallReason: diagnostic.softStallRescueSourceReason ?? diagnostic.stallReason,
+      originalStallReason: diagnostic.stallReason,
       recoveryStallReason: diagnostic.recoveryStallReason ?? diagnostic.stallReason
     });
     const updated = {
@@ -57305,22 +57155,9 @@ var OpenCodeBackend = class {
     if (meta3.status === "stalled") {
       const attemptExhaustedMessage = await this.createTaskAttemptExhaustedMessage(meta3, diagnostic);
       const stderr = [createStallMessage(diagnostic), attemptExhaustedMessage].filter(Boolean).join("\n");
-      const advisoryText = selectReadOnlyWriteIntentAdvisoryText(jobMessages, meta3, diagnostic);
-      if (advisoryText) {
-        diagnostic.readOnlyAdvisoryText = true;
-        diagnostic.readOnlyAdvisoryTextSummary = "Retinue returned visible read-only write-intent text as advisory stdout only; it is not trusted evidence.";
-      }
-      const text2 = advisoryText;
-      const stdout = text2 || stderr;
-      const textWarning2 = advisoryText ? createReadOnlyAdvisoryWarning() : meta3.readOnly === true ? createReadOnlyTextWarning(stdout) : void 0;
-      if (textWarning2) {
-        diagnostic.readOnlyTextWarning = true;
-        diagnostic.readOnlyTextWarningSummary = textWarning2;
-      }
+      const stdout = stderr;
       await fs4.writeFile(paths.stdout, stdout, "utf8");
-      const stderrText = textWarning2 ? `${stderr}
-${textWarning2}` : stderr;
-      await fs4.appendFile(paths.stderr, `${stderrText}
+      await fs4.appendFile(paths.stderr, `${stderr}
 `, "utf8");
       diagnostic.selectedAssistantTextBytes = Buffer.byteLength(stdout, "utf8");
       diagnostic.selectedAssistantSha256 = sha2562(stdout);
@@ -57333,26 +57170,21 @@ ${textWarning2}` : stderr;
         jobId: handle.jobId,
         status: meta3.status,
         stdout,
-        stderr: stderrText,
+        stderr,
         stdoutPath: paths.stdout,
         stderrPath: paths.stderr,
         stdoutBytes: Buffer.byteLength(stdout, "utf8"),
-        stderrBytes: Buffer.byteLength(stderrText, "utf8"),
+        stderrBytes: Buffer.byteLength(stderr, "utf8"),
         stdoutTruncated: false,
         stderrTruncated: false,
         sessionId: meta3.externalSessionId,
         parsedStdout: { result: stdout },
         ...permissionAttentionFields(diagnostic, this.kind),
-        error: stderrText
+        error: stderr
       }, meta3);
     }
     const resultMessages = selectResultMessagesForMeta(jobMessages, meta3);
     const text = meta3.externalMessageBaselineCount === void 0 && resultMessages === jobMessages ? latestAssistantMessageText(messages) : latestAssistantMessageText(resultMessages);
-    const textWarning = meta3.readOnly === true ? createReadOnlyTextWarning(text) : void 0;
-    if (textWarning) {
-      diagnostic.readOnlyTextWarning = true;
-      diagnostic.readOnlyTextWarningSummary = textWarning;
-    }
     await fs4.writeFile(paths.stdout, text, "utf8");
     diagnostic.selectedAssistantTextBytes = Buffer.byteLength(text, "utf8");
     diagnostic.selectedAssistantSha256 = sha2562(text);
@@ -57365,11 +57197,11 @@ ${textWarning2}` : stderr;
       jobId: handle.jobId,
       status: meta3.status,
       stdout: text,
-      stderr: textWarning ?? "",
+      stderr: "",
       stdoutPath: paths.stdout,
       stderrPath: paths.stderr,
       stdoutBytes: Buffer.byteLength(text, "utf8"),
-      stderrBytes: Buffer.byteLength(textWarning ?? "", "utf8"),
+      stderrBytes: 0,
       stdoutTruncated: false,
       stderrTruncated: false,
       sessionId: meta3.externalSessionId,
@@ -57457,13 +57289,6 @@ ${textWarning2}` : stderr;
     if (!text.trim()) {
       return;
     }
-    const textWarning = meta3.readOnly === true ? createReadOnlyTextWarning(text) : void 0;
-    if (textWarning) {
-      diagnostic.readOnlyTextWarning = true;
-      diagnostic.readOnlyTextWarningSummary = textWarning;
-      await fs4.appendFile(paths.stderr, `${textWarning}
-`, "utf8");
-    }
     await fs4.writeFile(paths.stdout, text, "utf8");
     diagnostic.selectedAssistantTextBytes = Buffer.byteLength(text, "utf8");
     diagnostic.selectedAssistantSha256 = sha2562(text);
@@ -57498,7 +57323,6 @@ ${textWarning2}` : stderr;
   }
   async wait(handle, timeoutMs = DEFAULT_WAIT_TIMEOUT_MS) {
     const deadline = Date.now() + Math.max(0, timeoutMs);
-    let deferredSoftStall = false;
     for (; ; ) {
       const status = await this.statusForWait(handle);
       if (isProblem2(status)) {
@@ -57516,29 +57340,6 @@ ${textWarning2}` : stderr;
       }
       if (status.status === "stalled") {
         const diagnostic = await this.inspectJob(status);
-        const canDeferStall = status.externalRescuePromptSubmittedAt === void 0 && (isSoftStallRescueEligible(diagnostic) || diagnostic.readOnlyWriteIntent === true);
-        if (canDeferStall) {
-          await this.maybeSubmitSoftStallRescue(status, diagnostic);
-          if (!deferredSoftStall) {
-            await this.writeJobTrace("opencode_job_soft_stall_deferred", status, diagnostic);
-            await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_soft_stall_deferred", diagnostic });
-            deferredSoftStall = true;
-          }
-          if (Date.now() < deadline) {
-            await sleep3(DEFAULT_WAIT_POLL_MS);
-            continue;
-          }
-          return { jobId: handle.jobId, status: "running" };
-        }
-        if (this.isSoftStallRescuePending(status, diagnostic)) {
-          await this.writeJobTrace("opencode_job_soft_stall_rescue_pending", status, diagnostic);
-          await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_soft_stall_rescue_pending", diagnostic });
-          if (Date.now() < deadline) {
-            await sleep3(DEFAULT_WAIT_POLL_MS);
-            continue;
-          }
-          return { jobId: handle.jobId, status: "running" };
-        }
         const attempt = await this.maybeStartTaskLevelAttempt(status, diagnostic);
         if (attempt) {
           const waited = await this.wait({ jobId: attempt.jobId }, Math.max(0, deadline - Date.now()));
@@ -57560,33 +57361,7 @@ ${textWarning2}` : stderr;
         const meta3 = await this.readMeta(handle.jobId);
         if (!isProblem2(meta3)) {
           const diagnostic = await this.inspectJob(meta3);
-          if (this.isReadOnlyWriteIntentRecoveryExpired(meta3, diagnostic)) {
-            const expiredDiagnostic = {
-              ...diagnostic,
-              stallReason: "read_only_write_intent",
-              stallSummary: "OpenCode read-only job attempted a write-capable tool, and recovery did not produce usable final text."
-            };
-            const stalled = { ...meta3, status: "stalled", updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
-            await writeJsonAtomic2(getJobPaths(this.stateDir, handle.jobId).meta, stalled);
-            await this.writeJobTrace("opencode_job_wait_timeout", stalled, expiredDiagnostic);
-            await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_wait_timeout", diagnostic: expiredDiagnostic });
-            await this.writeJobTrace("opencode_job_stalled", stalled, expiredDiagnostic, { fromStatus: meta3.status, toStatus: "stalled" });
-            await appendJobDiagnostic(this.stateDir, handle.jobId, {
-              event: "opencode_job_stalled",
-              fromStatus: meta3.status,
-              toStatus: "stalled",
-              diagnostic: expiredDiagnostic
-            });
-            return { jobId: handle.jobId, status: "stalled", ...permissionAttentionFields(expiredDiagnostic, this.kind) };
-          }
           if (diagnostic.stallReason) {
-            if (this.isSoftStallRescuePending(meta3, diagnostic)) {
-              await this.writeJobTrace("opencode_job_wait_timeout", meta3, diagnostic);
-              await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_wait_timeout", diagnostic });
-              await this.writeJobTrace("opencode_job_soft_stall_rescue_pending", meta3, diagnostic);
-              await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_soft_stall_rescue_pending", diagnostic });
-              return { jobId: handle.jobId, status: "running" };
-            }
             const stalled = { ...meta3, status: "stalled", updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
             await writeJsonAtomic2(getJobPaths(this.stateDir, handle.jobId).meta, stalled);
             await this.writeJobTrace("opencode_job_wait_timeout", stalled, diagnostic);
@@ -57621,32 +57396,6 @@ ${textWarning2}` : stderr;
       }
       await sleep3(DEFAULT_WAIT_POLL_MS);
     }
-  }
-  isSoftStallRescuePending(meta3, diagnostic) {
-    if (!meta3.externalRescuePromptSubmittedAt || diagnostic.recoveredFromReadOnlyWriteIntent === true) {
-      return false;
-    }
-    if (diagnostic.recoveryStallReason) {
-      return false;
-    }
-    if (isHardStallDiagnostic(diagnostic) || !isSoftStallRescueEligible(diagnostic)) {
-      return false;
-    }
-    const submittedAt = Date.parse(meta3.externalRescuePromptSubmittedAt);
-    if (!Number.isFinite(submittedAt)) {
-      return false;
-    }
-    return Date.now() - submittedAt < resolveSoftStallRescueGraceMs(this.env);
-  }
-  isReadOnlyWriteIntentRecoveryExpired(meta3, diagnostic) {
-    if (!meta3.externalRescuePromptSubmittedAt || meta3.externalReadOnlyWriteIntentRecoveryJobMessageCount === void 0 || diagnostic.recoveredFromReadOnlyWriteIntent === true || diagnostic.readOnlyWriteIntent === true) {
-      return false;
-    }
-    const submittedAt = Date.parse(meta3.externalRescuePromptSubmittedAt);
-    if (!Number.isFinite(submittedAt)) {
-      return false;
-    }
-    return Date.now() - submittedAt >= resolveSoftStallRescueGraceMs(this.env);
   }
   async cleanup(options = {}) {
     const olderThanMs = options.olderThanMs ?? 0;
@@ -57686,15 +57435,11 @@ ${textWarning2}` : stderr;
     const current = await this.readMeta(jobId);
     return isProblem2(current) ? fallback : current;
   }
-  async reconcileStatus(meta3, options = {}) {
+  async reconcileStatus(meta3) {
     if (meta3.status === "stalled") {
       const cachedStdout = await readTextIfExists2(getJobPaths(this.stateDir, meta3.jobId).stdout);
       if (cachedStdout.trim()) {
         return meta3;
-      }
-      const diagnostic = await this.inspectJob(meta3);
-      if (options.exposeRecoverableSoftStallsAsRunning && this.isRecoverableSoftStallForStatus(meta3, diagnostic)) {
-        return { ...meta3, status: "running" };
       }
     }
     if (!meta3.externalSessionId && meta3.selectedAttemptJobId) {
@@ -57710,9 +57455,7 @@ ${textWarning2}` : stderr;
       const client2 = this.clientForMeta(meta3);
       const session = await client2.getSession(meta3.externalSessionId);
       let status = meta3.status;
-      if (await this.hasReadOnlyWriteIntent(client2, meta3.externalSessionId, meta3)) {
-        status = "stalled";
-      } else if (session.state === "completed") {
+      if (session.state === "completed") {
         status = "completed";
       } else if (session.state === "failed") {
         status = "failed";
@@ -57722,10 +57465,10 @@ ${textWarning2}` : stderr;
         status = "killed";
       } else if (meta3.status === "stalled") {
         const diagnostic2 = await this.stallDiagnosticForOpenCodeJob(client2, meta3.externalSessionId, meta3);
-        status = options.exposeRecoverableSoftStallsAsRunning && diagnostic2 && this.isRecoverableSoftStallForStatus(meta3, diagnostic2) ? "running" : "stalled";
+        status = diagnostic2 ? "stalled" : "running";
       } else {
         const diagnostic2 = await this.stallDiagnosticForOpenCodeJob(client2, meta3.externalSessionId, meta3);
-        status = options.exposeRecoverableSoftStallsAsRunning && diagnostic2 && this.isRecoverableSoftStallForStatus(meta3, diagnostic2) ? "running" : diagnostic2 ? "stalled" : "running";
+        status = diagnostic2 ? "stalled" : "running";
       }
       if (status === meta3.status) {
         return meta3;
@@ -57733,7 +57476,6 @@ ${textWarning2}` : stderr;
       const updated = {
         ...meta3,
         status,
-        externalReadOnlyWriteIntentRecoveredAt: status === "completed" && meta3.externalReadOnlyWriteIntentRecoveryJobMessageCount !== void 0 ? meta3.externalReadOnlyWriteIntentRecoveredAt ?? (/* @__PURE__ */ new Date()).toISOString() : meta3.externalReadOnlyWriteIntentRecoveredAt,
         updatedAt: (/* @__PURE__ */ new Date()).toISOString()
       };
       await writeJsonAtomic2(getJobPaths(this.stateDir, meta3.jobId).meta, updated);
@@ -57757,7 +57499,7 @@ ${textWarning2}` : stderr;
           diagnostic
         });
       }
-      if (isTerminal2(status) && (status !== "stalled" || isHardStallDiagnostic(diagnostic))) {
+      if (isTerminal2(status)) {
         await this.maybeScheduleServerIdleShutdown(updated);
       }
       return updated;
@@ -57835,34 +57577,16 @@ ${textWarning2}` : stderr;
     if (completionMessages.some(isCompletedAssistantMessage)) {
       return true;
     }
-    if (meta3.externalMessageBaselineCount !== void 0 || meta3.externalReadOnlyWriteIntentRecoveryJobMessageCount !== void 0) {
+    if (meta3.externalMessageBaselineCount !== void 0) {
       return false;
     }
     return countCompletedAssistantMessages(messages) > (meta3.externalCompletedAssistantBaselineCount ?? 0);
-  }
-  async hasReadOnlyWriteIntent(client2, sessionId, meta3) {
-    if (meta3.readOnly !== true) {
-      return false;
-    }
-    const messages = await client2.messages(sessionId);
-    const jobMessages = selectMessagesForMeta(messages, meta3);
-    const writeIntentMessages = selectReadOnlyWriteIntentMessagesForMeta(jobMessages, meta3);
-    return countWriteIntentToolParts(writeIntentMessages) > 0;
   }
   async stallDiagnosticForOpenCodeJob(client2, sessionId, meta3) {
     const messages = await client2.messages(sessionId);
     const jobMessages = selectMessagesForMeta(messages, meta3);
     const pendingPermissions = await this.pendingPermissionsForJob(client2, meta3);
     return computeStallDiagnostic(jobMessages, meta3, this.env, pendingPermissions);
-  }
-  isRecoverableSoftStallForStatus(meta3, diagnostic) {
-    if (this.isSoftStallRescuePending(meta3, diagnostic)) {
-      return true;
-    }
-    if (meta3.externalRescuePromptSubmittedAt) {
-      return false;
-    }
-    return isSoftStallRescueEligible(diagnostic);
   }
   async pendingPermissionsForJob(client2, meta3) {
     if (!meta3.externalSessionId) {
@@ -57950,20 +57674,7 @@ ${textWarning2}` : stderr;
       diagnostic.lastAssistantCost = numberInfo(lastAssistant, "cost");
       diagnostic.lastAssistantTokens = lastAssistant?.info?.tokens;
       diagnostic.patchPartCount = countPatchParts(jobMessages);
-      const readOnlyWriteIntentMessages = selectReadOnlyWriteIntentMessagesForMeta(jobMessages, meta3);
-      diagnostic.readOnlyPatchPartCount = meta3.readOnly === true ? countPatchParts(readOnlyWriteIntentMessages) : 0;
       diagnostic.writeIntentToolPartCount = countWriteIntentToolParts(jobMessages);
-      diagnostic.readOnlyWriteIntentToolPartCount = meta3.readOnly === true ? countWriteIntentToolParts(readOnlyWriteIntentMessages) : 0;
-      diagnostic.readOnlyWriteIntent = (diagnostic.readOnlyWriteIntentToolPartCount ?? 0) > 0;
-      diagnostic.readOnlyWriteIntentRecoveryJobMessageCount = meta3.externalReadOnlyWriteIntentRecoveryJobMessageCount;
-      diagnostic.softStallRescueSourceReason = isOpenCodeStallReason(meta3.externalSoftStallRescueSourceReason) ? meta3.externalSoftStallRescueSourceReason : void 0;
-      diagnostic.softStallRescueSourceSummary = meta3.externalSoftStallRescueSourceSummary;
-      diagnostic.softStallRescueStrategy = meta3.externalSoftStallRescueStrategy;
-      diagnostic.softStallRescueAgent = meta3.externalSoftStallRescueAgent;
-      diagnostic.softStallRescueModel = meta3.externalSoftStallRescueModel;
-      diagnostic.softStallRescueTools = meta3.externalSoftStallRescueTools;
-      diagnostic.softStallRescueSubmittedAt = meta3.externalRescuePromptSubmittedAt;
-      diagnostic.recoveredFromReadOnlyWriteIntent = meta3.readOnly === true && meta3.externalReadOnlyWriteIntentRecoveryJobMessageCount !== void 0 && diagnostic.readOnlyWriteIntent !== true && selectResultMessagesForMeta(jobMessages, meta3).some(isCompletedAssistantMessage);
       diagnostic.messageSummaries = jobMessages.map((message) => ({
         role: message.info?.role,
         finish: stringInfo(message, "finish"),
@@ -57974,18 +57685,6 @@ ${textWarning2}` : stderr;
         messageError: diagnosticValuePreview(message.info?.error)
       }));
       Object.assign(diagnostic, computeStallDiagnostic(jobMessages, meta3, this.env, pendingPermissions));
-      if (meta3.status === "stalled" && diagnostic.softStallRescueSourceReason && diagnostic.stallReason && diagnostic.stallReason !== diagnostic.softStallRescueSourceReason) {
-        diagnostic.recoveryStallReason = diagnostic.stallReason;
-        diagnostic.recoveryStallSummary = diagnostic.stallSummary;
-      }
-      if (meta3.status === "stalled" && meta3.readOnly === true && meta3.externalReadOnlyWriteIntentRecoveryJobMessageCount !== void 0 && diagnostic.recoveredFromReadOnlyWriteIntent !== true && diagnostic.readOnlyWriteIntent !== true) {
-        if (diagnostic.stallReason && diagnostic.stallReason !== "read_only_write_intent") {
-          diagnostic.recoveryStallReason = diagnostic.stallReason;
-          diagnostic.recoveryStallSummary = diagnostic.stallSummary;
-        }
-        diagnostic.stallReason = "read_only_write_intent";
-        diagnostic.stallSummary = "OpenCode read-only job attempted a write-capable tool, and recovery did not produce usable final text.";
-      }
     } catch (error51) {
       diagnostic.error = error51 instanceof Error ? error51.message : String(error51);
     }
@@ -58036,16 +57735,10 @@ ${textWarning2}` : stderr;
   }
   async submitPromptAsync(client2, sessionId, meta3, options) {
     try {
-      const prompt = buildOpenCodePrompt(
-        options.prompt,
-        options.readOnly === true && options.readOnlyPromptContract === true,
-        resolveReadOnlyBashPolicy(options.readOnlyBashPolicy)
-      );
       await client2.promptAsync(sessionId, {
-        prompt,
+        prompt: options.prompt,
         agent: options.agent ?? "explore",
-        model: options.model,
-        tools: options.readOnly === true && options.readOnlyToolDeny === true ? buildReadOnlyTools(resolveReadOnlyBashPolicy(options.readOnlyBashPolicy)) : void 0
+        model: options.model
       });
       await this.writeJobTrace("opencode_job_prompt_submitted", meta3, await this.inspectJob(meta3));
     } catch (error51) {
@@ -58109,9 +57802,6 @@ ${textWarning2}` : stderr;
       parentAgent: input.parentAgent,
       subagent: input.childAgent
     });
-    if (input.readOnly) {
-      return mergePermissionRules(derived, buildReadOnlyPermission(input.readOnlyBashPolicy));
-    }
     return derived.length > 0 ? derived : void 0;
   }
   clientForMeta(meta3) {
@@ -58251,19 +57941,10 @@ function selectMessagesForMeta(messages, meta3) {
   return messages.slice(Math.max(0, meta3.externalMessageBaselineCount));
 }
 function selectResultMessagesForMeta(jobMessages, meta3) {
-  if (meta3.externalReadOnlyWriteIntentRecoveryJobMessageCount === void 0) {
-    return jobMessages;
-  }
-  return jobMessages.slice(Math.max(0, meta3.externalReadOnlyWriteIntentRecoveryJobMessageCount));
-}
-function selectReadOnlyWriteIntentMessagesForMeta(jobMessages, meta3) {
-  return selectResultMessagesForMeta(jobMessages, meta3);
+  return jobMessages;
 }
 function latestAssistantMessageText(messages) {
   return [...messages].reverse().filter(isFinalAssistantTextMessage).map(extractMessageText).at(0) ?? "";
-}
-function latestAssistantVisibleText(messages) {
-  return [...messages].reverse().filter((message) => message.info?.role === "assistant").map(extractMessageText).find((text) => text.length > 0) ?? "";
 }
 function countCompletedAssistantMessages(messages) {
   return messages.filter(isCompletedAssistantMessage).length;
@@ -58314,30 +57995,15 @@ function hasReasoningContentProviderError(messages) {
 }
 function computeStallDiagnostic(jobMessages, meta3, env, pendingPermissions = []) {
   const activeMessages = selectResultMessagesForMeta(jobMessages, meta3);
-  const writeIntentMessages = selectReadOnlyWriteIntentMessagesForMeta(jobMessages, meta3);
-  const patchPartCount = countPatchParts(writeIntentMessages);
-  const writeIntentToolPartCount = countWriteIntentToolParts(writeIntentMessages);
+  const patchPartCount = countPatchParts(activeMessages);
+  const writeIntentToolPartCount = countWriteIntentToolParts(activeMessages);
   if (hasAssistantError(activeMessages)) {
     const reasoningContentError = hasReasoningContentProviderError(activeMessages);
     return {
       patchPartCount,
-      readOnlyPatchPartCount: meta3.readOnly === true ? patchPartCount : 0,
       writeIntentToolPartCount,
-      readOnlyWriteIntentToolPartCount: meta3.readOnly === true ? writeIntentToolPartCount : 0,
-      readOnlyWriteIntent: false,
       stallReason: reasoningContentError ? "provider_reasoning_content_error" : "provider_error",
       stallSummary: reasoningContentError ? "OpenCode provider rejected a DeepSeek thinking-mode request because reasoning_content was not preserved." : "OpenCode provider returned an assistant error."
-    };
-  }
-  if (meta3.readOnly === true && writeIntentToolPartCount > 0) {
-    return {
-      patchPartCount,
-      readOnlyPatchPartCount: patchPartCount,
-      writeIntentToolPartCount,
-      readOnlyWriteIntentToolPartCount: writeIntentToolPartCount,
-      readOnlyWriteIntent: true,
-      stallReason: "read_only_write_intent",
-      stallSummary: "OpenCode read-only job attempted a write-capable tool."
     };
   }
   if (activeMessages.some(isCompletedAssistantMessage)) {
@@ -58387,7 +58053,7 @@ function computeStallDiagnostic(jobMessages, meta3, env, pendingPermissions = []
   const emptyAssistantStalled = emptyAssistantRounds >= emptyAssistantThreshold;
   const blankAssistantStalled = blankAssistantRounds > 0 && durationMs >= blankAssistantThresholdMs;
   const zeroProgressAssistantStalled = zeroProgressAssistantRounds > 0 && durationMs >= zeroProgressAssistantThresholdMs;
-  const noAssistantOutputStalled = meta3.recoveredFromJobId === void 0 && meta3.externalRescuePromptSubmittedAt === void 0 && assistantMessageCount === 0 && durationMs >= zeroProgressAssistantThresholdMs;
+  const noAssistantOutputStalled = meta3.recoveredFromJobId === void 0 && assistantMessageCount === 0 && durationMs >= zeroProgressAssistantThresholdMs;
   const readToolStalled = runningReadToolParts > 0 && durationMs >= readToolThresholdMs;
   const readToolInvalidInputStalled = malformedReadToolParts > 0 && durationMs >= readToolThresholdMs;
   const externalDirectoryPermissionStalled = pendingExternalDirectoryPermissionSummaries.length > 0;
@@ -58439,13 +58105,6 @@ function computeStallDiagnostic(jobMessages, meta3, env, pendingPermissions = []
 }
 function createStallMessage(diagnostic) {
   const providerDetails = formatProviderDetails(diagnostic);
-  const rescueDetails = formatSoftStallRescueDetails(diagnostic);
-  if (diagnostic.readOnlyWriteIntent === true) {
-    return `OpenCode read-only job attempted a write-capable tool; Retinue did not treat the child result as trusted output. Inspect Retinue trace/job diagnostics for message summaries.`;
-  }
-  if (diagnostic.stallReason === "read_only_write_intent") {
-    return `OpenCode read-only job attempted a write-capable tool; Retinue requested a no-tools prose-only recovery, but no trusted final text was produced. Inspect Retinue trace/job diagnostics for message summaries.`;
-  }
   if (diagnostic.stallReason === "provider_reasoning_content_error") {
     const preview = diagnostic.lastAssistantError?.preview ?? diagnostic.lastMessageError?.preview;
     const suffix = preview ? ` Error summary: ${preview}` : " Inspect Retinue trace/job diagnostics for lastAssistantError and message summaries.";
@@ -58465,66 +58124,31 @@ function createStallMessage(diagnostic) {
   const durationMs = diagnostic.noCompletedAssistantDurationMs ?? 0;
   if (diagnostic.stallReason === "read_tool_invalid_input" && malformedReadToolParts > 0) {
     const details = formatReadToolStallDetails(diagnostic);
-    return `OpenCode job stalled: observed ${malformedReadToolParts} read tool call(s) with missing or invalid input for ${durationMs}ms.${details}${providerDetails}${rescueDetails} The OpenCode provider/model emitted a malformed read tool call; inspect Retinue trace/job diagnostics for full message summaries.`;
+    return `OpenCode job stalled: observed ${malformedReadToolParts} read tool call(s) with missing or invalid input for ${durationMs}ms.${details}${providerDetails} The OpenCode provider/model emitted a malformed read tool call; inspect Retinue trace/job diagnostics for full message summaries.`;
   }
   if (diagnostic.stallReason === "external_directory_permission_pending") {
     const permissionDetails = formatPendingPermissionDetails(diagnostic);
     const readDetails = formatReadToolStallDetails(diagnostic);
-    return `OpenCode job is waiting for external_directory permission after ${durationMs}ms.${permissionDetails}${readDetails}${providerDetails}${rescueDetails} Retinue is running headless and did not auto-approve access outside the session directory; inspect Retinue trace/job diagnostics for the pending OpenCode permission request.`;
+    return `OpenCode job is waiting for external_directory permission after ${durationMs}ms.${permissionDetails}${readDetails}${providerDetails} Retinue is running headless and did not auto-approve access outside the session directory; inspect Retinue trace/job diagnostics for the pending OpenCode permission request.`;
   }
   if (diagnostic.recoveryStallReason === "read_tool_stalled" && runningReadToolParts > 0) {
     const details = formatReadToolStallDetails(diagnostic);
-    return `OpenCode job stalled: soft-stall rescue reached ${runningReadToolParts} pending/running read tool call(s) with no completed assistant text for ${durationMs}ms.${details}${providerDetails}${rescueDetails} The OpenCode tool executor may be stuck; inspect Retinue trace/job diagnostics for full message summaries.`;
+    return `OpenCode job stalled: fresh attempt reached ${runningReadToolParts} pending/running read tool call(s) with no completed assistant text for ${durationMs}ms.${details}${providerDetails} The OpenCode tool executor may be stuck; inspect Retinue trace/job diagnostics for full message summaries.`;
   }
   if (blankRounds > 0) {
-    return `OpenCode job stalled: observed ${blankRounds} blank assistant placeholder(s) with no completed assistant text for ${durationMs}ms.${providerDetails}${rescueDetails} The OpenCode provider or model router may be unavailable; inspect Retinue trace/job diagnostics for message summaries.`;
+    return `OpenCode job stalled: observed ${blankRounds} blank assistant placeholder(s) with no completed assistant text for ${durationMs}ms.${providerDetails} The OpenCode provider or model router may be unavailable; inspect Retinue trace/job diagnostics for message summaries.`;
   }
   if (zeroProgressRounds > 0) {
-    return `OpenCode job stalled: observed ${zeroProgressRounds} zero-progress assistant placeholder(s) with no completed assistant text for ${durationMs}ms.${providerDetails}${rescueDetails} The OpenCode provider or model router may be unavailable or stuck after tool calls; inspect Retinue trace/job diagnostics for message summaries.`;
+    return `OpenCode job stalled: observed ${zeroProgressRounds} zero-progress assistant placeholder(s) with no completed assistant text for ${durationMs}ms.${providerDetails} The OpenCode provider or model router may be unavailable or stuck after tool calls; inspect Retinue trace/job diagnostics for message summaries.`;
   }
   if (runningReadToolParts > 0) {
     const details = formatReadToolStallDetails(diagnostic);
-    return `OpenCode job stalled: observed ${runningReadToolParts} pending/running read tool call(s) with no completed assistant text for ${durationMs}ms.${details}${providerDetails}${rescueDetails} The OpenCode tool executor may be stuck; inspect Retinue trace/job diagnostics for full message summaries.`;
+    return `OpenCode job stalled: observed ${runningReadToolParts} pending/running read tool call(s) with no completed assistant text for ${durationMs}ms.${details}${providerDetails} The OpenCode tool executor may be stuck; inspect Retinue trace/job diagnostics for full message summaries.`;
   }
-  return `OpenCode job stalled: observed ${rounds} tool-call assistant round(s) and ${emptyRounds} empty assistant round(s) with no completed assistant text for ${durationMs}ms.${providerDetails}${rescueDetails} Inspect Retinue trace/job diagnostics for message summaries.`;
-}
-function selectReadOnlyWriteIntentAdvisoryText(jobMessages, meta3, diagnostic) {
-  if (meta3.readOnly !== true) {
-    return "";
-  }
-  if (diagnostic.readOnlyWriteIntent !== true && diagnostic.stallReason !== "read_only_write_intent") {
-    return "";
-  }
-  return latestAssistantVisibleText(jobMessages);
+  return `OpenCode job stalled: observed ${rounds} tool-call assistant round(s) and ${emptyRounds} empty assistant round(s) with no completed assistant text for ${durationMs}ms.${providerDetails} Inspect Retinue trace/job diagnostics for message summaries.`;
 }
 function isHardStallDiagnostic(diagnostic) {
-  return diagnostic.readOnlyWriteIntent === true || diagnostic.stallReason === "provider_error" || diagnostic.stallReason === "external_directory_permission_pending";
-}
-function isSoftStallRescueEligible(diagnostic) {
-  if (diagnostic.readOnlyWriteIntent === true) {
-    return true;
-  }
-  const hasToolProgress = (diagnostic.toolCallAssistantRounds ?? 0) > 0;
-  return diagnostic.stallReason === "backend_no_final_text" || diagnostic.stallReason === "tool_loop_no_completion" || diagnostic.stallReason === "incomplete_assistant_round" || hasToolProgress && diagnostic.stallReason === "provider_blank_assistant" || hasToolProgress && diagnostic.stallReason === "provider_zero_progress";
-}
-function createReadOnlyTextWarning(text) {
-  if (!text.trim()) {
-    return void 0;
-  }
-  const riskyPatterns = [
-    /^```(?:diff|patch)\b/im,
-    /^---\s+a\//m,
-    /^\+\+\+\s+b\//m,
-    /^@@\s+-\d/m,
-    /^\s*(?:sudo\s+|rm\s+-rf\b|chmod\s+|cat\s+>|tee\s+)/m
-  ];
-  if (!riskyPatterns.some((pattern) => pattern.test(text))) {
-    return void 0;
-  }
-  return "Retinue read-only result may contain patch or write-command text; treat stdout as untrusted analysis, not executable instructions.";
-}
-function createReadOnlyAdvisoryWarning() {
-  return "Retinue returned read-only write-intent text as advisory stdout only; treat it as untrusted analysis, not executable instructions or project evidence.";
+  return diagnostic.stallReason === "provider_error" || diagnostic.stallReason === "external_directory_permission_pending";
 }
 function selectStallReason(stalled) {
   if (stalled.readToolInvalidInputStalled) {
@@ -58555,24 +58179,21 @@ function selectStallReason(stalled) {
 }
 function createStallSummary(diagnostic) {
   const durationMs = diagnostic.noCompletedAssistantDurationMs ?? 0;
-  const rescueDetails = formatSoftStallRescueDetails(diagnostic);
   switch (diagnostic.stallReason) {
-    case "read_only_write_intent":
-      return "OpenCode read-only job attempted a write-capable tool.";
     case "provider_error":
       return "OpenCode provider returned an assistant error before final text.";
     case "provider_reasoning_content_error":
       return "OpenCode provider rejected a DeepSeek reasoning_content thinking-mode request.";
     case "provider_blank_assistant":
-      return `OpenCode provider/router produced blank assistant output for ${durationMs}ms.${rescueDetails}`;
+      return `OpenCode provider/router produced blank assistant output for ${durationMs}ms.`;
     case "provider_zero_progress":
-      return `OpenCode provider/router produced zero-progress assistant output for ${durationMs}ms.${rescueDetails}`;
+      return `OpenCode provider/router produced zero-progress assistant output for ${durationMs}ms.`;
     case "read_tool_invalid_input":
-      return `OpenCode provider/model emitted read tool call(s) with missing or invalid input for ${durationMs}ms.${formatReadToolStallDetails(diagnostic)}${rescueDetails}`;
+      return `OpenCode provider/model emitted read tool call(s) with missing or invalid input for ${durationMs}ms.${formatReadToolStallDetails(diagnostic)}`;
     case "external_directory_permission_pending":
-      return `OpenCode is waiting for external_directory permission for ${durationMs}ms.${formatPendingPermissionDetails(diagnostic)}${formatReadToolStallDetails(diagnostic)}${rescueDetails}`;
+      return `OpenCode is waiting for external_directory permission for ${durationMs}ms.${formatPendingPermissionDetails(diagnostic)}${formatReadToolStallDetails(diagnostic)}`;
     case "read_tool_stalled":
-      return `OpenCode tool executor left read tool call(s) running for ${durationMs}ms.${formatReadToolStallDetails(diagnostic)}${rescueDetails}`;
+      return `OpenCode tool executor left read tool call(s) running for ${durationMs}ms.${formatReadToolStallDetails(diagnostic)}`;
     case "incomplete_assistant_round":
       return `OpenCode left the latest assistant round incomplete for ${durationMs}ms.`;
     case "backend_no_final_text":
@@ -58583,9 +58204,6 @@ function createStallSummary(diagnostic) {
       return `OpenCode job stalled with no completed assistant text for ${durationMs}ms.`;
   }
 }
-function isOpenCodeStallReason(value) {
-  return value === "read_only_write_intent" || value === "provider_error" || value === "provider_reasoning_content_error" || value === "provider_blank_assistant" || value === "provider_zero_progress" || value === "read_tool_invalid_input" || value === "read_tool_stalled" || value === "external_directory_permission_pending" || value === "incomplete_assistant_round" || value === "backend_no_final_text" || value === "tool_loop_no_completion";
-}
 function formatProviderDetails(diagnostic) {
   const entries = [
     diagnostic.lastAssistantProviderID ? `provider=${diagnostic.lastAssistantProviderID}` : void 0,
@@ -58594,13 +58212,6 @@ function formatProviderDetails(diagnostic) {
     diagnostic.lastAssistantMode ? `mode=${diagnostic.lastAssistantMode}` : void 0
   ].filter(Boolean);
   return entries.length > 0 ? ` ${entries.join(" ")}.` : "";
-}
-function formatSoftStallRescueDetails(diagnostic) {
-  if (!diagnostic.softStallRescueSourceReason) {
-    return "";
-  }
-  const recovery = diagnostic.recoveryStallReason ? ` recovery=${diagnostic.recoveryStallReason}` : "";
-  return ` rescueSource=${diagnostic.softStallRescueSourceReason}${recovery}.`;
 }
 function isMalformedReadToolInput(part) {
   if (part.tool !== "read") {
@@ -58781,48 +58392,32 @@ function parseOptionalNonNegativeInt(value, fallback) {
 function resolveServerIdleMs(env) {
   return parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_SERVER_IDLE_MS, DEFAULT_SERVER_IDLE_MS);
 }
-function resolveSoftStallRescueGraceMs(env) {
-  return parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS, DEFAULT_SOFT_STALL_RESCUE_GRACE_MS);
-}
-function resolveSoftStallRescueAgent(currentAgent, env) {
-  const configured = env?.RETINUE_OPENCODE_SOFT_STALL_RESCUE_AGENT?.trim();
-  if (configured === "0" || configured === "false" || configured === "none") {
-    return currentAgent;
-  }
-  return configured || "build";
-}
 function resolveTaskAttemptMax(env) {
   return parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_TASK_ATTEMPT_MAX, DEFAULT_TASK_ATTEMPT_MAX);
 }
 function selectTaskLevelAttemptReason(meta3, diagnostic) {
-  if (diagnostic.readOnlyWriteIntent === true || diagnostic.stallReason === "read_only_write_intent") {
-    return void 0;
-  }
+  void meta3;
   if (diagnostic.stallReason === "external_directory_permission_pending") {
     return void 0;
   }
   if (diagnostic.stallReason === "read_tool_invalid_input") {
-    return diagnostic.softStallRescueSourceReason ? "rescue_malformed_read_tool_call" : "malformed_read_tool_call";
+    return "malformed_read_tool_call";
   }
-  if (diagnostic.recoveryStallReason) {
-    return `rescue_${diagnostic.recoveryStallReason}`;
+  if (typeof diagnostic.recoveryStallReason === "string" && diagnostic.recoveryStallReason.length > 0) {
+    return diagnostic.recoveryStallReason;
   }
-  if (meta3.externalRescuePromptSubmittedAt && diagnostic.stallReason && isSoftStallRescueEligible(diagnostic)) {
-    return `rescue_${diagnostic.stallReason}`;
-  }
-  if (diagnostic.stallReason === "provider_zero_progress" || diagnostic.stallReason === "provider_blank_assistant") {
+  if (diagnostic.stallReason === "provider_zero_progress" || diagnostic.stallReason === "provider_blank_assistant" || diagnostic.stallReason === "incomplete_assistant_round" || diagnostic.stallReason === "backend_no_final_text" || diagnostic.stallReason === "tool_loop_no_completion") {
     return diagnostic.stallReason;
   }
   return void 0;
 }
 function createTaskLevelAttemptPrompt(originalPrompt, recoveryReason, diagnostic, handoffCapsule) {
   const stall = diagnostic.stallReason ? `stallReason=${diagnostic.stallReason}` : "stallReason=unknown";
-  const source = diagnostic.softStallRescueSourceReason ? ` rescueSource=${diagnostic.softStallRescueSourceReason}` : "";
   const recovery = diagnostic.recoveryStallReason ? ` recovery=${diagnostic.recoveryStallReason}` : "";
   const readHint = diagnostic.stallReason === "read_tool_invalid_input" || diagnostic.recoveryStallReason === "read_tool_invalid_input" ? "The previous attempt emitted a malformed OpenCode read tool call. Prefer grep/glob or read-only shell inspection over the OpenCode read tool when source inspection is needed." : "Use a smaller inspection path and produce a final answer as soon as enough evidence is available.";
   return [
     "Retinue task-level retry request:",
-    `Previous attempt failed as non-evidence (${stall}${source}${recovery}; recoveryReason=${recoveryReason}).`,
+    `Previous attempt failed as non-evidence (${stall}${recovery}; recoveryReason=${recoveryReason}).`,
     "Start a fresh controlled attempt. Do not rely on the previous stalled output as evidence.",
     readHint,
     "Do not modify files. Return a concise final answer with path evidence when applicable.",
@@ -58862,14 +58457,11 @@ function buildAttemptHandoffCapsule(meta3, recoveryReason, diagnostic) {
   if (diagnostic.stallReason === "read_tool_invalid_input" || diagnostic.recoveryStallReason === "read_tool_invalid_input") {
     warnings.add("Previous attempt emitted a malformed OpenCode read tool call; do not repeat empty read input.");
   }
-  if (diagnostic.softStallRescueSourceReason) {
-    warnings.add(`Previous same-session finalization rescue followed ${diagnostic.softStallRescueSourceReason}.`);
-  }
   return {
     sourceJobId: meta3.jobId,
     sourceSessionId: meta3.externalSessionId,
     cwd: meta3.cwd,
-    stallReason: diagnostic.softStallRescueSourceReason ?? diagnostic.stallReason,
+    stallReason: diagnostic.stallReason,
     recoveryReason,
     trustedFinalText: false,
     completedTools,
@@ -59096,9 +58688,6 @@ function createPromptPreview2(prompt) {
   const normalized = prompt.replace(/\s+/g, " ").trim();
   return normalized.length > 120 ? `${normalized.slice(0, 117)}...` : normalized;
 }
-function resolveReadOnlyBashPolicy(value) {
-  return value ?? "readonly_git";
-}
 function resolveRunnerMode(env) {
   const value = env?.RETINUE_OPENCODE_ROOT_BINDING_MODE?.trim().toLowerCase();
   if (value === void 0 || value === "" || value === "shared_root" || value === "shared-root") {
@@ -59115,12 +58704,6 @@ function resolveRootAgent(env) {
     return "build";
   }
   return value;
-}
-function buildReadOnlyPermission(bashPolicy) {
-  return bashPolicy === "readonly_git" ? [...OPENCODE_READONLY_GIT_BASH_PERMISSION, ...OPENCODE_READ_ONLY_BASE_PERMISSION] : OPENCODE_READ_ONLY_BASE_PERMISSION;
-}
-function buildReadOnlyTools(bashPolicy) {
-  return bashPolicy === "readonly_git" ? OPENCODE_READ_ONLY_TOOLS_WITH_READONLY_GIT_BASH : OPENCODE_READ_ONLY_TOOLS_NO_BASH;
 }
 function findOpenCodeAgent(agents, name) {
   return agents.find((agent) => agent.name === name);
@@ -59166,19 +58749,6 @@ function deriveSubagentSessionPermission(input) {
     ...canTodo ? [] : [{ permission: "todowrite", pattern: "*", action: "deny" }],
     ...canTask ? [] : [{ permission: "task", pattern: "*", action: "deny" }]
   ];
-}
-function mergePermissionRules(...groups) {
-  const rules = groups.flatMap((group) => group ?? []);
-  return rules.length > 0 ? rules : void 0;
-}
-function buildOpenCodePrompt(prompt, readOnly, bashPolicy) {
-  if (!readOnly) {
-    return prompt;
-  }
-  return `${createReadOnlyPromptContract(bashPolicy)}
-
-User task:
-${prompt}`;
 }
 function sha2562(value) {
   return createHash3("sha256").update(value).digest("hex");
@@ -59422,9 +58992,8 @@ async function auditRetinueLogs(options = {}) {
   const events = input.events;
   const jobMetaByJobId = await collectJobMetaByJobId(events, stateDir);
   const latestStatusByJobId = await collectLatestStatusByJobId(events, stateDir, options.reconcileStatus);
-  const latestEventByJobId = collectLatestEventByJobId(events);
   const attemptRootByJobId = await collectAttemptRoots(events, stateDir);
-  const { issues, attentions } = summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId, jobMetaByJobId, {
+  const { issues, attentions } = summarizeIssues(events, latestStatusByJobId, attemptRootByJobId, jobMetaByJobId, {
     includeTerminal: options.includeTerminal === true || options.since !== void 0
   });
   return {
@@ -59503,7 +59072,7 @@ async function readTail(filePath, maxBytes) {
 function isMissingFile3(error51) {
   return typeof error51 === "object" && error51 !== null && "code" in error51 && error51.code === "ENOENT";
 }
-function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemptRootByJobId, jobMetaByJobId, options = {}) {
+function summarizeIssues(events, latestStatusByJobId, attemptRootByJobId, jobMetaByJobId, options = {}) {
   const issuesBySignature = /* @__PURE__ */ new Map();
   const attentionsBySignature = /* @__PURE__ */ new Map();
   const latestStatusByChainRootJobId = collectLatestStatusByChainRootJobId(latestStatusByJobId, attemptRootByJobId);
@@ -59518,9 +59087,6 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
         continue;
       }
       if (options.includeTerminal !== true && isTerminalNonCompletedStatus(latestStatus)) {
-        continue;
-      }
-      if (!isBackendUnreachableEvent(event) && isNonTerminalSoftStallEvent(latestEventByJobId.get(event.jobId))) {
         continue;
       }
     }
@@ -59569,13 +59135,6 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
       sessionDirectory: diagnostic.sessionDirectory,
       stallReason: diagnostic.stallReason,
       stallSummary: diagnostic.stallSummary,
-      softStallRescueSourceReason: diagnostic.softStallRescueSourceReason,
-      softStallRescueSourceSummary: diagnostic.softStallRescueSourceSummary,
-      softStallRescueStrategy: diagnostic.softStallRescueStrategy,
-      softStallRescueAgent: diagnostic.softStallRescueAgent,
-      softStallRescueModel: diagnostic.softStallRescueModel,
-      softStallRescueTools: diagnostic.softStallRescueTools,
-      softStallRescueSubmittedAt: diagnostic.softStallRescueSubmittedAt,
       recoveryStallReason: diagnostic.recoveryStallReason,
       recoveryStallSummary: diagnostic.recoveryStallSummary,
       noCompletedAssistantDurationMs: diagnostic.noCompletedAssistantDurationMs,
@@ -59589,7 +59148,6 @@ function summarizeIssues(events, latestStatusByJobId, latestEventByJobId, attemp
       pendingPermissionCount: diagnostic.pendingPermissionCount,
       pendingExternalDirectoryPermissionCount: diagnostic.pendingExternalDirectoryPermissionCount,
       permissionActions: compactPermissionActions(diagnostic.pendingExternalDirectoryPermissions ?? diagnostic.pendingPermissions),
-      readOnlyWriteIntent: diagnostic.readOnlyWriteIntent,
       problemStatus: status === "backend_unreachable" ? "backend_unreachable" : void 0,
       requestedAgent: requestedAgentFromMeta(jobMeta),
       baseUrl: diagnostic.baseUrl,
@@ -59733,7 +59291,6 @@ function createChainSignature(rootJobId, diagnostic) {
 function createDiagnosticSignature(event, diagnostic) {
   return [
     diagnostic.stallReason ?? "unknown_stall",
-    diagnostic.softStallRescueSourceReason ?? "no_rescue_source",
     diagnostic.recoveryStallReason ?? "no_recovery_stall",
     diagnostic.lastAssistantProviderID ?? "unknown_provider",
     diagnostic.lastAssistantModelID ?? "unknown_model",
@@ -59813,23 +59370,6 @@ async function collectLatestStatusByJobId(events, stateDir, reconcileStatus) {
   }
   return new Map([...statuses].map(([jobId, value]) => [jobId, value.status]));
 }
-function collectLatestEventByJobId(events) {
-  const latest = /* @__PURE__ */ new Map();
-  for (const event of events) {
-    if (typeof event.jobId !== "string" || typeof event.event !== "string") {
-      continue;
-    }
-    const timestamp = eventTime(event)?.toISOString() ?? "";
-    const current = latest.get(event.jobId);
-    if (!current || timestamp >= current.timestamp) {
-      latest.set(event.jobId, { event: event.event, timestamp });
-    }
-  }
-  return new Map([...latest].map(([jobId, value]) => [jobId, value.event]));
-}
-function isNonTerminalSoftStallEvent(event) {
-  return event === "opencode_job_soft_stall_deferred" || event === "opencode_job_soft_stall_rescue_submitted" || event === "opencode_job_soft_stall_rescue_pending";
-}
 function createIssueTitle(event, diagnostic) {
   if (isBackendUnreachableEvent(event)) {
     return "Investigate Retinue backend_unreachable for OpenCode server";
@@ -59838,8 +59378,7 @@ function createIssueTitle(event, diagnostic) {
   const provider = diagnostic.lastAssistantProviderID ?? "unknown_provider";
   const model = diagnostic.lastAssistantModelID ?? "unknown_model";
   if (diagnostic.recoveryStallReason) {
-    const source = diagnostic.softStallRescueSourceReason ?? "unknown_rescue_source";
-    return `Investigate Retinue recovery ${String(diagnostic.recoveryStallReason)} after ${String(source)} on ${String(provider)}/${String(model)}`;
+    return `Investigate Retinue recovery ${String(diagnostic.recoveryStallReason)} on ${String(provider)}/${String(model)}`;
   }
   return `Investigate Retinue ${String(reason)} on ${String(provider)}/${String(model)}`;
 }
@@ -59875,7 +59414,6 @@ function createIssueDescription(event, diagnostic, jobMeta) {
   }
   const parts = [
     diagnostic.stallSummary,
-    diagnostic.softStallRescueSourceReason ? `rescueSource=${String(diagnostic.softStallRescueSourceReason)}` : void 0,
     diagnostic.recoveryStallReason ? `recovery=${String(diagnostic.recoveryStallReason)}` : void 0,
     diagnostic.sessionDirectory ? `cwd=${String(diagnostic.sessionDirectory)}` : void 0,
     diagnostic.lastAssistantAgent ? `agent=${String(diagnostic.lastAssistantAgent)}` : void 0,
@@ -59997,7 +59535,6 @@ function renderCompactIssue(issue2, index, prefix = "") {
   const sample = issue2.sample ?? {};
   const summary = [
     `reason=${stringField(sample.problemStatus) ?? stringField(sample.stallReason) ?? "unknown"}`,
-    stringField(sample.softStallRescueSourceReason) ? `source=${stringField(sample.softStallRescueSourceReason)}` : void 0,
     stringField(sample.recoveryStallReason) ? `recovery=${stringField(sample.recoveryStallReason)}` : void 0,
     `provider=${providerModel(issue2)}`,
     stringField(sample.baseUrl) ? `baseUrl=${stringField(sample.baseUrl)}` : void 0,
@@ -60008,8 +59545,7 @@ function renderCompactIssue(issue2, index, prefix = "") {
     stringField(sample.selectedAttemptJobId) ? `selectedAttempt=${stringField(sample.selectedAttemptJobId)}` : void 0,
     sample.attemptChainPresent === true ? "attemptChain=true" : void 0,
     numericField(sample.malformedReadToolParts) ? `malformedRead=${numericField(sample.malformedReadToolParts)}` : void 0,
-    numericField(sample.pendingPermissionCount) ? `permissions=${numericField(sample.pendingPermissionCount)}` : void 0,
-    sample.readOnlyWriteIntent === true ? "readOnlyWriteIntent=true" : void 0
+    numericField(sample.pendingPermissionCount) ? `permissions=${numericField(sample.pendingPermissionCount)}` : void 0
   ].filter((part) => Boolean(part)).join(" ");
   const permissionLines = renderPermissionActions(sample.permissionActions);
   return [
@@ -60039,12 +59575,12 @@ function renderPermissionActions(value) {
 }
 function providerModel(issue2) {
   const parts = issue2.signature.split("|");
-  const offset = parts[0] === "chain" ? 2 : 3;
+  const offset = parts[0] === "chain" ? 2 : 2;
   return `${parts[offset] ?? "unknown_provider"}/${parts[offset + 1] ?? "unknown_model"}`;
 }
 function agentMode(issue2) {
   const parts = issue2.signature.split("|");
-  const offset = parts[0] === "chain" ? 4 : 5;
+  const offset = parts[0] === "chain" ? 4 : 4;
   return `${parts[offset] ?? "unknown_agent"}/${parts[offset + 1] ?? "unknown_mode"}`;
 }
 function stringField(value) {
@@ -61906,8 +61442,7 @@ function summarizeJobDiagnostic(value) {
     return void 0;
   }
   const event = typeof value.event === "string" ? value.event : void 0;
-  const readOnlyWriteIntent = diagnostic.readOnlyWriteIntent === true;
-  const patchPartSummary = createPatchPartSummary(diagnostic, readOnlyWriteIntent);
+  const patchPartSummary = createPatchPartSummary(diagnostic);
   const patchPartsWithoutWriteIntent = patchPartSummary !== void 0;
   const pendingExternalDirectoryPermissions = permissionRequestsFromDiagnostic(diagnostic.pendingExternalDirectoryPermissions);
   const pendingPermissions = permissionRequestsFromDiagnostic(diagnostic.pendingPermissions);
@@ -61943,22 +61478,12 @@ function summarizeJobDiagnostic(value) {
     lastAssistantAgent: stringValue(diagnostic.lastAssistantAgent),
     lastAssistantMode: stringValue(diagnostic.lastAssistantMode),
     patchPartCount: patchPartsWithoutWriteIntent ? void 0 : numberValue(diagnostic.patchPartCount),
-    readOnlyPatchPartCount: patchPartsWithoutWriteIntent ? void 0 : numberValue(diagnostic.readOnlyPatchPartCount),
+    writeIntentToolPartCount: numberValue(diagnostic.writeIntentToolPartCount),
     patchPartSummary,
-    readOnlyWriteIntent,
-    readOnlyWriteIntentRecoveryJobMessageCount: numberValue(diagnostic.readOnlyWriteIntentRecoveryJobMessageCount),
-    recoveredFromReadOnlyWriteIntent: booleanValue(diagnostic.recoveredFromReadOnlyWriteIntent),
-    readOnlyTextWarning: booleanValue(diagnostic.readOnlyTextWarning),
-    readOnlyTextWarningSummary: stringValue(diagnostic.readOnlyTextWarningSummary),
     selectedAssistantTextBytes: numberValue(diagnostic.selectedAssistantTextBytes),
     selectedAssistantSha256: stringValue(diagnostic.selectedAssistantSha256),
     stallReason: stringValue(diagnostic.stallReason),
     stallSummary: stringValue(diagnostic.stallSummary),
-    softStallRescueStrategy: stringValue(diagnostic.softStallRescueStrategy),
-    softStallRescueAgent: stringValue(diagnostic.softStallRescueAgent),
-    softStallRescueModel: stringValue(diagnostic.softStallRescueModel),
-    softStallRescueTools: stringArrayValue(diagnostic.softStallRescueTools),
-    softStallRescueSubmittedAt: stringValue(diagnostic.softStallRescueSubmittedAt),
     toolCallAssistantRounds: numberValue(diagnostic.toolCallAssistantRounds),
     failedToolCallAssistantRounds: numberValue(diagnostic.failedToolCallAssistantRounds),
     emptyAssistantRounds: numberValue(diagnostic.emptyAssistantRounds),
@@ -62068,7 +61593,7 @@ function resolveDiagnosticStatus(event, diagnostic) {
   if (event === "opencode_job_soft_stall_deferred") {
     return "running";
   }
-  if (event === "opencode_job_stalled" || typeof diagnostic.stallReason === "string" || diagnostic.readOnlyWriteIntent === true) {
+  if (event === "opencode_job_stalled" || typeof diagnostic.stallReason === "string") {
     return "stalled";
   }
   if (event === "opencode_job_prompt_failed") {
@@ -62084,15 +61609,9 @@ function createDiagnosticSummaryMessage(event, diagnostic) {
   if (stallSummary) {
     return stallSummary;
   }
-  if (diagnostic.readOnlyWriteIntent === true) {
-    return "OpenCode read-only job emitted patch/write intent; treat the child output as untrusted and inspect diagnostics.";
-  }
-  const patchPartSummary = createPatchPartSummary(diagnostic, false);
+  const patchPartSummary = createPatchPartSummary(diagnostic);
   if (event === "opencode_job_stalled") {
     return "OpenCode job was classified as stalled by Retinue stall rules.";
-  }
-  if (event === "opencode_job_soft_stall_deferred") {
-    return "OpenCode job matched recoverable stall rules; Retinue is still waiting within the caller timeout.";
   }
   if (event === "opencode_job_prompt_failed") {
     return "OpenCode prompt submission failed before the child job became usable.";
@@ -62111,12 +61630,12 @@ function createDiagnosticSummaryMessage(event, diagnostic) {
   const incomplete = diagnostic.incompleteAssistantRound === true;
   return `OpenCode job is still running after wait timeout; toolCallAssistantRounds=${rounds}, emptyAssistantRounds=${emptyRounds}, blankAssistantRounds=${blankRounds}, zeroProgressAssistantRounds=${zeroProgressRounds}, runningReadToolParts=${runningReadToolParts}, incompleteAssistantRound=${incomplete}.`;
 }
-function createPatchPartSummary(diagnostic, readOnlyWriteIntent) {
+function createPatchPartSummary(diagnostic) {
   const patchPartCount = numberValue(diagnostic.patchPartCount) ?? 0;
-  if (patchPartCount <= 0 || readOnlyWriteIntent) {
+  if (patchPartCount <= 0) {
     return void 0;
   }
-  return "OpenCode patch part(s) were observed, but no write-capable tool call was detected; do not treat patchPartCount alone as write intent.";
+  return "OpenCode patch part(s) were observed in the backend stream.";
 }
 function compactRecord(record2) {
   return Object.fromEntries(Object.entries(record2).filter(([, value]) => value !== void 0));

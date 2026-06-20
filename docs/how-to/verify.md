@@ -86,7 +86,7 @@ pnpm run gate:dogfood
 By default this uses OpenCode's built-in `explore` subagent, matching the packaged Retinue plugin
 default. This probe runs concurrent read-only OpenCode review jobs through the Retinue MCP surface and exits
 nonzero unless every child returns a completed textual answer, reports a `PASS` verdict, and includes
-its requested completion marker. `FAIL` verdicts, `stalled`, `running`, `read_only_write_intent`,
+its requested completion marker. `FAIL` verdicts, `stalled`, `running`,
 `read_tool_invalid_input`, provider/router zero-progress, and missing-marker results are release-blocking dogfood failures, not
 review evidence. The JSON output includes job ids, provider/model metadata, stdout/stderr paths,
 `stallReason`, `stallSummary`, `runningReadToolParts`, `runningReadToolCallIds`, and `tracePath` for

@@ -421,7 +421,6 @@ describe("MCP tools", () => {
           diagnostic: {
             stallReason: "read_tool_invalid_input",
             stallSummary: "OpenCode provider/model emitted read tool call(s) with missing or invalid input. readToolCalls=call_read:pending:input={}.",
-            softStallRescueSourceReason: "provider_zero_progress",
             recoveryStallReason: "read_tool_invalid_input",
             lastAssistantProviderID: "litellm",
             lastAssistantModelID: "doubao-seed-2.0-lite",
@@ -580,7 +579,6 @@ describe("MCP tools", () => {
     } finally {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
-      delete process.env.RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS;
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });
     }
@@ -691,14 +689,12 @@ describe("MCP tools", () => {
         diagnostic: {
           event: "opencode_job_result_read",
           status: "completed",
-          readOnlyWriteIntent: false,
-          patchPartSummary: expect.stringContaining("do not treat patchPartCount alone as write intent")
+          patchPartSummary: expect.stringContaining("OpenCode patch part")
         }
       });
       expect(wait.diagnostic).not.toHaveProperty("patchPartCount");
-      expect(wait.diagnostic).not.toHaveProperty("readOnlyPatchPartCount");
       expect(wait.diagnostic.message).toContain("OpenCode job result was read successfully");
-      expect(wait.diagnostic.message).toContain("do not treat patchPartCount alone as write intent");
+      expect(wait.diagnostic.message).toContain("OpenCode patch part");
     } finally {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
@@ -854,15 +850,13 @@ describe("MCP tools", () => {
       RETINUE_STATE_DIR: process.env.RETINUE_STATE_DIR,
       RETINUE_OPENCODE_BASE_URL: process.env.RETINUE_OPENCODE_BASE_URL,
       RETINUE_MCP_WAIT_MAX_MS: process.env.RETINUE_MCP_WAIT_MAX_MS,
-      RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS,
-      RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS: process.env.RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS
+      RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS
     };
     try {
       process.env.RETINUE_STATE_DIR = tempDir;
       process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
       process.env.RETINUE_MCP_WAIT_MAX_MS = "5000";
       process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS = "1";
-      process.env.RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS = "0";
       fakeOpenCode.setAutoAssistantResponses(false);
 
       const spawn = parseToolJson(
@@ -911,7 +905,6 @@ describe("MCP tools", () => {
       restoreEnv("RETINUE_OPENCODE_BASE_URL", previousEnv.RETINUE_OPENCODE_BASE_URL);
       restoreEnv("RETINUE_MCP_WAIT_MAX_MS", previousEnv.RETINUE_MCP_WAIT_MAX_MS);
       restoreEnv("RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS", previousEnv.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS);
-      restoreEnv("RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS", previousEnv.RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS);
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });
     }
@@ -1015,8 +1008,7 @@ describe("MCP tools", () => {
         backend: "opencode",
         status: "running",
         jobMessageCount: 1,
-        lastMessagePartTypes: ["text"],
-        readOnlyWriteIntent: false
+        lastMessagePartTypes: ["text"]
       });
       expect(wait.diagnostic.message).toContain("OpenCode job is still running");
       expect(wait.diagnostic.message).toContain("blankAssistantRounds=0");
@@ -1031,7 +1023,7 @@ describe("MCP tools", () => {
     }
   });
 
-  it("keeps recoverable OpenCode soft stalls running while rescue is pending", async () => {
+  it("surfaces OpenCode zero-progress stalls when fresh attempts are disabled", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "retinue-mcp-retinue-opencode-stalled-"));
     const fakeOpenCode = await startFakeOpenCodeServer();
     fakeOpenCode.setAutoAssistantResponses(false);
@@ -1040,7 +1032,6 @@ describe("MCP tools", () => {
       process.env.RETINUE_STATE_DIR = tempDir;
       process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
       process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS = "1";
-      process.env.RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS = "1000";
       process.env.RETINUE_OPENCODE_TASK_ATTEMPT_MAX = "0";
 
       const spawn = parseToolJson(
@@ -1063,9 +1054,9 @@ describe("MCP tools", () => {
       expect(wait).toMatchObject({
         task_name: "stalled-opencode",
         jobId: spawn.jobId,
-        status: "running",
+        status: "stalled",
         diagnostic: {
-          event: "opencode_job_soft_stall_rescue_pending",
+          event: "opencode_job_result_read",
           stallReason: "provider_zero_progress",
           zeroProgressAssistantRounds: 1,
           lastAssistantProviderID: "litellm",
@@ -1074,18 +1065,11 @@ describe("MCP tools", () => {
       });
       expect(wait.diagnostic.message).toContain("provider/router produced zero-progress assistant output");
       const list = parseToolJson(await connection.client.callTool({ name: "list_agents", arguments: {} }));
-      expect(list.agents).toContainEqual(
-        expect.objectContaining({
-          jobId: spawn.jobId,
-          task_name: "stalled-opencode",
-          status: "running"
-        })
-      );
+      expect(list.agents).toEqual([]);
     } finally {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
       delete process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS;
-      delete process.env.RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS;
       delete process.env.RETINUE_OPENCODE_TASK_ATTEMPT_MAX;
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });
@@ -1101,7 +1085,6 @@ describe("MCP tools", () => {
       process.env.RETINUE_STATE_DIR = tempDir;
       process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
       process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS = "1";
-      process.env.RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS = "0";
       process.env.RETINUE_OPENCODE_TASK_ATTEMPT_MAX = "0";
 
       const spawn = parseToolJson(
@@ -1145,7 +1128,6 @@ describe("MCP tools", () => {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
       delete process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS;
-      delete process.env.RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS;
       delete process.env.RETINUE_OPENCODE_TASK_ATTEMPT_MAX;
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });
@@ -2335,7 +2317,6 @@ describe("MCP tools", () => {
       process.env.RETINUE_STATE_DIR = tempDir;
       process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
       process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS = "1";
-      process.env.RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS = "0";
       process.env.RETINUE_OPENCODE_TASK_ATTEMPT_MAX = "0";
 
       const spawn = parseToolJson(
@@ -2370,7 +2351,6 @@ describe("MCP tools", () => {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
       delete process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS;
-      delete process.env.RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS;
       delete process.env.RETINUE_OPENCODE_TASK_ATTEMPT_MAX;
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });

@@ -32,16 +32,16 @@ Useful options:
 
 ## Interpretation
 
-Each issue candidate includes a signature, affected job IDs, first/last seen timestamps, and one compact sample with session IDs, cwd, stall reason, recovery source/recovery stall reason, tool-call rounds, blank/zero-progress rounds, and read-only write intent status.
+Each issue candidate includes a signature, affected job IDs, first/last seen timestamps, and one compact sample with session IDs, cwd, stall reason, recovery stall reason when present, tool-call rounds, blank/zero-progress rounds, permission counts, and malformed read summaries.
 
 Attention candidates use the `#A<n>` compact prefix. For `external_directory_permission_pending`, compact output includes `permission[n]` lines with request id, target, patterns, tool call id, recommended reply, and workspace relation. That should usually be enough to decide whether to call `reply_permission` with `once`, `always`, or `reject`; use `list_permissions` only when you need the full `approval` object. Do not treat a permission wait as failed child-agent evidence unless the supervising agent cannot make a permission decision.
 
-If a job briefly emits `opencode_job_stalled` and then later completes after Retinue's recovery prompt, treat the final completed result as the useful evidence. Without `--since`, the default audit output intentionally reports only jobs whose latest scanned status is still unresolved. Use `--include-terminal` to review historical terminal failures in broad scans.
+If a job briefly emits `opencode_job_stalled` and then later completes before a stalled result is persisted, treat the final completed result as the useful evidence. Without `--since`, the default audit output intentionally reports only jobs whose latest scanned status is still unresolved. Use `--include-terminal` to review historical terminal failures in broad scans.
 
-For direct-child OpenCode runs, `sample.sessionId` is the result child session and `sample.parentSessionId` is the unprompted relationship container. If the same job also shows a later `build`/`build` candidate, that is usually the no-tools soft-stall rescue prompt, not the original child runner.
+For direct-child OpenCode runs, `sample.sessionId` is the result child session and `sample.parentSessionId` is the unprompted relationship container. If a stalled root has a selected fresh attempt, compact output includes `selectedAttempt` or `attemptChain=true`; review the selected completed attempt as evidence and keep the root stall as diagnostics only.
 
 If `sample.stallReason` is `read_tool_invalid_input`, treat the run as provider/model malformed tool-call output rather than audit evidence. The sample includes `chainRootJobId` when it belongs to a recovery chain, plus `malformedReadToolParts` and `runningReadToolPartSummaries`; an input preview such as `{}` means OpenCode received a `read` tool call without a usable `filePath`.
 
-If `sample.recoveryStallReason` is set, the sampled failure happened after Retinue had already submitted a no-tools recovery prompt for `sample.softStallRescueSourceReason`. For example, `softStallRescueSourceReason=provider_blank_assistant` with `recoveryStallReason=read_tool_invalid_input` means the original problem was blank provider output, and the recovery attempt itself emitted a malformed `read` call. Do not merge that evidence with first-pass malformed read failures.
+If `sample.recoveryStallReason` is set, the sampled failure belongs to a recovery chain. Use `sample.chainRootJobId`, `selectedAttempt`, and `attemptChain=true` to decide whether the selected attempt completed or whether the chain exhausted its retry budget. Do not merge recovery-chain malformed read failures with unrelated first-pass malformed read failures.
 
 If `sample.stallReason` is `read_tool_stalled`, treat the run as an OpenCode tool-executor stall rather than audit evidence. The sample includes the pending/running read call and its input preview when available. A later OpenCode completion for the same session should be reviewed as a separate backend event, not as evidence for the already stalled Retinue job.

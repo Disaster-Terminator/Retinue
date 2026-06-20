@@ -39,14 +39,13 @@ describe("dogfood probe classification", () => {
     expect(wait).not.toHaveProperty("stdoutText");
   });
 
-  it("rejects read-only write intent even when the child returned useful text", () => {
+  it("rejects stalled provider output even when the child returned useful text", () => {
     const wait = classifyDogfoodWait(
       {
         task_name: "review",
-        jobId: "job_patch",
+        jobId: "job_zero_progress",
         status: "stalled",
-        stallReason: "read_only_write_intent",
-        readOnlyWriteIntent: true,
+        stallReason: "provider_zero_progress",
         stdoutPreview: "Finding: the test grouping is incomplete."
       },
       "RETINUE_DOGFOOD_REVIEW_DONE"
@@ -54,7 +53,7 @@ describe("dogfood probe classification", () => {
 
     expect(wait).toMatchObject({
       usable: false,
-      failureReason: "read_only_write_intent"
+      failureReason: "provider_zero_progress"
     });
   });
 
@@ -142,12 +141,11 @@ describe("dogfood probe classification", () => {
           ),
           classifyDogfoodWait(
             {
-              task_name: "patch",
-              jobId: "job_patch",
+              task_name: "provider",
+              jobId: "job_provider",
               status: "stalled",
-              stallReason: "read_only_write_intent",
-              stallSummary: "OpenCode read-only job emitted patch/write intent.",
-              readOnlyWriteIntent: true,
+              stallReason: "provider_zero_progress",
+              stallSummary: "OpenCode provider/router produced zero-progress assistant output.",
               lastAssistantAgent: "plan",
               lastAssistantMode: "plan",
               lastAssistantProviderID: "litellm",
@@ -156,11 +154,11 @@ describe("dogfood probe classification", () => {
               runningReadToolParts: 1,
               runningReadToolCallIds: ["call_read"],
               runningReadToolPartSummaries: [{ type: "tool", tool: "read", callID: "call_read", stateStatus: "running" }],
-              stdoutPath: "/tmp/retinue/jobs/job_patch/stdout.log",
-              stderrPath: "/tmp/retinue/jobs/job_patch/stderr.log",
-              stdoutPreview: "Patch intent"
+              stdoutPath: "/tmp/retinue/jobs/job_provider/stdout.log",
+              stderrPath: "/tmp/retinue/jobs/job_provider/stderr.log",
+              stdoutPreview: "Reasoning only"
             },
-            "RETINUE_DOGFOOD_PATCH_DONE"
+            "RETINUE_DOGFOOD_PROVIDER_DONE"
           )
         ]
       }
@@ -172,18 +170,17 @@ describe("dogfood probe classification", () => {
       stalled: 1,
       failed: 1,
       failureReasons: {
-        read_only_write_intent: 1
+        provider_zero_progress: 1
       }
     });
     expect(summary.failedJobs).toEqual([
       {
-        task_name: "patch",
-        jobId: "job_patch",
+        task_name: "provider",
+        jobId: "job_provider",
         status: "stalled",
-        stallReason: "read_only_write_intent",
-        stallSummary: "OpenCode read-only job emitted patch/write intent.",
-        readOnlyWriteIntent: true,
-        failureReason: "read_only_write_intent",
+        stallReason: "provider_zero_progress",
+        stallSummary: "OpenCode provider/router produced zero-progress assistant output.",
+        failureReason: "provider_zero_progress",
         lastAssistantAgent: "plan",
         lastAssistantMode: "plan",
         lastAssistantProviderID: "litellm",
@@ -192,9 +189,9 @@ describe("dogfood probe classification", () => {
         runningReadToolParts: 1,
         runningReadToolCallIds: ["call_read"],
         runningReadToolPartSummaries: [{ type: "tool", tool: "read", callID: "call_read", stateStatus: "running" }],
-        stdoutPath: "/tmp/retinue/jobs/job_patch/stdout.log",
-        stderrPath: "/tmp/retinue/jobs/job_patch/stderr.log",
-        stdoutPreview: "Patch intent"
+        stdoutPath: "/tmp/retinue/jobs/job_provider/stdout.log",
+        stderrPath: "/tmp/retinue/jobs/job_provider/stderr.log",
+        stdoutPreview: "Reasoning only"
       }
     ]);
   });

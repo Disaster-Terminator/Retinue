@@ -7,9 +7,6 @@ export interface AgentRunOptions extends RunOptions {
     model?: string;
     agent?: string;
     readOnly?: boolean;
-    readOnlyBashPolicy?: "none" | "readonly_git";
-    readOnlyPromptContract?: boolean;
-    readOnlyToolDeny?: boolean;
 }
 export interface AgentContinueOptions extends AgentRunOptions {
     externalSessionId?: string;

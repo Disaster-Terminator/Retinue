@@ -6,120 +6,7 @@ import { getJobPaths, getRetinueTracePath, resolveStateDir } from "../../core/pa
 import { isCleanupSafeStatus } from "../../core/status.js";
 import { OpenCodeClient, OpenCodeClientError } from "./client.js";
 import { scheduleManagedOpenCodeServerIdleShutdown } from "./serverManager.js";
-const OPENCODE_READ_ONLY_TOOLS_NO_BASH = {
-    bash: false,
-    edit: false,
-    write: false,
-    apply_patch: false,
-    patch: false,
-    task: false
-};
-const OPENCODE_READ_ONLY_TOOLS_WITH_READONLY_GIT_BASH = {
-    edit: false,
-    write: false,
-    apply_patch: false,
-    patch: false,
-    task: false
-};
-const OPENCODE_FINAL_ANSWER_ONLY_TOOLS = {
-    read: false,
-    glob: false,
-    grep: false,
-    list: false,
-    todoread: false,
-    todowrite: false,
-    webfetch: false,
-    lsp: false,
-    bash: false,
-    edit: false,
-    write: false,
-    apply_patch: false,
-    patch: false,
-    task: false
-};
-const OPENCODE_FINAL_ANSWER_ONLY_DISABLED_TOOLS = Object.keys(OPENCODE_FINAL_ANSWER_ONLY_TOOLS);
-const OPENCODE_SOFT_STALL_RESCUE_PROMPT = [
-    "Retinue recovery request:",
-    "Stop using tools now and produce the final answer from the information already gathered.",
-    "Do not call read, grep, glob, bash, edit, write, patch, apply_patch, task, or any other tool.",
-    "If the available information is insufficient, state the limitation clearly instead of inspecting more files.",
-    "Return concise plain text only. Do not emit patch blocks, unified diffs, or apply-ready replacement snippets."
-].join("\n");
 const DEFAULT_TASK_ATTEMPT_MAX = 1;
-function createReadOnlyPromptContract(bashPolicy) {
-    const allowsReadonlyGit = bashPolicy === "readonly_git";
-    return [
-        "Retinue read-only child agent contract:",
-        allowsReadonlyGit
-            ? "- Use only OpenCode read, grep, glob, and allowed read-only git bash commands plus plain-text reasoning."
-            : "- Use only OpenCode read, grep, and glob tools plus plain-text reasoning.",
-        allowsReadonlyGit
-            ? "- Allowed bash is limited to read-only git inspection commands: pwd, git status --short, git status --porcelain, git diff --cached, git diff --staged, git diff --name-only --cached, git diff --name-status --cached, git diff --stat --cached, git diff -- <path>, git show --stat, git show --name-only, git ls-files, and git rev-parse --show-toplevel."
-            : undefined,
-        allowsReadonlyGit
-            ? "- For staged diff review, use git diff --cached or git diff --staged; for unstaged file review, use git diff -- <path>."
-            : undefined,
-        allowsReadonlyGit
-            ? "- Do not call bash except for allowed read-only git inspection commands; do not use shell pipes, redirects, command separators, command substitution, or write-capable git commands."
-            : "- Do not call bash, edit, write, apply_patch, task, or nested agents.",
-        "- Do not attempt non-allowed shell commands, file writes, patches, or interactive approvals.",
-        "- Do not enter patch mode. If you identify a change, describe the affected interfaces, functions, tests, and risks in prose only.",
-        "- Do not emit unified diffs.",
-        "- Do not include patch blocks, edit scripts, or apply-ready replacement snippets.",
-        "- For code review, return findings as plain text with severity and file references; describe suggested fixes in prose.",
-        "- If the user provides enough facts to answer, answer from those facts without repository inspection.",
-        "- Do not use tools just to confirm prompt-provided facts; use tools only when the task names files, symbols, or explicitly asks for repository inspection.",
-        "- Use at most six inspection tool calls total before producing a final textual answer.",
-        "- Before using any tool, classify whether the user task depends on git-only state such as staged changes, staged diff, uncommitted diff, git history, or the latest commit.",
-        allowsReadonlyGit
-            ? "- You may inspect staged or unstaged diff only with the allowed read-only git commands. If a requested git state is outside that allowlist or needs shell composition, state the limitation instead of approximating it from repository files."
-            : "- If it asks for staged diff, uncommitted diff, git diff, git history, or the latest commit and the prompt did not include the needed diff/content, do not inspect the repository; immediately state that the read-only boundary cannot access that git-only state and ask the caller to provide the diff/content or use profile access.",
-        allowsReadonlyGit
-            ? "- You cannot inspect git history, commits beyond allowed git show metadata, or shell-composed repository state unless the task provides the relevant content."
-            : "- You cannot inspect git history, staged changes, uncommitted diffs, or the latest commit unless the task provides the relevant file paths or content.",
-        "- If the task asks for a diff, commit, or git-only state you cannot access, state that limitation instead of approximating it from repository files.",
-        "- For broad audits, start with grep/glob and read only a small set of targeted files; avoid bulk-reading large generated, cache, log, or backup directories.",
-        "- Use read serially: do not issue multiple read calls in one assistant turn, and stop reading once you have enough evidence to answer.",
-        "- If the task needs non-allowed shell or write access, say that the read-only boundary prevents that part and provide the best file-based answer you can.",
-        "- Always finish with a concise textual result; do not stop after tool calls without a final answer."
-    ]
-        .filter((line) => typeof line === "string")
-        .join("\n");
-}
-const OPENCODE_READ_ONLY_BASE_PERMISSION = [
-    { permission: "read", pattern: "*", action: "allow" },
-    { permission: "glob", pattern: "*", action: "allow" },
-    { permission: "grep", pattern: "*", action: "allow" },
-    { permission: "list", pattern: "*", action: "allow" },
-    { permission: "todoread", pattern: "*", action: "allow" },
-    { permission: "todowrite", pattern: "*", action: "allow" },
-    { permission: "webfetch", pattern: "*", action: "allow" },
-    { permission: "lsp", pattern: "*", action: "allow" },
-    { permission: "question", pattern: "*", action: "deny" },
-    { permission: "edit", pattern: "*", action: "deny" },
-    { permission: "write", pattern: "*", action: "deny" },
-    { permission: "apply_patch", pattern: "*", action: "deny" },
-    { permission: "patch", pattern: "*", action: "deny" },
-    { permission: "task", pattern: "*", action: "deny" },
-    { permission: "external_directory", pattern: "*", action: "deny" },
-    { permission: "doom_loop", pattern: "*", action: "deny" },
-    { permission: "bash", pattern: "*", action: "deny" }
-];
-const OPENCODE_READONLY_GIT_BASH_PERMISSION = [
-    { permission: "bash", pattern: "pwd", action: "allow" },
-    { permission: "bash", pattern: "git status --short*", action: "allow" },
-    { permission: "bash", pattern: "git status --porcelain*", action: "allow" },
-    { permission: "bash", pattern: "git diff --cached*", action: "allow" },
-    { permission: "bash", pattern: "git diff --staged*", action: "allow" },
-    { permission: "bash", pattern: "git diff --name-only --cached*", action: "allow" },
-    { permission: "bash", pattern: "git diff --name-status --cached*", action: "allow" },
-    { permission: "bash", pattern: "git diff --stat --cached*", action: "allow" },
-    { permission: "bash", pattern: "git diff -- *", action: "allow" },
-    { permission: "bash", pattern: "git show --stat*", action: "allow" },
-    { permission: "bash", pattern: "git show --name-only*", action: "allow" },
-    { permission: "bash", pattern: "git ls-files*", action: "allow" },
-    { permission: "bash", pattern: "git rev-parse --show-toplevel", action: "allow" }
-];
 const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
 const DEFAULT_WAIT_POLL_MS = 250;
 const DEFAULT_STALL_MS = 10 * 60_000;
@@ -129,7 +16,6 @@ const DEFAULT_BLANK_ASSISTANT_STALL_MS = 45_000;
 const DEFAULT_ZERO_PROGRESS_ASSISTANT_STALL_MS = 45_000;
 const DEFAULT_READ_TOOL_STALL_MS = 45_000;
 const DEFAULT_COMPLETED_TOOL_LOOP_STALL_MS = 45_000;
-const DEFAULT_SOFT_STALL_RESCUE_GRACE_MS = 60_000;
 const DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
 const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 1;
 const DIAGNOSTIC_VALUE_PREVIEW_BYTES = 1000;
@@ -175,7 +61,6 @@ export class OpenCodeBackend {
         await fs.mkdir(paths.dir, { recursive: true });
         await fs.writeFile(paths.prompt, options.prompt, "utf8");
         const target = await this.resolveTarget(options.cwd);
-        const readOnlyBashPolicy = resolveReadOnlyBashPolicy(options.readOnlyBashPolicy);
         const runnerMode = resolveRunnerMode(this.env);
         const rootAgent = resolveRootAgent(this.env);
         const requestedAgent = options.agent ?? "explore";
@@ -200,9 +85,7 @@ export class OpenCodeBackend {
             permission: this.buildChildSessionPermission({
                 parentSession,
                 parentAgent,
-                childAgent,
-                readOnly: options.readOnly === true,
-                readOnlyBashPolicy
+                childAgent
             })
         });
         const baseline = await this.captureMessageBaseline(target.client, childSession.id);
@@ -222,8 +105,6 @@ export class OpenCodeBackend {
             model: options.model,
             agent: options.agent,
             readOnly: options.readOnly === true,
-            readOnlyPromptContract: options.readOnlyPromptContract === true,
-            readOnlyToolDeny: options.readOnlyToolDeny === true,
             externalSessionId: childSession.id,
             externalRunnerMode: runnerMode,
             externalRootAgent: rootAgent,
@@ -270,7 +151,6 @@ export class OpenCodeBackend {
                 model: options.model,
                 agent: options.agent,
                 readOnly: true,
-                readOnlyBashPolicy: options.readOnlyBashPolicy,
                 parentJobId: options.parentJobId,
                 parentSessionId: options.parentSessionId ?? options.externalSessionId,
                 recoveredFromJobId: options.recoveredFromJobId,
@@ -333,7 +213,7 @@ export class OpenCodeBackend {
         if (isProblem(meta)) {
             return problemFromMeta(meta);
         }
-        return this.reconcileStatus(meta, { exposeRecoverableSoftStallsAsRunning: true });
+        return this.reconcileStatus(meta);
     }
     async statusForWait(handle) {
         const meta = await this.readMeta(handle.jobId);
@@ -399,55 +279,6 @@ export class OpenCodeBackend {
         });
         return result;
     }
-    async maybeSubmitSoftStallRescue(meta, diagnostic) {
-        const recoverReadOnlyWriteIntent = diagnostic.readOnlyWriteIntent === true;
-        if (!meta.externalSessionId ||
-            meta.externalRescuePromptSubmittedAt ||
-            !isSoftStallRescueEligible(diagnostic)) {
-            return;
-        }
-        const submittedAt = new Date().toISOString();
-        const rescueAgent = resolveSoftStallRescueAgent(meta.agent, this.env);
-        const updated = {
-            ...meta,
-            status: meta.status === "stalled" ? "running" : meta.status,
-            externalRescuePromptSubmittedAt: submittedAt,
-            externalSoftStallRescueStrategy: "final_answer_no_tools",
-            externalSoftStallRescueAgent: rescueAgent,
-            externalSoftStallRescueModel: meta.model,
-            externalSoftStallRescueTools: OPENCODE_FINAL_ANSWER_ONLY_DISABLED_TOOLS,
-            externalSoftStallRescueSourceReason: diagnostic.stallReason,
-            externalSoftStallRescueSourceSummary: diagnostic.stallSummary,
-            externalReadOnlyWriteIntentRecoveryJobMessageCount: recoverReadOnlyWriteIntent
-                ? (diagnostic.jobMessageCount ?? meta.externalReadOnlyWriteIntentRecoveryJobMessageCount)
-                : meta.externalReadOnlyWriteIntentRecoveryJobMessageCount,
-            updatedAt: new Date().toISOString()
-        };
-        await writeJsonAtomic(getJobPaths(this.stateDir, meta.jobId).meta, updated);
-        try {
-            await this.clientForMeta(meta).promptAsync(meta.externalSessionId, {
-                prompt: OPENCODE_SOFT_STALL_RESCUE_PROMPT,
-                model: meta.model,
-                agent: rescueAgent,
-                tools: OPENCODE_FINAL_ANSWER_ONLY_TOOLS
-            });
-            const submittedDiagnostic = await this.inspectJob(updated);
-            await this.writeJobTrace("opencode_job_soft_stall_rescue_submitted", updated, submittedDiagnostic);
-            await appendJobDiagnostic(this.stateDir, meta.jobId, { event: "opencode_job_soft_stall_rescue_submitted", diagnostic: submittedDiagnostic });
-        }
-        catch (error) {
-            const failedDiagnostic = {
-                ...(await this.inspectJob(updated)),
-                error: error instanceof Error ? error.message : String(error)
-            };
-            await this.writeJobTrace("opencode_job_soft_stall_rescue_failed", updated, failedDiagnostic);
-            await appendJobDiagnostic(this.stateDir, meta.jobId, {
-                event: "opencode_job_soft_stall_rescue_failed",
-                error: error instanceof Error ? error.message : String(error),
-                diagnostic: failedDiagnostic
-            });
-        }
-    }
     async maybeStartTaskLevelAttempt(meta, diagnostic) {
         const recoveryReason = selectTaskLevelAttemptReason(meta, diagnostic);
         if (!recoveryReason || (meta.attempt ?? 0) >= resolveTaskAttemptMax(this.env)) {
@@ -479,7 +310,7 @@ export class OpenCodeBackend {
             attempt: attemptNumber,
             recoveryReason,
             recoveryPolicy: "fresh_task_attempt",
-            originalStallReason: diagnostic.softStallRescueSourceReason ?? diagnostic.stallReason,
+            originalStallReason: diagnostic.stallReason,
             recoveryStallReason: diagnostic.recoveryStallReason ?? diagnostic.stallReason
         });
         const updated = {
@@ -642,22 +473,9 @@ export class OpenCodeBackend {
         if (meta.status === "stalled") {
             const attemptExhaustedMessage = await this.createTaskAttemptExhaustedMessage(meta, diagnostic);
             const stderr = [createStallMessage(diagnostic), attemptExhaustedMessage].filter(Boolean).join("\n");
-            const advisoryText = selectReadOnlyWriteIntentAdvisoryText(jobMessages, meta, diagnostic);
-            if (advisoryText) {
-                diagnostic.readOnlyAdvisoryText = true;
-                diagnostic.readOnlyAdvisoryTextSummary =
-                    "Retinue returned visible read-only write-intent text as advisory stdout only; it is not trusted evidence.";
-            }
-            const text = advisoryText;
-            const stdout = text || stderr;
-            const textWarning = advisoryText ? createReadOnlyAdvisoryWarning() : meta.readOnly === true ? createReadOnlyTextWarning(stdout) : undefined;
-            if (textWarning) {
-                diagnostic.readOnlyTextWarning = true;
-                diagnostic.readOnlyTextWarningSummary = textWarning;
-            }
+            const stdout = stderr;
             await fs.writeFile(paths.stdout, stdout, "utf8");
-            const stderrText = textWarning ? `${stderr}\n${textWarning}` : stderr;
-            await fs.appendFile(paths.stderr, `${stderrText}\n`, "utf8");
+            await fs.appendFile(paths.stderr, `${stderr}\n`, "utf8");
             diagnostic.selectedAssistantTextBytes = Buffer.byteLength(stdout, "utf8");
             diagnostic.selectedAssistantSha256 = sha256(stdout);
             if (process.env.RETINUE_TRACE_TEXT_PREVIEW === "1") {
@@ -669,26 +487,21 @@ export class OpenCodeBackend {
                 jobId: handle.jobId,
                 status: meta.status,
                 stdout,
-                stderr: stderrText,
+                stderr,
                 stdoutPath: paths.stdout,
                 stderrPath: paths.stderr,
                 stdoutBytes: Buffer.byteLength(stdout, "utf8"),
-                stderrBytes: Buffer.byteLength(stderrText, "utf8"),
+                stderrBytes: Buffer.byteLength(stderr, "utf8"),
                 stdoutTruncated: false,
                 stderrTruncated: false,
                 sessionId: meta.externalSessionId,
                 parsedStdout: { result: stdout },
                 ...permissionAttentionFields(diagnostic, this.kind),
-                error: stderrText
+                error: stderr
             }, meta);
         }
         const resultMessages = selectResultMessagesForMeta(jobMessages, meta);
         const text = meta.externalMessageBaselineCount === undefined && resultMessages === jobMessages ? latestAssistantMessageText(messages) : latestAssistantMessageText(resultMessages);
-        const textWarning = meta.readOnly === true ? createReadOnlyTextWarning(text) : undefined;
-        if (textWarning) {
-            diagnostic.readOnlyTextWarning = true;
-            diagnostic.readOnlyTextWarningSummary = textWarning;
-        }
         await fs.writeFile(paths.stdout, text, "utf8");
         diagnostic.selectedAssistantTextBytes = Buffer.byteLength(text, "utf8");
         diagnostic.selectedAssistantSha256 = sha256(text);
@@ -701,11 +514,11 @@ export class OpenCodeBackend {
             jobId: handle.jobId,
             status: meta.status,
             stdout: text,
-            stderr: textWarning ?? "",
+            stderr: "",
             stdoutPath: paths.stdout,
             stderrPath: paths.stderr,
             stdoutBytes: Buffer.byteLength(text, "utf8"),
-            stderrBytes: Buffer.byteLength(textWarning ?? "", "utf8"),
+            stderrBytes: 0,
             stdoutTruncated: false,
             stderrTruncated: false,
             sessionId: meta.externalSessionId,
@@ -795,12 +608,6 @@ export class OpenCodeBackend {
         if (!text.trim()) {
             return;
         }
-        const textWarning = meta.readOnly === true ? createReadOnlyTextWarning(text) : undefined;
-        if (textWarning) {
-            diagnostic.readOnlyTextWarning = true;
-            diagnostic.readOnlyTextWarningSummary = textWarning;
-            await fs.appendFile(paths.stderr, `${textWarning}\n`, "utf8");
-        }
         await fs.writeFile(paths.stdout, text, "utf8");
         diagnostic.selectedAssistantTextBytes = Buffer.byteLength(text, "utf8");
         diagnostic.selectedAssistantSha256 = sha256(text);
@@ -836,7 +643,6 @@ export class OpenCodeBackend {
     }
     async wait(handle, timeoutMs = DEFAULT_WAIT_TIMEOUT_MS) {
         const deadline = Date.now() + Math.max(0, timeoutMs);
-        let deferredSoftStall = false;
         for (;;) {
             const status = await this.statusForWait(handle);
             if (isProblem(status)) {
@@ -854,30 +660,6 @@ export class OpenCodeBackend {
             }
             if (status.status === "stalled") {
                 const diagnostic = await this.inspectJob(status);
-                const canDeferStall = status.externalRescuePromptSubmittedAt === undefined &&
-                    (isSoftStallRescueEligible(diagnostic) || diagnostic.readOnlyWriteIntent === true);
-                if (canDeferStall) {
-                    await this.maybeSubmitSoftStallRescue(status, diagnostic);
-                    if (!deferredSoftStall) {
-                        await this.writeJobTrace("opencode_job_soft_stall_deferred", status, diagnostic);
-                        await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_soft_stall_deferred", diagnostic });
-                        deferredSoftStall = true;
-                    }
-                    if (Date.now() < deadline) {
-                        await sleep(DEFAULT_WAIT_POLL_MS);
-                        continue;
-                    }
-                    return { jobId: handle.jobId, status: "running" };
-                }
-                if (this.isSoftStallRescuePending(status, diagnostic)) {
-                    await this.writeJobTrace("opencode_job_soft_stall_rescue_pending", status, diagnostic);
-                    await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_soft_stall_rescue_pending", diagnostic });
-                    if (Date.now() < deadline) {
-                        await sleep(DEFAULT_WAIT_POLL_MS);
-                        continue;
-                    }
-                    return { jobId: handle.jobId, status: "running" };
-                }
                 const attempt = await this.maybeStartTaskLevelAttempt(status, diagnostic);
                 if (attempt) {
                     const waited = await this.wait({ jobId: attempt.jobId }, Math.max(0, deadline - Date.now()));
@@ -899,33 +681,7 @@ export class OpenCodeBackend {
                 const meta = await this.readMeta(handle.jobId);
                 if (!isProblem(meta)) {
                     const diagnostic = await this.inspectJob(meta);
-                    if (this.isReadOnlyWriteIntentRecoveryExpired(meta, diagnostic)) {
-                        const expiredDiagnostic = {
-                            ...diagnostic,
-                            stallReason: "read_only_write_intent",
-                            stallSummary: "OpenCode read-only job attempted a write-capable tool, and recovery did not produce usable final text."
-                        };
-                        const stalled = { ...meta, status: "stalled", updatedAt: new Date().toISOString() };
-                        await writeJsonAtomic(getJobPaths(this.stateDir, handle.jobId).meta, stalled);
-                        await this.writeJobTrace("opencode_job_wait_timeout", stalled, expiredDiagnostic);
-                        await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_wait_timeout", diagnostic: expiredDiagnostic });
-                        await this.writeJobTrace("opencode_job_stalled", stalled, expiredDiagnostic, { fromStatus: meta.status, toStatus: "stalled" });
-                        await appendJobDiagnostic(this.stateDir, handle.jobId, {
-                            event: "opencode_job_stalled",
-                            fromStatus: meta.status,
-                            toStatus: "stalled",
-                            diagnostic: expiredDiagnostic
-                        });
-                        return { jobId: handle.jobId, status: "stalled", ...permissionAttentionFields(expiredDiagnostic, this.kind) };
-                    }
                     if (diagnostic.stallReason) {
-                        if (this.isSoftStallRescuePending(meta, diagnostic)) {
-                            await this.writeJobTrace("opencode_job_wait_timeout", meta, diagnostic);
-                            await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_wait_timeout", diagnostic });
-                            await this.writeJobTrace("opencode_job_soft_stall_rescue_pending", meta, diagnostic);
-                            await appendJobDiagnostic(this.stateDir, handle.jobId, { event: "opencode_job_soft_stall_rescue_pending", diagnostic });
-                            return { jobId: handle.jobId, status: "running" };
-                        }
                         const stalled = { ...meta, status: "stalled", updatedAt: new Date().toISOString() };
                         await writeJsonAtomic(getJobPaths(this.stateDir, handle.jobId).meta, stalled);
                         await this.writeJobTrace("opencode_job_wait_timeout", stalled, diagnostic);
@@ -960,35 +716,6 @@ export class OpenCodeBackend {
             }
             await sleep(DEFAULT_WAIT_POLL_MS);
         }
-    }
-    isSoftStallRescuePending(meta, diagnostic) {
-        if (!meta.externalRescuePromptSubmittedAt || diagnostic.recoveredFromReadOnlyWriteIntent === true) {
-            return false;
-        }
-        if (diagnostic.recoveryStallReason) {
-            return false;
-        }
-        if (isHardStallDiagnostic(diagnostic) || !isSoftStallRescueEligible(diagnostic)) {
-            return false;
-        }
-        const submittedAt = Date.parse(meta.externalRescuePromptSubmittedAt);
-        if (!Number.isFinite(submittedAt)) {
-            return false;
-        }
-        return Date.now() - submittedAt < resolveSoftStallRescueGraceMs(this.env);
-    }
-    isReadOnlyWriteIntentRecoveryExpired(meta, diagnostic) {
-        if (!meta.externalRescuePromptSubmittedAt ||
-            meta.externalReadOnlyWriteIntentRecoveryJobMessageCount === undefined ||
-            diagnostic.recoveredFromReadOnlyWriteIntent === true ||
-            diagnostic.readOnlyWriteIntent === true) {
-            return false;
-        }
-        const submittedAt = Date.parse(meta.externalRescuePromptSubmittedAt);
-        if (!Number.isFinite(submittedAt)) {
-            return false;
-        }
-        return Date.now() - submittedAt >= resolveSoftStallRescueGraceMs(this.env);
     }
     async cleanup(options = {}) {
         const olderThanMs = options.olderThanMs ?? 0;
@@ -1029,15 +756,11 @@ export class OpenCodeBackend {
         const current = await this.readMeta(jobId);
         return isProblem(current) ? fallback : current;
     }
-    async reconcileStatus(meta, options = {}) {
+    async reconcileStatus(meta) {
         if (meta.status === "stalled") {
             const cachedStdout = await readTextIfExists(getJobPaths(this.stateDir, meta.jobId).stdout);
             if (cachedStdout.trim()) {
                 return meta;
-            }
-            const diagnostic = await this.inspectJob(meta);
-            if (options.exposeRecoverableSoftStallsAsRunning && this.isRecoverableSoftStallForStatus(meta, diagnostic)) {
-                return { ...meta, status: "running" };
             }
         }
         if (!meta.externalSessionId && meta.selectedAttemptJobId) {
@@ -1053,10 +776,7 @@ export class OpenCodeBackend {
             const client = this.clientForMeta(meta);
             const session = await client.getSession(meta.externalSessionId);
             let status = meta.status;
-            if (await this.hasReadOnlyWriteIntent(client, meta.externalSessionId, meta)) {
-                status = "stalled";
-            }
-            else if (session.state === "completed") {
+            if (session.state === "completed") {
                 status = "completed";
             }
             else if (session.state === "failed") {
@@ -1070,23 +790,11 @@ export class OpenCodeBackend {
             }
             else if (meta.status === "stalled") {
                 const diagnostic = await this.stallDiagnosticForOpenCodeJob(client, meta.externalSessionId, meta);
-                status =
-                    options.exposeRecoverableSoftStallsAsRunning &&
-                        diagnostic &&
-                        this.isRecoverableSoftStallForStatus(meta, diagnostic)
-                        ? "running"
-                        : "stalled";
+                status = diagnostic ? "stalled" : "running";
             }
             else {
                 const diagnostic = await this.stallDiagnosticForOpenCodeJob(client, meta.externalSessionId, meta);
-                status =
-                    options.exposeRecoverableSoftStallsAsRunning &&
-                        diagnostic &&
-                        this.isRecoverableSoftStallForStatus(meta, diagnostic)
-                        ? "running"
-                        : diagnostic
-                            ? "stalled"
-                            : "running";
+                status = diagnostic ? "stalled" : "running";
             }
             if (status === meta.status) {
                 return meta;
@@ -1094,9 +802,6 @@ export class OpenCodeBackend {
             const updated = {
                 ...meta,
                 status,
-                externalReadOnlyWriteIntentRecoveredAt: status === "completed" && meta.externalReadOnlyWriteIntentRecoveryJobMessageCount !== undefined
-                    ? (meta.externalReadOnlyWriteIntentRecoveredAt ?? new Date().toISOString())
-                    : meta.externalReadOnlyWriteIntentRecoveredAt,
                 updatedAt: new Date().toISOString()
             };
             await writeJsonAtomic(getJobPaths(this.stateDir, meta.jobId).meta, updated);
@@ -1120,7 +825,7 @@ export class OpenCodeBackend {
                     diagnostic
                 });
             }
-            if (isTerminal(status) && (status !== "stalled" || isHardStallDiagnostic(diagnostic))) {
+            if (isTerminal(status)) {
                 await this.maybeScheduleServerIdleShutdown(updated);
             }
             return updated;
@@ -1199,34 +904,16 @@ export class OpenCodeBackend {
         if (completionMessages.some(isCompletedAssistantMessage)) {
             return true;
         }
-        if (meta.externalMessageBaselineCount !== undefined || meta.externalReadOnlyWriteIntentRecoveryJobMessageCount !== undefined) {
+        if (meta.externalMessageBaselineCount !== undefined) {
             return false;
         }
         return countCompletedAssistantMessages(messages) > (meta.externalCompletedAssistantBaselineCount ?? 0);
-    }
-    async hasReadOnlyWriteIntent(client, sessionId, meta) {
-        if (meta.readOnly !== true) {
-            return false;
-        }
-        const messages = await client.messages(sessionId);
-        const jobMessages = selectMessagesForMeta(messages, meta);
-        const writeIntentMessages = selectReadOnlyWriteIntentMessagesForMeta(jobMessages, meta);
-        return countWriteIntentToolParts(writeIntentMessages) > 0;
     }
     async stallDiagnosticForOpenCodeJob(client, sessionId, meta) {
         const messages = await client.messages(sessionId);
         const jobMessages = selectMessagesForMeta(messages, meta);
         const pendingPermissions = await this.pendingPermissionsForJob(client, meta);
         return computeStallDiagnostic(jobMessages, meta, this.env, pendingPermissions);
-    }
-    isRecoverableSoftStallForStatus(meta, diagnostic) {
-        if (this.isSoftStallRescuePending(meta, diagnostic)) {
-            return true;
-        }
-        if (meta.externalRescuePromptSubmittedAt) {
-            return false;
-        }
-        return isSoftStallRescueEligible(diagnostic);
     }
     async pendingPermissionsForJob(client, meta) {
         if (!meta.externalSessionId) {
@@ -1315,26 +1002,7 @@ export class OpenCodeBackend {
             diagnostic.lastAssistantCost = numberInfo(lastAssistant, "cost");
             diagnostic.lastAssistantTokens = lastAssistant?.info?.tokens;
             diagnostic.patchPartCount = countPatchParts(jobMessages);
-            const readOnlyWriteIntentMessages = selectReadOnlyWriteIntentMessagesForMeta(jobMessages, meta);
-            diagnostic.readOnlyPatchPartCount = meta.readOnly === true ? countPatchParts(readOnlyWriteIntentMessages) : 0;
             diagnostic.writeIntentToolPartCount = countWriteIntentToolParts(jobMessages);
-            diagnostic.readOnlyWriteIntentToolPartCount = meta.readOnly === true ? countWriteIntentToolParts(readOnlyWriteIntentMessages) : 0;
-            diagnostic.readOnlyWriteIntent = (diagnostic.readOnlyWriteIntentToolPartCount ?? 0) > 0;
-            diagnostic.readOnlyWriteIntentRecoveryJobMessageCount = meta.externalReadOnlyWriteIntentRecoveryJobMessageCount;
-            diagnostic.softStallRescueSourceReason = isOpenCodeStallReason(meta.externalSoftStallRescueSourceReason)
-                ? meta.externalSoftStallRescueSourceReason
-                : undefined;
-            diagnostic.softStallRescueSourceSummary = meta.externalSoftStallRescueSourceSummary;
-            diagnostic.softStallRescueStrategy = meta.externalSoftStallRescueStrategy;
-            diagnostic.softStallRescueAgent = meta.externalSoftStallRescueAgent;
-            diagnostic.softStallRescueModel = meta.externalSoftStallRescueModel;
-            diagnostic.softStallRescueTools = meta.externalSoftStallRescueTools;
-            diagnostic.softStallRescueSubmittedAt = meta.externalRescuePromptSubmittedAt;
-            diagnostic.recoveredFromReadOnlyWriteIntent =
-                meta.readOnly === true &&
-                    meta.externalReadOnlyWriteIntentRecoveryJobMessageCount !== undefined &&
-                    diagnostic.readOnlyWriteIntent !== true &&
-                    selectResultMessagesForMeta(jobMessages, meta).some(isCompletedAssistantMessage);
             diagnostic.messageSummaries = jobMessages.map((message) => ({
                 role: message.info?.role,
                 finish: stringInfo(message, "finish"),
@@ -1345,25 +1013,6 @@ export class OpenCodeBackend {
                 messageError: diagnosticValuePreview(message.info?.error)
             }));
             Object.assign(diagnostic, computeStallDiagnostic(jobMessages, meta, this.env, pendingPermissions));
-            if (meta.status === "stalled" &&
-                diagnostic.softStallRescueSourceReason &&
-                diagnostic.stallReason &&
-                diagnostic.stallReason !== diagnostic.softStallRescueSourceReason) {
-                diagnostic.recoveryStallReason = diagnostic.stallReason;
-                diagnostic.recoveryStallSummary = diagnostic.stallSummary;
-            }
-            if (meta.status === "stalled" &&
-                meta.readOnly === true &&
-                meta.externalReadOnlyWriteIntentRecoveryJobMessageCount !== undefined &&
-                diagnostic.recoveredFromReadOnlyWriteIntent !== true &&
-                diagnostic.readOnlyWriteIntent !== true) {
-                if (diagnostic.stallReason && diagnostic.stallReason !== "read_only_write_intent") {
-                    diagnostic.recoveryStallReason = diagnostic.stallReason;
-                    diagnostic.recoveryStallSummary = diagnostic.stallSummary;
-                }
-                diagnostic.stallReason = "read_only_write_intent";
-                diagnostic.stallSummary = "OpenCode read-only job attempted a write-capable tool, and recovery did not produce usable final text.";
-            }
         }
         catch (error) {
             diagnostic.error = error instanceof Error ? error.message : String(error);
@@ -1415,14 +1064,10 @@ export class OpenCodeBackend {
     }
     async submitPromptAsync(client, sessionId, meta, options) {
         try {
-            const prompt = buildOpenCodePrompt(options.prompt, options.readOnly === true && options.readOnlyPromptContract === true, resolveReadOnlyBashPolicy(options.readOnlyBashPolicy));
             await client.promptAsync(sessionId, {
-                prompt,
+                prompt: options.prompt,
                 agent: options.agent ?? "explore",
-                model: options.model,
-                tools: options.readOnly === true && options.readOnlyToolDeny === true
-                    ? buildReadOnlyTools(resolveReadOnlyBashPolicy(options.readOnlyBashPolicy))
-                    : undefined
+                model: options.model
             });
             await this.writeJobTrace("opencode_job_prompt_submitted", meta, await this.inspectJob(meta));
         }
@@ -1490,9 +1135,6 @@ export class OpenCodeBackend {
             parentAgent: input.parentAgent,
             subagent: input.childAgent
         });
-        if (input.readOnly) {
-            return mergePermissionRules(derived, buildReadOnlyPermission(input.readOnlyBashPolicy));
-        }
         return derived.length > 0 ? derived : undefined;
     }
     clientForMeta(meta) {
@@ -1638,13 +1280,7 @@ function selectMessagesForMeta(messages, meta) {
     return messages.slice(Math.max(0, meta.externalMessageBaselineCount));
 }
 function selectResultMessagesForMeta(jobMessages, meta) {
-    if (meta.externalReadOnlyWriteIntentRecoveryJobMessageCount === undefined) {
-        return jobMessages;
-    }
-    return jobMessages.slice(Math.max(0, meta.externalReadOnlyWriteIntentRecoveryJobMessageCount));
-}
-function selectReadOnlyWriteIntentMessagesForMeta(jobMessages, meta) {
-    return selectResultMessagesForMeta(jobMessages, meta);
+    return jobMessages;
 }
 function latestAssistantMessageText(messages) {
     return ([...messages]
@@ -1707,32 +1343,17 @@ function hasReasoningContentProviderError(messages) {
 }
 function computeStallDiagnostic(jobMessages, meta, env, pendingPermissions = []) {
     const activeMessages = selectResultMessagesForMeta(jobMessages, meta);
-    const writeIntentMessages = selectReadOnlyWriteIntentMessagesForMeta(jobMessages, meta);
-    const patchPartCount = countPatchParts(writeIntentMessages);
-    const writeIntentToolPartCount = countWriteIntentToolParts(writeIntentMessages);
+    const patchPartCount = countPatchParts(activeMessages);
+    const writeIntentToolPartCount = countWriteIntentToolParts(activeMessages);
     if (hasAssistantError(activeMessages)) {
         const reasoningContentError = hasReasoningContentProviderError(activeMessages);
         return {
             patchPartCount,
-            readOnlyPatchPartCount: meta.readOnly === true ? patchPartCount : 0,
             writeIntentToolPartCount,
-            readOnlyWriteIntentToolPartCount: meta.readOnly === true ? writeIntentToolPartCount : 0,
-            readOnlyWriteIntent: false,
             stallReason: reasoningContentError ? "provider_reasoning_content_error" : "provider_error",
             stallSummary: reasoningContentError
                 ? "OpenCode provider rejected a DeepSeek thinking-mode request because reasoning_content was not preserved."
                 : "OpenCode provider returned an assistant error."
-        };
-    }
-    if (meta.readOnly === true && writeIntentToolPartCount > 0) {
-        return {
-            patchPartCount,
-            readOnlyPatchPartCount: patchPartCount,
-            writeIntentToolPartCount,
-            readOnlyWriteIntentToolPartCount: writeIntentToolPartCount,
-            readOnlyWriteIntent: true,
-            stallReason: "read_only_write_intent",
-            stallSummary: "OpenCode read-only job attempted a write-capable tool."
         };
     }
     if (activeMessages.some(isCompletedAssistantMessage)) {
@@ -1781,7 +1402,6 @@ function computeStallDiagnostic(jobMessages, meta, env, pendingPermissions = [])
     const blankAssistantStalled = blankAssistantRounds > 0 && durationMs >= blankAssistantThresholdMs;
     const zeroProgressAssistantStalled = zeroProgressAssistantRounds > 0 && durationMs >= zeroProgressAssistantThresholdMs;
     const noAssistantOutputStalled = meta.recoveredFromJobId === undefined &&
-        meta.externalRescuePromptSubmittedAt === undefined &&
         assistantMessageCount === 0 &&
         durationMs >= zeroProgressAssistantThresholdMs;
     const readToolStalled = runningReadToolParts > 0 && durationMs >= readToolThresholdMs;
@@ -1846,13 +1466,6 @@ function computeStallDiagnostic(jobMessages, meta, env, pendingPermissions = [])
 }
 function createStallMessage(diagnostic) {
     const providerDetails = formatProviderDetails(diagnostic);
-    const rescueDetails = formatSoftStallRescueDetails(diagnostic);
-    if (diagnostic.readOnlyWriteIntent === true) {
-        return `OpenCode read-only job attempted a write-capable tool; Retinue did not treat the child result as trusted output. Inspect Retinue trace/job diagnostics for message summaries.`;
-    }
-    if (diagnostic.stallReason === "read_only_write_intent") {
-        return `OpenCode read-only job attempted a write-capable tool; Retinue requested a no-tools prose-only recovery, but no trusted final text was produced. Inspect Retinue trace/job diagnostics for message summaries.`;
-    }
     if (diagnostic.stallReason === "provider_reasoning_content_error") {
         const preview = diagnostic.lastAssistantError?.preview ?? diagnostic.lastMessageError?.preview;
         const suffix = preview ? ` Error summary: ${preview}` : " Inspect Retinue trace/job diagnostics for lastAssistantError and message summaries.";
@@ -1872,72 +1485,32 @@ function createStallMessage(diagnostic) {
     const durationMs = diagnostic.noCompletedAssistantDurationMs ?? 0;
     if (diagnostic.stallReason === "read_tool_invalid_input" && malformedReadToolParts > 0) {
         const details = formatReadToolStallDetails(diagnostic);
-        return `OpenCode job stalled: observed ${malformedReadToolParts} read tool call(s) with missing or invalid input for ${durationMs}ms.${details}${providerDetails}${rescueDetails} The OpenCode provider/model emitted a malformed read tool call; inspect Retinue trace/job diagnostics for full message summaries.`;
+        return `OpenCode job stalled: observed ${malformedReadToolParts} read tool call(s) with missing or invalid input for ${durationMs}ms.${details}${providerDetails} The OpenCode provider/model emitted a malformed read tool call; inspect Retinue trace/job diagnostics for full message summaries.`;
     }
     if (diagnostic.stallReason === "external_directory_permission_pending") {
         const permissionDetails = formatPendingPermissionDetails(diagnostic);
         const readDetails = formatReadToolStallDetails(diagnostic);
-        return `OpenCode job is waiting for external_directory permission after ${durationMs}ms.${permissionDetails}${readDetails}${providerDetails}${rescueDetails} Retinue is running headless and did not auto-approve access outside the session directory; inspect Retinue trace/job diagnostics for the pending OpenCode permission request.`;
+        return `OpenCode job is waiting for external_directory permission after ${durationMs}ms.${permissionDetails}${readDetails}${providerDetails} Retinue is running headless and did not auto-approve access outside the session directory; inspect Retinue trace/job diagnostics for the pending OpenCode permission request.`;
     }
     if (diagnostic.recoveryStallReason === "read_tool_stalled" && runningReadToolParts > 0) {
         const details = formatReadToolStallDetails(diagnostic);
-        return `OpenCode job stalled: soft-stall rescue reached ${runningReadToolParts} pending/running read tool call(s) with no completed assistant text for ${durationMs}ms.${details}${providerDetails}${rescueDetails} The OpenCode tool executor may be stuck; inspect Retinue trace/job diagnostics for full message summaries.`;
+        return `OpenCode job stalled: fresh attempt reached ${runningReadToolParts} pending/running read tool call(s) with no completed assistant text for ${durationMs}ms.${details}${providerDetails} The OpenCode tool executor may be stuck; inspect Retinue trace/job diagnostics for full message summaries.`;
     }
     if (blankRounds > 0) {
-        return `OpenCode job stalled: observed ${blankRounds} blank assistant placeholder(s) with no completed assistant text for ${durationMs}ms.${providerDetails}${rescueDetails} The OpenCode provider or model router may be unavailable; inspect Retinue trace/job diagnostics for message summaries.`;
+        return `OpenCode job stalled: observed ${blankRounds} blank assistant placeholder(s) with no completed assistant text for ${durationMs}ms.${providerDetails} The OpenCode provider or model router may be unavailable; inspect Retinue trace/job diagnostics for message summaries.`;
     }
     if (zeroProgressRounds > 0) {
-        return `OpenCode job stalled: observed ${zeroProgressRounds} zero-progress assistant placeholder(s) with no completed assistant text for ${durationMs}ms.${providerDetails}${rescueDetails} The OpenCode provider or model router may be unavailable or stuck after tool calls; inspect Retinue trace/job diagnostics for message summaries.`;
+        return `OpenCode job stalled: observed ${zeroProgressRounds} zero-progress assistant placeholder(s) with no completed assistant text for ${durationMs}ms.${providerDetails} The OpenCode provider or model router may be unavailable or stuck after tool calls; inspect Retinue trace/job diagnostics for message summaries.`;
     }
     if (runningReadToolParts > 0) {
         const details = formatReadToolStallDetails(diagnostic);
-        return `OpenCode job stalled: observed ${runningReadToolParts} pending/running read tool call(s) with no completed assistant text for ${durationMs}ms.${details}${providerDetails}${rescueDetails} The OpenCode tool executor may be stuck; inspect Retinue trace/job diagnostics for full message summaries.`;
+        return `OpenCode job stalled: observed ${runningReadToolParts} pending/running read tool call(s) with no completed assistant text for ${durationMs}ms.${details}${providerDetails} The OpenCode tool executor may be stuck; inspect Retinue trace/job diagnostics for full message summaries.`;
     }
-    return `OpenCode job stalled: observed ${rounds} tool-call assistant round(s) and ${emptyRounds} empty assistant round(s) with no completed assistant text for ${durationMs}ms.${providerDetails}${rescueDetails} Inspect Retinue trace/job diagnostics for message summaries.`;
-}
-function selectReadOnlyWriteIntentAdvisoryText(jobMessages, meta, diagnostic) {
-    if (meta.readOnly !== true) {
-        return "";
-    }
-    if (diagnostic.readOnlyWriteIntent !== true && diagnostic.stallReason !== "read_only_write_intent") {
-        return "";
-    }
-    return latestAssistantVisibleText(jobMessages);
+    return `OpenCode job stalled: observed ${rounds} tool-call assistant round(s) and ${emptyRounds} empty assistant round(s) with no completed assistant text for ${durationMs}ms.${providerDetails} Inspect Retinue trace/job diagnostics for message summaries.`;
 }
 function isHardStallDiagnostic(diagnostic) {
-    return (diagnostic.readOnlyWriteIntent === true ||
-        diagnostic.stallReason === "provider_error" ||
+    return (diagnostic.stallReason === "provider_error" ||
         diagnostic.stallReason === "external_directory_permission_pending");
-}
-function isSoftStallRescueEligible(diagnostic) {
-    if (diagnostic.readOnlyWriteIntent === true) {
-        return true;
-    }
-    const hasToolProgress = (diagnostic.toolCallAssistantRounds ?? 0) > 0;
-    return (diagnostic.stallReason === "backend_no_final_text" ||
-        diagnostic.stallReason === "tool_loop_no_completion" ||
-        diagnostic.stallReason === "incomplete_assistant_round" ||
-        (hasToolProgress && diagnostic.stallReason === "provider_blank_assistant") ||
-        (hasToolProgress && diagnostic.stallReason === "provider_zero_progress"));
-}
-function createReadOnlyTextWarning(text) {
-    if (!text.trim()) {
-        return undefined;
-    }
-    const riskyPatterns = [
-        /^```(?:diff|patch)\b/im,
-        /^---\s+a\//m,
-        /^\+\+\+\s+b\//m,
-        /^@@\s+-\d/m,
-        /^\s*(?:sudo\s+|rm\s+-rf\b|chmod\s+|cat\s+>|tee\s+)/m
-    ];
-    if (!riskyPatterns.some((pattern) => pattern.test(text))) {
-        return undefined;
-    }
-    return "Retinue read-only result may contain patch or write-command text; treat stdout as untrusted analysis, not executable instructions.";
-}
-function createReadOnlyAdvisoryWarning() {
-    return "Retinue returned read-only write-intent text as advisory stdout only; treat it as untrusted analysis, not executable instructions or project evidence.";
 }
 function selectStallReason(stalled) {
     if (stalled.readToolInvalidInputStalled) {
@@ -1968,24 +1541,21 @@ function selectStallReason(stalled) {
 }
 function createStallSummary(diagnostic) {
     const durationMs = diagnostic.noCompletedAssistantDurationMs ?? 0;
-    const rescueDetails = formatSoftStallRescueDetails(diagnostic);
     switch (diagnostic.stallReason) {
-        case "read_only_write_intent":
-            return "OpenCode read-only job attempted a write-capable tool.";
         case "provider_error":
             return "OpenCode provider returned an assistant error before final text.";
         case "provider_reasoning_content_error":
             return "OpenCode provider rejected a DeepSeek reasoning_content thinking-mode request.";
         case "provider_blank_assistant":
-            return `OpenCode provider/router produced blank assistant output for ${durationMs}ms.${rescueDetails}`;
+            return `OpenCode provider/router produced blank assistant output for ${durationMs}ms.`;
         case "provider_zero_progress":
-            return `OpenCode provider/router produced zero-progress assistant output for ${durationMs}ms.${rescueDetails}`;
+            return `OpenCode provider/router produced zero-progress assistant output for ${durationMs}ms.`;
         case "read_tool_invalid_input":
-            return `OpenCode provider/model emitted read tool call(s) with missing or invalid input for ${durationMs}ms.${formatReadToolStallDetails(diagnostic)}${rescueDetails}`;
+            return `OpenCode provider/model emitted read tool call(s) with missing or invalid input for ${durationMs}ms.${formatReadToolStallDetails(diagnostic)}`;
         case "external_directory_permission_pending":
-            return `OpenCode is waiting for external_directory permission for ${durationMs}ms.${formatPendingPermissionDetails(diagnostic)}${formatReadToolStallDetails(diagnostic)}${rescueDetails}`;
+            return `OpenCode is waiting for external_directory permission for ${durationMs}ms.${formatPendingPermissionDetails(diagnostic)}${formatReadToolStallDetails(diagnostic)}`;
         case "read_tool_stalled":
-            return `OpenCode tool executor left read tool call(s) running for ${durationMs}ms.${formatReadToolStallDetails(diagnostic)}${rescueDetails}`;
+            return `OpenCode tool executor left read tool call(s) running for ${durationMs}ms.${formatReadToolStallDetails(diagnostic)}`;
         case "incomplete_assistant_round":
             return `OpenCode left the latest assistant round incomplete for ${durationMs}ms.`;
         case "backend_no_final_text":
@@ -1997,8 +1567,7 @@ function createStallSummary(diagnostic) {
     }
 }
 function isOpenCodeStallReason(value) {
-    return (value === "read_only_write_intent" ||
-        value === "provider_error" ||
+    return (value === "provider_error" ||
         value === "provider_reasoning_content_error" ||
         value === "provider_blank_assistant" ||
         value === "provider_zero_progress" ||
@@ -2017,13 +1586,6 @@ function formatProviderDetails(diagnostic) {
         diagnostic.lastAssistantMode ? `mode=${diagnostic.lastAssistantMode}` : undefined
     ].filter(Boolean);
     return entries.length > 0 ? ` ${entries.join(" ")}.` : "";
-}
-function formatSoftStallRescueDetails(diagnostic) {
-    if (!diagnostic.softStallRescueSourceReason) {
-        return "";
-    }
-    const recovery = diagnostic.recoveryStallReason ? ` recovery=${diagnostic.recoveryStallReason}` : "";
-    return ` rescueSource=${diagnostic.softStallRescueSourceReason}${recovery}.`;
 }
 function isMalformedReadToolInput(part) {
     if (part.tool !== "read") {
@@ -2228,50 +1790,38 @@ function parseOptionalNonNegativeInt(value, fallback) {
 function resolveServerIdleMs(env) {
     return parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_SERVER_IDLE_MS, DEFAULT_SERVER_IDLE_MS);
 }
-function resolveSoftStallRescueGraceMs(env) {
-    return parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_SOFT_STALL_RESCUE_GRACE_MS, DEFAULT_SOFT_STALL_RESCUE_GRACE_MS);
-}
-function resolveSoftStallRescueAgent(currentAgent, env) {
-    const configured = env?.RETINUE_OPENCODE_SOFT_STALL_RESCUE_AGENT?.trim();
-    if (configured === "0" || configured === "false" || configured === "none") {
-        return currentAgent;
-    }
-    return configured || "build";
-}
 function resolveTaskAttemptMax(env) {
     return parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_TASK_ATTEMPT_MAX, DEFAULT_TASK_ATTEMPT_MAX);
 }
 function selectTaskLevelAttemptReason(meta, diagnostic) {
-    if (diagnostic.readOnlyWriteIntent === true || diagnostic.stallReason === "read_only_write_intent") {
-        return undefined;
-    }
+    void meta;
     if (diagnostic.stallReason === "external_directory_permission_pending") {
         return undefined;
     }
     if (diagnostic.stallReason === "read_tool_invalid_input") {
-        return diagnostic.softStallRescueSourceReason ? "rescue_malformed_read_tool_call" : "malformed_read_tool_call";
+        return "malformed_read_tool_call";
     }
-    if (diagnostic.recoveryStallReason) {
-        return `rescue_${diagnostic.recoveryStallReason}`;
+    if (typeof diagnostic.recoveryStallReason === "string" && diagnostic.recoveryStallReason.length > 0) {
+        return diagnostic.recoveryStallReason;
     }
-    if (meta.externalRescuePromptSubmittedAt && diagnostic.stallReason && isSoftStallRescueEligible(diagnostic)) {
-        return `rescue_${diagnostic.stallReason}`;
-    }
-    if (diagnostic.stallReason === "provider_zero_progress" || diagnostic.stallReason === "provider_blank_assistant") {
+    if (diagnostic.stallReason === "provider_zero_progress" ||
+        diagnostic.stallReason === "provider_blank_assistant" ||
+        diagnostic.stallReason === "incomplete_assistant_round" ||
+        diagnostic.stallReason === "backend_no_final_text" ||
+        diagnostic.stallReason === "tool_loop_no_completion") {
         return diagnostic.stallReason;
     }
     return undefined;
 }
 function createTaskLevelAttemptPrompt(originalPrompt, recoveryReason, diagnostic, handoffCapsule) {
     const stall = diagnostic.stallReason ? `stallReason=${diagnostic.stallReason}` : "stallReason=unknown";
-    const source = diagnostic.softStallRescueSourceReason ? ` rescueSource=${diagnostic.softStallRescueSourceReason}` : "";
     const recovery = diagnostic.recoveryStallReason ? ` recovery=${diagnostic.recoveryStallReason}` : "";
     const readHint = diagnostic.stallReason === "read_tool_invalid_input" || diagnostic.recoveryStallReason === "read_tool_invalid_input"
         ? "The previous attempt emitted a malformed OpenCode read tool call. Prefer grep/glob or read-only shell inspection over the OpenCode read tool when source inspection is needed."
         : "Use a smaller inspection path and produce a final answer as soon as enough evidence is available.";
     return [
         "Retinue task-level retry request:",
-        `Previous attempt failed as non-evidence (${stall}${source}${recovery}; recoveryReason=${recoveryReason}).`,
+        `Previous attempt failed as non-evidence (${stall}${recovery}; recoveryReason=${recoveryReason}).`,
         "Start a fresh controlled attempt. Do not rely on the previous stalled output as evidence.",
         readHint,
         "Do not modify files. Return a concise final answer with path evidence when applicable.",
@@ -2311,14 +1861,11 @@ function buildAttemptHandoffCapsule(meta, recoveryReason, diagnostic) {
     if (diagnostic.stallReason === "read_tool_invalid_input" || diagnostic.recoveryStallReason === "read_tool_invalid_input") {
         warnings.add("Previous attempt emitted a malformed OpenCode read tool call; do not repeat empty read input.");
     }
-    if (diagnostic.softStallRescueSourceReason) {
-        warnings.add(`Previous same-session finalization rescue followed ${diagnostic.softStallRescueSourceReason}.`);
-    }
     return {
         sourceJobId: meta.jobId,
         sourceSessionId: meta.externalSessionId,
         cwd: meta.cwd,
-        stallReason: diagnostic.softStallRescueSourceReason ?? diagnostic.stallReason,
+        stallReason: diagnostic.stallReason,
         recoveryReason,
         trustedFinalText: false,
         completedTools,
@@ -2552,9 +2099,6 @@ function createPromptPreview(prompt) {
     const normalized = prompt.replace(/\s+/g, " ").trim();
     return normalized.length > 120 ? `${normalized.slice(0, 117)}...` : normalized;
 }
-function resolveReadOnlyBashPolicy(value) {
-    return value ?? "readonly_git";
-}
 function resolveRunnerMode(env) {
     const value = env?.RETINUE_OPENCODE_ROOT_BINDING_MODE?.trim().toLowerCase();
     if (value === undefined || value === "" || value === "shared_root" || value === "shared-root") {
@@ -2571,14 +2115,6 @@ function resolveRootAgent(env) {
         return "build";
     }
     return value;
-}
-function buildReadOnlyPermission(bashPolicy) {
-    return bashPolicy === "readonly_git"
-        ? [...OPENCODE_READONLY_GIT_BASH_PERMISSION, ...OPENCODE_READ_ONLY_BASE_PERMISSION]
-        : OPENCODE_READ_ONLY_BASE_PERMISSION;
-}
-function buildReadOnlyTools(bashPolicy) {
-    return bashPolicy === "readonly_git" ? OPENCODE_READ_ONLY_TOOLS_WITH_READONLY_GIT_BASH : OPENCODE_READ_ONLY_TOOLS_NO_BASH;
 }
 function findOpenCodeAgent(agents, name) {
     return agents.find((agent) => agent.name === name);
@@ -2624,16 +2160,6 @@ function deriveSubagentSessionPermission(input) {
         ...(canTodo ? [] : [{ permission: "todowrite", pattern: "*", action: "deny" }]),
         ...(canTask ? [] : [{ permission: "task", pattern: "*", action: "deny" }])
     ];
-}
-function mergePermissionRules(...groups) {
-    const rules = groups.flatMap((group) => group ?? []);
-    return rules.length > 0 ? rules : undefined;
-}
-function buildOpenCodePrompt(prompt, readOnly, bashPolicy) {
-    if (!readOnly) {
-        return prompt;
-    }
-    return `${createReadOnlyPromptContract(bashPolicy)}\n\nUser task:\n${prompt}`;
 }
 function sha256(value) {
     return createHash("sha256").update(value).digest("hex");

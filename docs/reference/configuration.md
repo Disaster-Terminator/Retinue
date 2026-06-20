@@ -40,8 +40,7 @@ The packaged `retinue.config.json` is not persistent user state. Plugin refresh,
 | `RETINUE_OPENCODE_AGENT` | packaged fallback `explore` | Default OpenCode child agent. Use OpenCode-native subagents such as `explore` for read-only work and `general` for writable multi-step work. A single spawn may override it with `agent`. |
 | `RETINUE_OPENCODE_ROOT_BINDING_MODE` | `shared_root` | Controls OpenCode root/session binding. Use `per_spawn` only for legacy compatibility, isolation probes, or debugging. Record `externalRunnerMode` when comparing behavior. |
 | `RETINUE_OPENCODE_SERVER_IDLE_MS` | `30000` | Idle shutdown grace for managed OpenCode server. |
-| `RETINUE_OPENCODE_SOFT_STALL_RESCUE_AGENT` | `build` | Agent used for same-session final-answer rescue. Use `none`, `0`, or `false` to keep the original agent. |
-| `RETINUE_OPENCODE_TASK_ATTEMPT_MAX` | implementation default | Maximum fresh task attempts after malformed read or failed finalization rescue. Set `0` to disable. |
+| `RETINUE_OPENCODE_TASK_ATTEMPT_MAX` | implementation default | Maximum fresh task attempts after provider/no-final-text stalls or malformed read output. Set `0` to disable. |
 
 OpenCode owns profile, provider, endpoint, login, model defaults, plugins, skills, tools, and permissions.
 

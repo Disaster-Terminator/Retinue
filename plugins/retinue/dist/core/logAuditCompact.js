@@ -35,7 +35,6 @@ function renderCompactIssue(issue, index, prefix = "") {
     const sample = issue.sample ?? {};
     const summary = [
         `reason=${stringField(sample.problemStatus) ?? stringField(sample.stallReason) ?? "unknown"}`,
-        stringField(sample.softStallRescueSourceReason) ? `source=${stringField(sample.softStallRescueSourceReason)}` : undefined,
         stringField(sample.recoveryStallReason) ? `recovery=${stringField(sample.recoveryStallReason)}` : undefined,
         `provider=${providerModel(issue)}`,
         stringField(sample.baseUrl) ? `baseUrl=${stringField(sample.baseUrl)}` : undefined,
@@ -46,8 +45,7 @@ function renderCompactIssue(issue, index, prefix = "") {
         stringField(sample.selectedAttemptJobId) ? `selectedAttempt=${stringField(sample.selectedAttemptJobId)}` : undefined,
         sample.attemptChainPresent === true ? "attemptChain=true" : undefined,
         numericField(sample.malformedReadToolParts) ? `malformedRead=${numericField(sample.malformedReadToolParts)}` : undefined,
-        numericField(sample.pendingPermissionCount) ? `permissions=${numericField(sample.pendingPermissionCount)}` : undefined,
-        sample.readOnlyWriteIntent === true ? "readOnlyWriteIntent=true" : undefined
+        numericField(sample.pendingPermissionCount) ? `permissions=${numericField(sample.pendingPermissionCount)}` : undefined
     ]
         .filter((part) => Boolean(part))
         .join(" ");
@@ -81,12 +79,12 @@ function renderPermissionActions(value) {
 }
 function providerModel(issue) {
     const parts = issue.signature.split("|");
-    const offset = parts[0] === "chain" ? 2 : 3;
+    const offset = parts[0] === "chain" ? 2 : 2;
     return `${parts[offset] ?? "unknown_provider"}/${parts[offset + 1] ?? "unknown_model"}`;
 }
 function agentMode(issue) {
     const parts = issue.signature.split("|");
-    const offset = parts[0] === "chain" ? 4 : 5;
+    const offset = parts[0] === "chain" ? 4 : 4;
     return `${parts[offset] ?? "unknown_agent"}/${parts[offset + 1] ?? "unknown_mode"}`;
 }
 function stringField(value) {

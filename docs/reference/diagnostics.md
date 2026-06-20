@@ -37,7 +37,6 @@ Use full JSON only when the compact summary cannot answer the question.
 
 | Reason | Meaning |
 | --- | --- |
-| `read_only_write_intent` | A read-only job attempted a write-capable tool. |
 | `provider_error` | OpenCode attached a provider/API error. |
 | `provider_reasoning_content_error` | A provider/router rejected thinking-mode `reasoning_content` continuity. |
 | `provider_blank_assistant` | Provider produced assistant rounds with no useful text. |
@@ -64,20 +63,11 @@ child-agent evidence.
 
 ## Recovery Provenance
 
-Soft stalls can trigger a same-session final-answer rescue while the wait call still has
-time. Malformed read output or a failed finalization rescue can trigger a fresh
-task-level attempt.
-
-Final-answer rescue diagnostics may include:
-
-- `softStallRescueStrategy`: currently `final_answer_no_tools`
-- `softStallRescueAgent`: the OpenCode agent used for the rescue prompt
-- `softStallRescueModel`: the explicit Retinue model override when one was sent
-- `softStallRescueTools`: tool names disabled for the final-answer rescue prompt
-- `softStallRescueSubmittedAt`: when Retinue submitted the rescue prompt
-- `softStallRescueSourceReason` and `softStallRescueSourceSummary`: the original stall being rescued
-
-These fields describe steering submitted through OpenCode's existing session API. They do not mean Retinue changed OpenCode provider configuration, bypassed permissions, or asked the child to continue tool work.
+Retinue does not submit same-session no-tools rescue prompts for OpenCode stalls.
+OpenCode owns the active session, agent profile, tool availability, and permission
+engine. When configured retry policy allows it, Retinue may instead start a fresh
+task-level attempt as a separate child job/session with bounded handoff context from
+the failed attempt.
 
 When this happens, output may include:
 

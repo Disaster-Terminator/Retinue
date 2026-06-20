@@ -247,26 +247,15 @@ describe("Retinue Codex plugin guardrails", () => {
     expect(opencodeBackendSource).toContain("const DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 1");
   });
 
-  it("keeps strict OpenCode read-only prompt and tool-deny layers available as opt-in behavior", () => {
-    expect(opencodeBackendSource).toContain("const OPENCODE_READ_ONLY_TOOLS_NO_BASH: Record<string, boolean> = {");
-    expect(opencodeBackendSource).toContain("const OPENCODE_READ_ONLY_TOOLS_WITH_READONLY_GIT_BASH: Record<string, boolean> = {");
-    expect(opencodeBackendSource).toContain("edit: false");
-    expect(opencodeBackendSource).toContain("write: false");
-    expect(opencodeBackendSource).toContain("task: false");
-    expect(opencodeBackendSource).toContain("Retinue read-only child agent contract");
-    expect(opencodeBackendSource).toContain("Use only OpenCode read, grep, glob, and allowed read-only git bash commands");
-    expect(opencodeBackendSource).toContain("Allowed bash is limited to read-only git inspection commands");
-    expect(opencodeBackendSource).toContain("read only a small set of targeted files");
-    expect(opencodeBackendSource).toContain("Use read serially");
-    expect(opencodeBackendSource).toContain("Do not emit unified diffs");
-    expect(opencodeBackendSource).toContain("Do not include patch blocks");
-    expect(opencodeBackendSource).toContain("For code review, return findings as plain text");
-    expect(opencodeBackendSource).toContain("If the user provides enough facts");
-    expect(opencodeBackendSource).toContain("Do not use tools just to confirm prompt-provided facts");
-    expect(opencodeBackendSource).toContain("Use at most six inspection tool calls");
-    expect(opencodeBackendSource).toContain("You cannot inspect git history");
-    expect(opencodeBackendSource).toContain("If the task asks for a diff");
-    expect(opencodeBackendSource).toContain("Do not call bash except for allowed read-only git inspection commands");
+  it("delegates OpenCode read-only behavior to native agents and permissions", () => {
+    expect(opencodeBackendSource).toContain("deriveSubagentSessionPermission");
+    expect(opencodeBackendSource).toContain("parentAgentDenies");
+    expect(opencodeBackendSource).toContain("options.prompt");
+    expect(opencodeBackendSource).not.toContain("OPENCODE_READ_ONLY_TOOLS_NO_BASH");
+    expect(opencodeBackendSource).not.toContain("OPENCODE_READ_ONLY_TOOLS_WITH_READONLY_GIT_BASH");
+    expect(opencodeBackendSource).not.toContain("Retinue read-only child agent contract");
+    expect(opencodeBackendSource).not.toContain("read_only_write_intent");
+    expect(opencodeBackendSource).not.toContain("readOnlyWriteIntent");
   });
 
   it("declares a plugin manifest with skill and MCP surfaces", () => {
