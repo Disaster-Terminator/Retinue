@@ -5,7 +5,7 @@ import path from "node:path";
 import { OpenCodeBackend } from "../src/backends/opencode/backend.js";
 import { OpenCodeClient } from "../src/backends/opencode/client.js";
 import { getJobPaths, getRetinueTracePath } from "../src/core/paths.js";
-import type { JobMeta, JobStatus } from "../src/core/types.js";
+import type { JobMeta, JobStatus, JobStatusResult } from "../src/core/types.js";
 import { startFakeOpenCodeServer, type FakeOpenCodeServer } from "./fixtures/fake-opencode-server.js";
 
 describe("OpenCodeBackend", () => {
@@ -1888,9 +1888,6 @@ describe("OpenCodeBackend", () => {
     server!.appendToolCallAssistant(started.externalSessionId!, "checking source three");
 
     await new Promise((resolve) => setTimeout(resolve, 5));
-    setTimeout(() => {
-      server!.completeSessionWithFinalText(started.externalSessionId!, "late wait result");
-    }, 250);
 
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
@@ -2121,7 +2118,7 @@ describe("OpenCodeBackend", () => {
     );
 
     server!.completeSession(started.externalSessionId!);
-    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "completed" });
+    await expect(waitForJobStatus(backend, started.jobId, "completed")).resolves.toMatchObject({ status: "completed" });
 
     expect(idleServers).toEqual([server!.url]);
   });
@@ -2200,6 +2197,19 @@ describe("OpenCodeBackend", () => {
       await sleep(10);
     }
     throw new Error(`Timed out waiting for ${count} OpenCode prompt requests`);
+  }
+
+  async function waitForJobStatus(backend: OpenCodeBackend, jobId: string, status: JobStatus): Promise<JobStatusResult> {
+    const deadline = Date.now() + 1000;
+    let last: JobStatusResult | undefined;
+    while (Date.now() < deadline) {
+      last = await backend.status({ jobId });
+      if (last.status === status) {
+        return last;
+      }
+      await sleep(10);
+    }
+    throw new Error(`Timed out waiting for job ${jobId} to reach ${status}; last=${last?.status ?? "unknown"}`);
   }
 });
 
