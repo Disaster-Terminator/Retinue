@@ -281,7 +281,11 @@ message history. `read_tool_invalid_input` means the provider/model emitted a ma
 `read` tool call, such as input `{}` with no usable `filePath`; treat it as stalled
 provider/tool-call output, not review evidence. `provider_reasoning_content_error` means
 a thinking-mode route rejected missing `reasoning_content` continuity and should be
-handled as provider/router configuration evidence. If a selected fresh attempt also
+handled as provider/router configuration evidence. When `provider_blank_assistant` or
+`provider_zero_progress` also has `finalizationAfterToolProgress: true`, it means
+OpenCode made tool-call progress and then did not produce a final answer inside the
+longer finalization window; it is not evidence that the provider returned an empty
+final answer. If a selected fresh attempt also
 stalls, the result keeps `status: "stalled"` and includes the attempt-exhausted
 explanation in stdout/stderr rather than manufacturing a trusted answer from incomplete
 evidence. Stalled result diagnostics also expose `selectedAssistantTextBytes` and

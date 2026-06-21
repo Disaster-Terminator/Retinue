@@ -1387,14 +1387,16 @@ function computeStallDiagnostic(jobMessages, meta, env, pendingPermissions = [])
     const lastAssistant = [...activeMessages].reverse().find((message) => message.info?.role === "assistant");
     const incompleteAssistantRound = isIncompleteAssistantMessage(lastAssistant);
     const incompleteAssistantHasReasoningProgress = incompleteAssistantRound && hasNonEmptyReasoningOnlyProgress(lastAssistant);
-    const finalizationAfterToolProgress = toolCallAssistantRounds > 0 && lastAssistant !== undefined && isZeroProgressAssistantPlaceholder(lastAssistant);
+    const finalizationAfterToolProgressPlaceholder = lastAssistant !== undefined && (isZeroProgressAssistantPlaceholder(lastAssistant) || isBlankAssistantPlaceholder(lastAssistant));
+    const finalizationAfterToolProgressBlankPlaceholder = lastAssistant !== undefined && isBlankAssistantPlaceholder(lastAssistant);
+    const finalizationAfterToolProgress = toolCallAssistantRounds > 0 && finalizationAfterToolProgressPlaceholder;
     const startedAt = Date.parse(meta.createdAt);
     const durationMs = Number.isFinite(startedAt) ? Date.now() - startedAt : 0;
     const finalizationAfterToolProgressWithinWindow = finalizationAfterToolProgress && durationMs < finalizationAfterToolProgressThresholdMs;
     if (toolCallAssistantRounds < roundThreshold &&
         failedToolCallAssistantRounds === 0 &&
         emptyAssistantRounds < emptyAssistantThreshold &&
-        blankAssistantRounds === 0 &&
+        (blankAssistantRounds === 0 || finalizationAfterToolProgressWithinWindow) &&
         (zeroProgressAssistantRounds === 0 || finalizationAfterToolProgressWithinWindow) &&
         assistantMessageCount > 0 &&
         runningReadToolParts === 0 &&
@@ -1403,7 +1405,7 @@ function computeStallDiagnostic(jobMessages, meta, env, pendingPermissions = [])
         return undefined;
     }
     const emptyAssistantStalled = emptyAssistantRounds >= emptyAssistantThreshold;
-    const blankAssistantStalled = blankAssistantRounds > 0 && durationMs >= blankAssistantThresholdMs;
+    const blankAssistantStalled = blankAssistantRounds > 0 && !finalizationAfterToolProgress && durationMs >= blankAssistantThresholdMs;
     const zeroProgressAssistantStalled = zeroProgressAssistantRounds > 0 && !finalizationAfterToolProgress && durationMs >= zeroProgressAssistantThresholdMs;
     const finalizationAfterToolProgressStalled = finalizationAfterToolProgress && durationMs >= finalizationAfterToolProgressThresholdMs;
     const noAssistantOutputStalled = meta.recoveredFromJobId === undefined &&
@@ -1458,8 +1460,10 @@ function computeStallDiagnostic(jobMessages, meta, env, pendingPermissions = [])
         finalizationAfterToolProgress,
         stallReason: selectStallReason({
             emptyAssistantStalled,
-            blankAssistantStalled,
-            zeroProgressAssistantStalled: zeroProgressAssistantStalled || finalizationAfterToolProgressStalled || noAssistantOutputStalled,
+            blankAssistantStalled: blankAssistantStalled || (finalizationAfterToolProgressStalled && finalizationAfterToolProgressBlankPlaceholder),
+            zeroProgressAssistantStalled: zeroProgressAssistantStalled ||
+                (finalizationAfterToolProgressStalled && !finalizationAfterToolProgressBlankPlaceholder) ||
+                noAssistantOutputStalled,
             readToolInvalidInputStalled,
             externalDirectoryPermissionStalled,
             readToolStalled,
@@ -1505,6 +1509,9 @@ function createStallMessage(diagnostic) {
         return `OpenCode job stalled: fresh attempt reached ${runningReadToolParts} pending/running read tool call(s) with no completed assistant text for ${durationMs}ms.${details}${providerDetails} The OpenCode tool executor may be stuck; inspect Retinue trace/job diagnostics for full message summaries.`;
     }
     if (blankRounds > 0) {
+        if (diagnostic.finalizationAfterToolProgress === true) {
+            return `OpenCode job stalled: final assistant output made no visible progress after completed tool calls for ${durationMs}ms.${providerDetails} Inspect Retinue trace/job diagnostics for message summaries.`;
+        }
         return `OpenCode job stalled: observed ${blankRounds} blank assistant placeholder(s) with no completed assistant text for ${durationMs}ms.${providerDetails} The OpenCode provider or model router may be unavailable; inspect Retinue trace/job diagnostics for message summaries.`;
     }
     if (zeroProgressRounds > 0) {
@@ -1558,6 +1565,9 @@ function createStallSummary(diagnostic) {
         case "provider_reasoning_content_error":
             return "OpenCode provider rejected a DeepSeek reasoning_content thinking-mode request.";
         case "provider_blank_assistant":
+            if (diagnostic.finalizationAfterToolProgress === true) {
+                return `OpenCode final assistant output made no visible progress after completed tool calls for ${durationMs}ms.`;
+            }
             return `OpenCode provider/router produced blank assistant output for ${durationMs}ms.`;
         case "provider_zero_progress":
             if (diagnostic.finalizationAfterToolProgress === true) {

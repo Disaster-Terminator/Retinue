@@ -790,7 +790,8 @@ describe("OpenCodeBackend", () => {
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
-        RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1"
+        RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS: "1"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -821,6 +822,7 @@ describe("OpenCodeBackend", () => {
       stateDir: tempDir,
       env: {
         RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS: "1",
         RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
@@ -835,6 +837,31 @@ describe("OpenCodeBackend", () => {
 
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).toContain('"stallReason":"provider_blank_assistant"');
+  });
+
+  it("keeps blank finalization placeholders running after completed tool progress within the finalization window", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS: "60000",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "review has tool evidence then blank final answer placeholder" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source two");
+    server!.appendBlankAssistant(started.externalSessionId!);
+
+    await expect(backend.wait({ jobId: started.jobId }, 100)).resolves.toMatchObject({ status: "running" });
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).not.toContain('"event":"opencode_job_stalled"');
+    expect(trace).not.toContain('"event":"opencode_task_level_attempt_started"');
+    expect(server!.promptRequests).toHaveLength(1);
   });
 
   it("starts a fresh task-level attempt for completed tool loops without final text", async () => {
@@ -1557,7 +1584,7 @@ describe("OpenCodeBackend", () => {
     expect(result.stdout).toContain("recoveryStall=read_tool_invalid_input");
   });
 
-  it("keeps blank provider stalls on the original reason when fresh attempts are disabled", async () => {
+  it("keeps blank finalization stalls on the original reason when fresh attempts are disabled", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
       baseUrl: server!.url,
@@ -1565,6 +1592,7 @@ describe("OpenCodeBackend", () => {
       env: {
         RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS: "1",
         RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1",
+        RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS: "1",
         RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
@@ -1576,7 +1604,7 @@ describe("OpenCodeBackend", () => {
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
     const result = await backend.result({ jobId: started.jobId });
     expect(result.status).toBe("stalled");
-    expect(result.stdout).toContain("blank assistant placeholder");
+    expect(result.stdout).toContain("final assistant output made no visible progress after completed tool calls");
     expect(result.stdout).toContain("provider=litellm model=semantic-router agent=plan mode=plan");
 
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");

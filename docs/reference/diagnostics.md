@@ -39,7 +39,7 @@ Use full JSON only when the compact summary cannot answer the question.
 | --- | --- |
 | `provider_error` | OpenCode attached a provider/API error. |
 | `provider_reasoning_content_error` | A provider/router rejected thinking-mode `reasoning_content` continuity. |
-| `provider_blank_assistant` | Provider produced assistant rounds with no useful text. |
+| `provider_blank_assistant` | Provider produced assistant rounds with no useful text, or final assistant output did not appear after completed tool-call progress crossed its longer finalization window. |
 | `provider_zero_progress` | Assistant placeholders made no useful progress, or final assistant output did not appear after completed tool-call progress crossed its longer finalization window. |
 | `read_tool_stalled` | A read tool call remained pending/running past the threshold. |
 | `read_tool_invalid_input` | The model emitted malformed read tool input, such as `{}` without `filePath`. |
