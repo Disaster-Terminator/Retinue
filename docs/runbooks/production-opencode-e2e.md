@@ -151,11 +151,13 @@ close the child as non-evidence.
 Retinue reports OpenCode empty-output or incomplete assistant loops as `stalled` only
 after diagnostic thresholds are crossed. Defaults are tuned to keep real child agents
 responsive within a single MCP wait call: the long fallback no-text threshold is 10
-minutes, while blank provider placeholders, zero-progress assistant placeholders,
-incomplete latest assistant rounds, pending/running `read` tool calls, and completed
-tool-call loops with no final text use 45-second windows. This gives OpenCode a short
-recovery window after tool use while bounding jobs that repeatedly complete tools or
-leave tools pending and never summarize.
+minutes, while blank provider placeholders, incomplete latest assistant rounds,
+pending/running `read` tool calls, and completed tool-call loops with no final text use
+45-second windows. Zero-progress assistant placeholders use 45 seconds by default, but
+the latest zero-progress placeholder after completed tool-call progress uses 120
+seconds. This gives OpenCode room to finish a normal tool chain before Retinue marks
+the child as stalled, while still bounding jobs that repeatedly complete tools or leave
+tools pending and never summarize.
 
 Retinue does not submit same-session no-tools rescue prompts, switch the OpenCode
 agent behind the caller, or override child tools to simulate read-only behavior.
@@ -171,6 +173,7 @@ available for inspection until explicit close/cleanup.
 
 Use `RETINUE_OPENCODE_STALL_MS`, `RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS`,
 `RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS`,
+`RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS`,
 `RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS`, `RETINUE_OPENCODE_STALL_READ_TOOL_MS`,
 `RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS`,
 `RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS`, and

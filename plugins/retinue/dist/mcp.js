@@ -56707,6 +56707,7 @@ var DEFAULT_BLANK_ASSISTANT_STALL_MS = 45e3;
 var DEFAULT_ZERO_PROGRESS_ASSISTANT_STALL_MS = 45e3;
 var DEFAULT_READ_TOOL_STALL_MS = 45e3;
 var DEFAULT_COMPLETED_TOOL_LOOP_STALL_MS = 45e3;
+var DEFAULT_FINALIZATION_AFTER_TOOL_PROGRESS_STALL_MS = 12e4;
 var DEFAULT_STALL_TOOL_CALL_ROUNDS = 6;
 var DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS = 1;
 var DIAGNOSTIC_VALUE_PREVIEW_BYTES = 1e3;
@@ -58024,6 +58025,10 @@ function computeStallDiagnostic(jobMessages, meta3, env, pendingPermissions = []
     env?.RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS,
     DEFAULT_COMPLETED_TOOL_LOOP_STALL_MS
   );
+  const finalizationAfterToolProgressThresholdMs = parseOptionalNonNegativeInt(
+    env?.RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS,
+    DEFAULT_FINALIZATION_AFTER_TOOL_PROGRESS_STALL_MS
+  );
   const roundThreshold = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS, DEFAULT_STALL_TOOL_CALL_ROUNDS);
   const emptyAssistantThreshold = parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS, DEFAULT_STALL_EMPTY_ASSISTANT_ROUNDS);
   const toolCallAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isToolCallAssistantMessage(message)).length;
@@ -58045,21 +58050,24 @@ function computeStallDiagnostic(jobMessages, meta3, env, pendingPermissions = []
   const lastAssistant = [...activeMessages].reverse().find((message) => message.info?.role === "assistant");
   const incompleteAssistantRound = isIncompleteAssistantMessage(lastAssistant);
   const incompleteAssistantHasReasoningProgress = incompleteAssistantRound && hasNonEmptyReasoningOnlyProgress(lastAssistant);
-  if (toolCallAssistantRounds < roundThreshold && failedToolCallAssistantRounds === 0 && emptyAssistantRounds < emptyAssistantThreshold && blankAssistantRounds === 0 && zeroProgressAssistantRounds === 0 && assistantMessageCount > 0 && runningReadToolParts === 0 && pendingExternalDirectoryPermissionSummaries.length === 0 && (!incompleteAssistantRound || incompleteAssistantHasReasoningProgress)) {
-    return void 0;
-  }
+  const finalizationAfterToolProgress = toolCallAssistantRounds > 0 && lastAssistant !== void 0 && isZeroProgressAssistantPlaceholder(lastAssistant);
   const startedAt = Date.parse(meta3.createdAt);
   const durationMs = Number.isFinite(startedAt) ? Date.now() - startedAt : 0;
+  const finalizationAfterToolProgressWithinWindow = finalizationAfterToolProgress && durationMs < finalizationAfterToolProgressThresholdMs;
+  if (toolCallAssistantRounds < roundThreshold && failedToolCallAssistantRounds === 0 && emptyAssistantRounds < emptyAssistantThreshold && blankAssistantRounds === 0 && (zeroProgressAssistantRounds === 0 || finalizationAfterToolProgressWithinWindow) && assistantMessageCount > 0 && runningReadToolParts === 0 && pendingExternalDirectoryPermissionSummaries.length === 0 && (!incompleteAssistantRound || incompleteAssistantHasReasoningProgress || finalizationAfterToolProgressWithinWindow)) {
+    return void 0;
+  }
   const emptyAssistantStalled = emptyAssistantRounds >= emptyAssistantThreshold;
   const blankAssistantStalled = blankAssistantRounds > 0 && durationMs >= blankAssistantThresholdMs;
-  const zeroProgressAssistantStalled = zeroProgressAssistantRounds > 0 && durationMs >= zeroProgressAssistantThresholdMs;
+  const zeroProgressAssistantStalled = zeroProgressAssistantRounds > 0 && !finalizationAfterToolProgress && durationMs >= zeroProgressAssistantThresholdMs;
+  const finalizationAfterToolProgressStalled = finalizationAfterToolProgress && durationMs >= finalizationAfterToolProgressThresholdMs;
   const noAssistantOutputStalled = meta3.recoveredFromJobId === void 0 && assistantMessageCount === 0 && durationMs >= zeroProgressAssistantThresholdMs;
   const readToolStalled = runningReadToolParts > 0 && durationMs >= readToolThresholdMs;
   const readToolInvalidInputStalled = malformedReadToolParts > 0 && durationMs >= readToolThresholdMs;
   const externalDirectoryPermissionStalled = pendingExternalDirectoryPermissionSummaries.length > 0;
   const completedToolLoopStalled = (toolCallAssistantRounds >= roundThreshold || failedToolCallAssistantRounds > 0) && runningReadToolParts === 0 && !incompleteAssistantRound && durationMs >= completedToolLoopThresholdMs;
   const incompleteAssistantStalled = incompleteAssistantRound && !incompleteAssistantHasReasoningProgress && durationMs >= incompleteThresholdMs;
-  if (!emptyAssistantStalled && !blankAssistantStalled && !zeroProgressAssistantStalled && !noAssistantOutputStalled && !readToolStalled && !externalDirectoryPermissionStalled && !completedToolLoopStalled && !incompleteAssistantStalled && durationMs < thresholdMs) {
+  if (!emptyAssistantStalled && !blankAssistantStalled && !zeroProgressAssistantStalled && !finalizationAfterToolProgressStalled && !noAssistantOutputStalled && !readToolStalled && !externalDirectoryPermissionStalled && !completedToolLoopStalled && !incompleteAssistantStalled && durationMs < thresholdMs) {
     return void 0;
   }
   const diagnostic = {
@@ -58083,14 +58091,16 @@ function computeStallDiagnostic(jobMessages, meta3, env, pendingPermissions = []
     readToolStallThresholdMs: readToolThresholdMs,
     completedToolLoopStallThresholdMs: completedToolLoopThresholdMs,
     incompleteAssistantStallThresholdMs: incompleteThresholdMs,
+    finalizationAfterToolProgressStallThresholdMs: finalizationAfterToolProgressThresholdMs,
     stallToolCallRoundThreshold: roundThreshold,
     stallEmptyAssistantRoundThreshold: emptyAssistantThreshold,
     incompleteAssistantRound,
     incompleteAssistantHasReasoningProgress,
+    finalizationAfterToolProgress,
     stallReason: selectStallReason({
       emptyAssistantStalled,
       blankAssistantStalled,
-      zeroProgressAssistantStalled: zeroProgressAssistantStalled || noAssistantOutputStalled,
+      zeroProgressAssistantStalled: zeroProgressAssistantStalled || finalizationAfterToolProgressStalled || noAssistantOutputStalled,
       readToolInvalidInputStalled,
       externalDirectoryPermissionStalled,
       readToolStalled,
@@ -58139,6 +58149,9 @@ function createStallMessage(diagnostic) {
     return `OpenCode job stalled: observed ${blankRounds} blank assistant placeholder(s) with no completed assistant text for ${durationMs}ms.${providerDetails} The OpenCode provider or model router may be unavailable; inspect Retinue trace/job diagnostics for message summaries.`;
   }
   if (zeroProgressRounds > 0) {
+    if (diagnostic.finalizationAfterToolProgress === true) {
+      return `OpenCode job stalled: final assistant output made no visible progress after completed tool calls for ${durationMs}ms.${providerDetails} Inspect Retinue trace/job diagnostics for message summaries.`;
+    }
     return `OpenCode job stalled: observed ${zeroProgressRounds} zero-progress assistant placeholder(s) with no completed assistant text for ${durationMs}ms.${providerDetails} The OpenCode provider or model router may be unavailable or stuck after tool calls; inspect Retinue trace/job diagnostics for message summaries.`;
   }
   if (runningReadToolParts > 0) {
@@ -58187,6 +58200,9 @@ function createStallSummary(diagnostic) {
     case "provider_blank_assistant":
       return `OpenCode provider/router produced blank assistant output for ${durationMs}ms.`;
     case "provider_zero_progress":
+      if (diagnostic.finalizationAfterToolProgress === true) {
+        return `OpenCode final assistant output made no visible progress after completed tool calls for ${durationMs}ms.`;
+      }
       return `OpenCode provider/router produced zero-progress assistant output for ${durationMs}ms.`;
     case "read_tool_invalid_input":
       return `OpenCode provider/model emitted read tool call(s) with missing or invalid input for ${durationMs}ms.${formatReadToolStallDetails(diagnostic)}`;

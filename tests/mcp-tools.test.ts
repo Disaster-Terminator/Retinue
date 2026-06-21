@@ -850,13 +850,16 @@ describe("MCP tools", () => {
       RETINUE_STATE_DIR: process.env.RETINUE_STATE_DIR,
       RETINUE_OPENCODE_BASE_URL: process.env.RETINUE_OPENCODE_BASE_URL,
       RETINUE_MCP_WAIT_MAX_MS: process.env.RETINUE_MCP_WAIT_MAX_MS,
-      RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS
+      RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS,
+      RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS:
+        process.env.RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS
     };
     try {
       process.env.RETINUE_STATE_DIR = tempDir;
       process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
       process.env.RETINUE_MCP_WAIT_MAX_MS = "5000";
       process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS = "1";
+      process.env.RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS = "1";
       fakeOpenCode.setAutoAssistantResponses(false);
 
       const spawn = parseToolJson(
@@ -905,6 +908,10 @@ describe("MCP tools", () => {
       restoreEnv("RETINUE_OPENCODE_BASE_URL", previousEnv.RETINUE_OPENCODE_BASE_URL);
       restoreEnv("RETINUE_MCP_WAIT_MAX_MS", previousEnv.RETINUE_MCP_WAIT_MAX_MS);
       restoreEnv("RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS", previousEnv.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS);
+      restoreEnv(
+        "RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS",
+        previousEnv.RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS
+      );
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });
     }
@@ -1032,6 +1039,7 @@ describe("MCP tools", () => {
       process.env.RETINUE_STATE_DIR = tempDir;
       process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
       process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS = "1";
+      process.env.RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS = "1";
       process.env.RETINUE_OPENCODE_TASK_ATTEMPT_MAX = "0";
 
       const spawn = parseToolJson(
@@ -1063,13 +1071,14 @@ describe("MCP tools", () => {
           lastAssistantModelID: "semantic-router"
         }
       });
-      expect(wait.diagnostic.message).toContain("provider/router produced zero-progress assistant output");
+      expect(wait.diagnostic.message).toContain("final assistant output made no visible progress");
       const list = parseToolJson(await connection.client.callTool({ name: "list_agents", arguments: {} }));
       expect(list.agents).toEqual([]);
     } finally {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
       delete process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS;
+      delete process.env.RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS;
       delete process.env.RETINUE_OPENCODE_TASK_ATTEMPT_MAX;
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });
@@ -1085,6 +1094,7 @@ describe("MCP tools", () => {
       process.env.RETINUE_STATE_DIR = tempDir;
       process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
       process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS = "1";
+      process.env.RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS = "1";
       process.env.RETINUE_OPENCODE_TASK_ATTEMPT_MAX = "0";
 
       const spawn = parseToolJson(
@@ -1123,11 +1133,12 @@ describe("MCP tools", () => {
           selectedAssistantSha256: expect.any(String)
         }
       });
-      expect(wait.diagnostic.message).toContain("provider/router produced zero-progress assistant output");
+      expect(wait.diagnostic.message).toContain("final assistant output made no visible progress");
     } finally {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
       delete process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS;
+      delete process.env.RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS;
       delete process.env.RETINUE_OPENCODE_TASK_ATTEMPT_MAX;
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });
@@ -2317,6 +2328,7 @@ describe("MCP tools", () => {
       process.env.RETINUE_STATE_DIR = tempDir;
       process.env.RETINUE_OPENCODE_BASE_URL = fakeOpenCode.url;
       process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS = "1";
+      process.env.RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS = "1";
       process.env.RETINUE_OPENCODE_TASK_ATTEMPT_MAX = "0";
 
       const spawn = parseToolJson(
@@ -2351,6 +2363,7 @@ describe("MCP tools", () => {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
       delete process.env.RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS;
+      delete process.env.RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS;
       delete process.env.RETINUE_OPENCODE_TASK_ATTEMPT_MAX;
       await Promise.allSettled([closeMcpClient(connection), fakeOpenCode.close()]);
       await fs.rm(tempDir, { recursive: true, force: true });

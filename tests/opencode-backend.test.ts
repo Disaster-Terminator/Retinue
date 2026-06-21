@@ -776,7 +776,7 @@ describe("OpenCodeBackend", () => {
 
     const paths = getJobPaths(tempDir, started.jobId);
     const meta = JSON.parse(await fs.readFile(paths.meta, "utf8")) as typeof started;
-    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 76_000).toISOString() })}\n`, "utf8");
+    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 130_000).toISOString() })}\n`, "utf8");
 
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
@@ -916,7 +916,8 @@ describe("OpenCodeBackend", () => {
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
-        RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1"
+        RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS: "1"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -952,6 +953,7 @@ describe("OpenCodeBackend", () => {
       stateDir: tempDir,
       env: {
         RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS: "1",
         RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
@@ -969,13 +971,39 @@ describe("OpenCodeBackend", () => {
     expect(server!.promptRequests).toHaveLength(1);
   });
 
+  it("keeps finalization placeholders running after completed tool progress within the finalization window", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS: "60000",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "review has tool evidence then slow final answer" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source two");
+    server!.appendZeroProgressReasoningAssistant(started.externalSessionId!);
+
+    await expect(backend.wait({ jobId: started.jobId }, 100)).resolves.toMatchObject({ status: "running" });
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).not.toContain('"event":"opencode_job_stalled"');
+    expect(trace).not.toContain('"event":"opencode_task_level_attempt_started"');
+    expect(server!.promptRequests).toHaveLength(1);
+  });
+
   it("prefers late root completion over a selected task-level attempt", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
-        RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1"
+        RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS: "1"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -1026,13 +1054,13 @@ describe("OpenCodeBackend", () => {
 
     const paths = getJobPaths(tempDir, started.jobId);
     const meta = JSON.parse(await fs.readFile(paths.meta, "utf8")) as typeof started;
-    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 76_000).toISOString() })}\n`, "utf8");
+    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 130_000).toISOString() })}\n`, "utf8");
 
     await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
     await expect(backend.result({ jobId: started.jobId })).resolves.toMatchObject({
       status: "stalled",
       parsedStdout: {
-        result: expect.stringContaining("zero-progress assistant placeholder")
+        result: expect.stringContaining("final assistant output made no visible progress after completed tool calls")
       }
     });
     const result = await backend.result({ jobId: started.jobId });
@@ -1074,6 +1102,7 @@ describe("OpenCodeBackend", () => {
       stateDir: tempDir,
       env: {
         RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS: "1",
         RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });
@@ -1878,6 +1907,7 @@ describe("OpenCodeBackend", () => {
       stateDir: tempDir,
       env: {
         RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS: "1",
         RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
     });

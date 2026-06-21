@@ -233,25 +233,34 @@ child-agent conclusion is available. If the wait window expires without usable f
 text or a selected attempt, the job returns `stalled` with diagnostics so the caller can
 inspect logs or close the child agent.
 
-Blank provider placeholders, zero-progress assistant placeholders, incomplete latest
-assistant rounds, pending/running `read` tool calls, and completed tool-call loops with
-no final text use 45-second default windows. Empty `finish=stop` assistant rounds are
-classified after one empty round by default. Deployments that need a different cutoff
-can set `RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS`,
+Blank provider placeholders, incomplete latest assistant rounds,
+pending/running `read` tool calls, and completed tool-call loops with no final text
+use 45-second default windows. Zero-progress assistant placeholders also use a
+45-second default window unless they are the latest round after completed tool-call
+progress. That finalization-after-tool-progress case uses a 120-second default window
+so Retinue does not interrupt a normal OpenCode tool chain while the final answer is
+still being generated.
+
+Empty `finish=stop` assistant rounds are classified after one empty round by default.
+Deployments that need a different cutoff can set
+`RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS`,
 `RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS`,
-`RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS`, `RETINUE_OPENCODE_STALL_READ_TOOL_MS`,
+`RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS`,
+`RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS`,
+`RETINUE_OPENCODE_STALL_READ_TOOL_MS`,
 `RETINUE_OPENCODE_STALL_COMPLETED_TOOL_LOOP_MS`, or
-`RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS`. Non-empty `reasoning` parts are treated
-as OpenCode/provider progress for an unfinished assistant round, even when visible
-`text` has not started yet. Retinue still does not return reasoning text as trusted
-stdout; it only avoids interrupting the active OpenCode chain with a final-answer
-classification while reasoning is the only observed progress. If OpenCode attaches a provider/API
-error to an assistant message, Retinue classifies it as `provider_error` and includes the
-redacted error preview in the stalled result, so authentication or router failures are
-not mislabeled as child write intent. OpenCode may attach `patch` parts from its snapshot
-system or report write-capable tool parts in its message stream. Retinue reports those as
-neutral diagnostics (`patchPartCount`, `writeIntentToolPartCount`) but does not enforce a
-separate read-only policy on top of OpenCode's native agent/profile permissions.
+`RETINUE_OPENCODE_STALL_EMPTY_ASSISTANT_ROUNDS`. Non-empty `reasoning` parts are
+treated as OpenCode/provider progress for an unfinished assistant round, even when
+visible `text` has not started yet. Retinue still does not return reasoning text as
+trusted stdout; it only avoids interrupting the active OpenCode chain with a
+final-answer classification while reasoning is the only observed progress. If OpenCode
+attaches a provider/API error to an assistant message, Retinue classifies it as
+`provider_error` and includes the redacted error preview in the stalled result, so
+authentication or router failures are not mislabeled as child write intent. OpenCode
+may attach `patch` parts from its snapshot system or report write-capable tool parts
+in its message stream. Retinue reports those as neutral diagnostics (`patchPartCount`,
+`writeIntentToolPartCount`) but does not enforce a separate read-only policy on top of
+OpenCode's native agent/profile permissions.
 `stalled` jobs are attention-required terminal jobs for MCP
 slot accounting: they do not occupy Retinue's active child-agent pool, but cleanup still
 preserves their artifacts until the caller explicitly closes or removes them. If only
