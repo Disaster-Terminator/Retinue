@@ -1378,7 +1378,12 @@ function computeStallDiagnostic(jobMessages, meta, env, pendingPermissions = [])
     const blankAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isBlankAssistantPlaceholder(message)).length;
     const zeroProgressAssistantRounds = activeMessages.filter((message) => message.info?.role === "assistant" && isZeroProgressAssistantPlaceholder(message)).length;
     const assistantMessageCount = activeMessages.filter((message) => message.info?.role === "assistant").length;
-    const runningReadToolPartSummaries = collectRunningReadToolPartSummaries(activeMessages);
+    const runningToolPartSummaries = collectRunningToolPartSummaries(activeMessages);
+    const runningToolParts = runningToolPartSummaries.length;
+    const malformedToolPartSummaries = runningToolPartSummaries.filter(isMalformedToolInput);
+    const malformedToolParts = malformedToolPartSummaries.filter((part) => part.tool !== "read").length;
+    const runningToolCallIds = runningToolPartSummaries.flatMap((part) => (part.callID ? [part.callID] : []));
+    const runningReadToolPartSummaries = runningToolPartSummaries.filter((part) => part.tool === "read");
     const runningReadToolParts = runningReadToolPartSummaries.length;
     const malformedReadToolParts = runningReadToolPartSummaries.filter(isMalformedReadToolInput).length;
     const runningReadToolCallIds = runningReadToolPartSummaries.flatMap((part) => (part.callID ? [part.callID] : []));
@@ -1413,6 +1418,7 @@ function computeStallDiagnostic(jobMessages, meta, env, pendingPermissions = [])
         durationMs >= zeroProgressAssistantThresholdMs;
     const readToolStalled = runningReadToolParts > 0 && durationMs >= readToolThresholdMs;
     const readToolInvalidInputStalled = malformedReadToolParts > 0 && durationMs >= readToolThresholdMs;
+    const toolInvalidInputStalled = malformedToolParts > 0 && durationMs >= readToolThresholdMs;
     const externalDirectoryPermissionStalled = pendingExternalDirectoryPermissionSummaries.length > 0;
     const completedToolLoopStalled = (toolCallAssistantRounds >= roundThreshold || failedToolCallAssistantRounds > 0) &&
         runningReadToolParts === 0 &&
@@ -1425,6 +1431,7 @@ function computeStallDiagnostic(jobMessages, meta, env, pendingPermissions = [])
         !finalizationAfterToolProgressStalled &&
         !noAssistantOutputStalled &&
         !readToolStalled &&
+        !toolInvalidInputStalled &&
         !externalDirectoryPermissionStalled &&
         !completedToolLoopStalled &&
         !incompleteAssistantStalled &&
@@ -1437,6 +1444,10 @@ function computeStallDiagnostic(jobMessages, meta, env, pendingPermissions = [])
         emptyAssistantRounds,
         blankAssistantRounds,
         zeroProgressAssistantRounds,
+        runningToolParts,
+        runningToolCallIds,
+        runningToolPartSummaries,
+        malformedToolParts,
         runningReadToolParts,
         runningReadToolCallIds,
         runningReadToolPartSummaries,
@@ -1465,6 +1476,7 @@ function computeStallDiagnostic(jobMessages, meta, env, pendingPermissions = [])
                 (finalizationAfterToolProgressStalled && !finalizationAfterToolProgressBlankPlaceholder) ||
                 noAssistantOutputStalled,
             readToolInvalidInputStalled,
+            toolInvalidInputStalled,
             externalDirectoryPermissionStalled,
             readToolStalled,
             completedToolLoopStalled,
@@ -1492,9 +1504,14 @@ function createStallMessage(diagnostic) {
     const emptyRounds = diagnostic.emptyAssistantRounds ?? 0;
     const blankRounds = diagnostic.blankAssistantRounds ?? 0;
     const zeroProgressRounds = diagnostic.zeroProgressAssistantRounds ?? 0;
+    const malformedToolParts = diagnostic.malformedToolParts ?? 0;
     const runningReadToolParts = diagnostic.runningReadToolParts ?? 0;
     const malformedReadToolParts = diagnostic.malformedReadToolParts ?? 0;
     const durationMs = diagnostic.noCompletedAssistantDurationMs ?? 0;
+    if (diagnostic.stallReason === "tool_invalid_input" && malformedToolParts > 0) {
+        const details = formatToolStallDetails(diagnostic);
+        return `OpenCode job stalled: observed ${malformedToolParts} non-read tool call(s) with missing or invalid input for ${durationMs}ms.${details}${providerDetails} The OpenCode provider/model emitted a malformed tool call; inspect Retinue trace/job diagnostics for full message summaries.`;
+    }
     if (diagnostic.stallReason === "read_tool_invalid_input" && malformedReadToolParts > 0) {
         const details = formatReadToolStallDetails(diagnostic);
         return `OpenCode job stalled: observed ${malformedReadToolParts} read tool call(s) with missing or invalid input for ${durationMs}ms.${details}${providerDetails} The OpenCode provider/model emitted a malformed read tool call; inspect Retinue trace/job diagnostics for full message summaries.`;
@@ -1533,6 +1550,9 @@ function isHardStallDiagnostic(diagnostic) {
 function selectStallReason(stalled) {
     if (stalled.readToolInvalidInputStalled) {
         return "read_tool_invalid_input";
+    }
+    if (stalled.toolInvalidInputStalled) {
+        return "tool_invalid_input";
     }
     if (stalled.externalDirectoryPermissionStalled) {
         return "external_directory_permission_pending";
@@ -1574,6 +1594,8 @@ function createStallSummary(diagnostic) {
                 return `OpenCode final assistant output made no visible progress after completed tool calls for ${durationMs}ms.`;
             }
             return `OpenCode provider/router produced zero-progress assistant output for ${durationMs}ms.`;
+        case "tool_invalid_input":
+            return `OpenCode provider/model emitted non-read tool call(s) with missing or invalid input for ${durationMs}ms.${formatToolStallDetails(diagnostic)}`;
         case "read_tool_invalid_input":
             return `OpenCode provider/model emitted read tool call(s) with missing or invalid input for ${durationMs}ms.${formatReadToolStallDetails(diagnostic)}`;
         case "external_directory_permission_pending":
@@ -1595,6 +1617,7 @@ function isOpenCodeStallReason(value) {
         value === "provider_reasoning_content_error" ||
         value === "provider_blank_assistant" ||
         value === "provider_zero_progress" ||
+        value === "tool_invalid_input" ||
         value === "read_tool_invalid_input" ||
         value === "read_tool_stalled" ||
         value === "external_directory_permission_pending" ||
@@ -1615,8 +1638,21 @@ function isMalformedReadToolInput(part) {
     if (part.tool !== "read") {
         return false;
     }
+    if (isMalformedToolInput(part)) {
+        return true;
+    }
     const preview = part.stateInput?.preview?.trim();
-    return !preview || preview === "{}" || preview === "null";
+    return !preview;
+}
+function isMalformedToolInput(part) {
+    if (part.type !== "tool") {
+        return false;
+    }
+    if (!isActiveToolState(part.stateStatus)) {
+        return false;
+    }
+    const preview = part.stateInput?.preview?.trim();
+    return preview === "{}" || preview === "null";
 }
 function formatReadToolStallDetails(diagnostic) {
     const summaries = diagnostic.runningReadToolPartSummaries ?? [];
@@ -1629,6 +1665,20 @@ function formatReadToolStallDetails(diagnostic) {
     }
     if (callIds.length > 0) {
         return ` readToolCallIds=${callIds.join(",")}.`;
+    }
+    return "";
+}
+function formatToolStallDetails(diagnostic) {
+    const summaries = diagnostic.runningToolPartSummaries ?? [];
+    const callIds = diagnostic.runningToolCallIds ?? [];
+    const stateDetails = summaries
+        .map((part) => [part.tool, part.callID, part.stateStatus, part.stateInput ? `input=${part.stateInput.preview}` : undefined].filter(Boolean).join(":"))
+        .filter((value) => value.length > 0);
+    if (stateDetails.length > 0) {
+        return ` toolCalls=${stateDetails.join(",")}.`;
+    }
+    if (callIds.length > 0) {
+        return ` toolCallIds=${callIds.join(",")}.`;
     }
     return "";
 }
@@ -1825,6 +1875,9 @@ function selectTaskLevelAttemptReason(meta, diagnostic) {
     if (diagnostic.stallReason === "read_tool_invalid_input") {
         return "malformed_read_tool_call";
     }
+    if (diagnostic.stallReason === "tool_invalid_input") {
+        return "malformed_tool_call";
+    }
     if (typeof diagnostic.recoveryStallReason === "string" && diagnostic.recoveryStallReason.length > 0) {
         return diagnostic.recoveryStallReason;
     }
@@ -1842,7 +1895,9 @@ function createTaskLevelAttemptPrompt(originalPrompt, recoveryReason, diagnostic
     const recovery = diagnostic.recoveryStallReason ? ` recovery=${diagnostic.recoveryStallReason}` : "";
     const readHint = diagnostic.stallReason === "read_tool_invalid_input" || diagnostic.recoveryStallReason === "read_tool_invalid_input"
         ? "The previous attempt emitted a malformed OpenCode read tool call. Prefer grep/glob or read-only shell inspection over the OpenCode read tool when source inspection is needed."
-        : "Use a smaller inspection path and produce a final answer as soon as enough evidence is available.";
+        : diagnostic.stallReason === "tool_invalid_input" || diagnostic.recoveryStallReason === "tool_invalid_input"
+            ? "The previous attempt emitted a malformed OpenCode tool call. Use narrower inspection and avoid repeating empty tool input."
+            : "Use a smaller inspection path and produce a final answer as soon as enough evidence is available.";
     return [
         "Retinue task-level retry request:",
         `Previous attempt failed as non-evidence (${stall}${recovery}; recoveryReason=${recoveryReason}).`,
@@ -1884,6 +1939,9 @@ function buildAttemptHandoffCapsule(meta, recoveryReason, diagnostic) {
     }
     if (diagnostic.stallReason === "read_tool_invalid_input" || diagnostic.recoveryStallReason === "read_tool_invalid_input") {
         warnings.add("Previous attempt emitted a malformed OpenCode read tool call; do not repeat empty read input.");
+    }
+    if (diagnostic.stallReason === "tool_invalid_input" || diagnostic.recoveryStallReason === "tool_invalid_input") {
+        warnings.add("Previous attempt emitted a malformed OpenCode tool call; avoid repeating empty tool input.");
     }
     return {
         sourceJobId: meta.jobId,
@@ -2003,8 +2061,8 @@ function isFailedToolCallAssistantMessage(message) {
     const toolParts = summarizeMessageParts(message)?.filter((part) => part.type === "tool") ?? [];
     return toolParts.length > 0 && toolParts.every((part) => part.stateStatus === "error");
 }
-function collectRunningReadToolPartSummaries(messages) {
-    return messages.flatMap((message) => summarizeMessageParts(message)?.filter((part) => part.type === "tool" && part.tool === "read" && isActiveToolState(part.stateStatus)) ?? []);
+function collectRunningToolPartSummaries(messages) {
+    return messages.flatMap((message) => summarizeMessageParts(message)?.filter((part) => part.type === "tool" && isActiveToolState(part.stateStatus)) ?? []);
 }
 function isActiveToolState(status) {
     return status === "pending" || status === "running";

@@ -43,6 +43,7 @@ Use full JSON only when the compact summary cannot answer the question.
 | `provider_zero_progress` | Assistant placeholders made no useful progress, or final assistant output did not appear after completed tool-call progress crossed its longer finalization window. |
 | `read_tool_stalled` | A read tool call remained pending/running past the threshold. |
 | `read_tool_invalid_input` | The model emitted malformed read tool input, such as `{}` without `filePath`. |
+| `tool_invalid_input` | The model emitted malformed non-read tool input, such as a `grep` call with `{}` input. |
 | `incomplete_assistant_round` | Latest assistant round did not complete. |
 | `backend_no_final_text` | Backend did not produce trusted final assistant text. |
 | `tool_loop_no_completion` | Tool-call loop completed tools without a final answer. |

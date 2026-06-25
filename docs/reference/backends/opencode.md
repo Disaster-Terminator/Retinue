@@ -273,13 +273,15 @@ Stall diagnostics include a compact `stallReason` and `stallSummary` when Retinu
 classify the failure. Current reason values are `provider_error`,
 `provider_reasoning_content_error`, `provider_blank_assistant`,
 `provider_zero_progress`, `read_tool_stalled`, `read_tool_invalid_input`,
+`tool_invalid_input`,
 `incomplete_assistant_round`, `backend_no_final_text`, `tool_loop_no_completion`, and
 `external_directory_permission_pending`. A `read_tool_stalled` diagnostic also includes
 `runningReadToolParts`, `runningReadToolCallIds`, and `runningReadToolPartSummaries` so
 the operator can identify the stuck OpenCode read call without first expanding the full
 message history. `read_tool_invalid_input` means the provider/model emitted a malformed
-`read` tool call, such as input `{}` with no usable `filePath`; treat it as stalled
-provider/tool-call output, not review evidence. `provider_reasoning_content_error` means
+`read` tool call, such as input `{}` with no usable `filePath`. `tool_invalid_input`
+means a non-read tool call, such as `grep`, had explicitly empty or null input. Treat
+both as stalled provider/tool-call output, not review evidence. `provider_reasoning_content_error` means
 a thinking-mode route rejected missing `reasoning_content` continuity and should be
 handled as provider/router configuration evidence. When `provider_blank_assistant` or
 `provider_zero_progress` also has `finalizationAfterToolProgress: true`, it means
@@ -294,11 +296,11 @@ backend-observation labels, not provider-specific
 configuration; for example, `provider_zero_progress` can describe any OpenCode provider
 or model router that produces zero useful assistant text after tool calls.
 
-Provider/no-final-text stall reasons may trigger the separate fresh task-level attempt
-policy when the attempt budget allows it. `read_tool_stalled`, `read_tool_invalid_input`,
+Provider/no-final-text and malformed-tool stall reasons may trigger the separate fresh
+task-level attempt policy when the attempt budget allows it. `read_tool_stalled`,
 `provider_error`, and `provider_reasoning_content_error` return as stalled diagnostics
-without a same-session recovery prompt. Fresh attempts create new jobs rather than
-promoting the original stalled job.
+without a recovery prompt. Fresh attempts create new jobs rather than promoting the
+original stalled job.
 
 ## Diagnostics
 

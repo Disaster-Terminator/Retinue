@@ -181,7 +181,7 @@ Use `RETINUE_OPENCODE_STALL_MS`, `RETINUE_OPENCODE_STALL_BLANK_ASSISTANT_MS`,
 failure window. Structured stall reasons currently include `provider_error`,
 `provider_reasoning_content_error`, `provider_zero_progress`,
 `provider_blank_assistant`, `read_tool_stalled`,
-`external_directory_permission_pending`, `read_tool_invalid_input`,
+`external_directory_permission_pending`, `read_tool_invalid_input`, `tool_invalid_input`,
 `incomplete_assistant_round`, `backend_no_final_text`, and `tool_loop_no_completion`.
 
 ```bash

@@ -50,6 +50,7 @@ export interface FakeOpenCodeServer {
   appendFailedToolCallAssistant(sessionId: string): void;
   appendExternalDirectoryPermission(sessionId: string, filePath: string, callID?: string): void;
   appendMalformedReadToolAssistant(sessionId: string): void;
+  appendMalformedToolAssistant(sessionId: string, tool: string): void;
   appendBlankAssistant(sessionId: string): void;
   appendZeroProgressReasoningAssistant(sessionId: string): void;
   appendZeroProgressFinishedAssistant(sessionId: string): void;
@@ -553,6 +554,34 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
               type: "tool",
               text: "read placeholder",
               tool: "read",
+              callID: `call_${nextMessage}`,
+              state: { status: "pending", input: {} }
+            }
+          ]
+        });
+      }
+    },
+    appendMalformedToolAssistant: (sessionId: string, tool: string) => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.omitState = true;
+        session.messages.push({
+          info: {
+            id: `msg_${nextMessage++}`,
+            sessionID: session.id,
+            role: "assistant",
+            providerID: "litellm",
+            modelID: "semantic-router",
+            agent: "explore",
+            mode: "explore"
+          },
+          parts: [
+            { type: "step-start" },
+            { type: "reasoning", text: `Need to use ${tool} but emitted malformed input.` },
+            {
+              type: "tool",
+              text: `${tool} placeholder`,
+              tool,
               callID: `call_${nextMessage}`,
               state: { status: "pending", input: {} }
             }

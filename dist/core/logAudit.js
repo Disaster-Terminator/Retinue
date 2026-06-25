@@ -349,7 +349,7 @@ function sampleSpecificityScore(sample) {
     if (sample.recoveryStallReason) {
         score += 4;
     }
-    if (sample.stallReason === "read_tool_invalid_input") {
+    if (sample.stallReason === "read_tool_invalid_input" || sample.stallReason === "tool_invalid_input") {
         score += 3;
     }
     if (sample.selectedAttemptJobId) {

@@ -40,7 +40,11 @@ If a job briefly emits `opencode_job_stalled` and then later completes before a 
 
 For direct-child OpenCode runs, `sample.sessionId` is the result child session and `sample.parentSessionId` is the unprompted relationship container. If a stalled root has a selected fresh attempt, compact output includes `selectedAttempt` or `attemptChain=true`; review the selected completed attempt as evidence and keep the root stall as diagnostics only.
 
-If `sample.stallReason` is `read_tool_invalid_input`, treat the run as provider/model malformed tool-call output rather than audit evidence. The sample includes `chainRootJobId` when it belongs to a recovery chain, plus `malformedReadToolParts` and `runningReadToolPartSummaries`; an input preview such as `{}` means OpenCode received a `read` tool call without a usable `filePath`.
+If `sample.stallReason` is `read_tool_invalid_input` or `tool_invalid_input`,
+treat the run as provider/model malformed tool-call output rather than audit evidence.
+The sample includes `chainRootJobId` when it belongs to a recovery chain, plus
+malformed-tool counts and running tool summaries; an input preview such as `{}`
+means OpenCode received a tool call without usable arguments.
 
 If `sample.recoveryStallReason` is set, the sampled failure belongs to a recovery chain. Use `sample.chainRootJobId`, `selectedAttempt`, and `attemptChain=true` to decide whether the selected attempt completed or whether the chain exhausted its retry budget. Do not merge recovery-chain malformed read failures with unrelated first-pass malformed read failures.
 

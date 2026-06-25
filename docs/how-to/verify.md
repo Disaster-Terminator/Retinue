@@ -87,12 +87,13 @@ By default this uses OpenCode's built-in `explore` subagent, matching the packag
 default. This probe runs concurrent read-only OpenCode review jobs through the Retinue MCP surface and exits
 nonzero unless every child returns a completed textual answer, reports a `PASS` verdict, and includes
 its requested completion marker. `FAIL` verdicts, `stalled`, `running`,
-`read_tool_invalid_input`, provider/router zero-progress, and missing-marker results are release-blocking dogfood failures, not
+`read_tool_invalid_input`, `tool_invalid_input`, provider/router zero-progress, and missing-marker results are release-blocking dogfood failures, not
 review evidence. The JSON output includes job ids, provider/model metadata, stdout/stderr paths,
-`stallReason`, `stallSummary`, `runningReadToolParts`, `runningReadToolCallIds`, and `tracePath` for
-follow-up. If a run reports `read_tool_stalled` or `read_tool_invalid_input`, inspect the failed job
-entry first; it should identify the active read tool call ids and, for malformed read input, the invalid
-tool input preview before you fall back to the full Retinue JSONL log.
+`stallReason`, `stallSummary`, running tool counts/summaries, and `tracePath` for
+follow-up. If a run reports `read_tool_stalled`, `read_tool_invalid_input`, or
+`tool_invalid_input`, inspect the failed job entry first; it should identify the
+active tool call ids and malformed input preview before you fall back to the full
+Retinue JSONL log.
 Provider/API failures are grouped under provider-specific `failureReason` values when Retinue can
 recognize them, for example `provider_error:deepseek_reasoning_content`; treat those as backend route
 or provider compatibility failures before investigating Retinue lifecycle code.

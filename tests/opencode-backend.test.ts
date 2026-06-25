@@ -1542,6 +1542,81 @@ describe("OpenCodeBackend", () => {
     expect(trace).toContain('"trustedFinalText":false');
   });
 
+  it("classifies pending non-read tool calls with empty input as malformed provider tool calls", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "risk review emits empty grep input", agent: "explore" });
+    server!.appendMalformedToolAssistant(started.externalSessionId!, "grep");
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({ status: "stalled" });
+    const result = await backend.result({ jobId: started.jobId });
+    expect(result.status).toBe("stalled");
+    expect(result.stdout).toContain("non-read tool call");
+    expect(result.stdout).toContain("missing or invalid input");
+    expect(result.stdout).toContain("toolCalls=grep:");
+    expect(result.stdout).toContain("input={}");
+    expect(result.stdout).toContain("provider=litellm model=semantic-router agent=explore mode=explore");
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"stallReason":"tool_invalid_input"');
+    expect(trace).toContain('"malformedToolParts":1');
+    expect(trace).toContain('"malformedReadToolParts":0');
+    expect(trace).toContain('"runningToolParts":1');
+    expect(trace).toContain('"tool":"grep"');
+    expect(trace).not.toContain('"stallReason":"incomplete_assistant_round"');
+  });
+
+  it("starts a fresh task-level attempt for malformed non-read tool calls", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "risk review emits empty grep input", agent: "explore" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source before malformed grep");
+    server!.appendMalformedToolAssistant(started.externalSessionId!, "grep");
+    server!.setAutoAssistantResponses(true);
+
+    const waited = await backend.wait({ jobId: started.jobId }, 1000);
+
+    expect(waited).toMatchObject({
+      requestedJobId: started.jobId,
+      selectedAttemptJobId: expect.stringMatching(/^job_/),
+      status: "running"
+    });
+    expect(waited.jobId).not.toBe(started.jobId);
+    const attempt = JSON.parse(await fs.readFile(getJobPaths(tempDir, waited.jobId).meta, "utf8")) as JobMeta;
+    expect(attempt).toMatchObject({
+      status: "running",
+      recoveredFromJobId: started.jobId,
+      attempt: 1,
+      recoveryReason: "malformed_tool_call",
+      recoveryPolicy: "fresh_task_attempt",
+      originalStallReason: "tool_invalid_input"
+    });
+    const attemptPrompt = extractPromptText(server!.promptRequests.at(-1));
+    expect(attemptPrompt).toContain("Attempt handoff capsule:");
+    expect(attemptPrompt).toContain("Previous attempt emitted a malformed OpenCode tool call");
+    expect(attemptPrompt).toContain("tool=grep status=pending");
+    expect(attemptPrompt).toContain("input={}");
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_task_level_attempt_started"');
+    expect(trace).toContain('"recoveryReason":"malformed_tool_call"');
+  });
+
   it("reports no usable conclusion when a malformed read retry is exhausted", async () => {
     const backend = new OpenCodeBackend({
       client: new OpenCodeClient(server!.url),
