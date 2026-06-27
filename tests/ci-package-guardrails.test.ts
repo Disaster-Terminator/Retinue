@@ -249,7 +249,8 @@ describe("Retinue Codex plugin guardrails", () => {
 
   it("delegates OpenCode read-only behavior to native agents and permissions", () => {
     expect(opencodeBackendSource).toContain("deriveSubagentSessionPermission");
-    expect(opencodeBackendSource).toContain("parentAgentDenies");
+    expect(opencodeBackendSource).not.toContain("parentAgentDenies");
+    expect(opencodeBackendSource).toContain('rule.permission === "external_directory" || rule.action === "deny"');
     expect(opencodeBackendSource).toContain("options.prompt");
     expect(opencodeBackendSource).not.toContain("OPENCODE_READ_ONLY_TOOLS_NO_BASH");
     expect(opencodeBackendSource).not.toContain("OPENCODE_READ_ONLY_TOOLS_WITH_READONLY_GIT_BASH");

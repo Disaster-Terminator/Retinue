@@ -280,7 +280,6 @@ export class OpenCodeBackend implements AgentBackend {
     const rootAgent = resolveRootAgent(this.env);
     const requestedAgent = options.agent ?? "explore";
     const agents = await this.listAgents(target.client);
-    const parentAgent = findOpenCodeAgent(agents, rootAgent);
     const childAgent = findOpenCodeAgent(agents, requestedAgent);
     validateOpenCodeAgent(agents, rootAgent, "root", this.kind);
     validateOpenCodeAgent(agents, requestedAgent, "child", this.kind);
@@ -300,7 +299,6 @@ export class OpenCodeBackend implements AgentBackend {
       model: options.model,
       permission: this.buildChildSessionPermission({
         parentSession,
-        parentAgent,
         childAgent
       })
     });
@@ -1412,12 +1410,10 @@ export class OpenCodeBackend implements AgentBackend {
 
   private buildChildSessionPermission(input: {
     parentSession: { permission?: OpenCodePermissionRule[] };
-    parentAgent: OpenCodeAgentInfo | undefined;
     childAgent: OpenCodeAgentInfo | undefined;
   }): OpenCodePermissionRule[] | undefined {
     const derived = deriveSubagentSessionPermission({
       parentSessionPermission: normalizePermissionRules(input.parentSession.permission),
-      parentAgent: input.parentAgent,
       subagent: input.childAgent
     });
     return derived.length > 0 ? derived : undefined;
@@ -2729,17 +2725,12 @@ function isOpenCodePermissionRule(value: unknown): value is OpenCodePermissionRu
 
 function deriveSubagentSessionPermission(input: {
   parentSessionPermission: OpenCodePermissionRule[];
-  parentAgent: OpenCodeAgentInfo | undefined;
   subagent: OpenCodeAgentInfo | undefined;
 }): OpenCodePermissionRule[] {
   const subagentPermission = normalizePermissionRules(input.subagent?.permission);
   const canTask = subagentPermission.some((rule) => rule.permission === "task");
   const canTodo = subagentPermission.some((rule) => rule.permission === "todowrite");
-  const parentAgentDenies = normalizePermissionRules(input.parentAgent?.permission).filter(
-    (rule) => rule.action === "deny" && rule.permission === "edit"
-  );
   return [
-    ...parentAgentDenies,
     ...input.parentSessionPermission.filter((rule) => rule.permission === "external_directory" || rule.action === "deny"),
     ...(canTodo ? [] : [{ permission: "todowrite", pattern: "*", action: "deny" } satisfies OpenCodePermissionRule]),
     ...(canTask ? [] : [{ permission: "task", pattern: "*", action: "deny" } satisfies OpenCodePermissionRule])

@@ -27,7 +27,7 @@ Retinue can bind OpenCode work to a direct child session while preserving the im
 
 - child sessions are associated with the parent/root OpenCode session where configured
 - OpenCode owns the selected child agent behavior
-- parent deny/external-directory rules are respected
+- parent session deny/external-directory rules are respected
 - Retinue surfaces permission requests instead of silently approving them
 
 Retinue does not use OpenCode's `SubtaskPartInput` as the normal spawn path because that path runs inside the parent prompt loop and can wake the parent model after the child completes. The goal is a child-agent job handle that the supervising MCP caller controls directly.

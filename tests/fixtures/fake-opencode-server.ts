@@ -39,6 +39,10 @@ export interface FakeOpenCodeServer {
   setAutoAssistantResponses(enabled: boolean): void;
   setPromptAsyncDelayMs(ms: number): void;
   setPromptAsyncFailure(status: number, body: unknown): void;
+  setSessionPermission(
+    sessionId: string,
+    permission: Array<{ permission: string; pattern: string; action: "allow" | "deny" | "ask" }>
+  ): void;
   completeSession(sessionId: string): void;
   completeSessionByMessageOnly(sessionId: string): void;
   completeSessionWithFinalText(sessionId: string, text: string): void;
@@ -338,6 +342,15 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
     },
     setPromptAsyncFailure: (status: number, body: unknown) => {
       promptAsyncFailure = { status, body };
+    },
+    setSessionPermission: (
+      sessionId: string,
+      permission: Array<{ permission: string; pattern: string; action: "allow" | "deny" | "ask" }>
+    ) => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.permission = permission;
+      }
     },
     completeSession: (sessionId: string) => {
       const session = sessions.get(sessionId);

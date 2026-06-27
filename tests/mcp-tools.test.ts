@@ -2879,11 +2879,11 @@ function restoreEnv(name: string, value: string | undefined): void {
 function expectTaskCompatibleChildPermission(request: Record<string, unknown> | undefined): void {
   expect(request).toMatchObject({
     permission: expect.arrayContaining([
-      { permission: "edit", pattern: "blocked-by-plan", action: "deny" },
       { permission: "todowrite", pattern: "*", action: "deny" },
       { permission: "task", pattern: "*", action: "deny" }
     ])
   });
+  expect(request?.permission).not.toContainEqual({ permission: "edit", pattern: "blocked-by-plan", action: "deny" });
 }
 
 function getToolSchema(

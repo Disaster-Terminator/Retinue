@@ -56754,7 +56754,6 @@ var OpenCodeBackend = class {
     const rootAgent = resolveRootAgent(this.env);
     const requestedAgent = options.agent ?? "explore";
     const agents = await this.listAgents(target.client);
-    const parentAgent = findOpenCodeAgent(agents, rootAgent);
     const childAgent = findOpenCodeAgent(agents, requestedAgent);
     validateOpenCodeAgent(agents, rootAgent, "root", this.kind);
     validateOpenCodeAgent(agents, requestedAgent, "child", this.kind);
@@ -56771,7 +56770,6 @@ var OpenCodeBackend = class {
       model: options.model,
       permission: this.buildChildSessionPermission({
         parentSession,
-        parentAgent,
         childAgent
       })
     });
@@ -57825,7 +57823,6 @@ var OpenCodeBackend = class {
   buildChildSessionPermission(input) {
     const derived = deriveSubagentSessionPermission({
       parentSessionPermission: normalizePermissionRules(input.parentSession.permission),
-      parentAgent: input.parentAgent,
       subagent: input.childAgent
     });
     return derived.length > 0 ? derived : void 0;
@@ -58868,11 +58865,7 @@ function deriveSubagentSessionPermission(input) {
   const subagentPermission = normalizePermissionRules(input.subagent?.permission);
   const canTask = subagentPermission.some((rule) => rule.permission === "task");
   const canTodo = subagentPermission.some((rule) => rule.permission === "todowrite");
-  const parentAgentDenies = normalizePermissionRules(input.parentAgent?.permission).filter(
-    (rule) => rule.action === "deny" && rule.permission === "edit"
-  );
   return [
-    ...parentAgentDenies,
     ...input.parentSessionPermission.filter((rule) => rule.permission === "external_directory" || rule.action === "deny"),
     ...canTodo ? [] : [{ permission: "todowrite", pattern: "*", action: "deny" }],
     ...canTask ? [] : [{ permission: "task", pattern: "*", action: "deny" }]

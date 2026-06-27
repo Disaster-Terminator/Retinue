@@ -171,10 +171,14 @@ child-agent choices are OpenCode's own subagents: `explore` for read-only resear
 Retinue does not submit OpenCode `SubtaskPartInput` as the normal spawn path because
 that path runs inside the parent prompt loop and can wake the parent agent/model after
 the subtask completes. Instead, Retinue keeps a direct child session topology and
-mirrors the important OpenCode `TaskTool` permission behavior: it reads `/agent`
-metadata, creates the requested child session under the parent, inherits parent edit
-denies plus parent-session deny/external-directory rules, and denies child
-`todowrite`/`task` unless the requested OpenCode subagent explicitly allows them.
+mirrors the observable OpenCode `TaskTool` child-session behavior: it reads `/agent`
+metadata, creates the requested child session under the shared root parent, inherits
+the parent session's deny and `external_directory` rules, and denies child
+`todowrite`/`task` unless the requested OpenCode subagent explicitly allows them. Parent
+agent restrictions do not transfer to the child; the selected OpenCode subagent owns its
+own capabilities. OpenCode `TaskTool` features that depend on the parent prompt loop,
+such as `background` and `task_id`, are represented by Retinue job handles and
+`continueJob` metadata rather than by submitting a nested task tool call.
 
 The OpenCode backend defaults to `shared_root`: one Retinue MCP server session reuses
 one OpenCode root session for multiple child jobs with the same server URL, cwd, and

@@ -2236,13 +2236,49 @@ describe("OpenCodeBackend", () => {
     expect(continued.readOnly).toBe(true);
     expect(server!.sessionRequests.at(-1)).toMatchObject({
       permission: expect.arrayContaining([
-        { permission: "edit", pattern: "blocked-by-plan", action: "deny" },
         { permission: "todowrite", pattern: "*", action: "deny" },
         { permission: "task", pattern: "*", action: "deny" }
       ])
     });
+    expect(server!.sessionRequests.at(-1)?.permission).not.toContainEqual({
+      permission: "edit",
+      pattern: "blocked-by-plan",
+      action: "deny"
+    });
     await expect(backend.result({ jobId: continued.jobId })).resolves.toMatchObject({
       parsedStdout: { result: "fake result: second" }
+    });
+  });
+
+  it("inherits parent session deny and external-directory rules for OpenCode child sessions", async () => {
+    const backend = createBackend();
+    const root = await backend.run({ cwd: tempDir, prompt: "root", agent: "general" });
+    server!.setSessionPermission(root.externalRootSessionId!, [
+      { permission: "external_directory", pattern: "/tmp/outside", action: "ask" },
+      { permission: "bash", pattern: "rm *", action: "deny" },
+      { permission: "edit", pattern: "root-agent-only", action: "allow" }
+    ]);
+
+    const child = await backend.run({
+      cwd: tempDir,
+      prompt: "child",
+      readOnly: true
+    });
+
+    expect(child.externalSessionId).not.toBe(root.externalSessionId);
+    expect(child.externalRootSessionId).toBe(root.externalRootSessionId);
+    expect(server!.sessionRequests.at(-1)).toMatchObject({
+      permission: expect.arrayContaining([
+        { permission: "external_directory", pattern: "/tmp/outside", action: "ask" },
+        { permission: "bash", pattern: "rm *", action: "deny" },
+        { permission: "todowrite", pattern: "*", action: "deny" },
+        { permission: "task", pattern: "*", action: "deny" }
+      ])
+    });
+    expect(server!.sessionRequests.at(-1)?.permission).not.toContainEqual({
+      permission: "edit",
+      pattern: "root-agent-only",
+      action: "allow"
     });
   });
 
