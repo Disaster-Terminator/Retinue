@@ -1005,6 +1005,8 @@ describe("OpenCodeBackend", () => {
       stateDir: tempDir,
       env: {
         RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "1",
         RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS: "60000",
         RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
       } as NodeJS.ProcessEnv
@@ -1014,6 +1016,34 @@ describe("OpenCodeBackend", () => {
     server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
     server!.appendToolCallAssistant(started.externalSessionId!, "checking source two");
     server!.appendZeroProgressReasoningAssistant(started.externalSessionId!);
+    const paths = getJobPaths(tempDir, started.jobId);
+    const meta = JSON.parse(await fs.readFile(paths.meta, "utf8")) as typeof started;
+    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 5_000).toISOString() })}\n`, "utf8");
+
+    await expect(backend.wait({ jobId: started.jobId }, 100)).resolves.toMatchObject({ status: "running" });
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).not.toContain('"event":"opencode_job_stalled"');
+    expect(trace).not.toContain('"event":"opencode_task_level_attempt_started"');
+    expect(server!.promptRequests).toHaveLength(1);
+  });
+
+  it("keeps empty text finalization placeholders running after completed tool progress within the finalization window", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_INCOMPLETE_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS: "60000",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "review has tool evidence then empty text finalization placeholder" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source two");
+    server!.appendEmptyTextAssistant(started.externalSessionId!);
 
     await expect(backend.wait({ jobId: started.jobId }, 100)).resolves.toMatchObject({ status: "running" });
 
@@ -1062,6 +1092,35 @@ describe("OpenCodeBackend", () => {
       ]
     });
     expect(result.selectedAttemptJobId).toBeUndefined();
+  });
+
+  it("prefers parent completion observed while waiting on a selected task-level attempt", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_ZERO_PROGRESS_ASSISTANT_MS: "1",
+        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1",
+        RETINUE_OPENCODE_STALL_FINALIZATION_AFTER_TOOL_PROGRESS_MS: "1",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "1"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "audit completes while selected attempt stalls", agent: "explore" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source");
+    server!.appendZeroProgressReasoningAssistant(started.externalSessionId!);
+    const selected = await backend.wait({ jobId: started.jobId }, 200);
+    expect(selected.jobId).not.toBe(started.jobId);
+
+    const selectedMeta = JSON.parse(await fs.readFile(getJobPaths(tempDir, selected.jobId).meta, "utf8")) as JobMeta;
+    server!.appendMalformedReadToolAssistant(selectedMeta.externalSessionId!);
+    setTimeout(() => server!.completeSessionWithFinalText(started.externalSessionId!, "late parent review"), 10);
+
+    await expect(backend.wait({ jobId: started.jobId }, 1000)).resolves.toMatchObject({
+      jobId: started.jobId,
+      status: "completed"
+    });
   });
 
   it("marks default zero-progress placeholders as stalled after the bounded no-progress window", async () => {
@@ -1623,7 +1682,8 @@ describe("OpenCodeBackend", () => {
       baseUrl: server!.url,
       stateDir: tempDir,
       env: {
-        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1"
+        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "1"
       } as NodeJS.ProcessEnv
     });
     server!.setAutoAssistantResponses(false);
@@ -1657,6 +1717,55 @@ describe("OpenCodeBackend", () => {
     expect(result.stdout).toContain(`selected attempt ${firstWait.jobId}`);
     expect(result.stdout).toContain("rootStall=read_tool_invalid_input");
     expect(result.stdout).toContain("recoveryStall=read_tool_invalid_input");
+  });
+
+  it("allows one extra default task-level attempt for repeated malformed read tool calls", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_READ_TOOL_MS: "1"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "risk review repeatedly emits empty read input", agent: "explore" });
+    server!.appendMalformedReadToolAssistant(started.externalSessionId!);
+
+    const firstWait = await backend.wait({ jobId: started.jobId }, 1000);
+    expect(firstWait).toMatchObject({
+      requestedJobId: started.jobId,
+      selectedAttemptJobId: expect.stringMatching(/^job_/),
+      status: "running"
+    });
+    const firstAttempt = JSON.parse(await fs.readFile(getJobPaths(tempDir, firstWait.jobId).meta, "utf8")) as JobMeta;
+    server!.appendMalformedReadToolAssistant(firstAttempt.externalSessionId!);
+
+    const secondWait = await backend.wait({ jobId: started.jobId }, 1000);
+
+    expect(secondWait).toMatchObject({
+      requestedJobId: started.jobId,
+      selectedAttemptJobId: expect.stringMatching(/^job_/),
+      status: "running"
+    });
+    expect(secondWait.jobId).not.toBe(firstWait.jobId);
+    const original = JSON.parse(await fs.readFile(getJobPaths(tempDir, started.jobId).meta, "utf8")) as JobMeta;
+    const updatedFirstAttempt = JSON.parse(await fs.readFile(getJobPaths(tempDir, firstWait.jobId).meta, "utf8")) as JobMeta;
+    const secondAttempt = JSON.parse(await fs.readFile(getJobPaths(tempDir, secondWait.jobId).meta, "utf8")) as JobMeta;
+    expect(original.attemptJobIds).toEqual([firstWait.jobId]);
+    expect(updatedFirstAttempt).toMatchObject({
+      status: "stalled",
+      selectedAttemptJobId: secondWait.jobId,
+      attemptJobIds: [secondWait.jobId],
+      recoveryReason: "malformed_read_tool_call"
+    });
+    expect(secondAttempt).toMatchObject({
+      status: "running",
+      recoveredFromJobId: firstWait.jobId,
+      attempt: 2,
+      recoveryReason: "malformed_read_tool_call",
+      originalStallReason: "read_tool_invalid_input"
+    });
   });
 
   it("keeps blank finalization stalls on the original reason when fresh attempts are disabled", async () => {

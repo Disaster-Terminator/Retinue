@@ -51,6 +51,7 @@ export interface FakeOpenCodeServer {
   appendExternalDirectoryPermission(sessionId: string, filePath: string, callID?: string): void;
   appendMalformedReadToolAssistant(sessionId: string): void;
   appendMalformedToolAssistant(sessionId: string, tool: string): void;
+  appendEmptyTextAssistant(sessionId: string): void;
   appendBlankAssistant(sessionId: string): void;
   appendZeroProgressReasoningAssistant(sessionId: string): void;
   appendZeroProgressFinishedAssistant(sessionId: string): void;
@@ -586,6 +587,25 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
               state: { status: "pending", input: {} }
             }
           ]
+        });
+      }
+    },
+    appendEmptyTextAssistant: (sessionId: string) => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.omitState = true;
+        session.messages.push({
+          info: {
+            id: `msg_${nextMessage++}`,
+            sessionID: session.id,
+            role: "assistant",
+            providerID: "litellm",
+            modelID: "semantic-router",
+            agent: "explore",
+            mode: "explore",
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
+          },
+          parts: [{ type: "step-start" }, { type: "text", text: "" }]
         });
       }
     },

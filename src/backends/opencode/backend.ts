@@ -63,6 +63,7 @@ interface SharedRootSession {
 export type OpenCodeSharedRootSessionStore = Map<string, SharedRootSession>;
 
 const DEFAULT_TASK_ATTEMPT_MAX = 1;
+const DEFAULT_MALFORMED_TOOL_TASK_ATTEMPT_MAX = 2;
 const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
 const DEFAULT_WAIT_POLL_MS = 250;
 const DEFAULT_STALL_MS = 10 * 60_000;
@@ -505,7 +506,7 @@ export class OpenCodeBackend implements AgentBackend {
 
   private async maybeStartTaskLevelAttempt(meta: JobMeta, diagnostic: Partial<OpenCodeJobDiagnostic>): Promise<JobMeta | undefined> {
     const recoveryReason = selectTaskLevelAttemptReason(meta, diagnostic);
-    if (!recoveryReason || (meta.attempt ?? 0) >= resolveTaskAttemptMax(this.env)) {
+    if (!recoveryReason || (meta.attempt ?? 0) >= resolveTaskAttemptMax(this.env, recoveryReason)) {
       return undefined;
     }
     const current = await this.readCurrentMetaOrFallback(meta.jobId, meta);
@@ -894,6 +895,14 @@ export class OpenCodeBackend implements AgentBackend {
       const selectedAttempt = await this.selectedAttemptFor(status);
       if (selectedAttempt) {
         const waited = await this.wait({ jobId: selectedAttempt.jobId }, Math.max(0, deadline - Date.now()));
+        const refreshed = await this.statusForWait(handle);
+        if (!isProblem(refreshed) && refreshed.status === "completed") {
+          return {
+            jobId: handle.jobId,
+            status: "completed",
+            attemptChain: await this.buildAttemptChain(refreshed)
+          };
+        }
         return {
           ...waited,
           requestedJobId: handle.jobId,
@@ -906,6 +915,14 @@ export class OpenCodeBackend implements AgentBackend {
         const attempt = await this.maybeStartTaskLevelAttempt(status, diagnostic);
         if (attempt) {
           const waited = await this.wait({ jobId: attempt.jobId }, Math.max(0, deadline - Date.now()));
+          const refreshed = await this.statusForWait(handle);
+          if (!isProblem(refreshed) && refreshed.status === "completed") {
+            return {
+              jobId: handle.jobId,
+              status: "completed",
+              attemptChain: await this.buildAttemptChain(refreshed)
+            };
+          }
           const updatedRoot = await this.readCurrentMetaOrFallback(status.jobId, status);
           return {
             ...waited,
@@ -939,6 +956,14 @@ export class OpenCodeBackend implements AgentBackend {
             const attempt = await this.maybeStartTaskLevelAttempt(stalled, diagnostic);
             if (attempt) {
               const waited = await this.wait({ jobId: attempt.jobId }, Math.max(0, deadline - Date.now()));
+              const refreshed = await this.statusForWait(handle);
+              if (!isProblem(refreshed) && refreshed.status === "completed") {
+                return {
+                  jobId: handle.jobId,
+                  status: "completed",
+                  attemptChain: await this.buildAttemptChain(refreshed)
+                };
+              }
               const updatedRoot = await this.readCurrentMetaOrFallback(stalled.jobId, stalled);
               return {
                 ...waited,
@@ -1702,7 +1727,10 @@ function computeStallDiagnostic(
   const incompleteAssistantRound = isIncompleteAssistantMessage(lastAssistant);
   const incompleteAssistantHasReasoningProgress = incompleteAssistantRound && hasNonEmptyReasoningOnlyProgress(lastAssistant);
   const finalizationAfterToolProgressPlaceholder =
-    lastAssistant !== undefined && (isZeroProgressAssistantPlaceholder(lastAssistant) || isBlankAssistantPlaceholder(lastAssistant));
+    lastAssistant !== undefined &&
+    (isZeroProgressAssistantPlaceholder(lastAssistant) ||
+      isBlankAssistantPlaceholder(lastAssistant) ||
+      isEmptyTextAssistantPlaceholder(lastAssistant));
   const finalizationAfterToolProgressBlankPlaceholder =
     lastAssistant !== undefined && isBlankAssistantPlaceholder(lastAssistant);
   const finalizationAfterToolProgress =
@@ -1744,7 +1772,11 @@ function computeStallDiagnostic(
     runningReadToolParts === 0 &&
     !incompleteAssistantRound &&
     durationMs >= completedToolLoopThresholdMs;
-  const incompleteAssistantStalled = incompleteAssistantRound && !incompleteAssistantHasReasoningProgress && durationMs >= incompleteThresholdMs;
+  const incompleteAssistantStalled =
+    incompleteAssistantRound &&
+    !incompleteAssistantHasReasoningProgress &&
+    !finalizationAfterToolProgressWithinWindow &&
+    durationMs >= incompleteThresholdMs;
   if (
     !emptyAssistantStalled &&
     !blankAssistantStalled &&
@@ -2250,8 +2282,14 @@ function resolveServerIdleMs(env?: RetinueOptions["env"]): number {
   return parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_SERVER_IDLE_MS, DEFAULT_SERVER_IDLE_MS);
 }
 
-function resolveTaskAttemptMax(env?: RetinueOptions["env"]): number {
-  return parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_TASK_ATTEMPT_MAX, DEFAULT_TASK_ATTEMPT_MAX);
+function resolveTaskAttemptMax(env?: RetinueOptions["env"], recoveryReason?: string): number {
+  if (env?.RETINUE_OPENCODE_TASK_ATTEMPT_MAX !== undefined) {
+    return parseOptionalNonNegativeInt(env.RETINUE_OPENCODE_TASK_ATTEMPT_MAX, DEFAULT_TASK_ATTEMPT_MAX);
+  }
+  if (recoveryReason === "malformed_read_tool_call" || recoveryReason === "malformed_tool_call") {
+    return DEFAULT_MALFORMED_TOOL_TASK_ATTEMPT_MAX;
+  }
+  return DEFAULT_TASK_ATTEMPT_MAX;
 }
 
 function selectTaskLevelAttemptReason(meta: JobMeta, diagnostic: Partial<OpenCodeJobDiagnostic>): string | undefined {
@@ -2523,6 +2561,26 @@ function isZeroProgressAssistantPlaceholder(message: OpenCodeMessage): boolean {
     return false;
   }
   return summaries.every((part) => part.type === "step-start" || part.type === "reasoning" || part.type === "step-finish");
+}
+
+function isEmptyTextAssistantPlaceholder(message: OpenCodeMessage): boolean {
+  if (message.info?.role !== "assistant") {
+    return false;
+  }
+  if (extractMessageText(message).length > 0) {
+    return false;
+  }
+  const summaries = summarizeMessageParts(message);
+  if (!summaries || summaries.length === 0) {
+    return false;
+  }
+  if (extractReasoningTextBytes(message) > 0) {
+    return false;
+  }
+  if (summaries.some((part) => part.type === "tool" || (part.textBytes ?? 0) > 0)) {
+    return false;
+  }
+  return summaries.every((part) => part.type === "step-start" || part.type === "text");
 }
 
 function isIncompleteAssistantMessage(message: OpenCodeMessage | undefined): boolean {

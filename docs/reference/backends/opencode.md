@@ -221,17 +221,19 @@ Retinue does not submit a same-session no-tools recovery prompt, does not switch
 OpenCode agent behind the caller's back, and does not override the child's tool set to
 simulate read-only behavior. OpenCode owns the active session, agent profile,
 permission engine, and tool availability. Retinue observes the resulting session and,
-when configured retry policy allows it, may start one fresh task-level attempt with a
-new OpenCode child job/session. The original job remains `stalled` and non-evidence;
+when configured retry policy allows it, may start bounded fresh task-level attempts with
+new OpenCode child jobs/sessions. The original job remains `stalled` and non-evidence;
 the wait response is re-keyed to the selected attempt and includes `requestedJobId`,
 `selectedAttemptJobId`, and `attemptChain` provenance.
 
-Set `RETINUE_OPENCODE_TASK_ATTEMPT_MAX=0` to disable fresh task attempts, or raise it
-only for controlled experiments. If the selected fresh attempt also stalls, the stalled
-result states that the task-level attempt budget was exhausted and that no usable
-child-agent conclusion is available. If the wait window expires without usable final
-text or a selected attempt, the job returns `stalled` with diagnostics so the caller can
-inspect logs or close the child agent.
+If `RETINUE_OPENCODE_TASK_ATTEMPT_MAX` is unset, malformed tool-call stalls get up to
+2 fresh attempts and other recoverable stalls get up to 1. Set
+`RETINUE_OPENCODE_TASK_ATTEMPT_MAX=0` to disable fresh task attempts, or set an explicit
+number to override the reason-specific defaults for controlled experiments. If the
+selected fresh attempt also exhausts the budget, the stalled result states that no
+usable child-agent conclusion is available. If the wait window expires without usable
+final text or a selected attempt, the job returns `stalled` with diagnostics so the
+caller can inspect logs or close the child agent.
 
 Blank provider placeholders, incomplete latest assistant rounds,
 pending/running `read` tool calls, and completed tool-call loops with no final text
@@ -287,7 +289,9 @@ handled as provider/router configuration evidence. When `provider_blank_assistan
 `provider_zero_progress` also has `finalizationAfterToolProgress: true`, it means
 OpenCode made tool-call progress and then did not produce a final answer inside the
 longer finalization window; it is not evidence that the provider returned an empty
-final answer. If a selected fresh attempt also
+final answer. Retinue also treats OpenCode `step-start` plus empty `text` assistant
+messages after completed tool calls as finalization placeholders for this window. If a
+selected fresh attempt also
 stalls, the result keeps `status: "stalled"` and includes the attempt-exhausted
 explanation in stdout/stderr rather than manufacturing a trusted answer from incomplete
 evidence. Stalled result diagnostics also expose `selectedAssistantTextBytes` and

@@ -56698,6 +56698,7 @@ function parseRequiredPort(value) {
 
 // src/backends/opencode/backend.ts
 var DEFAULT_TASK_ATTEMPT_MAX = 1;
+var DEFAULT_MALFORMED_TOOL_TASK_ATTEMPT_MAX = 2;
 var DEFAULT_WAIT_TIMEOUT_MS = 3e4;
 var DEFAULT_WAIT_POLL_MS = 250;
 var DEFAULT_STALL_MS = 10 * 6e4;
@@ -56967,7 +56968,7 @@ var OpenCodeBackend = class {
   }
   async maybeStartTaskLevelAttempt(meta3, diagnostic) {
     const recoveryReason = selectTaskLevelAttemptReason(meta3, diagnostic);
-    if (!recoveryReason || (meta3.attempt ?? 0) >= resolveTaskAttemptMax(this.env)) {
+    if (!recoveryReason || (meta3.attempt ?? 0) >= resolveTaskAttemptMax(this.env, recoveryReason)) {
       return void 0;
     }
     const current = await this.readCurrentMetaOrFallback(meta3.jobId, meta3);
@@ -57332,6 +57333,14 @@ var OpenCodeBackend = class {
       const selectedAttempt = await this.selectedAttemptFor(status);
       if (selectedAttempt) {
         const waited = await this.wait({ jobId: selectedAttempt.jobId }, Math.max(0, deadline - Date.now()));
+        const refreshed = await this.statusForWait(handle);
+        if (!isProblem2(refreshed) && refreshed.status === "completed") {
+          return {
+            jobId: handle.jobId,
+            status: "completed",
+            attemptChain: await this.buildAttemptChain(refreshed)
+          };
+        }
         return {
           ...waited,
           requestedJobId: handle.jobId,
@@ -57344,6 +57353,14 @@ var OpenCodeBackend = class {
         const attempt = await this.maybeStartTaskLevelAttempt(status, diagnostic);
         if (attempt) {
           const waited = await this.wait({ jobId: attempt.jobId }, Math.max(0, deadline - Date.now()));
+          const refreshed = await this.statusForWait(handle);
+          if (!isProblem2(refreshed) && refreshed.status === "completed") {
+            return {
+              jobId: handle.jobId,
+              status: "completed",
+              attemptChain: await this.buildAttemptChain(refreshed)
+            };
+          }
           const updatedRoot = await this.readCurrentMetaOrFallback(status.jobId, status);
           return {
             ...waited,
@@ -57377,6 +57394,14 @@ var OpenCodeBackend = class {
             const attempt = await this.maybeStartTaskLevelAttempt(stalled, diagnostic);
             if (attempt) {
               const waited = await this.wait({ jobId: attempt.jobId }, Math.max(0, deadline - Date.now()));
+              const refreshed = await this.statusForWait(handle);
+              if (!isProblem2(refreshed) && refreshed.status === "completed") {
+                return {
+                  jobId: handle.jobId,
+                  status: "completed",
+                  attemptChain: await this.buildAttemptChain(refreshed)
+                };
+              }
               const updatedRoot = await this.readCurrentMetaOrFallback(stalled.jobId, stalled);
               return {
                 ...waited,
@@ -58055,7 +58080,7 @@ function computeStallDiagnostic(jobMessages, meta3, env, pendingPermissions = []
   const lastAssistant = [...activeMessages].reverse().find((message) => message.info?.role === "assistant");
   const incompleteAssistantRound = isIncompleteAssistantMessage(lastAssistant);
   const incompleteAssistantHasReasoningProgress = incompleteAssistantRound && hasNonEmptyReasoningOnlyProgress(lastAssistant);
-  const finalizationAfterToolProgressPlaceholder = lastAssistant !== void 0 && (isZeroProgressAssistantPlaceholder(lastAssistant) || isBlankAssistantPlaceholder(lastAssistant));
+  const finalizationAfterToolProgressPlaceholder = lastAssistant !== void 0 && (isZeroProgressAssistantPlaceholder(lastAssistant) || isBlankAssistantPlaceholder(lastAssistant) || isEmptyTextAssistantPlaceholder(lastAssistant));
   const finalizationAfterToolProgressBlankPlaceholder = lastAssistant !== void 0 && isBlankAssistantPlaceholder(lastAssistant);
   const finalizationAfterToolProgress = toolCallAssistantRounds > 0 && finalizationAfterToolProgressPlaceholder;
   const startedAt = Date.parse(meta3.createdAt);
@@ -58074,7 +58099,7 @@ function computeStallDiagnostic(jobMessages, meta3, env, pendingPermissions = []
   const toolInvalidInputStalled = malformedToolParts > 0 && durationMs >= readToolThresholdMs;
   const externalDirectoryPermissionStalled = pendingExternalDirectoryPermissionSummaries.length > 0;
   const completedToolLoopStalled = (toolCallAssistantRounds >= roundThreshold || failedToolCallAssistantRounds > 0) && runningReadToolParts === 0 && !incompleteAssistantRound && durationMs >= completedToolLoopThresholdMs;
-  const incompleteAssistantStalled = incompleteAssistantRound && !incompleteAssistantHasReasoningProgress && durationMs >= incompleteThresholdMs;
+  const incompleteAssistantStalled = incompleteAssistantRound && !incompleteAssistantHasReasoningProgress && !finalizationAfterToolProgressWithinWindow && durationMs >= incompleteThresholdMs;
   if (!emptyAssistantStalled && !blankAssistantStalled && !zeroProgressAssistantStalled && !finalizationAfterToolProgressStalled && !noAssistantOutputStalled && !readToolStalled && !toolInvalidInputStalled && !externalDirectoryPermissionStalled && !completedToolLoopStalled && !incompleteAssistantStalled && durationMs < thresholdMs) {
     return void 0;
   }
@@ -58464,8 +58489,14 @@ function parseOptionalNonNegativeInt(value, fallback) {
 function resolveServerIdleMs(env) {
   return parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_SERVER_IDLE_MS, DEFAULT_SERVER_IDLE_MS);
 }
-function resolveTaskAttemptMax(env) {
-  return parseOptionalNonNegativeInt(env?.RETINUE_OPENCODE_TASK_ATTEMPT_MAX, DEFAULT_TASK_ATTEMPT_MAX);
+function resolveTaskAttemptMax(env, recoveryReason) {
+  if (env?.RETINUE_OPENCODE_TASK_ATTEMPT_MAX !== void 0) {
+    return parseOptionalNonNegativeInt(env.RETINUE_OPENCODE_TASK_ATTEMPT_MAX, DEFAULT_TASK_ATTEMPT_MAX);
+  }
+  if (recoveryReason === "malformed_read_tool_call" || recoveryReason === "malformed_tool_call") {
+    return DEFAULT_MALFORMED_TOOL_TASK_ATTEMPT_MAX;
+  }
+  return DEFAULT_TASK_ATTEMPT_MAX;
 }
 function selectTaskLevelAttemptReason(meta3, diagnostic) {
   void meta3;
@@ -58695,6 +58726,25 @@ function isZeroProgressAssistantPlaceholder(message) {
     return false;
   }
   return summaries.every((part) => part.type === "step-start" || part.type === "reasoning" || part.type === "step-finish");
+}
+function isEmptyTextAssistantPlaceholder(message) {
+  if (message.info?.role !== "assistant") {
+    return false;
+  }
+  if (extractMessageText(message).length > 0) {
+    return false;
+  }
+  const summaries = summarizeMessageParts(message);
+  if (!summaries || summaries.length === 0) {
+    return false;
+  }
+  if (extractReasoningTextBytes(message) > 0) {
+    return false;
+  }
+  if (summaries.some((part) => part.type === "tool" || (part.textBytes ?? 0) > 0)) {
+    return false;
+  }
+  return summaries.every((part) => part.type === "step-start" || part.type === "text");
 }
 function isIncompleteAssistantMessage(message) {
   if (message?.info?.role !== "assistant") {
