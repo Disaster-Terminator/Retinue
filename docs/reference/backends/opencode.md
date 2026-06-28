@@ -259,7 +259,10 @@ Deployments that need a different cutoff can set
 treated as OpenCode/provider progress for an unfinished assistant round, even when
 visible `text` has not started yet. Retinue still does not return reasoning text as
 trusted stdout; it only avoids interrupting the active OpenCode chain with a
-final-answer classification while reasoning is the only observed progress. If OpenCode
+final-answer classification while reasoning is the only observed progress. An
+unfinished assistant round that already contains completed tool parts is also treated
+as OpenCode tool-chain finalization progress and uses the longer finalization window
+instead of the shorter incomplete-round window. If OpenCode
 attaches a provider/API error to an assistant message, Retinue classifies it as
 `provider_error` and includes the redacted error preview in the stalled result, so
 authentication or router failures are not mislabeled as child write intent. OpenCode
@@ -294,7 +297,8 @@ handled as provider/router configuration evidence. When `provider_blank_assistan
 OpenCode made tool-call progress and then did not produce a final answer inside the
 longer finalization window; it is not evidence that the provider returned an empty
 final answer. Retinue also treats OpenCode `step-start` plus empty `text` assistant
-messages after completed tool calls as finalization placeholders for this window. If a
+messages after completed tool calls, and unfinished assistant rounds with completed
+tool parts, as finalization placeholders for this window. If a
 selected fresh attempt also
 stalls, the result keeps `status: "stalled"` and includes the attempt-exhausted
 explanation in stdout/stderr rather than manufacturing a trusted answer from incomplete

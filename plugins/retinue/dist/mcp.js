@@ -58077,7 +58077,8 @@ function computeStallDiagnostic(jobMessages, meta3, env, pendingPermissions = []
   const lastAssistant = [...activeMessages].reverse().find((message) => message.info?.role === "assistant");
   const incompleteAssistantRound = isIncompleteAssistantMessage(lastAssistant);
   const incompleteAssistantHasReasoningProgress = incompleteAssistantRound && hasNonEmptyReasoningOnlyProgress(lastAssistant);
-  const finalizationAfterToolProgressPlaceholder = lastAssistant !== void 0 && (isZeroProgressAssistantPlaceholder(lastAssistant) || isBlankAssistantPlaceholder(lastAssistant) || isEmptyTextAssistantPlaceholder(lastAssistant));
+  const incompleteAssistantHasCompletedToolProgress = incompleteAssistantRound && hasCompletedToolProgress(lastAssistant);
+  const finalizationAfterToolProgressPlaceholder = lastAssistant !== void 0 && (isZeroProgressAssistantPlaceholder(lastAssistant) || isBlankAssistantPlaceholder(lastAssistant) || isEmptyTextAssistantPlaceholder(lastAssistant) || incompleteAssistantHasCompletedToolProgress);
   const finalizationAfterToolProgressBlankPlaceholder = lastAssistant !== void 0 && isBlankAssistantPlaceholder(lastAssistant);
   const finalizationAfterToolProgress = toolCallAssistantRounds > 0 && finalizationAfterToolProgressPlaceholder;
   const startedAt = Date.parse(meta3.createdAt);
@@ -58771,6 +58772,13 @@ function hasNonEmptyReasoningOnlyProgress(message) {
     return false;
   }
   return extractReasoningTextBytes(message) > 0;
+}
+function hasCompletedToolProgress(message) {
+  if (message?.info?.role !== "assistant") {
+    return false;
+  }
+  const summaries = summarizeMessageParts(message) ?? [];
+  return summaries.some((part) => part.type === "tool" && part.stateStatus === "completed");
 }
 function extractMessageText(message) {
   if (!Array.isArray(message.parts)) {
@@ -60453,7 +60461,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
           requestedJobId: responseJobId === jobId ? void 0 : jobId,
           selectedAttemptJobId: waited.selectedAttemptJobId,
           attemptChain: waited.attemptChain,
-          status: waited.status,
+          status: responseStatus,
           backend: isJobMeta(status) ? status.backend : void 0,
           cwd: isJobMeta(status) ? status.cwd : void 0,
           createdAt: isJobMeta(status) ? status.createdAt : void 0,

@@ -352,7 +352,7 @@ describe("OpenCodeBackend", () => {
   });
 
   it("returns a job handle before a slow OpenCode prompt_async call finishes", async () => {
-    server!.setPromptAsyncDelayMs(500);
+    server!.setPromptAsyncDelayMs(2_000);
     const backend = createBackend();
 
     const started = backend.run({
@@ -360,7 +360,7 @@ describe("OpenCodeBackend", () => {
       prompt: "slow prompt submission"
     });
 
-    await expect(Promise.race([started.then(() => "started"), sleep(100).then(() => "timeout")])).resolves.toBe("started");
+    await expect(Promise.race([started.then(() => "started"), sleep(1_000).then(() => "timeout")])).resolves.toBe("started");
     const meta = await started;
     expect(meta).toMatchObject({ backend: "opencode", status: "running", cwd: tempDir });
     await expect(fs.readFile(getJobPaths(tempDir, meta.jobId).meta, "utf8").then(JSON.parse)).resolves.toMatchObject({
@@ -370,7 +370,7 @@ describe("OpenCodeBackend", () => {
     });
     expect(server!.promptRequests).toHaveLength(0);
 
-    await sleep(600);
+    await sleep(2_100);
     expect(server!.promptRequests).toHaveLength(1);
   });
 
@@ -1968,6 +1968,36 @@ describe("OpenCodeBackend", () => {
     });
     const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
     expect(trace).not.toContain('"event":"opencode_job_stalled"');
+  });
+
+  it("keeps completed-tool incomplete assistant rounds running during the finalization window", async () => {
+    const backend = new OpenCodeBackend({
+      client: new OpenCodeClient(server!.url),
+      baseUrl: server!.url,
+      stateDir: tempDir,
+      env: {
+        RETINUE_OPENCODE_STALL_TOOL_CALL_ROUNDS: "3",
+        RETINUE_OPENCODE_TASK_ATTEMPT_MAX: "0"
+      } as NodeJS.ProcessEnv
+    });
+    server!.setAutoAssistantResponses(false);
+    const started = await backend.run({ cwd: tempDir, prompt: "complex audit keeps using completed tools" });
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source one");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source two");
+    server!.appendToolCallAssistant(started.externalSessionId!, "checking source three");
+    server!.appendIncompleteCompletedToolAssistant(started.externalSessionId!, "still checking");
+
+    const paths = getJobPaths(tempDir, started.jobId);
+    const meta = JSON.parse(await fs.readFile(paths.meta, "utf8")) as typeof started;
+    await fs.writeFile(paths.meta, `${JSON.stringify({ ...meta, createdAt: new Date(Date.now() - 46_000).toISOString() })}\n`, "utf8");
+
+    await expect(backend.wait({ jobId: started.jobId }, 1)).resolves.toMatchObject({ status: "running" });
+    await expect(backend.status({ jobId: started.jobId })).resolves.toMatchObject({ status: "running" });
+
+    const trace = await fs.readFile(getRetinueTracePath(tempDir), "utf8");
+    expect(trace).toContain('"event":"opencode_job_wait_timeout"');
+    expect(trace).not.toContain('"event":"opencode_job_stalled"');
+    expect(trace).not.toContain('"stallReason":"incomplete_assistant_round"');
   });
 
   it("keeps non-empty reasoning-only assistant streams running past the incomplete stall window", async () => {

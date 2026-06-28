@@ -54,6 +54,8 @@ Treat stalled jobs as terminal attention-required records, not successful child-
 Non-empty OpenCode `reasoning` parts are progress evidence, not result evidence. Retinue
 does not return reasoning text as trusted stdout, but it also should not classify an
 unfinished assistant round as stalled only because visible `text` has not appeared yet.
+An unfinished assistant round that already contains completed tool parts is treated as
+OpenCode tool-chain finalization progress, not as an immediate incomplete-round stall.
 Compact diagnostics expose `lastAssistantReasoningTextBytes` and
 `incompleteAssistantHasReasoningProgress` when this distinction matters.
 

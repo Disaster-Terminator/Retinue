@@ -262,7 +262,7 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
                 requestedJobId: responseJobId === jobId ? undefined : jobId,
                 selectedAttemptJobId: waited.selectedAttemptJobId,
                 attemptChain: waited.attemptChain,
-                status: waited.status,
+                status: responseStatus,
                 backend: isJobMeta(status) ? status.backend : undefined,
                 cwd: isJobMeta(status) ? status.cwd : undefined,
                 createdAt: isJobMeta(status) ? status.createdAt : undefined,

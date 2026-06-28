@@ -1414,10 +1414,12 @@ function computeStallDiagnostic(jobMessages, meta, env, pendingPermissions = [])
     const lastAssistant = [...activeMessages].reverse().find((message) => message.info?.role === "assistant");
     const incompleteAssistantRound = isIncompleteAssistantMessage(lastAssistant);
     const incompleteAssistantHasReasoningProgress = incompleteAssistantRound && hasNonEmptyReasoningOnlyProgress(lastAssistant);
+    const incompleteAssistantHasCompletedToolProgress = incompleteAssistantRound && hasCompletedToolProgress(lastAssistant);
     const finalizationAfterToolProgressPlaceholder = lastAssistant !== undefined &&
         (isZeroProgressAssistantPlaceholder(lastAssistant) ||
             isBlankAssistantPlaceholder(lastAssistant) ||
-            isEmptyTextAssistantPlaceholder(lastAssistant));
+            isEmptyTextAssistantPlaceholder(lastAssistant) ||
+            incompleteAssistantHasCompletedToolProgress);
     const finalizationAfterToolProgressBlankPlaceholder = lastAssistant !== undefined && isBlankAssistantPlaceholder(lastAssistant);
     const finalizationAfterToolProgress = toolCallAssistantRounds > 0 && finalizationAfterToolProgressPlaceholder;
     const startedAt = Date.parse(meta.createdAt);
@@ -2187,6 +2189,13 @@ function hasNonEmptyReasoningOnlyProgress(message) {
         return false;
     }
     return extractReasoningTextBytes(message) > 0;
+}
+function hasCompletedToolProgress(message) {
+    if (message?.info?.role !== "assistant") {
+        return false;
+    }
+    const summaries = summarizeMessageParts(message) ?? [];
+    return summaries.some((part) => part.type === "tool" && part.stateStatus === "completed");
 }
 function extractMessageText(message) {
     if (!Array.isArray(message.parts)) {

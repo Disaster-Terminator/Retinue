@@ -1722,11 +1722,13 @@ function computeStallDiagnostic(
   const lastAssistant = [...activeMessages].reverse().find((message) => message.info?.role === "assistant");
   const incompleteAssistantRound = isIncompleteAssistantMessage(lastAssistant);
   const incompleteAssistantHasReasoningProgress = incompleteAssistantRound && hasNonEmptyReasoningOnlyProgress(lastAssistant);
+  const incompleteAssistantHasCompletedToolProgress = incompleteAssistantRound && hasCompletedToolProgress(lastAssistant);
   const finalizationAfterToolProgressPlaceholder =
     lastAssistant !== undefined &&
     (isZeroProgressAssistantPlaceholder(lastAssistant) ||
       isBlankAssistantPlaceholder(lastAssistant) ||
-      isEmptyTextAssistantPlaceholder(lastAssistant));
+      isEmptyTextAssistantPlaceholder(lastAssistant) ||
+      incompleteAssistantHasCompletedToolProgress);
   const finalizationAfterToolProgressBlankPlaceholder =
     lastAssistant !== undefined && isBlankAssistantPlaceholder(lastAssistant);
   const finalizationAfterToolProgress =
@@ -2608,6 +2610,14 @@ function hasNonEmptyReasoningOnlyProgress(message: OpenCodeMessage | undefined):
     return false;
   }
   return extractReasoningTextBytes(message) > 0;
+}
+
+function hasCompletedToolProgress(message: OpenCodeMessage | undefined): boolean {
+  if (message?.info?.role !== "assistant") {
+    return false;
+  }
+  const summaries = summarizeMessageParts(message) ?? [];
+  return summaries.some((part) => part.type === "tool" && part.stateStatus === "completed");
 }
 
 function extractMessageText(message: { parts?: Array<{ type?: string; text?: string }> }): string {

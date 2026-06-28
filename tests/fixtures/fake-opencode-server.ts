@@ -61,6 +61,7 @@ export interface FakeOpenCodeServer {
   appendZeroProgressFinishedAssistant(sessionId: string): void;
   appendReasoningOnlyIncompleteAssistant(sessionId: string, text: string): void;
   appendIncompleteAssistant(sessionId: string, text?: string): void;
+  appendIncompleteCompletedToolAssistant(sessionId: string, text?: string): void;
   appendPatchAssistant(sessionId: string, text?: string): void;
   appendErroredPatchAssistant(sessionId: string, error: unknown): void;
   appendErroredIncompleteAssistant(sessionId: string, error: unknown): void;
@@ -785,6 +786,28 @@ export async function startFakeOpenCodeServer(options: { serverCwd?: string } = 
             { type: "step-start" },
             ...(text ? [{ type: "text", text }] : []),
             { type: "tool", text: "tool call placeholder", tool: "task", callID: `call_${nextMessage}`, state: { status: "running" } }
+          ]
+        });
+      }
+    },
+    appendIncompleteCompletedToolAssistant: (sessionId: string, text = "") => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.omitState = true;
+        session.messages.push({
+          info: {
+            id: `msg_${nextMessage++}`,
+            sessionID: session.id,
+            role: "assistant",
+            providerID: "litellm-cloud",
+            modelID: "deep",
+            agent: "explore",
+            mode: "explore"
+          },
+          parts: [
+            { type: "step-start" },
+            ...(text ? [{ type: "text", text }] : []),
+            { type: "tool", text: "tool call placeholder", tool: "grep", callID: `call_${nextMessage}`, state: { status: "completed" } }
           ]
         });
       }
