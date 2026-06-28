@@ -127,7 +127,7 @@ describe("OpenCode server manager", () => {
       expect(trace).toContain(`"baseUrl":"http://127.0.0.1:${servePort}"`);
       expect(trace).toContain('"event":"opencode_server_ready"');
     } finally {
-      target?.child?.kill();
+      await stopTestOpenCodeTarget(target, stateDir, process.cwd());
       await fs.rm(stateDir, { recursive: true, force: true });
     }
   });
@@ -219,7 +219,7 @@ describe("OpenCode server manager", () => {
       expect(trace).toContain(`"baseUrl":"http://127.0.0.1:${fallbackPort}"`);
       expect(trace).toContain('"event":"opencode_server_ready"');
     } finally {
-      target?.child?.kill();
+      await stopTestOpenCodeTarget(target, stateDir, process.cwd());
       await fs.rm(stateDir, { recursive: true, force: true });
     }
   });
