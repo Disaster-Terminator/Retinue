@@ -110,6 +110,17 @@ checks and debugging. The dogfood JSON records
 `externalRunnerMode`, `externalRootAgent`, `externalRootSessionId`, `externalParentSessionId`, and the
 child `externalSessionId` for this comparison.
 
+Use the opt-in writable dogfood check when validating OpenCode `general` child edits:
+
+```bash
+RETINUE_DOGFOOD_INCLUDE_WRITABLE=1 pnpm run gate:dogfood
+```
+
+This creates a temporary workspace, asks the child to edit one file there, and verifies the file content
+locally. OpenCode child sessions respect the cwd Retinue passes to them, but OpenCode's task/child-session
+path does not automatically create a separate git worktree per child. Any future per-child worktree
+isolation should be an explicit Retinue orchestration mode, not the default shared-root path.
+
 Use the cross-session probe when validating the edge case where two independent Retinue MCP sessions
 target the same cwd:
 

@@ -10,7 +10,16 @@ export function classifyDogfoodWait(wait, expectedMarker) {
   const stdoutText = firstString(wait?.stdoutText, wait?.stdout, wait?.stdoutPreview);
   const stdoutPreview = typeof wait?.stdoutPreview === "string" ? wait.stdoutPreview : "";
   const providerError = classifyProviderError({ stallReason, stdoutText });
-  const failureReason = selectFailureReason({ status, stallReason, permissionRequired, readOnlyWriteIntent, stdoutText, expectedMarker, providerError });
+  const failureReason = selectFailureReason({
+    status,
+    stallReason,
+    permissionRequired,
+    readOnlyWriteIntent,
+    stdoutText,
+    expectedMarker,
+    providerError,
+    fileVerificationPassed: wait?.fileVerificationPassed
+  });
   const { stdoutText: _stdoutText, stdout: _stdout, ...publicWait } = wait ?? {};
 
   return {
@@ -62,6 +71,9 @@ export function summarizeDogfoodResults(agentResults) {
         runningReadToolParts: wait.runningReadToolParts,
         runningReadToolCallIds: wait.runningReadToolCallIds,
         runningReadToolPartSummaries: wait.runningReadToolPartSummaries,
+        filePath: wait.filePath,
+        fileTextPreview: wait.fileTextPreview,
+        fileVerificationPassed: wait.fileVerificationPassed,
         stdoutPath: wait.stdoutPath,
         stderrPath: wait.stderrPath,
         stdoutPreview: wait.stdoutPreview
@@ -70,7 +82,16 @@ export function summarizeDogfoodResults(agentResults) {
   };
 }
 
-function selectFailureReason({ status, stallReason, permissionRequired, readOnlyWriteIntent, stdoutText, expectedMarker, providerError }) {
+function selectFailureReason({
+  status,
+  stallReason,
+  permissionRequired,
+  readOnlyWriteIntent,
+  stdoutText,
+  expectedMarker,
+  providerError,
+  fileVerificationPassed
+}) {
   if (permissionRequired) {
     return stallReason === "external_directory_permission_pending" ? "permission_required:external_directory" : "permission_required";
   }
@@ -92,6 +113,9 @@ function selectFailureReason({ status, stallReason, permissionRequired, readOnly
   }
   if (verdict === "missing") {
     return "missing_pass_verdict";
+  }
+  if (fileVerificationPassed === false) {
+    return "file_verification_failed";
   }
   return undefined;
 }

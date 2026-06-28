@@ -2,7 +2,7 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { mkdir, mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createMcpServer } from "../dist/mcp.js";
@@ -10,6 +10,9 @@ import { classifyDogfoodWait, summarizeDogfoodResults } from "./lib/dogfood-summ
 
 const DEFAULT_AGENTS = ["explore"];
 const DEFAULT_TIMEOUT_MS = 180_000;
+const DEFAULT_WRITABLE_AGENT = "general";
+const WRITABLE_MARKER = "RETINUE_WRITABLE_DOGFOOD_DONE";
+const WRITABLE_EXPECTED_TEXT = "status: completed by retinue writable dogfood\n";
 
 const TASKS = [
   {
@@ -37,12 +40,16 @@ async function main() {
   const agents = parseAgents(process.env.RETINUE_DOGFOOD_OPENCODE_AGENT_LIST ?? process.env.RETINUE_OPENCODE_AGENT_LIST);
   const rootBindingModes = parseRootBindingModes(process.env.RETINUE_DOGFOOD_OPENCODE_ROOT_BINDING_MODE_LIST);
   const timeoutMs = parsePositiveInt(process.env.RETINUE_DOGFOOD_OPENCODE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);
+  const includeWritable = parseBoolean(process.env.RETINUE_DOGFOOD_INCLUDE_WRITABLE);
   const results = [];
 
   for (const agent of agents) {
     for (const rootBindingMode of rootBindingModes) {
       results.push(await runAgentDogfood({ agent, rootBindingMode, rootStateDir, timeoutMs }));
     }
+  }
+  if (includeWritable) {
+    results.push(await runWritableDogfood({ rootStateDir, timeoutMs }));
   }
 
   const summary = summarizeDogfoodResults(results);
@@ -51,6 +58,7 @@ async function main() {
     cwd: process.cwd(),
     agents,
     rootBindingModes,
+    includeWritable,
     timeoutMs,
     rootStateDir,
     tracePath: path.join(rootStateDir, "logs", "retinue.jsonl"),
@@ -65,6 +73,92 @@ async function main() {
   }
   process.stderr.write(text);
   process.exitCode = 1;
+}
+
+async function runWritableDogfood({ rootStateDir, timeoutMs }) {
+  const agent = process.env.RETINUE_DOGFOOD_WRITABLE_AGENT?.trim() || DEFAULT_WRITABLE_AGENT;
+  const rootBindingMode = process.env.RETINUE_DOGFOOD_WRITABLE_ROOT_BINDING_MODE?.trim() || "shared_root";
+  parseRootBindingModes(rootBindingMode);
+  const cwd = await mkdtemp(path.join(rootStateDir, "writable-dogfood-"));
+  const filePath = path.join(cwd, "notes.txt");
+  await writeFile(filePath, "status: pending\n", "utf8");
+
+  const previousEnv = snapshotEnv([
+    "RETINUE_BACKEND",
+    "RETINUE_STATE_DIR",
+    "RETINUE_OPENCODE_AUTO_SERVE",
+    "RETINUE_OPENCODE_HOST",
+    "RETINUE_OPENCODE_AGENT",
+    "RETINUE_OPENCODE_ROOT_BINDING_MODE"
+  ]);
+  process.env.RETINUE_BACKEND = "opencode";
+  process.env.RETINUE_STATE_DIR = rootStateDir;
+  process.env.RETINUE_OPENCODE_AUTO_SERVE = process.env.RETINUE_OPENCODE_AUTO_SERVE ?? "1";
+  process.env.RETINUE_OPENCODE_HOST = process.env.RETINUE_OPENCODE_HOST ?? "127.0.0.1";
+  process.env.RETINUE_OPENCODE_AGENT = agent;
+  process.env.RETINUE_OPENCODE_ROOT_BINDING_MODE = rootBindingMode;
+
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "retinue-opencode-dogfood-writable", version: "0.1.0" });
+  const server = createMcpServer();
+  let spawn;
+
+  try {
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    spawn = parseToolJson(
+      await client.callTool({
+        name: "spawn_agent",
+        arguments: {
+          cwd,
+          task_name: `${agent}-${rootBindingMode}-writable-file-edit`,
+          message: [
+            "You may modify files only inside the current working directory.",
+            "Open notes.txt and change its content to exactly:",
+            WRITABLE_EXPECTED_TEXT.trim(),
+            "Then report PASS and end with RETINUE_WRITABLE_DOGFOOD_DONE.",
+            "Do not touch any other path."
+          ].join("\n")
+        }
+      })
+    );
+    const wait = await waitForTerminal(client, spawn.jobId, timeoutMs);
+    const fileText = await readFile(filePath, "utf8").catch(() => "");
+    const classified = classifyDogfoodWait(
+      {
+        ...summarizeWait(spawn, wait),
+        filePath,
+        fileTextPreview: fileText.slice(0, 200),
+        fileVerificationPassed: fileText === WRITABLE_EXPECTED_TEXT
+      },
+      WRITABLE_MARKER
+    );
+
+    await client.callTool({
+      name: "close_agent",
+      arguments: { jobId: spawn.jobId }
+    });
+    await client.callTool({
+      name: "stop_runtime",
+      arguments: { runtime: "opencode", cwd, force: true }
+    });
+
+    return {
+      agent,
+      rootBindingMode,
+      stateDir: rootStateDir,
+      writable: true,
+      cwd,
+      filePath,
+      tracePath: path.join(rootStateDir, "logs", "retinue.jsonl"),
+      waits: [classified]
+    };
+  } finally {
+    if (spawn?.jobId) {
+      await client.callTool({ name: "close_agent", arguments: { jobId: spawn.jobId } }).catch(() => undefined);
+    }
+    await Promise.allSettled([client.close(), clientTransport.close(), serverTransport.close()]);
+    restoreEnv(previousEnv);
+  }
 }
 
 async function runAgentDogfood({ agent, rootBindingMode, rootStateDir, timeoutMs }) {
@@ -264,6 +358,13 @@ function parsePositiveInt(value, fallback) {
     throw new Error(`Expected a positive integer timeout, got ${value}`);
   }
   return parsed;
+}
+
+function parseBoolean(value) {
+  if (value === undefined || value === "") {
+    return false;
+  }
+  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
 }
 
 function parseToolJson(result) {

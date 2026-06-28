@@ -30,6 +30,16 @@ The default root agent is `build`. Set `RETINUE_OPENCODE_ROOT_AGENT=<agent>` onl
 
 The probe output includes `externalRunnerMode`, `externalRootAgent`, `externalRootSessionId`, `externalParentSessionId`, and the child `externalSessionId` so per-spawn and shared-root logs do not get mixed.
 
+Use the opt-in writable dogfood check for a single `general` child edit in an isolated temporary workspace:
+
+```bash
+RETINUE_DOGFOOD_INCLUDE_WRITABLE=1 pnpm run gate:dogfood
+```
+
+The script verifies the edited file from the host process instead of trusting only the child agent's final text.
+OpenCode respects the cwd Retinue assigns to the child session, but it does not automatically create a git
+worktree for each child. Per-child worktree isolation would be a separate Retinue orchestration mode.
+
 Use the cross-session probe for the edge case where two independent Retinue MCP sessions target the same cwd:
 
 ```bash

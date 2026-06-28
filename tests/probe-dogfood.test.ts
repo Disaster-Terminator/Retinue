@@ -125,6 +125,29 @@ describe("dogfood probe classification", () => {
     });
   });
 
+  it("rejects completed writable probes when the local file verification fails", () => {
+    const wait = classifyDogfoodWait(
+      {
+        task_name: "writable",
+        jobId: "job_writable",
+        status: "completed",
+        stdoutPreview: "PASS\nRETINUE_WRITABLE_DOGFOOD_DONE",
+        filePath: "/tmp/retinue-writable/notes.txt",
+        fileTextPreview: "status: pending\n",
+        fileVerificationPassed: false
+      },
+      "RETINUE_WRITABLE_DOGFOOD_DONE"
+    );
+
+    expect(wait).toMatchObject({
+      usable: false,
+      failureReason: "file_verification_failed",
+      filePath: "/tmp/retinue-writable/notes.txt",
+      fileTextPreview: "status: pending\n",
+      fileVerificationPassed: false
+    });
+  });
+
   it("summarizes dogfood pressure failures as a failed run", () => {
     const summary = summarizeDogfoodResults([
       {
