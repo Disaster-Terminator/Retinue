@@ -84,4 +84,5 @@ export declare function stopManagedOpenCodeServers(options: {
     force?: boolean;
     reason?: Extract<OpenCodeServerStopReason, "manual" | "restart">;
 }): Promise<OpenCodeManagedServerStopResult>;
+export declare function normalizeOpenCodeBaseUrl(value: string): string;
 export {};

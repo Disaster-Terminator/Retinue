@@ -71,27 +71,31 @@ function validateDiscoveryToken(value: unknown): string | undefined {
   return value;
 }
 
-function validateDiscoveryUrl(value: unknown): string {
+export function validateLoopbackHttpUrl(value: unknown, label = "daemon url"): string {
   if (typeof value !== "string" || !value.trim()) {
-    throw new Error("Invalid daemon discovery: missing url");
+    throw new Error(`Invalid ${label}: missing url`);
   }
 
   let parsed: URL;
   try {
     parsed = new URL(value);
   } catch {
-    throw new Error("Invalid daemon discovery: invalid url");
+    throw new Error(`Invalid ${label}: invalid url`);
   }
 
   if (parsed.protocol !== "http:") {
-    throw new Error("Invalid daemon discovery: unsupported url protocol");
+    throw new Error(`Invalid ${label}: unsupported url protocol`);
   }
 
   if (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost") {
-    throw new Error("Invalid daemon discovery: unsupported url host");
+    throw new Error(`Invalid ${label}: unsupported url host`);
   }
 
   return parsed.origin;
+}
+
+function validateDiscoveryUrl(value: unknown): string {
+  return validateLoopbackHttpUrl(value, "daemon discovery");
 }
 
 function validateCanonicalStartedAt(value: string): void {

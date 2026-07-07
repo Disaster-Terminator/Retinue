@@ -17,7 +17,7 @@ describe("DaemonClient errors", () => {
       )
     );
 
-    const client = new DaemonClient("http://daemon");
+    const client = new DaemonClient("http://127.0.0.1:27777");
 
     await expect(client.status("job_123")).rejects.toMatchObject({
       name: "DaemonClientError",
@@ -32,11 +32,11 @@ describe("DaemonClient errors", () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ jobId: "job_123", status: "completed" }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const client = new DaemonClient("http://daemon", { token: "secret-token" });
+    const client = new DaemonClient("http://127.0.0.1:27777", { token: "secret-token" });
     await client.status("job_123");
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://daemon/v1/jobs/status",
+      "http://127.0.0.1:27777/v1/jobs/status",
       expect.objectContaining({
         headers: expect.objectContaining({
           authorization: "Bearer secret-token"
@@ -57,7 +57,7 @@ describe("DaemonClient errors", () => {
       )
     );
 
-    const client = new DaemonClient("http://daemon");
+    const client = new DaemonClient("http://127.0.0.1:27777");
 
     await expect(client.status("job_legacy")).rejects.toMatchObject({
       message: "Legacy fail",
@@ -70,7 +70,7 @@ describe("DaemonClient errors", () => {
   it("falls back to generic HTTP message for empty or malformed responses", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{", { status: 502 })));
 
-    const client = new DaemonClient("http://daemon");
+    const client = new DaemonClient("http://127.0.0.1:27777");
 
     await expect(client.status("job_bad")).rejects.toMatchObject({
       message: "Daemon request failed with HTTP 502",
@@ -84,7 +84,7 @@ describe("DaemonClient errors", () => {
   it("rejects successful responses with invalid JSON", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{", { status: 200 })));
 
-    const client = new DaemonClient("http://daemon");
+    const client = new DaemonClient("http://127.0.0.1:27777");
 
     await expect(client.status("job_bad_json")).rejects.toMatchObject({
       name: "DaemonClientError",
@@ -99,7 +99,7 @@ describe("DaemonClient errors", () => {
   it("throws typed daemon client errors", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 500 })));
 
-    const client = new DaemonClient("http://daemon");
+    const client = new DaemonClient("http://127.0.0.1:27777");
 
     await expect(client.status("job_any")).rejects.toBeInstanceOf(DaemonClientError);
   });
@@ -107,7 +107,7 @@ describe("DaemonClient errors", () => {
   it("classifies unreachable daemon transport failures", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("fetch failed"))));
 
-    const client = new DaemonClient("http://daemon");
+    const client = new DaemonClient("http://127.0.0.1:27777");
 
     await expect(client.status("job_down")).rejects.toMatchObject({
       name: "DaemonClientError",
@@ -124,7 +124,7 @@ describe("DaemonClient errors", () => {
       vi.fn(async () => Promise.reject(new DOMException("The operation was aborted", "AbortError")))
     );
 
-    const client = new DaemonClient("http://daemon");
+    const client = new DaemonClient("http://127.0.0.1:27777");
 
     await expect(client.status("job_abort")).rejects.toMatchObject({
       name: "DaemonClientError",
@@ -146,7 +146,7 @@ describe("DaemonClient errors", () => {
       )
     );
 
-    const client = new DaemonClient("http://daemon", { timeoutMs: 5 });
+    const client = new DaemonClient("http://127.0.0.1:27777", { timeoutMs: 5 });
 
     await expect(client.status("job_slow")).rejects.toMatchObject({
       name: "DaemonClientError",

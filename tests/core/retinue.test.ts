@@ -191,6 +191,23 @@ describe("ClaudeRetinue lifecycle", () => {
     await retinue.kill(started.jobId);
   });
 
+  it("uses a bounded concurrency limit by default", async () => {
+    const retinue = new ClaudeRetinue({
+      stateDir: tempDir,
+      claudeCommand: process.execPath,
+      claudePrefixArgs: [fixturePath],
+      env: { ...process.env, FAKE_CLAUDE_DELAY_MS: "5000" }
+    });
+
+    const started = [];
+    for (let index = 0; index < 4; index += 1) {
+      started.push(await retinue.run({ cwd: tempDir, prompt: `job ${index}` }));
+    }
+
+    await expect(retinue.run({ cwd: tempDir, prompt: "fifth" })).rejects.toThrow(/concurrency/i);
+    await Promise.all(started.map((job) => retinue.kill(job.jobId)));
+  });
+
   it("does not count abandoned disk-backed live jobs against the concurrency limit", async () => {
     const paths = getJobPaths(tempDir, "job_external_alive");
     const now = new Date().toISOString();

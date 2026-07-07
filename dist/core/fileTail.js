@@ -1,11 +1,12 @@
 import fs from "node:fs/promises";
+export const MAX_TEXT_TAIL_BYTES = 1024 * 1024;
 export async function readTextTailIfExists(filePath, maxBytes) {
     try {
         const stats = await fs.stat(filePath);
         if (!stats.isFile() || stats.size <= 0) {
             return { text: "", bytes: Math.max(0, stats.size), truncated: false };
         }
-        const requestedBytes = Math.max(0, Math.floor(maxBytes));
+        const requestedBytes = Math.min(MAX_TEXT_TAIL_BYTES, Math.max(0, Math.floor(maxBytes)));
         if (requestedBytes <= 0) {
             return { text: "", bytes: stats.size, truncated: true };
         }

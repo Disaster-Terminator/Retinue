@@ -30,7 +30,7 @@ export function resolveOpenCodeServer(config) {
     if (config.baseUrl?.trim()) {
         return {
             mode: "attach",
-            baseUrl: normalizeBaseUrl(config.baseUrl),
+            baseUrl: normalizeOpenCodeBaseUrl(config.baseUrl),
             ...(fallbackServe ? { fallbackServe } : {})
         };
     }
@@ -275,7 +275,7 @@ async function startManagedOpenCodeServer(resolution, options) {
     throw new Error(`OpenCode auto-serve could not start because candidate port${ports.length === 1 ? "" : "s"} ${ports.join(", ")} on ${resolution.host} ${occupiedPorts.length === ports.length ? "are already in use by non-OpenCode services" : "were unavailable"}${startupFailures.length > 0 ? `. Startup failures: ${startupFailures.join("; ")}` : ""}`);
 }
 export function scheduleManagedOpenCodeServerIdleShutdown(baseUrl, options = {}) {
-    const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+    const normalizedBaseUrl = normalizeOpenCodeBaseUrl(baseUrl);
     const managed = managedServers.get(normalizedBaseUrl);
     if (!managed?.child) {
         return;
@@ -361,7 +361,7 @@ function cancelManagedOpenCodeServerIdleShutdown(baseUrl) {
     managedServerIdleTimers.delete(baseUrl);
 }
 async function stopManagedOpenCodeServer(baseUrl, options) {
-    const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+    const normalizedBaseUrl = normalizeOpenCodeBaseUrl(baseUrl);
     const managed = managedServers.get(normalizedBaseUrl);
     if (!managed?.child) {
         return false;
@@ -390,7 +390,7 @@ async function listBlockingOpenCodeJobIdsForServer(stateDir, baseUrl) {
         }
         try {
             const meta = JSON.parse(await fs.readFile(path.join(jobsDir, entry.name, "meta.json"), "utf8"));
-            if (meta.backend !== "opencode" || normalizeBaseUrl(meta.externalServerUrl ?? "") !== baseUrl) {
+            if (meta.backend !== "opencode" || normalizeOpenCodeBaseUrl(meta.externalServerUrl ?? "") !== baseUrl) {
                 continue;
             }
             if (meta.status === "stalled") {
@@ -451,7 +451,7 @@ async function stopChildProcessTree(baseUrl, child, options) {
     }
 }
 async function stopDiscoveredManagedOpenCodeServer(discovery, options) {
-    const normalizedBaseUrl = normalizeBaseUrl(discovery.baseUrl);
+    const normalizedBaseUrl = normalizeOpenCodeBaseUrl(discovery.baseUrl);
     cancelManagedOpenCodeServerIdleShutdown(normalizedBaseUrl);
     const managed = managedServers.get(normalizedBaseUrl);
     if (managed?.child && managed.child.pid === discovery.pid) {
@@ -495,7 +495,7 @@ async function markOpenCodeJobsKilledForServer(stateDir, baseUrl) {
             const meta = JSON.parse(await fs.readFile(metaPath, "utf8"));
             if (meta.backend !== "opencode" ||
                 (meta.status !== "running" && meta.status !== "stalled") ||
-                normalizeBaseUrl(meta.externalServerUrl ?? "") !== baseUrl) {
+                normalizeOpenCodeBaseUrl(meta.externalServerUrl ?? "") !== baseUrl) {
                 continue;
             }
             await fs.writeFile(metaPath, `${JSON.stringify({ ...meta, status: "killed", updatedAt: new Date().toISOString() }, null, 2)}\n`, "utf8");
@@ -519,7 +519,7 @@ function markOpenCodeJobsKilledForServerSync(stateDir, baseUrl) {
             const meta = JSON.parse(fsSync.readFileSync(metaPath, "utf8"));
             if (meta.backend !== "opencode" ||
                 (meta.status !== "running" && meta.status !== "stalled") ||
-                normalizeBaseUrl(meta.externalServerUrl ?? "") !== baseUrl) {
+                normalizeOpenCodeBaseUrl(meta.externalServerUrl ?? "") !== baseUrl) {
                 continue;
             }
             fsSync.writeFileSync(metaPath, `${JSON.stringify({ ...meta, status: "killed", updatedAt: new Date().toISOString() }, null, 2)}\n`, "utf8");
@@ -822,7 +822,7 @@ function normalizeOpenCodeServerDiscovery(value) {
     if (typeof value.baseUrl !== "string" || !value.baseUrl) {
         throw new Error("Invalid OpenCode server discovery: missing baseUrl");
     }
-    const baseUrl = normalizeBaseUrl(value.baseUrl);
+    const baseUrl = normalizeOpenCodeBaseUrl(value.baseUrl);
     if (typeof value.pid !== "number" || !Number.isInteger(value.pid)) {
         throw new Error("Invalid OpenCode server discovery: missing pid");
     }
@@ -953,7 +953,7 @@ function readDirIfExistsSync(dirPath) {
         throw error;
     }
 }
-function normalizeBaseUrl(value) {
+export function normalizeOpenCodeBaseUrl(value) {
     let parsed;
     try {
         parsed = new URL(value);

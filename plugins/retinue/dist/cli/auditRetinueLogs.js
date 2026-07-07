@@ -4,6 +4,7 @@ export { renderCompactAuditResult } from "../core/logAuditCompact.js";
 import { renderCompactAuditResult } from "../core/logAuditCompact.js";
 import { OpenCodeBackend } from "../backends/opencode/backend.js";
 import { OpenCodeClient } from "../backends/opencode/client.js";
+import { normalizeOpenCodeBaseUrl } from "../backends/opencode/serverManager.js";
 export async function main(args = process.argv.slice(2), env = process.env) {
     const options = parseArgs(args);
     const result = await auditRetinueLogs({
@@ -92,7 +93,13 @@ function createOpenCodeStatusReconciler(stateDir, env) {
         if (meta.status === "completed" || typeof meta.externalServerUrl !== "string" || typeof meta.externalSessionId !== "string") {
             return undefined;
         }
-        const baseUrl = meta.externalServerUrl.replace(/\/+$/, "");
+        let baseUrl;
+        try {
+            baseUrl = normalizeOpenCodeBaseUrl(meta.externalServerUrl);
+        }
+        catch {
+            return undefined;
+        }
         const existing = backendsByBaseUrl.get(baseUrl);
         const backend = existing ??
             new OpenCodeBackend({

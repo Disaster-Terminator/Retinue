@@ -12,6 +12,7 @@ export { renderCompactAuditResult } from "../core/logAuditCompact.js";
 import { renderCompactAuditResult } from "../core/logAuditCompact.js";
 import { OpenCodeBackend } from "../backends/opencode/backend.js";
 import { OpenCodeClient } from "../backends/opencode/client.js";
+import { normalizeOpenCodeBaseUrl } from "../backends/opencode/serverManager.js";
 
 export async function main(args = process.argv.slice(2), env = process.env): Promise<void> {
   const options = parseArgs(args);
@@ -100,7 +101,12 @@ function createOpenCodeStatusReconciler(stateDir: string | undefined, env: NodeJ
     if (meta.status === "completed" || typeof meta.externalServerUrl !== "string" || typeof meta.externalSessionId !== "string") {
       return undefined;
     }
-    const baseUrl = meta.externalServerUrl.replace(/\/+$/, "");
+    let baseUrl: string;
+    try {
+      baseUrl = normalizeOpenCodeBaseUrl(meta.externalServerUrl);
+    } catch {
+      return undefined;
+    }
     const existing = backendsByBaseUrl.get(baseUrl);
     const backend =
       existing ??

@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { main as auditLogsMain } from "./cli/auditRetinueLogs.js";
 import { ensureOpenCodeServer, resolveOpenCodeServerFromEnv, stopManagedOpenCodeServers } from "./backends/opencode/serverManager.js";
-import { readDaemonDiscovery, type DaemonDiscovery } from "./daemon/discovery.js";
+import { readDaemonDiscovery, validateLoopbackHttpUrl, type DaemonDiscovery } from "./daemon/discovery.js";
 import { resolveStateDir } from "./core/paths.js";
 import { CLAUDE_TOOL_NAMES, OPENCODE_TOOL_NAMES, RETINUE_DIAGNOSTIC_TOOL_NAMES, RETINUE_TOOL_NAMES } from "./mcp.js";
 
@@ -128,7 +128,20 @@ async function daemonHealth(options: { daemonUrl?: string; daemonToken?: string;
 }
 
 async function readDaemonHealth(daemonUrl: string, source: "explicit_url" | "discovery", daemonToken?: string): Promise<unknown> {
-  const normalizedUrl = daemonUrl.replace(/\/+$/, "");
+  let normalizedUrl: string;
+  try {
+    normalizedUrl = validateLoopbackHttpUrl(daemonUrl);
+  } catch (error) {
+    return {
+      ok: false,
+      source,
+      daemonUrl,
+      error: {
+        code: "invalid_daemon_url",
+        message: error instanceof Error ? error.message : String(error)
+      }
+    };
+  }
   try {
     const response = await fetch(`${normalizedUrl}/health`, {
       headers: daemonToken ? { authorization: `Bearer ${daemonToken}` } : undefined

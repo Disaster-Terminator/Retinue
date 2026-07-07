@@ -1,4 +1,5 @@
 import type { CleanupOptions, CleanupResult, ContinueOptions, JobMeta, JobResult, JobStatusResult, KillResult, PeekOptions, PeekResult, RunOptions, RetinueApi, RetinueOptions, WaitOptions, WaitResult } from "./types.js";
+export declare const DEFAULT_MAX_CONCURRENT_JOBS = 4;
 export declare class ClaudeRetinue implements RetinueApi {
     private readonly stateDir;
     private readonly claudeCommand;

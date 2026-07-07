@@ -1,4 +1,5 @@
 import { fetchWithTimeout, resolveHttpTimeoutMs } from "../core/http.js";
+import { validateLoopbackHttpUrl } from "./discovery.js";
 export class DaemonClientError extends Error {
     code;
     status;
@@ -18,7 +19,7 @@ export class DaemonClient {
     timeoutMs;
     token;
     constructor(baseUrl, options = {}) {
-        this.baseUrl = baseUrl.replace(/\/+$/, "");
+        this.baseUrl = validateLoopbackHttpUrl(baseUrl);
         this.timeoutMs = options.timeoutMs ?? resolveHttpTimeoutMs();
         this.token = options.token;
     }

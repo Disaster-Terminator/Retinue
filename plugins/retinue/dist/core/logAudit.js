@@ -1,16 +1,21 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { getJobPaths } from "./paths.js";
 export const DEFAULT_LOG_AUDIT_MAX_BYTES = 64 * 1024 * 1024;
 export const DEFAULT_LOG_AUDIT_MAX_LINES = 50_000;
 export const DEFAULT_LOG_AUDIT_SINCE_MAX_BYTES = 256 * 1024 * 1024;
 export const DEFAULT_LOG_AUDIT_SINCE_MAX_LINES = 200_000;
+export const MAX_LOG_AUDIT_BYTES = DEFAULT_LOG_AUDIT_SINCE_MAX_BYTES;
+export const MAX_LOG_AUDIT_LINES = DEFAULT_LOG_AUDIT_SINCE_MAX_LINES;
 export async function auditRetinueLogs(options = {}) {
     const stateDir = options.stateDir ?? path.join(os.homedir(), ".local/state/retinue");
     const tracePath = options.tracePath ?? path.join(stateDir, "logs", "retinue.jsonl");
+    const effectiveMaxBytes = clampPositiveInt(options.maxBytes ?? (options.since ? DEFAULT_LOG_AUDIT_SINCE_MAX_BYTES : DEFAULT_LOG_AUDIT_MAX_BYTES), MAX_LOG_AUDIT_BYTES);
+    const effectiveMaxLines = clampPositiveInt(options.maxLines ?? (options.since ? DEFAULT_LOG_AUDIT_SINCE_MAX_LINES : DEFAULT_LOG_AUDIT_MAX_LINES), MAX_LOG_AUDIT_LINES);
     const input = await readRecentJsonl(tracePath, {
-        maxBytes: options.maxBytes ?? (options.since ? DEFAULT_LOG_AUDIT_SINCE_MAX_BYTES : DEFAULT_LOG_AUDIT_MAX_BYTES),
-        maxLines: options.maxLines ?? (options.since ? DEFAULT_LOG_AUDIT_SINCE_MAX_LINES : DEFAULT_LOG_AUDIT_MAX_LINES),
+        maxBytes: effectiveMaxBytes,
+        maxLines: effectiveMaxLines,
         since: options.since
     });
     const events = input.events;
@@ -24,6 +29,8 @@ export async function auditRetinueLogs(options = {}) {
         ok: true,
         tracePath,
         since: options.since?.toISOString(),
+        effectiveMaxBytes,
+        effectiveMaxLines,
         inputTruncated: input.inputTruncated,
         truncatedBeforeSince: input.truncatedBeforeSince,
         oldestScannedEvent: input.oldestScannedEvent?.toISOString(),
@@ -99,6 +106,12 @@ async function readTail(filePath, maxBytes) {
     finally {
         await handle.close();
     }
+}
+function clampPositiveInt(value, max) {
+    if (!Number.isFinite(value) || value <= 0) {
+        return max;
+    }
+    return Math.min(max, Math.max(1, Math.floor(value)));
 }
 function isMissingFile(error) {
     return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
@@ -289,7 +302,7 @@ function collectLatestStatusByChainRootJobId(latestStatusByJobId, attemptRootByJ
 }
 async function readJobMeta(stateDir, jobId) {
     try {
-        const text = await fs.readFile(path.join(stateDir, "jobs", jobId, "meta.json"), "utf8");
+        const text = await fs.readFile(getJobPaths(stateDir, jobId).meta, "utf8");
         const parsed = JSON.parse(text);
         return isRecord(parsed) ? parsed : undefined;
     }

@@ -14,6 +14,7 @@ import type {
   WaitResult
 } from "../core/types.js";
 import { fetchWithTimeout, resolveHttpTimeoutMs } from "../core/http.js";
+import { validateLoopbackHttpUrl } from "./discovery.js";
 
 export class DaemonClientError extends Error {
   readonly code?: string;
@@ -37,7 +38,7 @@ export class DaemonClient implements RetinueApi {
   private readonly token?: string;
 
   constructor(baseUrl: string, options: { timeoutMs?: number; token?: string } = {}) {
-    this.baseUrl = baseUrl.replace(/\/+$/, "");
+    this.baseUrl = validateLoopbackHttpUrl(baseUrl);
     this.timeoutMs = options.timeoutMs ?? resolveHttpTimeoutMs();
     this.token = options.token;
   }

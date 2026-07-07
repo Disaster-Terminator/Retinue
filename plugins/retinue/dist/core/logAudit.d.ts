@@ -2,6 +2,8 @@ export declare const DEFAULT_LOG_AUDIT_MAX_BYTES: number;
 export declare const DEFAULT_LOG_AUDIT_MAX_LINES = 50000;
 export declare const DEFAULT_LOG_AUDIT_SINCE_MAX_BYTES: number;
 export declare const DEFAULT_LOG_AUDIT_SINCE_MAX_LINES = 200000;
+export declare const MAX_LOG_AUDIT_BYTES: number;
+export declare const MAX_LOG_AUDIT_LINES = 200000;
 export interface AuditRetinueLogsOptions {
     stateDir?: string;
     tracePath?: string;
@@ -28,6 +30,8 @@ export interface RetinueLogAuditResult {
     ok: true;
     tracePath: string;
     since?: string;
+    effectiveMaxBytes: number;
+    effectiveMaxLines: number;
     inputTruncated: boolean;
     truncatedBeforeSince: boolean;
     oldestScannedEvent?: string;

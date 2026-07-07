@@ -56,24 +56,27 @@ function validateDiscoveryToken(value) {
     }
     return value;
 }
-function validateDiscoveryUrl(value) {
+export function validateLoopbackHttpUrl(value, label = "daemon url") {
     if (typeof value !== "string" || !value.trim()) {
-        throw new Error("Invalid daemon discovery: missing url");
+        throw new Error(`Invalid ${label}: missing url`);
     }
     let parsed;
     try {
         parsed = new URL(value);
     }
     catch {
-        throw new Error("Invalid daemon discovery: invalid url");
+        throw new Error(`Invalid ${label}: invalid url`);
     }
     if (parsed.protocol !== "http:") {
-        throw new Error("Invalid daemon discovery: unsupported url protocol");
+        throw new Error(`Invalid ${label}: unsupported url protocol`);
     }
     if (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost") {
-        throw new Error("Invalid daemon discovery: unsupported url host");
+        throw new Error(`Invalid ${label}: unsupported url host`);
     }
     return parsed.origin;
+}
+function validateDiscoveryUrl(value) {
+    return validateLoopbackHttpUrl(value, "daemon discovery");
 }
 function validateCanonicalStartedAt(value) {
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) {

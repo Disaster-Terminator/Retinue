@@ -79,6 +79,7 @@ const DEFAULT_RESOURCE_BUDGET_LOCK_TIMEOUT_MS = 10_000;
 const DEFAULT_RESOURCE_BUDGET_LOCK_STALE_MS = 5_000;
 const DEFAULT_GLOBAL_AGENT_BUDGET = 5;
 const DEFAULT_MAX_QUEUED_AGENTS = 20;
+export const MAX_AGENT_MESSAGE_BYTES = 1024 * 1024;
 type OverflowStrategy = "queue" | "evict";
 
 export interface CreateMcpServerOptions {
@@ -119,6 +120,7 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
     },
     async (args) => {
       const taskName = normalizeTaskName(args);
+      assertAgentMessageWithinLimit(args.message);
       const backend = await createRetinueBackend(retinue, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
       const stateDir = resolveStateDir({
         explicitStateDir: process.env.RETINUE_STATE_DIR,
@@ -644,6 +646,13 @@ function registerDiagnosticTools(server: McpServer): void {
       });
     }
   );
+}
+
+export function assertAgentMessageWithinLimit(message: string): void {
+  const byteLength = Buffer.byteLength(message, "utf8");
+  if (byteLength > MAX_AGENT_MESSAGE_BYTES) {
+    throw new Error(`Retinue agent message is too large: ${byteLength} bytes exceeds ${MAX_AGENT_MESSAGE_BYTES} bytes`);
+  }
 }
 
 function registerBackendTools(server: McpServer, retinue: RetinueApi): void {

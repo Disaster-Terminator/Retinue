@@ -8,6 +8,7 @@ import { readTextTailIfExists } from "./fileTail.js";
 import { getJobPaths, resolveStateDir } from "./paths.js";
 import { killProcessTree } from "./processTree.js";
 import { isCleanupSafeStatus } from "./status.js";
+export const DEFAULT_MAX_CONCURRENT_JOBS = 4;
 export class ClaudeRetinue {
     stateDir;
     claudeCommand;
@@ -24,7 +25,7 @@ export class ClaudeRetinue {
         this.claudePrefixArgs = options.claudePrefixArgs ?? [];
         this.env = options.env ?? process.env;
         this.defaultRuntimeTimeoutMs = options.defaultRuntimeTimeoutMs;
-        this.maxConcurrentJobs = options.maxConcurrentJobs ?? Number.POSITIVE_INFINITY;
+        this.maxConcurrentJobs = options.maxConcurrentJobs ?? DEFAULT_MAX_CONCURRENT_JOBS;
     }
     getStateDir() {
         return this.stateDir;

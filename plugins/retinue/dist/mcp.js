@@ -6,7 +6,11 @@ var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __commonJS = (cb2, mod) => function __require() {
-  return mod || (0, cb2[__getOwnPropNames(cb2)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  try {
+    return mod || (0, cb2[__getOwnPropNames(cb2)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  } catch (e2) {
+    throw mod = 0, e2;
+  }
 };
 var __export = (target, all) => {
   for (var name in all)
@@ -3099,9 +3103,9 @@ var require_data = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fast-uri@3.1.1/node_modules/fast-uri/lib/utils.js
+// node_modules/.pnpm/fast-uri@3.1.2/node_modules/fast-uri/lib/utils.js
 var require_utils = __commonJS({
-  "node_modules/.pnpm/fast-uri@3.1.1/node_modules/fast-uri/lib/utils.js"(exports, module) {
+  "node_modules/.pnpm/fast-uri@3.1.2/node_modules/fast-uri/lib/utils.js"(exports, module) {
     "use strict";
     var isUUID = RegExp.prototype.test.bind(/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/iu);
     var isIPv4 = RegExp.prototype.test.bind(/^(?:(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)$/u);
@@ -3300,6 +3304,14 @@ var require_utils = __commonJS({
       }
       return output.join("");
     }
+    var HOST_DELIMS = { "@": "%40", "/": "%2F", "?": "%3F", "#": "%23", ":": "%3A" };
+    var HOST_DELIM_RE = /[@/?#:]/g;
+    var HOST_DELIM_NO_COLON_RE = /[@/?#]/g;
+    function reescapeHostDelimiters(host, isIP) {
+      const re2 = isIP ? HOST_DELIM_NO_COLON_RE : HOST_DELIM_RE;
+      re2.lastIndex = 0;
+      return host.replace(re2, (ch2) => HOST_DELIMS[ch2]);
+    }
     function normalizePercentEncoding(input, decodeUnreserved = false) {
       if (input.indexOf("%") === -1) {
         return input;
@@ -3377,7 +3389,7 @@ var require_utils = __commonJS({
           if (ipV6res.isIPV6 === true) {
             host = `[${ipV6res.escapedHost}]`;
           } else {
-            host = component.host;
+            host = reescapeHostDelimiters(host, false);
           }
         }
         uriTokens.push(host);
@@ -3391,6 +3403,7 @@ var require_utils = __commonJS({
     module.exports = {
       nonSimpleDomain,
       recomposeAuthority,
+      reescapeHostDelimiters,
       normalizePercentEncoding,
       normalizePathEncoding,
       escapePreservingEscapes,
@@ -3403,9 +3416,9 @@ var require_utils = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fast-uri@3.1.1/node_modules/fast-uri/lib/schemes.js
+// node_modules/.pnpm/fast-uri@3.1.2/node_modules/fast-uri/lib/schemes.js
 var require_schemes = __commonJS({
-  "node_modules/.pnpm/fast-uri@3.1.1/node_modules/fast-uri/lib/schemes.js"(exports, module) {
+  "node_modules/.pnpm/fast-uri@3.1.2/node_modules/fast-uri/lib/schemes.js"(exports, module) {
     "use strict";
     var { isUUID } = require_utils();
     var URN_REG = /([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-.:;=@]|%[\da-f]{2})+)/iu;
@@ -3613,16 +3626,16 @@ var require_schemes = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fast-uri@3.1.1/node_modules/fast-uri/index.js
+// node_modules/.pnpm/fast-uri@3.1.2/node_modules/fast-uri/index.js
 var require_fast_uri = __commonJS({
-  "node_modules/.pnpm/fast-uri@3.1.1/node_modules/fast-uri/index.js"(exports, module) {
+  "node_modules/.pnpm/fast-uri@3.1.2/node_modules/fast-uri/index.js"(exports, module) {
     "use strict";
-    var { normalizeIPv6, removeDotSegments, recomposeAuthority, normalizePercentEncoding, normalizePathEncoding, escapePreservingEscapes, isIPv4, nonSimpleDomain } = require_utils();
+    var { normalizeIPv6, removeDotSegments, recomposeAuthority, normalizePercentEncoding, normalizePathEncoding, escapePreservingEscapes, reescapeHostDelimiters, isIPv4, nonSimpleDomain } = require_utils();
     var { SCHEMES, getSchemeHandler } = require_schemes();
     function normalize(uri, options) {
       if (typeof uri === "string") {
         uri = /** @type {T} */
-        serialize(parse3(uri, options), options);
+        normalizeString(uri, options);
       } else if (typeof uri === "object") {
         uri = /** @type {T} */
         parse3(serialize(uri, options), options);
@@ -3689,17 +3702,9 @@ var require_fast_uri = __commonJS({
       return target;
     }
     function equal(uriA, uriB, options) {
-      if (typeof uriA === "string") {
-        uriA = serialize(parse3(uriA, options), options);
-      } else if (typeof uriA === "object") {
-        uriA = serialize(uriA, options);
-      }
-      if (typeof uriB === "string") {
-        uriB = serialize(parse3(uriB, options), options);
-      } else if (typeof uriB === "object") {
-        uriB = serialize(uriB, options);
-      }
-      return uriA.toLowerCase() === uriB.toLowerCase();
+      const normalizedA = normalizeComparableURI(uriA, options);
+      const normalizedB = normalizeComparableURI(uriB, options);
+      return normalizedA !== void 0 && normalizedB !== void 0 && normalizedA.toLowerCase() === normalizedB.toLowerCase();
     }
     function serialize(cmpts, opts) {
       const component = {
@@ -3764,7 +3769,16 @@ var require_fast_uri = __commonJS({
       return uriTokens.join("");
     }
     var URI_PARSE = /^(?:([^#/:?]+):)?(?:\/\/((?:([^#/?@]*)@)?(\[[^#/?\]]+\]|[^#/:?]*)(?::(\d*))?))?([^#?]*)(?:\?([^#]*))?(?:#((?:.|[\n\r])*))?/u;
-    function parse3(uri, opts) {
+    function getParseError(parsed, matches) {
+      if (matches[2] !== void 0 && parsed.path && parsed.path[0] !== "/") {
+        return 'URI path must start with "/" when authority is present.';
+      }
+      if (typeof parsed.port === "number" && (parsed.port < 0 || parsed.port > 65535)) {
+        return "URI port is malformed.";
+      }
+      return void 0;
+    }
+    function parseWithStatus(uri, opts) {
       const options = Object.assign({}, opts);
       const parsed = {
         scheme: void 0,
@@ -3775,6 +3789,7 @@ var require_fast_uri = __commonJS({
         query: void 0,
         fragment: void 0
       };
+      let malformedAuthorityOrPort = false;
       let isIP = false;
       if (options.reference === "suffix") {
         if (options.scheme) {
@@ -3794,6 +3809,11 @@ var require_fast_uri = __commonJS({
         parsed.fragment = matches[8];
         if (isNaN(parsed.port)) {
           parsed.port = matches[5];
+        }
+        const parseError = getParseError(parsed, matches);
+        if (parseError !== void 0) {
+          parsed.error = parsed.error || parseError;
+          malformedAuthorityOrPort = true;
         }
         if (parsed.host) {
           const ipv4result = isIPv4(parsed.host);
@@ -3833,14 +3853,18 @@ var require_fast_uri = __commonJS({
               parsed.scheme = unescape(parsed.scheme);
             }
             if (parsed.host !== void 0) {
-              parsed.host = unescape(parsed.host);
+              parsed.host = reescapeHostDelimiters(unescape(parsed.host), isIP);
             }
           }
           if (parsed.path) {
             parsed.path = normalizePathEncoding(parsed.path);
           }
           if (parsed.fragment) {
-            parsed.fragment = encodeURI(decodeURIComponent(parsed.fragment));
+            try {
+              parsed.fragment = encodeURI(decodeURIComponent(parsed.fragment));
+            } catch {
+              parsed.error = parsed.error || "URI malformed";
+            }
           }
         }
         if (schemeHandler && schemeHandler.parse) {
@@ -3849,7 +3873,29 @@ var require_fast_uri = __commonJS({
       } else {
         parsed.error = parsed.error || "URI can not be parsed.";
       }
-      return parsed;
+      return { parsed, malformedAuthorityOrPort };
+    }
+    function parse3(uri, opts) {
+      return parseWithStatus(uri, opts).parsed;
+    }
+    function normalizeString(uri, opts) {
+      return normalizeStringWithStatus(uri, opts).normalized;
+    }
+    function normalizeStringWithStatus(uri, opts) {
+      const { parsed, malformedAuthorityOrPort } = parseWithStatus(uri, opts);
+      return {
+        normalized: malformedAuthorityOrPort ? uri : serialize(parsed, opts),
+        malformedAuthorityOrPort
+      };
+    }
+    function normalizeComparableURI(uri, opts) {
+      if (typeof uri === "string") {
+        const { normalized, malformedAuthorityOrPort } = normalizeStringWithStatus(uri, opts);
+        return malformedAuthorityOrPort ? void 0 : normalized;
+      }
+      if (typeof uri === "object") {
+        return serialize(uri, opts);
+      }
     }
     var fastUri = {
       SCHEMES,
@@ -50462,13 +50508,14 @@ function z_($, Q) {
 
 // src/core/fileTail.ts
 import fs from "node:fs/promises";
+var MAX_TEXT_TAIL_BYTES = 1024 * 1024;
 async function readTextTailIfExists(filePath, maxBytes) {
   try {
     const stats = await fs.stat(filePath);
     if (!stats.isFile() || stats.size <= 0) {
       return { text: "", bytes: Math.max(0, stats.size), truncated: false };
     }
-    const requestedBytes = Math.max(0, Math.floor(maxBytes));
+    const requestedBytes = Math.min(MAX_TEXT_TAIL_BYTES, Math.max(0, Math.floor(maxBytes)));
     if (requestedBytes <= 0) {
       return { text: "", bytes: stats.size, truncated: true };
     }
@@ -55744,7 +55791,7 @@ function resolveOpenCodeServer(config2) {
   if (config2.baseUrl?.trim()) {
     return {
       mode: "attach",
-      baseUrl: normalizeBaseUrl(config2.baseUrl),
+      baseUrl: normalizeOpenCodeBaseUrl(config2.baseUrl),
       ...fallbackServe ? { fallbackServe } : {}
     };
   }
@@ -55995,7 +56042,7 @@ async function startManagedOpenCodeServer(resolution, options) {
   );
 }
 function scheduleManagedOpenCodeServerIdleShutdown(baseUrl, options = {}) {
-  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const normalizedBaseUrl = normalizeOpenCodeBaseUrl(baseUrl);
   const managed = managedServers.get(normalizedBaseUrl);
   if (!managed?.child) {
     return;
@@ -56081,7 +56128,7 @@ function cancelManagedOpenCodeServerIdleShutdown(baseUrl) {
   managedServerIdleTimers.delete(baseUrl);
 }
 async function stopManagedOpenCodeServer(baseUrl, options) {
-  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const normalizedBaseUrl = normalizeOpenCodeBaseUrl(baseUrl);
   const managed = managedServers.get(normalizedBaseUrl);
   if (!managed?.child) {
     return false;
@@ -56110,7 +56157,7 @@ async function listBlockingOpenCodeJobIdsForServer(stateDir, baseUrl) {
     }
     try {
       const meta3 = JSON.parse(await fs3.readFile(path2.join(jobsDir, entry.name, "meta.json"), "utf8"));
-      if (meta3.backend !== "opencode" || normalizeBaseUrl(meta3.externalServerUrl ?? "") !== baseUrl) {
+      if (meta3.backend !== "opencode" || normalizeOpenCodeBaseUrl(meta3.externalServerUrl ?? "") !== baseUrl) {
         continue;
       }
       if (meta3.status === "stalled") {
@@ -56167,7 +56214,7 @@ async function stopChildProcessTree(baseUrl, child, options) {
   }
 }
 async function stopDiscoveredManagedOpenCodeServer(discovery, options) {
-  const normalizedBaseUrl = normalizeBaseUrl(discovery.baseUrl);
+  const normalizedBaseUrl = normalizeOpenCodeBaseUrl(discovery.baseUrl);
   cancelManagedOpenCodeServerIdleShutdown(normalizedBaseUrl);
   const managed = managedServers.get(normalizedBaseUrl);
   if (managed?.child && managed.child.pid === discovery.pid) {
@@ -56207,7 +56254,7 @@ async function markOpenCodeJobsKilledForServer(stateDir, baseUrl) {
     const metaPath = path2.join(jobsDir, entry.name, "meta.json");
     try {
       const meta3 = JSON.parse(await fs3.readFile(metaPath, "utf8"));
-      if (meta3.backend !== "opencode" || meta3.status !== "running" && meta3.status !== "stalled" || normalizeBaseUrl(meta3.externalServerUrl ?? "") !== baseUrl) {
+      if (meta3.backend !== "opencode" || meta3.status !== "running" && meta3.status !== "stalled" || normalizeOpenCodeBaseUrl(meta3.externalServerUrl ?? "") !== baseUrl) {
         continue;
       }
       await fs3.writeFile(metaPath, `${JSON.stringify({ ...meta3, status: "killed", updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
@@ -56228,7 +56275,7 @@ function markOpenCodeJobsKilledForServerSync(stateDir, baseUrl) {
     const metaPath = path2.join(jobsDir, entry.name, "meta.json");
     try {
       const meta3 = JSON.parse(fsSync.readFileSync(metaPath, "utf8"));
-      if (meta3.backend !== "opencode" || meta3.status !== "running" && meta3.status !== "stalled" || normalizeBaseUrl(meta3.externalServerUrl ?? "") !== baseUrl) {
+      if (meta3.backend !== "opencode" || meta3.status !== "running" && meta3.status !== "stalled" || normalizeOpenCodeBaseUrl(meta3.externalServerUrl ?? "") !== baseUrl) {
         continue;
       }
       fsSync.writeFileSync(metaPath, `${JSON.stringify({ ...meta3, status: "killed", updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
@@ -56515,7 +56562,7 @@ function normalizeOpenCodeServerDiscovery(value) {
   if (typeof value.baseUrl !== "string" || !value.baseUrl) {
     throw new Error("Invalid OpenCode server discovery: missing baseUrl");
   }
-  const baseUrl = normalizeBaseUrl(value.baseUrl);
+  const baseUrl = normalizeOpenCodeBaseUrl(value.baseUrl);
   if (typeof value.pid !== "number" || !Number.isInteger(value.pid)) {
     throw new Error("Invalid OpenCode server discovery: missing pid");
   }
@@ -56640,7 +56687,7 @@ function readDirIfExistsSync(dirPath) {
     throw error51;
   }
 }
-function normalizeBaseUrl(value) {
+function normalizeOpenCodeBaseUrl(value) {
   let parsed;
   try {
     parsed = new URL(value);
@@ -58900,6 +58947,91 @@ async function listTempFiles2(dirPath) {
   return entries.filter((entry) => entry.isFile() && entry.name.endsWith(".tmp")).map((entry) => `${dirPath}${dirPath.includes("\\") ? "\\" : "/"}${entry.name}`);
 }
 
+// src/daemon/discovery.ts
+import fsSync2 from "node:fs";
+function readDaemonDiscoverySync(stateDir) {
+  const filePath = getDaemonDiscoveryPath(stateDir);
+  const parsed = JSON.parse(fsSync2.readFileSync(filePath, "utf8"));
+  return normalizeDiscovery(parsed);
+}
+function normalizeDiscovery(parsed) {
+  const discovery = validateDiscovery(parsed);
+  if (!isPidAlive2(discovery.pid)) {
+    throw new Error(`Stale daemon discovery: pid ${discovery.pid} is not alive`);
+  }
+  return discovery;
+}
+function validateDiscovery(value) {
+  const url2 = validateDiscoveryUrl(value.url);
+  if (typeof value.pid !== "number" || !Number.isInteger(value.pid)) {
+    throw new Error("Invalid daemon discovery: missing pid");
+  }
+  if (typeof value.startedAt !== "string" || !value.startedAt) {
+    throw new Error("Invalid daemon discovery: missing startedAt");
+  }
+  validateCanonicalStartedAt(value.startedAt);
+  if (typeof value.version !== "string" || !value.version) {
+    throw new Error("Invalid daemon discovery: missing version");
+  }
+  return {
+    url: url2,
+    pid: value.pid,
+    startedAt: value.startedAt,
+    version: value.version,
+    token: validateDiscoveryToken(value.token)
+  };
+}
+function validateDiscoveryToken(value) {
+  if (value === void 0) {
+    return void 0;
+  }
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error("Invalid daemon discovery: invalid token");
+  }
+  return value;
+}
+function validateLoopbackHttpUrl(value, label = "daemon url") {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`Invalid ${label}: missing url`);
+  }
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`Invalid ${label}: invalid url`);
+  }
+  if (parsed.protocol !== "http:") {
+    throw new Error(`Invalid ${label}: unsupported url protocol`);
+  }
+  if (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost") {
+    throw new Error(`Invalid ${label}: unsupported url host`);
+  }
+  return parsed.origin;
+}
+function validateDiscoveryUrl(value) {
+  return validateLoopbackHttpUrl(value, "daemon discovery");
+}
+function validateCanonicalStartedAt(value) {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) {
+    throw new Error("Invalid daemon discovery: invalid startedAt");
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString() !== value) {
+    throw new Error("Invalid daemon discovery: invalid startedAt");
+  }
+}
+function isPidAlive2(pid) {
+  if (pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // src/daemon/client.ts
 var DaemonClientError = class extends Error {
   code;
@@ -58920,7 +59052,7 @@ var DaemonClient = class {
   timeoutMs;
   token;
   constructor(baseUrl, options = {}) {
-    this.baseUrl = baseUrl.replace(/\/+$/, "");
+    this.baseUrl = validateLoopbackHttpUrl(baseUrl);
     this.timeoutMs = options.timeoutMs ?? resolveHttpTimeoutMs();
     this.token = options.token;
   }
@@ -59020,88 +59152,6 @@ function extractDaemonError(value) {
   return void 0;
 }
 
-// src/daemon/discovery.ts
-import fsSync2 from "node:fs";
-function readDaemonDiscoverySync(stateDir) {
-  const filePath = getDaemonDiscoveryPath(stateDir);
-  const parsed = JSON.parse(fsSync2.readFileSync(filePath, "utf8"));
-  return normalizeDiscovery(parsed);
-}
-function normalizeDiscovery(parsed) {
-  const discovery = validateDiscovery(parsed);
-  if (!isPidAlive2(discovery.pid)) {
-    throw new Error(`Stale daemon discovery: pid ${discovery.pid} is not alive`);
-  }
-  return discovery;
-}
-function validateDiscovery(value) {
-  const url2 = validateDiscoveryUrl(value.url);
-  if (typeof value.pid !== "number" || !Number.isInteger(value.pid)) {
-    throw new Error("Invalid daemon discovery: missing pid");
-  }
-  if (typeof value.startedAt !== "string" || !value.startedAt) {
-    throw new Error("Invalid daemon discovery: missing startedAt");
-  }
-  validateCanonicalStartedAt(value.startedAt);
-  if (typeof value.version !== "string" || !value.version) {
-    throw new Error("Invalid daemon discovery: missing version");
-  }
-  return {
-    url: url2,
-    pid: value.pid,
-    startedAt: value.startedAt,
-    version: value.version,
-    token: validateDiscoveryToken(value.token)
-  };
-}
-function validateDiscoveryToken(value) {
-  if (value === void 0) {
-    return void 0;
-  }
-  if (typeof value !== "string" || !value.trim()) {
-    throw new Error("Invalid daemon discovery: invalid token");
-  }
-  return value;
-}
-function validateDiscoveryUrl(value) {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new Error("Invalid daemon discovery: missing url");
-  }
-  let parsed;
-  try {
-    parsed = new URL(value);
-  } catch {
-    throw new Error("Invalid daemon discovery: invalid url");
-  }
-  if (parsed.protocol !== "http:") {
-    throw new Error("Invalid daemon discovery: unsupported url protocol");
-  }
-  if (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost") {
-    throw new Error("Invalid daemon discovery: unsupported url host");
-  }
-  return parsed.origin;
-}
-function validateCanonicalStartedAt(value) {
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) {
-    throw new Error("Invalid daemon discovery: invalid startedAt");
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime()) || parsed.toISOString() !== value) {
-    throw new Error("Invalid daemon discovery: invalid startedAt");
-  }
-}
-function isPidAlive2(pid) {
-  if (pid <= 0) {
-    return false;
-  }
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 // src/core/logAudit.ts
 import fs5 from "node:fs/promises";
 import os2 from "node:os";
@@ -59110,12 +59160,22 @@ var DEFAULT_LOG_AUDIT_MAX_BYTES = 64 * 1024 * 1024;
 var DEFAULT_LOG_AUDIT_MAX_LINES = 5e4;
 var DEFAULT_LOG_AUDIT_SINCE_MAX_BYTES = 256 * 1024 * 1024;
 var DEFAULT_LOG_AUDIT_SINCE_MAX_LINES = 2e5;
+var MAX_LOG_AUDIT_BYTES = DEFAULT_LOG_AUDIT_SINCE_MAX_BYTES;
+var MAX_LOG_AUDIT_LINES = DEFAULT_LOG_AUDIT_SINCE_MAX_LINES;
 async function auditRetinueLogs(options = {}) {
   const stateDir = options.stateDir ?? path4.join(os2.homedir(), ".local/state/retinue");
   const tracePath = options.tracePath ?? path4.join(stateDir, "logs", "retinue.jsonl");
+  const effectiveMaxBytes = clampPositiveInt(
+    options.maxBytes ?? (options.since ? DEFAULT_LOG_AUDIT_SINCE_MAX_BYTES : DEFAULT_LOG_AUDIT_MAX_BYTES),
+    MAX_LOG_AUDIT_BYTES
+  );
+  const effectiveMaxLines = clampPositiveInt(
+    options.maxLines ?? (options.since ? DEFAULT_LOG_AUDIT_SINCE_MAX_LINES : DEFAULT_LOG_AUDIT_MAX_LINES),
+    MAX_LOG_AUDIT_LINES
+  );
   const input = await readRecentJsonl(tracePath, {
-    maxBytes: options.maxBytes ?? (options.since ? DEFAULT_LOG_AUDIT_SINCE_MAX_BYTES : DEFAULT_LOG_AUDIT_MAX_BYTES),
-    maxLines: options.maxLines ?? (options.since ? DEFAULT_LOG_AUDIT_SINCE_MAX_LINES : DEFAULT_LOG_AUDIT_MAX_LINES),
+    maxBytes: effectiveMaxBytes,
+    maxLines: effectiveMaxLines,
     since: options.since
   });
   const events = input.events;
@@ -59129,6 +59189,8 @@ async function auditRetinueLogs(options = {}) {
     ok: true,
     tracePath,
     since: options.since?.toISOString(),
+    effectiveMaxBytes,
+    effectiveMaxLines,
     inputTruncated: input.inputTruncated,
     truncatedBeforeSince: input.truncatedBeforeSince,
     oldestScannedEvent: input.oldestScannedEvent?.toISOString(),
@@ -59197,6 +59259,12 @@ async function readTail(filePath, maxBytes) {
   } finally {
     await handle.close();
   }
+}
+function clampPositiveInt(value, max) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return max;
+  }
+  return Math.min(max, Math.max(1, Math.floor(value)));
 }
 function isMissingFile3(error51) {
   return typeof error51 === "object" && error51 !== null && "code" in error51 && error51.code === "ENOENT";
@@ -59384,7 +59452,7 @@ function collectLatestStatusByChainRootJobId(latestStatusByJobId, attemptRootByJ
 }
 async function readJobMeta(stateDir, jobId) {
   try {
-    const text = await fs5.readFile(path4.join(stateDir, "jobs", jobId, "meta.json"), "utf8");
+    const text = await fs5.readFile(getJobPaths(stateDir, jobId).meta, "utf8");
     const parsed = JSON.parse(text);
     return isRecord(parsed) ? parsed : void 0;
   } catch {
@@ -59756,6 +59824,7 @@ function validatePermissionMode(value) {
 }
 
 // src/core/retinue.ts
+var DEFAULT_MAX_CONCURRENT_JOBS = 4;
 var ClaudeRetinue = class {
   stateDir;
   claudeCommand;
@@ -59772,7 +59841,7 @@ var ClaudeRetinue = class {
     this.claudePrefixArgs = options.claudePrefixArgs ?? [];
     this.env = options.env ?? process.env;
     this.defaultRuntimeTimeoutMs = options.defaultRuntimeTimeoutMs;
-    this.maxConcurrentJobs = options.maxConcurrentJobs ?? Number.POSITIVE_INFINITY;
+    this.maxConcurrentJobs = options.maxConcurrentJobs ?? DEFAULT_MAX_CONCURRENT_JOBS;
   }
   getStateDir() {
     return this.stateDir;
@@ -60254,6 +60323,7 @@ var DEFAULT_RESOURCE_BUDGET_LOCK_TIMEOUT_MS = 1e4;
 var DEFAULT_RESOURCE_BUDGET_LOCK_STALE_MS = 5e3;
 var DEFAULT_GLOBAL_AGENT_BUDGET = 5;
 var DEFAULT_MAX_QUEUED_AGENTS = 20;
+var MAX_AGENT_MESSAGE_BYTES = 1024 * 1024;
 function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
   const agentPool = new RetinueAgentPool();
   const openCodeSharedRootSessions = /* @__PURE__ */ new Map();
@@ -60282,6 +60352,7 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
     },
     async (args) => {
       const taskName = normalizeTaskName(args);
+      assertAgentMessageWithinLimit(args.message);
       const backend = await createRetinueBackend(retinue, openCodeSharedRootSessions, claudeSdkJobs, preferClaudeSdk, options.claudeSdkQuery);
       const stateDir = resolveStateDir({
         explicitStateDir: process.env.RETINUE_STATE_DIR,
@@ -60784,6 +60855,12 @@ function registerDiagnosticTools(server) {
       });
     }
   );
+}
+function assertAgentMessageWithinLimit(message) {
+  const byteLength = Buffer.byteLength(message, "utf8");
+  if (byteLength > MAX_AGENT_MESSAGE_BYTES) {
+    throw new Error(`Retinue agent message is too large: ${byteLength} bytes exceeds ${MAX_AGENT_MESSAGE_BYTES} bytes`);
+  }
 }
 function registerBackendTools(server, retinue) {
   server.registerTool(
@@ -62013,9 +62090,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
 }
 export {
   CLAUDE_TOOL_NAMES,
+  MAX_AGENT_MESSAGE_BYTES,
   OPENCODE_TOOL_NAMES,
   RETINUE_DIAGNOSTIC_TOOL_NAMES,
   RETINUE_TOOL_NAMES,
+  assertAgentMessageWithinLimit,
   createMcpRetinueFromEnv,
   createMcpServer,
   resolveMcpWaitTimeoutMs

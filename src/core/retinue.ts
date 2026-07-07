@@ -33,6 +33,8 @@ interface TrackedProcess {
   finalized?: Promise<void>;
 }
 
+export const DEFAULT_MAX_CONCURRENT_JOBS = 4;
+
 export class ClaudeRetinue implements RetinueApi {
   private readonly stateDir: string;
   private readonly claudeCommand: string;
@@ -50,7 +52,7 @@ export class ClaudeRetinue implements RetinueApi {
     this.claudePrefixArgs = options.claudePrefixArgs ?? [];
     this.env = options.env ?? process.env;
     this.defaultRuntimeTimeoutMs = options.defaultRuntimeTimeoutMs;
-    this.maxConcurrentJobs = options.maxConcurrentJobs ?? Number.POSITIVE_INFINITY;
+    this.maxConcurrentJobs = options.maxConcurrentJobs ?? DEFAULT_MAX_CONCURRENT_JOBS;
   }
 
   getStateDir(): string {
