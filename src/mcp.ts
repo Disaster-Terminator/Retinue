@@ -598,6 +598,11 @@ export function createMcpServer(retinue: RetinueApi = createMcpRetinueFromEnv(),
   return server;
 }
 
+function stripCallerPermissionMode<T extends object>(args: T): Omit<T, "permissionMode"> {
+  const { permissionMode: _callerControlledPermissionMode, ...safeArgs } = args as T & { permissionMode?: unknown };
+  return safeArgs;
+}
+
 function registerDiagnosticTools(server: McpServer): void {
   server.registerTool(
     "audit_logs",
@@ -666,11 +671,10 @@ function registerBackendTools(server: McpServer, retinue: RetinueApi): void {
         name: z.string().optional(),
         resume: z.string().optional(),
         maxTurns: z.number().int().positive().optional(),
-        permissionMode: z.enum(["default", "acceptEdits", "plan", "auto", "dontAsk"]).optional(),
         timeoutMs: z.number().int().positive().optional()
       }
     },
-    async (args) => jsonToolResult(await retinue.run(args))
+    async (args) => jsonToolResult(await retinue.run(stripCallerPermissionMode(args)))
   );
 
   server.registerTool(
@@ -718,11 +722,10 @@ function registerBackendTools(server: McpServer, retinue: RetinueApi): void {
         sessionId: z.string().optional(),
         name: z.string().optional(),
         maxTurns: z.number().int().positive().optional(),
-        permissionMode: z.enum(["default", "acceptEdits", "plan", "auto", "dontAsk"]).optional(),
         timeoutMs: z.number().int().positive().optional()
       }
     },
-    async (args) => jsonToolResult(await retinue.continueJob(args))
+    async (args) => jsonToolResult(await retinue.continueJob(stripCallerPermissionMode(args)))
   );
 
   server.registerTool(
