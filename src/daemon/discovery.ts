@@ -14,7 +14,7 @@ export interface DaemonDiscovery {
 
 export async function writeDaemonDiscovery(stateDir: string, value: DaemonDiscovery): Promise<void> {
   const filePath = getDaemonDiscoveryPath(stateDir);
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
   await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tempPath, filePath);
@@ -22,14 +22,50 @@ export async function writeDaemonDiscovery(stateDir: string, value: DaemonDiscov
 
 export async function readDaemonDiscovery(stateDir: string): Promise<DaemonDiscovery> {
   const filePath = getDaemonDiscoveryPath(stateDir);
+  await assertDiscoveryPathSecure(filePath);
   const parsed = JSON.parse(await fs.readFile(filePath, "utf8")) as Partial<DaemonDiscovery>;
   return normalizeDiscovery(parsed);
 }
 
 export function readDaemonDiscoverySync(stateDir: string): DaemonDiscovery {
   const filePath = getDaemonDiscoveryPath(stateDir);
+  assertDiscoveryPathSecureSync(filePath);
   const parsed = JSON.parse(fsSync.readFileSync(filePath, "utf8")) as Partial<DaemonDiscovery>;
   return normalizeDiscovery(parsed);
+}
+
+async function assertDiscoveryPathSecure(filePath: string): Promise<void> {
+  if (process.platform === "win32") {
+    return;
+  }
+  const [fileStat, dirStat] = await Promise.all([fs.lstat(filePath), fs.lstat(path.dirname(filePath))]);
+  assertSecureDiscoveryStats(fileStat, dirStat);
+}
+
+function assertDiscoveryPathSecureSync(filePath: string): void {
+  if (process.platform === "win32") {
+    return;
+  }
+  assertSecureDiscoveryStats(fsSync.lstatSync(filePath), fsSync.lstatSync(path.dirname(filePath)));
+}
+
+function assertSecureDiscoveryStats(fileStat: fsSync.Stats, dirStat: fsSync.Stats): void {
+  const uid = typeof process.getuid === "function" ? process.getuid() : undefined;
+  if (!dirStat.isDirectory()) {
+    throw new Error("Invalid daemon discovery: state directory is not a directory");
+  }
+  if (!fileStat.isFile()) {
+    throw new Error("Invalid daemon discovery: discovery file is not a regular file");
+  }
+  if (uid !== undefined && (dirStat.uid !== uid || fileStat.uid !== uid)) {
+    throw new Error("Invalid daemon discovery: discovery path is not owned by the current user");
+  }
+  if ((dirStat.mode & 0o022) !== 0) {
+    throw new Error("Invalid daemon discovery: state directory is writable by other users");
+  }
+  if ((fileStat.mode & 0o077) !== 0) {
+    throw new Error("Invalid daemon discovery: discovery file is readable or writable by other users");
+  }
 }
 
 function normalizeDiscovery(parsed: Partial<DaemonDiscovery>): DaemonDiscovery {

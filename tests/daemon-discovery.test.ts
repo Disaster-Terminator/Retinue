@@ -64,7 +64,8 @@ describe("daemon discovery", () => {
   it("rejects discovery metadata with missing or empty url", async () => {
     await fs.writeFile(
       getDaemonDiscoveryPath(tempDir),
-      JSON.stringify({ pid: process.pid, startedAt: "2026-05-04T00:00:00.000Z", version: "0.1.0" })
+      JSON.stringify({ pid: process.pid, startedAt: "2026-05-04T00:00:00.000Z", version: "0.1.0" }),
+      { encoding: "utf8", mode: 0o600 }
     );
     await expect(readDaemonDiscovery(tempDir)).rejects.toThrow(/url/i);
 
@@ -214,4 +215,35 @@ describe("daemon discovery", () => {
 
     await expect(readDaemonDiscovery(tempDir)).rejects.toThrow(/stale/i);
   });
+
+  it("rejects discovery files readable by other users", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+    await writeDaemonDiscovery(tempDir, {
+      url: "http://127.0.0.1:27777",
+      pid: process.pid,
+      startedAt: "2026-05-04T00:00:00.000Z",
+      version: "0.1.0"
+    });
+    await fs.chmod(getDaemonDiscoveryPath(tempDir), 0o644);
+
+    await expect(readDaemonDiscovery(tempDir)).rejects.toThrow(/discovery file/i);
+  });
+
+  it("rejects discovery from shared writable state directories", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+    await writeDaemonDiscovery(tempDir, {
+      url: "http://127.0.0.1:27777",
+      pid: process.pid,
+      startedAt: "2026-05-04T00:00:00.000Z",
+      version: "0.1.0"
+    });
+    await fs.chmod(tempDir, 0o777);
+
+    await expect(readDaemonDiscovery(tempDir)).rejects.toThrow(/state directory/i);
+  });
+
 });
