@@ -64,18 +64,15 @@ export class OpenCodeBackend {
         await fs.writeFile(paths.prompt, options.prompt, "utf8");
         const target = await this.resolveTarget(options.cwd);
         const runnerMode = resolveRunnerMode(this.env);
-        const rootAgent = resolveRootAgent(this.env);
         const requestedAgent = options.agent ?? "explore";
         const agents = await this.listAgents(target.client);
         const childAgent = findOpenCodeAgent(agents, requestedAgent);
-        validateOpenCodeAgent(agents, rootAgent, "root", this.kind);
-        validateOpenCodeAgent(agents, requestedAgent, "child", this.kind);
+        validateOpenCodeAgent(agents, requestedAgent, this.kind);
         const parentSession = runnerMode === "shared-root"
-            ? await this.getOrCreateSharedRootSession(target, options.cwd, rootAgent)
+            ? await this.getOrCreateSharedRootSession(target, options.cwd)
             : await target.client.createSession({
                 cwd: options.cwd,
-                title: options.title ?? options.name,
-                agent: rootAgent
+                title: options.title ?? options.name
             });
         const childSession = await target.client.createSession({
             cwd: options.cwd,
@@ -107,7 +104,6 @@ export class OpenCodeBackend {
             readOnly: options.readOnly === true,
             externalSessionId: childSession.id,
             externalRunnerMode: runnerMode,
-            externalRootAgent: rootAgent,
             externalRootSessionId: parentSession.id,
             externalParentSessionId: parentSession.id,
             externalChildSessionIds: [childSession.id],
@@ -531,7 +527,6 @@ export class OpenCodeBackend {
             baseUrl: meta.externalServerUrl ?? this.baseUrl ?? "",
             sessionId: meta.externalSessionId,
             runnerMode: meta.externalRunnerMode,
-            rootAgent: meta.externalRootAgent,
             rootSessionId: meta.externalRootSessionId,
             parentSessionId: meta.externalParentSessionId,
             childSessionIds: meta.externalChildSessionIds,
@@ -561,7 +556,6 @@ export class OpenCodeBackend {
             baseUrl: meta.externalServerUrl ?? this.baseUrl ?? "",
             sessionId: meta.externalSessionId,
             runnerMode: meta.externalRunnerMode,
-            rootAgent: meta.externalRootAgent,
             rootSessionId: meta.externalRootSessionId,
             parentSessionId: meta.externalParentSessionId,
             childSessionIds: meta.externalChildSessionIds,
@@ -875,7 +869,6 @@ export class OpenCodeBackend {
             baseUrl: meta.externalServerUrl ?? this.baseUrl ?? "",
             sessionId: meta.externalSessionId,
             runnerMode: meta.externalRunnerMode,
-            rootAgent: meta.externalRootAgent,
             rootSessionId: meta.externalRootSessionId,
             parentSessionId: meta.externalParentSessionId,
             childSessionIds: meta.externalChildSessionIds,
@@ -977,7 +970,6 @@ export class OpenCodeBackend {
             baseUrl: meta.externalServerUrl ?? this.baseUrl ?? "",
             sessionId: meta.externalSessionId,
             runnerMode: meta.externalRunnerMode,
-            rootAgent: meta.externalRootAgent,
             rootSessionId: meta.externalRootSessionId,
             parentSessionId: meta.externalParentSessionId,
             childSessionIds: meta.externalChildSessionIds
@@ -1125,8 +1117,8 @@ export class OpenCodeBackend {
             return meta;
         }
     }
-    async getOrCreateSharedRootSession(target, cwd, agent) {
-        const key = [target.baseUrl, cwd ?? "", agent].join("\0");
+    async getOrCreateSharedRootSession(target, cwd) {
+        const key = [target.baseUrl, cwd ?? ""].join("\0");
         const existing = this.sharedRootSessions.get(key);
         if (existing) {
             try {
@@ -1139,10 +1131,9 @@ export class OpenCodeBackend {
         }
         const session = await target.client.createSession({
             cwd,
-            title: "retinue-shared-root",
-            agent
+            title: "retinue-shared-root"
         });
-        this.sharedRootSessions.set(key, { id: session.id, baseUrl: target.baseUrl, cwd, agent });
+        this.sharedRootSessions.set(key, { id: session.id, baseUrl: target.baseUrl, cwd });
         return session;
     }
     async listAgents(client) {
@@ -2253,27 +2244,19 @@ function resolveRunnerMode(env) {
     }
     throw new Error(`Unsupported RETINUE_OPENCODE_ROOT_BINDING_MODE: ${value}`);
 }
-function resolveRootAgent(env) {
-    const value = env?.RETINUE_OPENCODE_ROOT_AGENT?.trim();
-    if (value === undefined || value === "") {
-        return "build";
-    }
-    return value;
-}
 function findOpenCodeAgent(agents, name) {
     return agents.find((agent) => agent.name === name);
 }
-function validateOpenCodeAgent(agents, name, role, kind) {
+function validateOpenCodeAgent(agents, name, kind) {
     if (agents.length === 0 || findOpenCodeAgent(agents, name)) {
         return;
     }
     const available = agents.map((agent) => agent.name).filter(Boolean).sort().join(", ");
     const backend = kind === "kilo" ? "Kilo" : "OpenCode";
-    const roleLabel = role === "root" ? "root agent" : "child agent";
     const backendHint = isRetinueBackendName(name)
         ? ` "${name}" is a Retinue backend name; select the backend with RETINUE_BACKEND, and use agent only for one ${backend} agent such as ${available}.`
         : "";
-    throw new Error(`Unsupported ${backend} ${roleLabel} "${name}". The agent field selects a backend agent name for ${backend}, not a Retinue backend, Codex model, or Codex native subagent.${backendHint} Available ${backend} agents: ${available}.`);
+    throw new Error(`Unsupported ${backend} child agent "${name}". The agent field selects a backend agent name for ${backend}, not a Retinue backend, Codex model, or Codex native subagent.${backendHint} Available ${backend} agents: ${available}.`);
 }
 function isRetinueBackendName(name) {
     return name === "opencode" || name === "claude-code" || name === "claude" || name === "kilo";

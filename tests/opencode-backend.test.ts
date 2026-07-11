@@ -73,9 +73,9 @@ describe("OpenCodeBackend", () => {
 
     expect(server!.sessionRequests.at(-2)).toMatchObject({
       directory: tempDir,
-      title: "retinue-shared-root",
-      agent: "build"
+      title: "retinue-shared-root"
     });
+    expect(server!.sessionRequests.at(-2)).not.toHaveProperty("agent");
     expect(server!.sessionRequests.at(-1)).toMatchObject({
       directory: tempDir,
       title: "native demo",
@@ -116,8 +116,6 @@ describe("OpenCodeBackend", () => {
 
     expect(first.externalRunnerMode).toBe("shared-root");
     expect(second.externalRunnerMode).toBe("shared-root");
-    expect(first.externalRootAgent).toBe("build");
-    expect(second.externalRootAgent).toBe("build");
     expect(first.externalRootSessionId).toBe(first.externalParentSessionId);
     expect(second.externalRootSessionId).toBe(first.externalRootSessionId);
     expect(second.externalParentSessionId).toBe(first.externalParentSessionId);
@@ -125,9 +123,9 @@ describe("OpenCodeBackend", () => {
     expect(server!.sessionRequests).toHaveLength(3);
     expect(server!.sessionRequests[0]).toMatchObject({
       directory: tempDir,
-      title: "retinue-shared-root",
-      agent: "build"
+      title: "retinue-shared-root"
     });
+    expect(server!.sessionRequests[0]).not.toHaveProperty("agent");
     expect(server!.sessionRequests[1]).toMatchObject({
       directory: tempDir,
       parentID: first.externalRootSessionId,
@@ -180,22 +178,6 @@ describe("OpenCodeBackend", () => {
     expect(server!.promptRequests).toHaveLength(0);
   });
 
-  it("rejects unknown OpenCode root agents before creating sessions", async () => {
-    const backend = createBackend({ RETINUE_OPENCODE_ROOT_AGENT: "codex-gpt-5.5" } as NodeJS.ProcessEnv);
-
-    await expect(
-      backend.run({
-        cwd: tempDir,
-        prompt: "review this repository",
-        title: "wrong root agent namespace",
-        agent: "explore"
-      })
-    ).rejects.toThrow(/Unsupported OpenCode root agent "codex-gpt-5\.5".*backend agent name for OpenCode.*build.*explore.*general.*plan/s);
-
-    expect(server!.sessionRequests).toHaveLength(0);
-    expect(server!.promptRequests).toHaveLength(0);
-  });
-
   it("keeps per-spawn available as an explicit legacy mode", async () => {
     const backend = createBackend({ RETINUE_OPENCODE_ROOT_BINDING_MODE: "per_spawn" } as NodeJS.ProcessEnv);
 
@@ -219,9 +201,9 @@ describe("OpenCodeBackend", () => {
     expect(server!.sessionRequests).toHaveLength(4);
     expect(server!.sessionRequests[0]).toMatchObject({
       directory: tempDir,
-      title: "legacy demo one",
-      agent: "build"
+      title: "legacy demo one"
     });
+    expect(server!.sessionRequests[0]).not.toHaveProperty("agent");
     expect(server!.sessionRequests[1]).toMatchObject({
       directory: tempDir,
       parentID: first.externalRootSessionId,
@@ -229,36 +211,12 @@ describe("OpenCodeBackend", () => {
     });
     expect(server!.sessionRequests[2]).toMatchObject({
       directory: tempDir,
-      title: "legacy demo two",
-      agent: "build"
+      title: "legacy demo two"
     });
+    expect(server!.sessionRequests[2]).not.toHaveProperty("agent");
     expect(server!.sessionRequests[3]).toMatchObject({
       directory: tempDir,
       parentID: second.externalRootSessionId,
-      agent: "explore"
-    });
-  });
-
-  it("can select the OpenCode root agent without changing the child agent", async () => {
-    const backend = createBackend({ RETINUE_OPENCODE_ROOT_AGENT: "plan" } as NodeJS.ProcessEnv);
-
-    const started = await backend.run({
-      cwd: tempDir,
-      prompt: "review package scripts",
-      title: "root agent demo",
-      agent: "explore"
-    });
-
-    expect(started.externalRunnerMode).toBe("shared-root");
-    expect(started.externalRootAgent).toBe("plan");
-    expect(server!.sessionRequests[0]).toMatchObject({
-      directory: tempDir,
-      title: "retinue-shared-root",
-      agent: "plan"
-    });
-    expect(server!.sessionRequests[1]).toMatchObject({
-      directory: tempDir,
-      parentID: started.externalRootSessionId,
       agent: "explore"
     });
   });

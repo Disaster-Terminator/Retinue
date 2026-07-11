@@ -87,7 +87,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.5",
-    "@opencode-ai/sdk": "1.15.10",
+    "@opencode-ai/sdk": "1.17.18",
     "zod": "^4.4.3"
   },
   "devDependencies": {

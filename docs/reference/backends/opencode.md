@@ -177,12 +177,14 @@ the parent session's deny and `external_directory` rules, and denies child
 `todowrite`/`task` unless the requested OpenCode subagent explicitly allows them. Parent
 agent restrictions do not transfer to the child; the selected OpenCode subagent owns its
 own capabilities. OpenCode `TaskTool` features that depend on the parent prompt loop,
-such as `background` and `task_id`, are represented by Retinue job handles and
-`continueJob` metadata rather than by submitting a nested task tool call.
+such as native `background` and `task_id`, are not exposed as Retinue equivalents.
+Retinue job handles and task-level recovery attempts belong to the MCP lifecycle and
+must not be described as OpenCode task continuation.
 
 The OpenCode backend defaults to `shared_root`: one Retinue MCP server session reuses
-one OpenCode root session for multiple child jobs with the same server URL, cwd, and
-root agent. Set `RETINUE_OPENCODE_ROOT_BINDING_MODE=per_spawn` only for legacy
+one inert OpenCode root session for multiple child jobs with the same server URL and
+cwd. The structural root has no agent binding. Set
+`RETINUE_OPENCODE_ROOT_BINDING_MODE=per_spawn` only for legacy
 compatibility, isolation probes, or debugging. In `per_spawn`, each Retinue child job
 creates its own unprompted root session plus one prompted child session.
 

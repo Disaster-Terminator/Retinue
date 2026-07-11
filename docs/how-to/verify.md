@@ -107,7 +107,7 @@ RETINUE_DOGFOOD_OPENCODE_ROOT_BINDING_MODE_LIST=shared_root,per_spawn pnpm run g
 
 The default product path is `shared_root`. `per_spawn` remains a legacy/fallback mode for isolation
 checks and debugging. The dogfood JSON records
-`externalRunnerMode`, `externalRootAgent`, `externalRootSessionId`, `externalParentSessionId`, and the
+`externalRunnerMode`, `externalRootSessionId`, `externalParentSessionId`, and the
 child `externalSessionId` for this comparison.
 
 Use the opt-in writable dogfood check when validating OpenCode `general` child edits:

@@ -57,7 +57,6 @@ interface SharedRootSession {
   id: string;
   baseUrl: string;
   cwd?: string;
-  agent: string;
 }
 
 export type OpenCodeSharedRootSessionStore = Map<string, SharedRootSession>;
@@ -134,7 +133,6 @@ interface OpenCodeJobDiagnostic {
   baseUrl: string;
   sessionId?: string;
   runnerMode?: JobMeta["externalRunnerMode"];
-  rootAgent?: string;
   rootSessionId?: string;
   parentSessionId?: string;
   childSessionIds?: string[];
@@ -277,19 +275,16 @@ export class OpenCodeBackend implements AgentBackend {
 
     const target = await this.resolveTarget(options.cwd);
     const runnerMode = resolveRunnerMode(this.env);
-    const rootAgent = resolveRootAgent(this.env);
     const requestedAgent = options.agent ?? "explore";
     const agents = await this.listAgents(target.client);
     const childAgent = findOpenCodeAgent(agents, requestedAgent);
-    validateOpenCodeAgent(agents, rootAgent, "root", this.kind);
-    validateOpenCodeAgent(agents, requestedAgent, "child", this.kind);
+    validateOpenCodeAgent(agents, requestedAgent, this.kind);
     const parentSession =
       runnerMode === "shared-root"
-        ? await this.getOrCreateSharedRootSession(target, options.cwd, rootAgent)
+        ? await this.getOrCreateSharedRootSession(target, options.cwd)
         : await target.client.createSession({
             cwd: options.cwd,
-            title: options.title ?? options.name,
-            agent: rootAgent
+            title: options.title ?? options.name
           });
     const childSession = await target.client.createSession({
       cwd: options.cwd,
@@ -321,7 +316,6 @@ export class OpenCodeBackend implements AgentBackend {
       readOnly: options.readOnly === true,
       externalSessionId: childSession.id,
       externalRunnerMode: runnerMode,
-      externalRootAgent: rootAgent,
       externalRootSessionId: parentSession.id,
       externalParentSessionId: parentSession.id,
       externalChildSessionIds: [childSession.id],
@@ -765,7 +759,6 @@ export class OpenCodeBackend implements AgentBackend {
       baseUrl: meta.externalServerUrl ?? this.baseUrl ?? "",
       sessionId: meta.externalSessionId,
       runnerMode: meta.externalRunnerMode,
-      rootAgent: meta.externalRootAgent,
       rootSessionId: meta.externalRootSessionId,
       parentSessionId: meta.externalParentSessionId,
       childSessionIds: meta.externalChildSessionIds,
@@ -796,7 +789,6 @@ export class OpenCodeBackend implements AgentBackend {
       baseUrl: meta.externalServerUrl ?? this.baseUrl ?? "",
       sessionId: meta.externalSessionId,
       runnerMode: meta.externalRunnerMode,
-      rootAgent: meta.externalRootAgent,
       rootSessionId: meta.externalRootSessionId,
       parentSessionId: meta.externalParentSessionId,
       childSessionIds: meta.externalChildSessionIds,
@@ -1117,7 +1109,6 @@ export class OpenCodeBackend implements AgentBackend {
       baseUrl: meta.externalServerUrl ?? this.baseUrl ?? "",
       sessionId: meta.externalSessionId,
       runnerMode: meta.externalRunnerMode,
-      rootAgent: meta.externalRootAgent,
       rootSessionId: meta.externalRootSessionId,
       parentSessionId: meta.externalParentSessionId,
       childSessionIds: meta.externalChildSessionIds,
@@ -1229,7 +1220,6 @@ export class OpenCodeBackend implements AgentBackend {
       baseUrl: meta.externalServerUrl ?? this.baseUrl ?? "",
       sessionId: meta.externalSessionId,
       runnerMode: meta.externalRunnerMode,
-      rootAgent: meta.externalRootAgent,
       rootSessionId: meta.externalRootSessionId,
       parentSessionId: meta.externalParentSessionId,
       childSessionIds: meta.externalChildSessionIds
@@ -1380,8 +1370,8 @@ export class OpenCodeBackend implements AgentBackend {
     }
   }
 
-  private async getOrCreateSharedRootSession(target: OpenCodeBackendTarget, cwd: string | undefined, agent: string) {
-    const key = [target.baseUrl, cwd ?? "", agent].join("\0");
+  private async getOrCreateSharedRootSession(target: OpenCodeBackendTarget, cwd: string | undefined) {
+    const key = [target.baseUrl, cwd ?? ""].join("\0");
     const existing = this.sharedRootSessions.get(key);
     if (existing) {
       try {
@@ -1393,10 +1383,9 @@ export class OpenCodeBackend implements AgentBackend {
     }
     const session = await target.client.createSession({
       cwd,
-      title: "retinue-shared-root",
-      agent
+      title: "retinue-shared-root"
     });
-    this.sharedRootSessions.set(key, { id: session.id, baseUrl: target.baseUrl, cwd, agent });
+    this.sharedRootSessions.set(key, { id: session.id, baseUrl: target.baseUrl, cwd });
     return session;
   }
 
@@ -2683,30 +2672,21 @@ function resolveRunnerMode(env: RetinueOptions["env"]): OpenCodeRunnerMode {
   throw new Error(`Unsupported RETINUE_OPENCODE_ROOT_BINDING_MODE: ${value}`);
 }
 
-function resolveRootAgent(env: RetinueOptions["env"]): string {
-  const value = env?.RETINUE_OPENCODE_ROOT_AGENT?.trim();
-  if (value === undefined || value === "") {
-    return "build";
-  }
-  return value;
-}
-
 function findOpenCodeAgent(agents: OpenCodeAgentInfo[], name: string): OpenCodeAgentInfo | undefined {
   return agents.find((agent) => agent.name === name);
 }
 
-function validateOpenCodeAgent(agents: OpenCodeAgentInfo[], name: string, role: "root" | "child", kind: AgentBackendKind): void {
+function validateOpenCodeAgent(agents: OpenCodeAgentInfo[], name: string, kind: AgentBackendKind): void {
   if (agents.length === 0 || findOpenCodeAgent(agents, name)) {
     return;
   }
   const available = agents.map((agent) => agent.name).filter(Boolean).sort().join(", ");
   const backend = kind === "kilo" ? "Kilo" : "OpenCode";
-  const roleLabel = role === "root" ? "root agent" : "child agent";
   const backendHint = isRetinueBackendName(name)
     ? ` "${name}" is a Retinue backend name; select the backend with RETINUE_BACKEND, and use agent only for one ${backend} agent such as ${available}.`
     : "";
   throw new Error(
-    `Unsupported ${backend} ${roleLabel} "${name}". The agent field selects a backend agent name for ${backend}, not a Retinue backend, Codex model, or Codex native subagent.${backendHint} Available ${backend} agents: ${available}.`
+    `Unsupported ${backend} child agent "${name}". The agent field selects a backend agent name for ${backend}, not a Retinue backend, Codex model, or Codex native subagent.${backendHint} Available ${backend} agents: ${available}.`
   );
 }
 

@@ -35694,7 +35694,7 @@ var kP = I((_P) => {
   function b4($, Q) {
     return { validate: $, compare: Q };
   }
-  _P.fullFormats = { date: b4(RP, Jz), time: b4($z(true), Xz), "date-time": b4(jP(true), EP), "iso-time": b4($z(), PP), "iso-date-time": b4(jP(), bP), duration: /^P(?!$)((\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+S)?)?|(\d+W)?)$/, uri: Vs, "uri-reference": /^(?:[a-z][a-z0-9+\-.]*:)?(?:\/?\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\.[a-z0-9\-._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)|(?:[a-z0-9\-._~!$&'"()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?(?:\?(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i, "uri-template": /^(?:(?:[^\x00-\x20"'<>%\\^`{|}]|%[0-9a-f]{2})|\{[+#./;?&=,!@|]?(?:[a-z0-9_]|%[0-9a-f]{2})+(?::[1-9][0-9]{0,3}|\*)?(?:,(?:[a-z0-9_]|%[0-9a-f]{2})+(?::[1-9][0-9]{0,3}|\*)?)*\})*$/i, url: /^(?:https?|ftp):\/\/(?:\S+(?::\S*)?@)?(?:(?!(?:10|127)(?:\.\d{1,3}){3})(?!(?:169\.254|192\.168)(?:\.\d{1,3}){2})(?!172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?:[1-9]\d?|1\d\d|2[01]\d|22[0-3])(?:\.(?:1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(?:(?:[a-z0-9\u{00a1}-\u{ffff}]+-)*[a-z0-9\u{00a1}-\u{ffff}]+)(?:\.(?:[a-z0-9\u{00a1}-\u{ffff}]+-)*[a-z0-9\u{00a1}-\u{ffff}]+)*(?:\.(?:[a-z\u{00a1}-\u{ffff}]{2,})))(?::\d{2,5})?(?:\/[^\s]*)?$/iu, email: /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i, hostname: /^(?=.{1,253}\.?$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[-0-9a-z]{0,61}[0-9a-z])?)*\.?$/i, ipv4: /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/, ipv6: /^((([0-9a-f]{1,4}:){7}([0-9a-f]{1,4}|:))|(([0-9a-f]{1,4}:){6}(:[0-9a-f]{1,4}|((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9a-f]{1,4}:){5}(((:[0-9a-f]{1,4}){1,2})|:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9a-f]{1,4}:){4}(((:[0-9a-f]{1,4}){1,3})|((:[0-9a-f]{1,4})?:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){3}(((:[0-9a-f]{1,4}){1,4})|((:[0-9a-f]{1,4}){0,2}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){2}(((:[0-9a-f]{1,4}){1,5})|((:[0-9a-f]{1,4}){0,3}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){1}(((:[0-9a-f]{1,4}){1,6})|((:[0-9a-f]{1,4}){0,4}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(:(((:[0-9a-f]{1,4}){1,7})|((:[0-9a-f]{1,4}){0,5}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))$/i, regex: Fs, uuid: /^(?:urn:uuid:)?[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i, "json-pointer": /^(?:\/(?:[^~/]|~0|~1)*)*$/, "json-pointer-uri-fragment": /^#(?:\/(?:[a-z0-9_\-.!$&'()*+,;:=@]|%[0-9a-f]{2}|~0|~1)*)*$/i, "relative-json-pointer": /^(?:0|[1-9][0-9]*)(?:#|(?:\/(?:[^~/]|~0|~1)*)*)$/, byte: Bs, int32: { type: "number", validate: ws }, int64: { type: "number", validate: Os }, float: { type: "number", validate: IP }, double: { type: "number", validate: IP }, password: true, binary: true };
+  _P.fullFormats = { date: b4(RP, Jz), time: b4($z(true), Xz), "date-time": b4(jP(true), EP), "iso-time": b4($z(), PP), "iso-date-time": b4(jP(), bP), duration: /^P(?!$)((\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+S)?)?|(\d+W)?)$/, uri: Vs, "uri-reference": /^(?:[a-z][a-z0-9+\-.]*:)?(?:\/?\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\.[a-z0-9\-._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)|(?:[a-z0-9\-._~!$&'"()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?(?:\?(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i, "uri-template": /^(?:(?:[^\x00-\x20"'<>%\\^`{|}]|%[0-9a-f]{2})|\{[+#./;?&=,!@|]?(?:[a-z0-9_]|%[0-9a-f]{2})+(?::[1-9][0-9]{0,3}|\*)?(?:,(?:[a-z0-9_]|%[0-9a-f]{2})+(?::[1-9][0-9]{0,3}|\*)?)*\})*$/i, url: /^(?:https?|ftp):\/\/(?:\S+(?::\S*)?@)?(?:(?!(?:10|127)(?:\.\d{1,3}){3})(?!(?:169\.254|192\.168)(?:\.\d{1,3}){2})(?!172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?:[1-9]\d?|1\d\d|2[01]\d|22[0-3])(?:\.(?:1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(?:(?:[a-z0-9\u{00a1}-\u{ffff}]+-)*[a-z0-9\u{00a1}-\u{ffff}]+)(?:\.(?:[a-z0-9\u{00a1}-\u{ffff}]+-)*[a-z0-9\u{00a1}-\u{ffff}]+)*(?:\.(?:[a-z\u{00a1}-\u{ffff}]{2,})))(?::\d{2,5})?(?:\/[^\s]*)?$/iu, email: /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i, hostname: /^(?=.{1,253}\.?$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[-0-9a-z]{0,61}[0-9a-z])?)*\.?$/i, ipv4: /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/, ipv6: /^((([0-9a-f]{1,4}:){7}([0-9a-f]{1,4}|:))|(([0-9a-f]{1,4}:){6}(:[0-9a-f]{1,4}|((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9a-f]{1,4}:){5}(((:[0-9a-f]{1,4}){1,2})|:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9a-f]{1,4}:){4}(((:[0-9a-f]{1,4}){1,3})|((:[0-9a-f]{1,4})?:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){3}(((:[0-9a-f]{1,4}){1,4})|((:[0-9a-f]{1,4}){0,2}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){2}(((:[0-9a-f]{1,4}){1,5})|((:[0-9a-f]{1,4}){0,3}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){1}(((:[0-9a-f]{1,4}){1,6})|((:[0-9a-f]{1,4}){0,4}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(:(((:[0-9a-f]{1,4}){1,7})|((:[0-9a-f]{1,4}){0,5}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))$/i, regex: Fs2, uuid: /^(?:urn:uuid:)?[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i, "json-pointer": /^(?:\/(?:[^~/]|~0|~1)*)*$/, "json-pointer-uri-fragment": /^#(?:\/(?:[a-z0-9_\-.!$&'()*+,;:=@]|%[0-9a-f]{2}|~0|~1)*)*$/i, "relative-json-pointer": /^(?:0|[1-9][0-9]*)(?:#|(?:\/(?:[^~/]|~0|~1)*)*)$/, byte: Bs, int32: { type: "number", validate: ws }, int64: { type: "number", validate: Os }, float: { type: "number", validate: IP }, double: { type: "number", validate: IP }, password: true, binary: true };
   _P.fastFormats = { ..._P.fullFormats, date: b4(/^\d\d\d\d-[0-1]\d-[0-3]\d$/, Jz), time: b4(/^(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)$/i, Xz), "date-time": b4(/^\d\d\d\d-[0-1]\d-[0-3]\dt(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)$/i, EP), "iso-time": b4(/^(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)?$/i, PP), "iso-date-time": b4(/^\d\d\d\d-[0-1]\d-[0-3]\d[t\s](?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)?$/i, bP), uri: /^(?:[a-z][a-z0-9+\-.]*:)(?:\/?\/)?[^\s]*$/i, "uri-reference": /^(?:(?:[a-z][a-z0-9+\-.]*:)?\/?\/)?(?:[^\\\s#][^\s#]*)?(?:#[^\\\s]*)?$/i, email: /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i };
   _P.formatNames = Object.keys(_P.fullFormats);
   function Gs($) {
@@ -35778,7 +35778,7 @@ var kP = I((_P) => {
     return true;
   }
   var Ds = /[^\\]\\Z/;
-  function Fs($) {
+  function Fs2($) {
     if (Ds.test($)) return false;
     try {
       return new RegExp($), true;
@@ -51148,7 +51148,7 @@ async function fetchWithTimeout(url2, init = {}, timeoutMs = DEFAULT_HTTP_TIMEOU
   }
 }
 
-// node_modules/.pnpm/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/v2/gen/core/serverSentEvents.gen.js
+// node_modules/.pnpm/@opencode-ai+sdk@1.17.18/node_modules/@opencode-ai/sdk/dist/v2/gen/core/serverSentEvents.gen.js
 var createSseClient = ({ onRequest, onSseError, onSseEvent, responseTransformer, responseValidator, sseDefaultRetryDelay, sseMaxRetryAttempts, sseMaxRetryDelay, sseSleepFn, url: url2, ...options }) => {
   let lastEventId;
   const sleep6 = sseSleepFn ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
@@ -51267,7 +51267,7 @@ var createSseClient = ({ onRequest, onSseError, onSseEvent, responseTransformer,
   return { stream };
 };
 
-// node_modules/.pnpm/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/v2/gen/core/pathSerializer.gen.js
+// node_modules/.pnpm/@opencode-ai+sdk@1.17.18/node_modules/@opencode-ai/sdk/dist/v2/gen/core/pathSerializer.gen.js
 var separatorArrayExplode = (style) => {
   switch (style) {
     case "label":
@@ -51370,7 +51370,7 @@ var serializeObjectParam = ({ allowReserved, explode, name, style, value, valueO
   return style === "label" || style === "matrix" ? separator + joinedValues : joinedValues;
 };
 
-// node_modules/.pnpm/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/v2/gen/core/utils.gen.js
+// node_modules/.pnpm/@opencode-ai+sdk@1.17.18/node_modules/@opencode-ai/sdk/dist/v2/gen/core/utils.gen.js
 var PATH_PARAM_RE = /\{[^{}]+\}/g;
 var defaultPathSerializer = ({ path: path6, url: _url2 }) => {
   let url2 = _url2;
@@ -51453,7 +51453,7 @@ function getValidRequestBody(options) {
   return void 0;
 }
 
-// node_modules/.pnpm/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/v2/gen/core/auth.gen.js
+// node_modules/.pnpm/@opencode-ai+sdk@1.17.18/node_modules/@opencode-ai/sdk/dist/v2/gen/core/auth.gen.js
 var getAuthToken = async (auth, callback) => {
   const token = typeof callback === "function" ? await callback(auth) : callback;
   if (!token) {
@@ -51468,12 +51468,12 @@ var getAuthToken = async (auth, callback) => {
   return token;
 };
 
-// node_modules/.pnpm/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/v2/gen/core/bodySerializer.gen.js
+// node_modules/.pnpm/@opencode-ai+sdk@1.17.18/node_modules/@opencode-ai/sdk/dist/v2/gen/core/bodySerializer.gen.js
 var jsonBodySerializer = {
   bodySerializer: (body) => JSON.stringify(body, (_key, value) => typeof value === "bigint" ? value.toString() : value)
 };
 
-// node_modules/.pnpm/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/v2/gen/client/utils.gen.js
+// node_modules/.pnpm/@opencode-ai+sdk@1.17.18/node_modules/@opencode-ai/sdk/dist/v2/gen/client/utils.gen.js
 var createQuerySerializer = ({ parameters = {}, ...args } = {}) => {
   const querySerializer = (queryParams) => {
     const search = [];
@@ -51683,7 +51683,7 @@ var createConfig = (override = {}) => ({
   ...override
 });
 
-// node_modules/.pnpm/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/v2/gen/client/client.gen.js
+// node_modules/.pnpm/@opencode-ai+sdk@1.17.18/node_modules/@opencode-ai/sdk/dist/v2/gen/client/client.gen.js
 var createClient = (config2 = {}) => {
   let _config = mergeConfigs(createConfig(), config2);
   const getConfig = () => ({ ..._config });
@@ -51891,7 +51891,7 @@ var createClient = (config2 = {}) => {
   };
 };
 
-// node_modules/.pnpm/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/v2/gen/core/params.gen.js
+// node_modules/.pnpm/@opencode-ai+sdk@1.17.18/node_modules/@opencode-ai/sdk/dist/v2/gen/core/params.gen.js
 var extraPrefixesMap = {
   $body_: "body",
   $headers_: "headers",
@@ -51987,10 +51987,10 @@ var buildClientParams = (args, fields) => {
   return params;
 };
 
-// node_modules/.pnpm/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/v2/gen/client.gen.js
+// node_modules/.pnpm/@opencode-ai+sdk@1.17.18/node_modules/@opencode-ai/sdk/dist/v2/gen/client.gen.js
 var client = createClient(createConfig({ baseUrl: "http://localhost:4096" }));
 
-// node_modules/.pnpm/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/v2/gen/sdk.gen.js
+// node_modules/.pnpm/@opencode-ai+sdk@1.17.18/node_modules/@opencode-ai/sdk/dist/v2/gen/sdk.gen.js
 var HeyApiClient = class {
   client;
   constructor(args) {
@@ -52120,6 +52120,421 @@ var App = class extends HeyApiClient {
       ...options,
       ...params
     });
+  }
+};
+var ControlPlane = class extends HeyApiClient {
+  /**
+   * Move session
+   *
+   * Move a session to another project directory, optionally transferring local changes.
+   */
+  moveSession(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "body", key: "sessionID" },
+          { in: "body", key: "destination" },
+          { in: "body", key: "moveChanges" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/experimental/control-plane/move-session",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers
+      }
+    });
+  }
+};
+var Capabilities = class extends HeyApiClient {
+  /**
+   * Get experimental capabilities
+   *
+   * Get experimental features enabled on the OpenCode server.
+   */
+  get(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "query", key: "directory" },
+          { in: "query", key: "workspace" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).get({
+      url: "/experimental/capabilities",
+      ...options,
+      ...params
+    });
+  }
+};
+var Console = class extends HeyApiClient {
+  /**
+   * Get active Console provider metadata
+   *
+   * Get the active Console org name and the set of provider IDs managed by that Console org.
+   */
+  get(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "query", key: "directory" },
+          { in: "query", key: "workspace" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).get({
+      url: "/experimental/console",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * List switchable Console orgs
+   *
+   * Get the available Console orgs across logged-in accounts, including the current active org.
+   */
+  listOrgs(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "query", key: "directory" },
+          { in: "query", key: "workspace" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).get({
+      url: "/experimental/console/orgs",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Switch active Console org
+   *
+   * Persist a new active Console account/org selection for the current local OpenCode state.
+   */
+  switchOrg(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "query", key: "directory" },
+          { in: "query", key: "workspace" },
+          { in: "body", key: "accountID" },
+          { in: "body", key: "orgID" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/experimental/console/switch",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers
+      }
+    });
+  }
+};
+var Session = class extends HeyApiClient {
+  /**
+   * List sessions
+   *
+   * Get a list of all OpenCode sessions across projects, sorted by most recently updated. Archived sessions are excluded by default.
+   */
+  list(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "query", key: "directory" },
+          { in: "query", key: "workspace" },
+          { in: "query", key: "roots" },
+          { in: "query", key: "start" },
+          { in: "query", key: "cursor" },
+          { in: "query", key: "search" },
+          { in: "query", key: "limit" },
+          { in: "query", key: "archived" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).get({
+      url: "/experimental/session",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Background subagents
+   *
+   * Detach any synchronous subagents currently blocking the session and continue them in the background.
+   */
+  background(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "sessionID" },
+          { in: "query", key: "directory" },
+          { in: "query", key: "workspace" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/experimental/session/{sessionID}/background",
+      ...options,
+      ...params
+    });
+  }
+};
+var Resource = class extends HeyApiClient {
+  /**
+   * Get MCP resources
+   *
+   * Get all available MCP resources from connected servers. Optionally filter by name.
+   */
+  list(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "query", key: "directory" },
+          { in: "query", key: "workspace" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).get({
+      url: "/experimental/resource",
+      ...options,
+      ...params
+    });
+  }
+};
+var ProjectCopy = class extends HeyApiClient {
+  /**
+   * Generate project copy name
+   *
+   * Generate a short name for a project copy from task context.
+   */
+  generateName(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "projectID" },
+          { in: "query", key: "directory" },
+          { in: "query", key: "workspace" },
+          { in: "body", key: "context" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/experimental/project/{projectID}/copy/generate-name",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers
+      }
+    });
+  }
+};
+var Adapter = class extends HeyApiClient {
+  /**
+   * List workspace adapters
+   *
+   * List all available workspace adapters for the current project.
+   */
+  list(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "query", key: "directory" },
+          { in: "query", key: "workspace" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).get({
+      url: "/experimental/workspace/adapter",
+      ...options,
+      ...params
+    });
+  }
+};
+var Workspace = class extends HeyApiClient {
+  /**
+   * List workspaces
+   *
+   * List all workspaces.
+   */
+  list(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "query", key: "directory" },
+          { in: "query", key: "workspace" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).get({
+      url: "/experimental/workspace",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Create workspace
+   *
+   * Create a workspace for the current project.
+   */
+  create(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "query", key: "directory" },
+          { in: "query", key: "workspace" },
+          { in: "body", key: "id" },
+          { in: "body", key: "type" },
+          { in: "body", key: "branch" },
+          { in: "body", key: "extra" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/experimental/workspace",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers
+      }
+    });
+  }
+  /**
+   * Sync workspace list
+   *
+   * Register missing workspaces returned by workspace adapters.
+   */
+  syncList(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "query", key: "directory" },
+          { in: "query", key: "workspace" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/experimental/workspace/sync-list",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Workspace status
+   *
+   * Get connection status for workspaces in the current project.
+   */
+  status(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "query", key: "directory" },
+          { in: "query", key: "workspace" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).get({
+      url: "/experimental/workspace/status",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Remove workspace
+   *
+   * Remove an existing workspace.
+   */
+  remove(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "id" },
+          { in: "query", key: "directory" },
+          { in: "query", key: "workspace" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).delete({
+      url: "/experimental/workspace/{id}",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Warp session into workspace
+   *
+   * Move a session's sync history into the target workspace, or detach it to the local project.
+   */
+  warp(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "query", key: "directory" },
+          { in: "query", key: "workspace" },
+          { in: "body", key: "id" },
+          { in: "body", key: "sessionID" },
+          { in: "body", key: "copyChanges" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/experimental/workspace/warp",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers
+      }
+    });
+  }
+  _adapter;
+  get adapter() {
+    return this._adapter ??= new Adapter({ client: this.client });
+  }
+};
+var Experimental = class extends HeyApiClient {
+  _controlPlane;
+  get controlPlane() {
+    return this._controlPlane ??= new ControlPlane({ client: this.client });
+  }
+  _capabilities;
+  get capabilities() {
+    return this._capabilities ??= new Capabilities({ client: this.client });
+  }
+  _console;
+  get console() {
+    return this._console ??= new Console({ client: this.client });
+  }
+  _session;
+  get session() {
+    return this._session ??= new Session({ client: this.client });
+  }
+  _resource;
+  get resource() {
+    return this._resource ??= new Resource({ client: this.client });
+  }
+  _projectCopy;
+  get projectCopy() {
+    return this._projectCopy ??= new ProjectCopy({ client: this.client });
+  }
+  _workspace;
+  get workspace() {
+    return this._workspace ??= new Workspace({ client: this.client });
   }
 };
 var Config = class extends HeyApiClient {
@@ -52298,309 +52713,6 @@ var Config2 = class extends HeyApiClient {
       ...options,
       ...params
     });
-  }
-};
-var Console = class extends HeyApiClient {
-  /**
-   * Get active Console provider metadata
-   *
-   * Get the active Console org name and the set of provider IDs managed by that Console org.
-   */
-  get(parameters, options) {
-    const params = buildClientParams([parameters], [
-      {
-        args: [
-          { in: "query", key: "directory" },
-          { in: "query", key: "workspace" }
-        ]
-      }
-    ]);
-    return (options?.client ?? this.client).get({
-      url: "/experimental/console",
-      ...options,
-      ...params
-    });
-  }
-  /**
-   * List switchable Console orgs
-   *
-   * Get the available Console orgs across logged-in accounts, including the current active org.
-   */
-  listOrgs(parameters, options) {
-    const params = buildClientParams([parameters], [
-      {
-        args: [
-          { in: "query", key: "directory" },
-          { in: "query", key: "workspace" }
-        ]
-      }
-    ]);
-    return (options?.client ?? this.client).get({
-      url: "/experimental/console/orgs",
-      ...options,
-      ...params
-    });
-  }
-  /**
-   * Switch active Console org
-   *
-   * Persist a new active Console account/org selection for the current local OpenCode state.
-   */
-  switchOrg(parameters, options) {
-    const params = buildClientParams([parameters], [
-      {
-        args: [
-          { in: "query", key: "directory" },
-          { in: "query", key: "workspace" },
-          { in: "body", key: "accountID" },
-          { in: "body", key: "orgID" }
-        ]
-      }
-    ]);
-    return (options?.client ?? this.client).post({
-      url: "/experimental/console/switch",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers
-      }
-    });
-  }
-};
-var Session = class extends HeyApiClient {
-  /**
-   * List sessions
-   *
-   * Get a list of all OpenCode sessions across projects, sorted by most recently updated. Archived sessions are excluded by default.
-   */
-  list(parameters, options) {
-    const params = buildClientParams([parameters], [
-      {
-        args: [
-          { in: "query", key: "directory" },
-          { in: "query", key: "workspace" },
-          { in: "query", key: "roots" },
-          { in: "query", key: "start" },
-          { in: "query", key: "cursor" },
-          { in: "query", key: "search" },
-          { in: "query", key: "limit" },
-          { in: "query", key: "archived" }
-        ]
-      }
-    ]);
-    return (options?.client ?? this.client).get({
-      url: "/experimental/session",
-      ...options,
-      ...params
-    });
-  }
-};
-var Resource = class extends HeyApiClient {
-  /**
-   * Get MCP resources
-   *
-   * Get all available MCP resources from connected servers. Optionally filter by name.
-   */
-  list(parameters, options) {
-    const params = buildClientParams([parameters], [
-      {
-        args: [
-          { in: "query", key: "directory" },
-          { in: "query", key: "workspace" }
-        ]
-      }
-    ]);
-    return (options?.client ?? this.client).get({
-      url: "/experimental/resource",
-      ...options,
-      ...params
-    });
-  }
-};
-var Adapter = class extends HeyApiClient {
-  /**
-   * List workspace adapters
-   *
-   * List all available workspace adapters for the current project.
-   */
-  list(parameters, options) {
-    const params = buildClientParams([parameters], [
-      {
-        args: [
-          { in: "query", key: "directory" },
-          { in: "query", key: "workspace" }
-        ]
-      }
-    ]);
-    return (options?.client ?? this.client).get({
-      url: "/experimental/workspace/adapter",
-      ...options,
-      ...params
-    });
-  }
-};
-var Workspace = class extends HeyApiClient {
-  /**
-   * List workspaces
-   *
-   * List all workspaces.
-   */
-  list(parameters, options) {
-    const params = buildClientParams([parameters], [
-      {
-        args: [
-          { in: "query", key: "directory" },
-          { in: "query", key: "workspace" }
-        ]
-      }
-    ]);
-    return (options?.client ?? this.client).get({
-      url: "/experimental/workspace",
-      ...options,
-      ...params
-    });
-  }
-  /**
-   * Create workspace
-   *
-   * Create a workspace for the current project.
-   */
-  create(parameters, options) {
-    const params = buildClientParams([parameters], [
-      {
-        args: [
-          { in: "query", key: "directory" },
-          { in: "query", key: "workspace" },
-          { in: "body", key: "id" },
-          { in: "body", key: "type" },
-          { in: "body", key: "branch" },
-          { in: "body", key: "extra" }
-        ]
-      }
-    ]);
-    return (options?.client ?? this.client).post({
-      url: "/experimental/workspace",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers
-      }
-    });
-  }
-  /**
-   * Sync workspace list
-   *
-   * Register missing workspaces returned by workspace adapters.
-   */
-  syncList(parameters, options) {
-    const params = buildClientParams([parameters], [
-      {
-        args: [
-          { in: "query", key: "directory" },
-          { in: "query", key: "workspace" }
-        ]
-      }
-    ]);
-    return (options?.client ?? this.client).post({
-      url: "/experimental/workspace/sync-list",
-      ...options,
-      ...params
-    });
-  }
-  /**
-   * Workspace status
-   *
-   * Get connection status for workspaces in the current project.
-   */
-  status(parameters, options) {
-    const params = buildClientParams([parameters], [
-      {
-        args: [
-          { in: "query", key: "directory" },
-          { in: "query", key: "workspace" }
-        ]
-      }
-    ]);
-    return (options?.client ?? this.client).get({
-      url: "/experimental/workspace/status",
-      ...options,
-      ...params
-    });
-  }
-  /**
-   * Remove workspace
-   *
-   * Remove an existing workspace.
-   */
-  remove(parameters, options) {
-    const params = buildClientParams([parameters], [
-      {
-        args: [
-          { in: "path", key: "id" },
-          { in: "query", key: "directory" },
-          { in: "query", key: "workspace" }
-        ]
-      }
-    ]);
-    return (options?.client ?? this.client).delete({
-      url: "/experimental/workspace/{id}",
-      ...options,
-      ...params
-    });
-  }
-  /**
-   * Warp session into workspace
-   *
-   * Move a session's sync history into the target workspace, or detach it to the local project.
-   */
-  warp(parameters, options) {
-    const params = buildClientParams([parameters], [
-      {
-        args: [
-          { in: "query", key: "directory" },
-          { in: "query", key: "workspace" },
-          { in: "body", key: "id" },
-          { in: "body", key: "sessionID" },
-          { in: "body", key: "copyChanges" }
-        ]
-      }
-    ]);
-    return (options?.client ?? this.client).post({
-      url: "/experimental/workspace/warp",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers
-      }
-    });
-  }
-  _adapter;
-  get adapter() {
-    return this._adapter ??= new Adapter({ client: this.client });
-  }
-};
-var Experimental = class extends HeyApiClient {
-  _console;
-  get console() {
-    return this._console ??= new Console({ client: this.client });
-  }
-  _session;
-  get session() {
-    return this._session ??= new Session({ client: this.client });
-  }
-  _resource;
-  get resource() {
-    return this._resource ??= new Resource({ client: this.client });
-  }
-  _workspace;
-  get workspace() {
-    return this._workspace ??= new Workspace({ client: this.client });
   }
 };
 var Tool = class extends HeyApiClient {
@@ -53378,6 +53490,27 @@ var Project = class extends HeyApiClient {
       }
     });
   }
+  /**
+   * List project directories
+   *
+   * List known local absolute directories for a project.
+   */
+  directories(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "projectID" },
+          { in: "query", key: "directory" },
+          { in: "query", key: "workspace" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).get({
+      url: "/project/{projectID}/directories",
+      ...options,
+      ...params
+    });
+  }
 };
 var Pty = class extends HeyApiClient {
   /**
@@ -53552,7 +53685,9 @@ var Pty = class extends HeyApiClient {
         args: [
           { in: "path", key: "ptyID" },
           { in: "query", key: "directory" },
-          { in: "query", key: "workspace" }
+          { in: "query", key: "workspace" },
+          { in: "query", key: "cursor" },
+          { in: "query", key: "ticket" }
         ]
       }
     ]);
@@ -53859,6 +53994,7 @@ var Session2 = class extends HeyApiClient {
           { in: "body", key: "title" },
           { in: "body", key: "agent" },
           { in: "body", key: "model" },
+          { in: "body", key: "metadata" },
           { in: "body", key: "permission" },
           { in: "body", key: "workspaceID" }
         ]
@@ -53950,6 +54086,7 @@ var Session2 = class extends HeyApiClient {
           { in: "query", key: "directory" },
           { in: "query", key: "workspace" },
           { in: "body", key: "title" },
+          { in: "body", key: "metadata" },
           { in: "body", key: "permission" },
           { in: "body", key: "time" }
         ]
@@ -54593,214 +54730,6 @@ var Sync = class extends HeyApiClient {
     return this._history ??= new History({ client: this.client });
   }
 };
-var Session3 = class extends HeyApiClient {
-  /**
-   * List v2 sessions
-   *
-   * Retrieve sessions in the requested order. Items keep that order across pages; use cursor.next or cursor.previous to move through the ordered list.
-   */
-  list(parameters, options) {
-    const params = buildClientParams([parameters], [
-      {
-        args: [
-          { in: "query", key: "directory" },
-          { in: "query", key: "workspace" },
-          { in: "query", key: "limit" },
-          { in: "query", key: "order" },
-          { in: "query", key: "path" },
-          { in: "query", key: "roots" },
-          { in: "query", key: "start" },
-          { in: "query", key: "search" },
-          { in: "query", key: "cursor" }
-        ]
-      }
-    ]);
-    return (options?.client ?? this.client).get({
-      url: "/api/session",
-      ...options,
-      ...params
-    });
-  }
-  /**
-   * Send v2 message
-   *
-   * Create a v2 session message and queue it for the agent loop.
-   */
-  prompt(parameters, options) {
-    const params = buildClientParams([parameters], [
-      {
-        args: [
-          { in: "path", key: "sessionID" },
-          { in: "query", key: "directory" },
-          { in: "query", key: "workspace" },
-          { in: "body", key: "prompt" },
-          { in: "body", key: "delivery" }
-        ]
-      }
-    ]);
-    return (options?.client ?? this.client).post({
-      url: "/api/session/{sessionID}/prompt",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers
-      }
-    });
-  }
-  /**
-   * Compact v2 session
-   *
-   * Compact a v2 session conversation.
-   */
-  compact(parameters, options) {
-    const params = buildClientParams([parameters], [
-      {
-        args: [
-          { in: "path", key: "sessionID" },
-          { in: "query", key: "directory" },
-          { in: "query", key: "workspace" }
-        ]
-      }
-    ]);
-    return (options?.client ?? this.client).post({
-      url: "/api/session/{sessionID}/compact",
-      ...options,
-      ...params
-    });
-  }
-  /**
-   * Wait for v2 session
-   *
-   * Wait for a v2 session agent loop to become idle.
-   */
-  wait(parameters, options) {
-    const params = buildClientParams([parameters], [
-      {
-        args: [
-          { in: "path", key: "sessionID" },
-          { in: "query", key: "directory" },
-          { in: "query", key: "workspace" }
-        ]
-      }
-    ]);
-    return (options?.client ?? this.client).post({
-      url: "/api/session/{sessionID}/wait",
-      ...options,
-      ...params
-    });
-  }
-  /**
-   * Get v2 session context
-   *
-   * Retrieve the active context messages for a v2 session (all messages after the last compaction).
-   */
-  context(parameters, options) {
-    const params = buildClientParams([parameters], [
-      {
-        args: [
-          { in: "path", key: "sessionID" },
-          { in: "query", key: "directory" },
-          { in: "query", key: "workspace" }
-        ]
-      }
-    ]);
-    return (options?.client ?? this.client).get({
-      url: "/api/session/{sessionID}/context",
-      ...options,
-      ...params
-    });
-  }
-  /**
-   * Get v2 session messages
-   *
-   * Retrieve projected v2 messages for a session. Items keep the requested order across pages; use cursor.next or cursor.previous to move through the ordered timeline.
-   */
-  messages(parameters, options) {
-    const params = buildClientParams([parameters], [
-      {
-        args: [
-          { in: "path", key: "sessionID" },
-          { in: "query", key: "directory" },
-          { in: "query", key: "workspace" },
-          { in: "query", key: "limit" },
-          { in: "query", key: "order" },
-          { in: "query", key: "cursor" }
-        ]
-      }
-    ]);
-    return (options?.client ?? this.client).get({
-      url: "/api/session/{sessionID}/message",
-      ...options,
-      ...params
-    });
-  }
-};
-var Model = class extends HeyApiClient {
-  /**
-   * List v2 models
-   *
-   * Retrieve available v2 models ordered by release date.
-   */
-  list(parameters, options) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }]);
-    return (options?.client ?? this.client).get({
-      url: "/api/model",
-      ...options,
-      ...params
-    });
-  }
-};
-var Provider2 = class extends HeyApiClient {
-  /**
-   * List v2 providers
-   *
-   * Retrieve active v2 AI providers so clients can show provider availability and configuration.
-   */
-  list(parameters, options) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }]);
-    return (options?.client ?? this.client).get({
-      url: "/api/provider",
-      ...options,
-      ...params
-    });
-  }
-  /**
-   * Get v2 provider
-   *
-   * Retrieve a single v2 AI provider so clients can inspect its availability and endpoint settings.
-   */
-  get(parameters, options) {
-    const params = buildClientParams([parameters], [
-      {
-        args: [
-          { in: "path", key: "providerID" },
-          { in: "query", key: "location" }
-        ]
-      }
-    ]);
-    return (options?.client ?? this.client).get({
-      url: "/api/provider/{providerID}",
-      ...options,
-      ...params
-    });
-  }
-};
-var V2 = class extends HeyApiClient {
-  _session;
-  get session() {
-    return this._session ??= new Session3({ client: this.client });
-  }
-  _model;
-  get model() {
-    return this._model ??= new Model({ client: this.client });
-  }
-  _provider;
-  get provider() {
-    return this._provider ??= new Provider2({ client: this.client });
-  }
-};
 var Control = class extends HeyApiClient {
   /**
    * Get next TUI request
@@ -55108,6 +55037,1298 @@ var Tui = class extends HeyApiClient {
     return this._control ??= new Control({ client: this.client });
   }
 };
+var Health = class extends HeyApiClient {
+  /**
+   * Check server health
+   *
+   * Check whether the API server is ready to accept requests.
+   */
+  get(options) {
+    return (options?.client ?? this.client).get({
+      url: "/api/health",
+      ...options
+    });
+  }
+};
+var Location = class extends HeyApiClient {
+  /**
+   * Get location
+   *
+   * Resolve the requested location or the server default location.
+   */
+  get(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }]);
+    return (options?.client ?? this.client).get({
+      url: "/api/location",
+      ...options,
+      ...params
+    });
+  }
+};
+var Agent = class extends HeyApiClient {
+  /**
+   * List agents
+   *
+   * Retrieve currently registered agents.
+   */
+  list(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }]);
+    return (options?.client ?? this.client).get({
+      url: "/api/agent",
+      ...options,
+      ...params
+    });
+  }
+};
+var Revert = class extends HeyApiClient {
+  /**
+   * Stage session revert
+   *
+   * Stage or move a reversible session boundary and optionally apply its file changes.
+   */
+  stage(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "sessionID" },
+          { in: "body", key: "messageID" },
+          { in: "body", key: "files" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/api/session/{sessionID}/revert/stage",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers
+      }
+    });
+  }
+  /**
+   * Clear staged revert
+   */
+  clear(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }]);
+    return (options?.client ?? this.client).post({
+      url: "/api/session/{sessionID}/revert/clear",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Commit staged revert
+   */
+  commit(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }]);
+    return (options?.client ?? this.client).post({
+      url: "/api/session/{sessionID}/revert/commit",
+      ...options,
+      ...params
+    });
+  }
+};
+var Permission2 = class extends HeyApiClient {
+  /**
+   * List session permission requests
+   *
+   * Retrieve pending permission requests owned by a session.
+   */
+  list(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }]);
+    return (options?.client ?? this.client).get({
+      url: "/api/session/{sessionID}/permission",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Create permission request
+   *
+   * Evaluate and, when approval is required, create a permission request for a session.
+   */
+  create(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "sessionID" },
+          { in: "body", key: "id" },
+          { in: "body", key: "action" },
+          { in: "body", key: "resources" },
+          { in: "body", key: "save" },
+          { in: "body", key: "metadata" },
+          { in: "body", key: "source" },
+          { in: "body", key: "agent" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/api/session/{sessionID}/permission",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers
+      }
+    });
+  }
+  /**
+   * Get permission request
+   *
+   * Retrieve a pending permission request owned by a session.
+   */
+  get(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "sessionID" },
+          { in: "path", key: "requestID" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).get({
+      url: "/api/session/{sessionID}/permission/{requestID}",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Reply to pending permission request
+   *
+   * Respond to a pending permission request owned by a session.
+   */
+  reply(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "sessionID" },
+          { in: "path", key: "requestID" },
+          { in: "body", key: "reply" },
+          { in: "body", key: "message" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/api/session/{sessionID}/permission/{requestID}/reply",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers
+      }
+    });
+  }
+};
+var Question2 = class extends HeyApiClient {
+  /**
+   * List session question requests
+   *
+   * Retrieve pending question requests owned by a session.
+   */
+  list(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }]);
+    return (options?.client ?? this.client).get({
+      url: "/api/session/{sessionID}/question",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Reply to pending question request
+   *
+   * Answer a pending question request owned by a session.
+   */
+  reply(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "sessionID" },
+          { in: "path", key: "requestID" },
+          { key: "questionV2Reply", map: "body" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/api/session/{sessionID}/question/{requestID}/reply",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers
+      }
+    });
+  }
+  /**
+   * Reject pending question request
+   *
+   * Reject a pending question request owned by a session.
+   */
+  reject(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "sessionID" },
+          { in: "path", key: "requestID" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/api/session/{sessionID}/question/{requestID}/reject",
+      ...options,
+      ...params
+    });
+  }
+};
+var Session3 = class extends HeyApiClient {
+  /**
+   * List sessions
+   *
+   * Retrieve sessions in the requested order. Items keep that order across pages; use cursor.next or cursor.previous to move through the ordered list.
+   */
+  list(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "query", key: "workspace" },
+          { in: "query", key: "limit" },
+          { in: "query", key: "order" },
+          { in: "query", key: "search" },
+          { in: "query", key: "directory" },
+          { in: "query", key: "project" },
+          { in: "query", key: "subpath" },
+          { in: "query", key: "cursor" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).get({
+      url: "/api/session",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Create session
+   *
+   * Create a session at the requested location.
+   */
+  create(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "body", key: "id" },
+          { in: "body", key: "agent" },
+          { in: "body", key: "model" },
+          { in: "body", key: "location" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/api/session",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers
+      }
+    });
+  }
+  /**
+   * List active sessions
+   *
+   * Retrieve foreground Session drains currently owned by this OpenCode process. Sessions absent from the result are inactive.
+   */
+  active(options) {
+    return (options?.client ?? this.client).get({
+      url: "/api/session/active",
+      ...options
+    });
+  }
+  /**
+   * Get session
+   *
+   * Retrieve a session by ID.
+   */
+  get(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }]);
+    return (options?.client ?? this.client).get({
+      url: "/api/session/{sessionID}",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Switch session agent
+   *
+   * Switch the agent used by subsequent provider turns.
+   */
+  switchAgent(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "sessionID" },
+          { in: "body", key: "agent" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/api/session/{sessionID}/agent",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers
+      }
+    });
+  }
+  /**
+   * Switch session model
+   *
+   * Switch the model used by subsequent provider turns.
+   */
+  switchModel(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "sessionID" },
+          { in: "body", key: "model" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/api/session/{sessionID}/model",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers
+      }
+    });
+  }
+  /**
+   * Send message
+   *
+   * Durably admit one session input and schedule agent-loop execution unless resume is false.
+   */
+  prompt(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "sessionID" },
+          { in: "body", key: "id" },
+          { in: "body", key: "prompt" },
+          { in: "body", key: "delivery" },
+          { in: "body", key: "resume" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/api/session/{sessionID}/prompt",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers
+      }
+    });
+  }
+  /**
+   * Compact session
+   *
+   * Compact a session conversation.
+   */
+  compact(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }]);
+    return (options?.client ?? this.client).post({
+      url: "/api/session/{sessionID}/compact",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Wait for session
+   *
+   * Wait for a session agent loop to become idle.
+   */
+  wait(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }]);
+    return (options?.client ?? this.client).post({
+      url: "/api/session/{sessionID}/wait",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Get session context
+   *
+   * Retrieve the active context messages for a session (all messages after the last compaction).
+   */
+  context(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }]);
+    return (options?.client ?? this.client).get({
+      url: "/api/session/{sessionID}/context",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Get session history
+   *
+   * Read one finite page of public durable Session events after an exclusive aggregate sequence. Newly committed events may appear on later pages.
+   */
+  history(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "sessionID" },
+          { in: "query", key: "limit" },
+          { in: "query", key: "after" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).get({
+      url: "/api/session/{sessionID}/history",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Subscribe to session events
+   *
+   * Replay durable events after an aggregate sequence, then continue with new durable events.
+   */
+  events(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "sessionID" },
+          { in: "query", key: "after" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).sse.get({
+      url: "/api/session/{sessionID}/event",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Interrupt session execution
+   *
+   * Interrupt active execution owned by this OpenCode process. Idle interruption is a no-op.
+   */
+  interrupt(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }]);
+    return (options?.client ?? this.client).post({
+      url: "/api/session/{sessionID}/interrupt",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Get session message
+   *
+   * Retrieve one projected message owned by the Session.
+   */
+  message(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "sessionID" },
+          { in: "path", key: "messageID" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).get({
+      url: "/api/session/{sessionID}/message/{messageID}",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Get session messages
+   *
+   * Retrieve projected messages for a session. Items keep the requested order across pages; use cursor.next or cursor.previous to move through the ordered timeline.
+   */
+  messages(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "sessionID" },
+          { in: "query", key: "limit" },
+          { in: "query", key: "order" },
+          { in: "query", key: "cursor" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).get({
+      url: "/api/session/{sessionID}/message",
+      ...options,
+      ...params
+    });
+  }
+  _revert;
+  get revert() {
+    return this._revert ??= new Revert({ client: this.client });
+  }
+  _permission;
+  get permission() {
+    return this._permission ??= new Permission2({ client: this.client });
+  }
+  _question;
+  get question() {
+    return this._question ??= new Question2({ client: this.client });
+  }
+};
+var Model = class extends HeyApiClient {
+  /**
+   * List models
+   *
+   * Retrieve available models ordered by release date.
+   */
+  list(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }]);
+    return (options?.client ?? this.client).get({
+      url: "/api/model",
+      ...options,
+      ...params
+    });
+  }
+};
+var Provider2 = class extends HeyApiClient {
+  /**
+   * List providers
+   *
+   * Retrieve active AI providers so clients can show provider availability and configuration.
+   */
+  list(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }]);
+    return (options?.client ?? this.client).get({
+      url: "/api/provider",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Get provider
+   *
+   * Retrieve a single AI provider so clients can inspect its availability and endpoint settings.
+   */
+  get(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "providerID" },
+          { in: "query", key: "location" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).get({
+      url: "/api/provider/{providerID}",
+      ...options,
+      ...params
+    });
+  }
+};
+var Connect = class extends HeyApiClient {
+  /**
+   * Connect with key
+   *
+   * Run a key authentication method and store the resulting credential.
+   */
+  key(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "integrationID" },
+          { in: "query", key: "location" },
+          { in: "body", key: "key" },
+          { in: "body", key: "label" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/api/integration/{integrationID}/connect/key",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers
+      }
+    });
+  }
+  /**
+   * Begin OAuth connection
+   *
+   * Start an OAuth attempt and return the authorization details.
+   */
+  oauth(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "integrationID" },
+          { in: "query", key: "location" },
+          { in: "body", key: "methodID" },
+          { in: "body", key: "inputs" },
+          { in: "body", key: "label" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/api/integration/{integrationID}/connect/oauth",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers
+      }
+    });
+  }
+};
+var Attempt = class extends HeyApiClient {
+  /**
+   * Cancel OAuth connection
+   *
+   * Cancel an OAuth attempt and release its resources.
+   */
+  cancel(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "attemptID" },
+          { in: "query", key: "location" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).delete({
+      url: "/api/integration/attempt/{attemptID}",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Get OAuth attempt status
+   *
+   * Poll the current status of an OAuth attempt.
+   */
+  status(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "attemptID" },
+          { in: "query", key: "location" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).get({
+      url: "/api/integration/attempt/{attemptID}",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Complete OAuth connection
+   *
+   * Complete a code-based OAuth attempt and store the resulting credential.
+   */
+  complete(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "attemptID" },
+          { in: "query", key: "location" },
+          { in: "body", key: "code" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/api/integration/attempt/{attemptID}/complete",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers
+      }
+    });
+  }
+};
+var Integration = class extends HeyApiClient {
+  /**
+   * List integrations
+   *
+   * Retrieve available integrations and their authentication methods.
+   */
+  list(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }]);
+    return (options?.client ?? this.client).get({
+      url: "/api/integration",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Get integration
+   *
+   * Retrieve one integration and its authentication methods.
+   */
+  get(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "integrationID" },
+          { in: "query", key: "location" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).get({
+      url: "/api/integration/{integrationID}",
+      ...options,
+      ...params
+    });
+  }
+  _connect;
+  get connect() {
+    return this._connect ??= new Connect({ client: this.client });
+  }
+  _attempt;
+  get attempt() {
+    return this._attempt ??= new Attempt({ client: this.client });
+  }
+};
+var Credential = class extends HeyApiClient {
+  /**
+   * Remove credential
+   *
+   * Remove a stored integration credential.
+   */
+  remove(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "credentialID" },
+          { in: "query", key: "location" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).delete({
+      url: "/api/credential/{credentialID}",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Update credential
+   *
+   * Update a stored credential label.
+   */
+  update(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "credentialID" },
+          { in: "query", key: "location" },
+          { in: "body", key: "label" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).patch({
+      url: "/api/credential/{credentialID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers
+      }
+    });
+  }
+};
+var Request2 = class extends HeyApiClient {
+  /**
+   * List pending permission requests
+   *
+   * Retrieve pending permission requests for a location.
+   */
+  list(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }]);
+    return (options?.client ?? this.client).get({
+      url: "/api/permission/request",
+      ...options,
+      ...params
+    });
+  }
+};
+var Saved = class extends HeyApiClient {
+  /**
+   * List saved permissions
+   *
+   * Retrieve saved permissions, optionally filtered by project.
+   */
+  list(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "projectID" }] }]);
+    return (options?.client ?? this.client).get({
+      url: "/api/permission/saved",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Remove saved permission
+   *
+   * Remove a saved permission by ID.
+   */
+  remove(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "id" }] }]);
+    return (options?.client ?? this.client).delete({
+      url: "/api/permission/saved/{id}",
+      ...options,
+      ...params
+    });
+  }
+};
+var Permission3 = class extends HeyApiClient {
+  _request;
+  get request() {
+    return this._request ??= new Request2({ client: this.client });
+  }
+  _saved;
+  get saved() {
+    return this._saved ??= new Saved({ client: this.client });
+  }
+};
+var Fs = class extends HeyApiClient {
+  /**
+   * Read file
+   *
+   * Serve one file relative to the requested location.
+   */
+  read(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }]);
+    return (options?.client ?? this.client).get({
+      url: "/api/fs/read/*",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * List directory
+   *
+   * List direct children of one directory relative to the requested location.
+   */
+  list(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "query", key: "location" },
+          { in: "query", key: "path" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).get({
+      url: "/api/fs/list",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Find files
+   *
+   * Find recursively ranked filesystem entries relative to the requested location.
+   */
+  find(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "query", key: "location" },
+          { in: "query", key: "query" },
+          { in: "query", key: "type" },
+          { in: "query", key: "limit" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).get({
+      url: "/api/fs/find",
+      ...options,
+      ...params
+    });
+  }
+};
+var Command2 = class extends HeyApiClient {
+  /**
+   * List commands
+   *
+   * Retrieve currently registered commands.
+   */
+  list(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }]);
+    return (options?.client ?? this.client).get({
+      url: "/api/command",
+      ...options,
+      ...params
+    });
+  }
+};
+var Skill = class extends HeyApiClient {
+  /**
+   * List skills
+   *
+   * Retrieve currently registered skills.
+   */
+  list(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }]);
+    return (options?.client ?? this.client).get({
+      url: "/api/skill",
+      ...options,
+      ...params
+    });
+  }
+};
+var Event2 = class extends HeyApiClient {
+  /**
+   * Subscribe to events
+   *
+   * Subscribe to native event payloads for the server.
+   */
+  subscribe(options) {
+    return (options?.client ?? this.client).sse.get({
+      url: "/api/event",
+      ...options
+    });
+  }
+};
+var Pty2 = class extends HeyApiClient {
+  /**
+   * List PTY sessions
+   *
+   * List PTY sessions for a location, including exited sessions retained until removal.
+   */
+  list(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }]);
+    return (options?.client ?? this.client).get({
+      url: "/api/pty",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Create PTY session
+   *
+   * Create a pseudo-terminal session for a location.
+   */
+  create(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "query", key: "location" },
+          { in: "body", key: "command" },
+          { in: "body", key: "args" },
+          { in: "body", key: "cwd" },
+          { in: "body", key: "title" },
+          { in: "body", key: "env" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/api/pty",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers
+      }
+    });
+  }
+  /**
+   * Remove PTY session
+   *
+   * Terminate and remove one PTY session.
+   */
+  remove(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "ptyID" },
+          { in: "query", key: "location" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).delete({
+      url: "/api/pty/{ptyID}",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Get PTY session
+   *
+   * Get one PTY session, including its exit code once exited.
+   */
+  get(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "ptyID" },
+          { in: "query", key: "location" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).get({
+      url: "/api/pty/{ptyID}",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Update PTY session
+   *
+   * Update the title or viewport size of one PTY session.
+   */
+  update(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "ptyID" },
+          { in: "query", key: "location" },
+          { in: "body", key: "title" },
+          { in: "body", key: "size" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).put({
+      url: "/api/pty/{ptyID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers
+      }
+    });
+  }
+  /**
+   * Create PTY WebSocket token
+   *
+   * Create a short-lived single-use ticket for opening a PTY WebSocket connection.
+   */
+  connectToken(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "ptyID" },
+          { in: "query", key: "location" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/api/pty/{ptyID}/connect-token",
+      ...options,
+      ...params
+    });
+  }
+  /**
+   * Connect to PTY session
+   *
+   * Establish a WebSocket connection streaming PTY output and accepting terminal input.
+   */
+  connect(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "ptyID" },
+          { in: "query", key: "location[directory]" },
+          { in: "query", key: "location[workspace]" },
+          { in: "query", key: "cursor" },
+          { in: "query", key: "ticket" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).get({
+      url: "/api/pty/{ptyID}/connect",
+      ...options,
+      ...params
+    });
+  }
+};
+var Request22 = class extends HeyApiClient {
+  /**
+   * List pending question requests
+   *
+   * Retrieve pending question requests for a location.
+   */
+  list(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }]);
+    return (options?.client ?? this.client).get({
+      url: "/api/question/request",
+      ...options,
+      ...params
+    });
+  }
+};
+var Question3 = class extends HeyApiClient {
+  _request;
+  get request() {
+    return this._request ??= new Request22({ client: this.client });
+  }
+};
+var Reference = class extends HeyApiClient {
+  /**
+   * List references
+   *
+   * List references available in the requested location.
+   */
+  list(parameters, options) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "location" }] }]);
+    return (options?.client ?? this.client).get({
+      url: "/api/reference",
+      ...options,
+      ...params
+    });
+  }
+};
+var ProjectCopy2 = class extends HeyApiClient {
+  remove(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "projectID" },
+          { in: "query", key: "location" },
+          { in: "body", key: "directory" },
+          { in: "body", key: "force" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).delete({
+      url: "/experimental/project/{projectID}/copy",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers
+      }
+    });
+  }
+  create(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "projectID" },
+          { in: "query", key: "location" },
+          { in: "body", key: "strategy" },
+          { in: "body", key: "directory" },
+          { in: "body", key: "name" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/experimental/project/{projectID}/copy",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers
+      }
+    });
+  }
+  refresh(parameters, options) {
+    const params = buildClientParams([parameters], [
+      {
+        args: [
+          { in: "path", key: "projectID" },
+          { in: "query", key: "location" }
+        ]
+      }
+    ]);
+    return (options?.client ?? this.client).post({
+      url: "/experimental/project/{projectID}/copy/refresh",
+      ...options,
+      ...params
+    });
+  }
+};
+var V2 = class extends HeyApiClient {
+  _health;
+  get health() {
+    return this._health ??= new Health({ client: this.client });
+  }
+  _location;
+  get location() {
+    return this._location ??= new Location({ client: this.client });
+  }
+  _agent;
+  get agent() {
+    return this._agent ??= new Agent({ client: this.client });
+  }
+  _session;
+  get session() {
+    return this._session ??= new Session3({ client: this.client });
+  }
+  _model;
+  get model() {
+    return this._model ??= new Model({ client: this.client });
+  }
+  _provider;
+  get provider() {
+    return this._provider ??= new Provider2({ client: this.client });
+  }
+  _integration;
+  get integration() {
+    return this._integration ??= new Integration({ client: this.client });
+  }
+  _credential;
+  get credential() {
+    return this._credential ??= new Credential({ client: this.client });
+  }
+  _permission;
+  get permission() {
+    return this._permission ??= new Permission3({ client: this.client });
+  }
+  _fs;
+  get fs() {
+    return this._fs ??= new Fs({ client: this.client });
+  }
+  _command;
+  get command() {
+    return this._command ??= new Command2({ client: this.client });
+  }
+  _skill;
+  get skill() {
+    return this._skill ??= new Skill({ client: this.client });
+  }
+  _event;
+  get event() {
+    return this._event ??= new Event2({ client: this.client });
+  }
+  _pty;
+  get pty() {
+    return this._pty ??= new Pty2({ client: this.client });
+  }
+  _question;
+  get question() {
+    return this._question ??= new Question3({ client: this.client });
+  }
+  _reference;
+  get reference() {
+    return this._reference ??= new Reference({ client: this.client });
+  }
+  _projectCopy;
+  get projectCopy() {
+    return this._projectCopy ??= new ProjectCopy2({ client: this.client });
+  }
+};
 var OpencodeClient = class _OpencodeClient extends HeyApiClient {
   static __registry = new HeyApiRegistry();
   constructor(args) {
@@ -55122,6 +56343,10 @@ var OpencodeClient = class _OpencodeClient extends HeyApiClient {
   get app() {
     return this._app ??= new App({ client: this.client });
   }
+  _experimental;
+  get experimental() {
+    return this._experimental ??= new Experimental({ client: this.client });
+  }
   _global;
   get global() {
     return this._global ??= new Global({ client: this.client });
@@ -55133,10 +56358,6 @@ var OpencodeClient = class _OpencodeClient extends HeyApiClient {
   _config;
   get config() {
     return this._config ??= new Config2({ client: this.client });
-  }
-  _experimental;
-  get experimental() {
-    return this._experimental ??= new Experimental({ client: this.client });
   }
   _tool;
   get tool() {
@@ -55214,17 +56435,17 @@ var OpencodeClient = class _OpencodeClient extends HeyApiClient {
   get sync() {
     return this._sync ??= new Sync({ client: this.client });
   }
-  _v2;
-  get v2() {
-    return this._v2 ??= new V2({ client: this.client });
-  }
   _tui;
   get tui() {
     return this._tui ??= new Tui({ client: this.client });
   }
+  _v2;
+  get v2() {
+    return this._v2 ??= new V2({ client: this.client });
+  }
 };
 
-// node_modules/.pnpm/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/error-interceptor.js
+// node_modules/.pnpm/@opencode-ai+sdk@1.17.18/node_modules/@opencode-ai/sdk/dist/error-interceptor.js
 function wrapClientError(error51, response, request, opts) {
   if (!opts?.throwOnError)
     return error51;
@@ -55251,7 +56472,7 @@ function describe3(request, response) {
   return `${method} ${url2}${status ? " \u2192 " + status : ""}${statusText ? " " + statusText : ""}`;
 }
 
-// node_modules/.pnpm/@opencode-ai+sdk@1.15.10/node_modules/@opencode-ai/sdk/dist/v2/client.js
+// node_modules/.pnpm/@opencode-ai+sdk@1.17.18/node_modules/@opencode-ai/sdk/dist/v2/client.js
 function pick2(value, fallback, encode3) {
   if (!value)
     return;
@@ -55275,8 +56496,10 @@ function rewrite(request, values) {
     const value = pick2(request.headers.get(name), key === "directory" ? values.directory : values.workspace, key === "directory" ? encodeURIComponent : void 0);
     if (!value)
       continue;
-    if (!url2.searchParams.has(key)) {
-      url2.searchParams.set(key, value);
+    for (const query of url2.pathname.startsWith("/api/") ? [key, `location[${key}]`] : [key]) {
+      if (!url2.searchParams.has(query)) {
+        url2.searchParams.set(query, value);
+      }
     }
     changed = true;
   }
@@ -56798,16 +58021,13 @@ var OpenCodeBackend = class {
     await fs4.writeFile(paths.prompt, options.prompt, "utf8");
     const target = await this.resolveTarget(options.cwd);
     const runnerMode = resolveRunnerMode(this.env);
-    const rootAgent = resolveRootAgent(this.env);
     const requestedAgent = options.agent ?? "explore";
     const agents = await this.listAgents(target.client);
     const childAgent = findOpenCodeAgent(agents, requestedAgent);
-    validateOpenCodeAgent(agents, rootAgent, "root", this.kind);
-    validateOpenCodeAgent(agents, requestedAgent, "child", this.kind);
-    const parentSession = runnerMode === "shared-root" ? await this.getOrCreateSharedRootSession(target, options.cwd, rootAgent) : await target.client.createSession({
+    validateOpenCodeAgent(agents, requestedAgent, this.kind);
+    const parentSession = runnerMode === "shared-root" ? await this.getOrCreateSharedRootSession(target, options.cwd) : await target.client.createSession({
       cwd: options.cwd,
-      title: options.title ?? options.name,
-      agent: rootAgent
+      title: options.title ?? options.name
     });
     const childSession = await target.client.createSession({
       cwd: options.cwd,
@@ -56839,7 +58059,6 @@ var OpenCodeBackend = class {
       readOnly: options.readOnly === true,
       externalSessionId: childSession.id,
       externalRunnerMode: runnerMode,
-      externalRootAgent: rootAgent,
       externalRootSessionId: parentSession.id,
       externalParentSessionId: parentSession.id,
       externalChildSessionIds: [childSession.id],
@@ -57261,7 +58480,6 @@ var OpenCodeBackend = class {
       baseUrl: meta3.externalServerUrl ?? this.baseUrl ?? "",
       sessionId: meta3.externalSessionId,
       runnerMode: meta3.externalRunnerMode,
-      rootAgent: meta3.externalRootAgent,
       rootSessionId: meta3.externalRootSessionId,
       parentSessionId: meta3.externalParentSessionId,
       childSessionIds: meta3.externalChildSessionIds,
@@ -57291,7 +58509,6 @@ var OpenCodeBackend = class {
       baseUrl: meta3.externalServerUrl ?? this.baseUrl ?? "",
       sessionId: meta3.externalSessionId,
       runnerMode: meta3.externalRunnerMode,
-      rootAgent: meta3.externalRootAgent,
       rootSessionId: meta3.externalRootSessionId,
       parentSessionId: meta3.externalParentSessionId,
       childSessionIds: meta3.externalChildSessionIds,
@@ -57595,7 +58812,6 @@ var OpenCodeBackend = class {
       baseUrl: meta3.externalServerUrl ?? this.baseUrl ?? "",
       sessionId: meta3.externalSessionId,
       runnerMode: meta3.externalRunnerMode,
-      rootAgent: meta3.externalRootAgent,
       rootSessionId: meta3.externalRootSessionId,
       parentSessionId: meta3.externalParentSessionId,
       childSessionIds: meta3.externalChildSessionIds,
@@ -57696,7 +58912,6 @@ var OpenCodeBackend = class {
       baseUrl: meta3.externalServerUrl ?? this.baseUrl ?? "",
       sessionId: meta3.externalSessionId,
       runnerMode: meta3.externalRunnerMode,
-      rootAgent: meta3.externalRootAgent,
       rootSessionId: meta3.externalRootSessionId,
       parentSessionId: meta3.externalParentSessionId,
       childSessionIds: meta3.externalChildSessionIds
@@ -57841,8 +59056,8 @@ var OpenCodeBackend = class {
       return meta3;
     }
   }
-  async getOrCreateSharedRootSession(target, cwd, agent) {
-    const key = [target.baseUrl, cwd ?? "", agent].join("\0");
+  async getOrCreateSharedRootSession(target, cwd) {
+    const key = [target.baseUrl, cwd ?? ""].join("\0");
     const existing = this.sharedRootSessions.get(key);
     if (existing) {
       try {
@@ -57854,10 +59069,9 @@ var OpenCodeBackend = class {
     }
     const session = await target.client.createSession({
       cwd,
-      title: "retinue-shared-root",
-      agent
+      title: "retinue-shared-root"
     });
-    this.sharedRootSessions.set(key, { id: session.id, baseUrl: target.baseUrl, cwd, agent });
+    this.sharedRootSessions.set(key, { id: session.id, baseUrl: target.baseUrl, cwd });
     return session;
   }
   async listAgents(client2) {
@@ -58878,26 +60092,18 @@ function resolveRunnerMode(env) {
   }
   throw new Error(`Unsupported RETINUE_OPENCODE_ROOT_BINDING_MODE: ${value}`);
 }
-function resolveRootAgent(env) {
-  const value = env?.RETINUE_OPENCODE_ROOT_AGENT?.trim();
-  if (value === void 0 || value === "") {
-    return "build";
-  }
-  return value;
-}
 function findOpenCodeAgent(agents, name) {
   return agents.find((agent) => agent.name === name);
 }
-function validateOpenCodeAgent(agents, name, role, kind) {
+function validateOpenCodeAgent(agents, name, kind) {
   if (agents.length === 0 || findOpenCodeAgent(agents, name)) {
     return;
   }
   const available = agents.map((agent) => agent.name).filter(Boolean).sort().join(", ");
   const backend = kind === "kilo" ? "Kilo" : "OpenCode";
-  const roleLabel = role === "root" ? "root agent" : "child agent";
   const backendHint = isRetinueBackendName(name) ? ` "${name}" is a Retinue backend name; select the backend with RETINUE_BACKEND, and use agent only for one ${backend} agent such as ${available}.` : "";
   throw new Error(
-    `Unsupported ${backend} ${roleLabel} "${name}". The agent field selects a backend agent name for ${backend}, not a Retinue backend, Codex model, or Codex native subagent.${backendHint} Available ${backend} agents: ${available}.`
+    `Unsupported ${backend} child agent "${name}". The agent field selects a backend agent name for ${backend}, not a Retinue backend, Codex model, or Codex native subagent.${backendHint} Available ${backend} agents: ${available}.`
   );
 }
 function isRetinueBackendName(name) {
@@ -60467,7 +61673,6 @@ function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {}) {
         sessionId: started.sessionId,
         externalSessionId: started.externalSessionId,
         externalRunnerMode: started.externalRunnerMode,
-        externalRootAgent: started.externalRootAgent,
         externalRootSessionId: started.externalRootSessionId,
         externalParentSessionId: started.externalParentSessionId,
         externalServerUrl: started.externalServerUrl,

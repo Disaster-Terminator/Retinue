@@ -19,7 +19,6 @@ interface SharedRootSession {
     id: string;
     baseUrl: string;
     cwd?: string;
-    agent: string;
 }
 export type OpenCodeSharedRootSessionStore = Map<string, SharedRootSession>;
 export declare class OpenCodeBackend implements AgentBackend {

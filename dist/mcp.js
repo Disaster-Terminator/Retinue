@@ -203,7 +203,6 @@ export function createMcpServer(retinue = createMcpRetinueFromEnv(), options = {
             sessionId: started.sessionId,
             externalSessionId: started.externalSessionId,
             externalRunnerMode: started.externalRunnerMode,
-            externalRootAgent: started.externalRootAgent,
             externalRootSessionId: started.externalRootSessionId,
             externalParentSessionId: started.externalParentSessionId,
             externalServerUrl: started.externalServerUrl,

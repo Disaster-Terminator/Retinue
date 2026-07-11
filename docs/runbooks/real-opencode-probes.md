@@ -24,11 +24,9 @@ RETINUE_DOGFOOD_OPENCODE_ROOT_BINDING_MODE_LIST=shared_root,per_spawn \
 pnpm run probe:dogfood:opencode
 ```
 
-`shared_root` is the default. Jobs in the same Retinue MCP server session with the same OpenCode server URL, cwd, and root agent reuse one unprompted OpenCode root session and create separate prompted child sessions under it. `per_spawn` remains available with `RETINUE_OPENCODE_ROOT_BINDING_MODE=per_spawn`; in that mode each Retinue job gets its own unprompted OpenCode root session plus one prompted child session. Separate MCP server sessions do not share roots.
+`shared_root` is the default. Jobs in the same Retinue MCP server session with the same OpenCode server URL and cwd reuse one unprompted OpenCode root session and create separate prompted child sessions under it. The structural root has no agent binding. `per_spawn` remains available with `RETINUE_OPENCODE_ROOT_BINDING_MODE=per_spawn`; in that mode each Retinue job gets its own unprompted OpenCode root session plus one prompted child session. Separate MCP server sessions do not share roots.
 
-The default root agent is `build`. Set `RETINUE_OPENCODE_ROOT_AGENT=<agent>` only when validating a different OpenCode primary/root agent as the unprompted container; the Retinue child agent still comes from `RETINUE_OPENCODE_AGENT` or the MCP `agent` argument.
-
-The probe output includes `externalRunnerMode`, `externalRootAgent`, `externalRootSessionId`, `externalParentSessionId`, and the child `externalSessionId` so per-spawn and shared-root logs do not get mixed.
+The probe output includes `externalRunnerMode`, `externalRootSessionId`, `externalParentSessionId`, and the child `externalSessionId` so per-spawn and shared-root logs do not get mixed.
 
 Use the opt-in writable dogfood check for a single `general` child edit in an isolated temporary workspace:
 

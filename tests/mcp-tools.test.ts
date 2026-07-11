@@ -524,11 +524,11 @@ describe("MCP tools", () => {
         jobDir: path.join(tempDir, "jobs", spawn.jobId),
         externalServerUrl: fakeOpenCode.url,
         externalRunnerMode: "shared-root",
-        externalRootAgent: "build",
         externalRootSessionId: expect.stringMatching(/^ses_/),
         externalParentSessionId: expect.stringMatching(/^ses_/),
         externalSessionDirectory: process.cwd()
       });
+      expect(spawn).not.toHaveProperty("externalRootAgent");
       expect(fakeOpenCode.promptRequests.at(-1)).toMatchObject({ agent: "explore" });
       expect(fakeOpenCode.promptRequests.at(-1)).not.toHaveProperty("tools");
       const submittedPrompt = extractOpenCodePromptText(fakeOpenCode.promptRequests.at(-1));
@@ -748,13 +748,15 @@ describe("MCP tools", () => {
       expect(fourth.externalRootSessionId).toBe(third.externalRootSessionId);
       expect(fourth.externalSessionId).not.toBe(third.externalSessionId);
       expect(fakeOpenCode.sessionRequests).toEqual([
-        expect.objectContaining({ title: "retinue-shared-root", agent: "build" }),
+        expect.objectContaining({ title: "retinue-shared-root" }),
         expect.objectContaining({ parentID: first.externalRootSessionId, agent: "explore" }),
         expect.objectContaining({ parentID: first.externalRootSessionId, agent: "explore" }),
-        expect.objectContaining({ title: "retinue-shared-root", agent: "build" }),
+        expect.objectContaining({ title: "retinue-shared-root" }),
         expect.objectContaining({ parentID: third.externalRootSessionId, agent: "explore" }),
         expect.objectContaining({ parentID: third.externalRootSessionId, agent: "explore" })
       ]);
+      expect(fakeOpenCode.sessionRequests[0]).not.toHaveProperty("agent");
+      expect(fakeOpenCode.sessionRequests[3]).not.toHaveProperty("agent");
     } finally {
       delete process.env.RETINUE_STATE_DIR;
       delete process.env.RETINUE_OPENCODE_BASE_URL;
