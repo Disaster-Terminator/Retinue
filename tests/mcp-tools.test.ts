@@ -272,15 +272,32 @@ describe("MCP tools", () => {
     }
   });
 
-  it("returns structured MCP errors for unsupported permission modes", async () => {
-    const connection = await connectMcpClientWithRetinue(new ClaudeRetinue({ stateDir: "unused" }));
+  it("does not forward caller-supplied Claude permission modes from MCP", async () => {
+    let runOptions: unknown;
+    let continueOptions: unknown;
+    const retinue = {
+      run: async (options: unknown) => {
+        runOptions = options;
+        return { jobId: "job_run", status: "running" };
+      },
+      continueJob: async (options: unknown) => {
+        continueOptions = options;
+        return { jobId: "job_continue", status: "running" };
+      }
+    } as RetinueApi;
+    const connection = await connectMcpClientWithRetinue(retinue);
     try {
-      await expectMcpInvalidParams(
-        connection.client.callTool({
-          name: "claude_run",
-          arguments: { cwd: ".", prompt: "x", permissionMode: "root" }
-        })
-      );
+      await connection.client.callTool({
+        name: "claude_run",
+        arguments: { cwd: ".", prompt: "x", permissionMode: "dontAsk" }
+      });
+      await connection.client.callTool({
+        name: "claude_continue",
+        arguments: { cwd: ".", prompt: "x", permissionMode: "auto" }
+      });
+
+      expect(runOptions).toEqual({ cwd: ".", prompt: "x" });
+      expect(continueOptions).toEqual({ cwd: ".", prompt: "x" });
     } finally {
       await closeMcpClient(connection);
     }
@@ -292,10 +309,13 @@ describe("MCP tools", () => {
       const tools = await connection.client.listTools();
 
       assertRequiredFields(tools.tools, "claude_run", ["cwd", "prompt"]);
+      assertAbsentFields(tools.tools, "claude_run", ["permissionMode"]);
       assertRequiredFields(tools.tools, "claude_status", ["jobId"]);
       assertRequiredFields(tools.tools, "claude_wait", ["jobId"]);
       assertOptionalField(tools.tools, "claude_wait", "timeoutMs");
       assertOptionalField(tools.tools, "claude_cleanup", "olderThanMs");
+      assertRequiredFields(tools.tools, "claude_continue", ["cwd", "prompt"]);
+      assertAbsentFields(tools.tools, "claude_continue", ["permissionMode"]);
       assertRequiredFields(tools.tools, "opencode_run", ["cwd", "prompt"]);
       assertOptionalField(tools.tools, "opencode_run", "opencodeBaseUrl");
       assertOptionalField(tools.tools, "opencode_run", "model");
@@ -2799,7 +2819,7 @@ async function connectMcpClient(daemonUrl: string) {
 }
 
 async function connectMcpClientWithRetinue(
-  retinue: ClaudeRetinue,
+  retinue: RetinueApi,
   options: boolean | CreateMcpServerOptions = true
 ) {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
